@@ -141,8 +141,8 @@ same style as the Policy module's DTOs:
   exists.
 - **`QuoteVersion`**: two-case enum, `Live`/`Snapshot` — which DAL version lane to
   read. See "Versioning" below.
-- **`QuoteRevision`**: `versionId`, `updatedAt`, `contentDigest`. Carried on every
-  `QuoteSnapshot`; passed back into a write as an optional precondition.
+- **`QuoteRevision`**: `versionId`, `updatedAt`. Carried on every `QuoteSnapshot`;
+  passed back into a write as an optional precondition.
 - **`QuoteRevisionMismatch`**: thrown by a write whose `$expected` revision no
   longer matches what is stored.
 - **`QuoteTransition`**: backed enum, `Process`/`Sent`/`Decline`/`RequestChange` —
@@ -159,7 +159,7 @@ implementation detail, never exposed above the bridge. `QuoteVersion` is the one
 piece of Shopware's versioning the interface *does* expose, because it carries
 domain meaning rather than plumbing (below).
 
-## Versioning, and what signing can actually guarantee
+## Versioning
 
 SwagCommercial uses DAL versioning for quotes in a way that matters to us, so the
 interface follows it rather than hiding it. `QuoteDefinition` is version-aware
@@ -179,42 +179,34 @@ interface follows it rather than hiding it. `QuoteDefinition` is version-aware
 the first two. Draft versions are out of scope: they are a storefront editing
 affordance, and an agent servicing pass has no reason to fork one.
 
-The snapshot lane is the interesting one, because it is *already* semantically
-"the state both parties agreed on" — which is exactly what a signature wants to
-cover.
+The snapshot lane is worth having in the interface beyond hygiene, because it is
+already semantically "the state both parties agreed on" — the natural thing to
+compare a fresh read against when deciding whether anything moved.
 
-**But a versionId is not an integrity proof, and it is worth being blunt about
-that.** `SNAPSHOT_VERSION_ID` is a hardcoded constant shared by every quote in the
-shop; the same id points at different content after every save. Signing
-`{quoteId, versionId}` would produce something that looks like a tamper-evident
-receipt and isn't — it would verify happily against modified content. Content
-integrity requires signing a **digest over the content**. The versionId belongs
-*inside* that signed payload as metadata (which lane, which revision), never as
-the thing being signed.
+**`QuoteRevision`** carries `versionId` and `updatedAt`, and rides along on every
+`QuoteSnapshot`. Pass one back into `updateLineItems`/`updateQuote` and the gateway
+refuses the write with `QuoteRevisionMismatch` if the stored revision has moved
+since the read. That is what gives issue #4's "re-read and abort if it moved" teeth
+at the write itself rather than only before it — the present, concrete reason for
+modelling versions at all.
 
-So the bridge's contribution to signing is three things, none of them crypto:
+### Later: signing
 
-1. **`QuoteRevision`** — `versionId`, `updatedAt`, and `contentDigest` (SHA-256
-   over the canonical serialization of the returned `QuoteSnapshot`). Returned as
-   part of every `QuoteSnapshot`.
-2. **A deterministic canonical form for `QuoteSnapshot`** — stable field order,
-   stable float and date formatting. This is a genuine bridge responsibility: a
-   digest is only comparable across parties if both serialize identically, and the
-   existing TS implementation already has `canonicalizeJson` for exactly this in
-   `src/crypto/a2cn-crypto.ts`.
-3. **An optional write precondition** — pass the `QuoteRevision` you read back into
-   `updateLineItems`/`updateQuote`, and the gateway refuses the write with
-   `QuoteRevisionMismatch` if the stored revision has moved. This is what gives
-   issue #4's "re-read and abort if it moved" teeth at the write itself rather than
-   only before it.
+Signing quote state so both parties can verify it is unchanged is a real goal but
+not this issue's, and nothing here builds toward it speculatively. One finding is
+worth recording so it is not re-derived wrongly later: **a versionId cannot serve
+as the integrity proof.** `SNAPSHOT_VERSION_ID` is one hardcoded constant shared by
+every quote in the shop, and the same id points at different content after every
+save — signing `{quoteId, versionId}` would produce something that looks
+tamper-evident and verifies happily against modified content.
 
-**The signing itself does not live here.** ES256/JWS over that digest belongs to
-the Protocol module and the A2CN act chain, which already does precisely this
-pattern (`sha256Base64Url(canonicalizeJson(...))` then `signCompactJws`, per
-`seller-mandate.ts`) and already has an agreed on-quote representation for the
-result (below). Putting crypto in the bridge would break the one rule this module
-exists to enforce — that the version-fragile Shopware seam stays free of domain
-logic.
+When signing does land, it will need a digest over a canonically serialized
+snapshot (stable field order, float and date formatting), with the versionId as
+metadata *inside* the signed payload. That canonical form does not exist yet and
+this spec deliberately does not add one. The Protocol module already implements the
+pattern for seller mandates (`sha256Base64Url(canonicalizeJson(...))` then
+`signCompactJws`), and that is where it belongs — crypto in the bridge would break
+the one rule this module exists to enforce.
 
 ### The act chain constrains `updateQuote.customFields`
 
@@ -422,9 +414,9 @@ Specific things the suite must establish, beyond one test per method:
   unstable in practice.
 - Per-quote draft versions (`QuoteCreateDraftVersionRoute` and friends) — a
   storefront editing affordance; an agent servicing pass has no reason to fork one.
-- The crypto itself. The bridge produces a canonical, digestible snapshot and a
-  revision marker; ES256/JWS signing and act-chain construction belong to the
-  Protocol module, which already has both.
+- Anything toward signing: no content digest, no canonical serialization format.
+  The bridge supplies a revision marker for concurrency and nothing more. See
+  "Later: signing" for the one finding worth carrying forward.
 
 ## Risks
 
@@ -455,15 +447,8 @@ revision and comparing inside a `Connection::transactional()` around the write �
 which narrows the race but is not the same as a database-level conditional update,
 and the isolation level decides how much it actually buys. `tests/Integration/`
 has to establish what the guarantee really is (two concurrent writers, one stale
-precondition, does the stale one reliably lose?) before Servicing or the A2CN act
-chain treats `QuoteRevisionMismatch` as authoritative. If it turns out weak, the
-honest fallback is that the precondition is an optimisation and the act chain's
-own hash comparison remains the real integrity check.
-
-**`contentDigest` stability is a compatibility surface.** Once a digest is signed
-and handed to a counterparty, the canonical serialization that produced it can
-never change without invalidating every prior signature. Adding a field to
-`Bridge\Data\QuoteSnapshot` changes the digest. That needs a version tag inside
-the signed payload from day one — the Protocol module's concern, but the bridge is
-what makes it possible or impossible, so the canonical form should be
-version-tagged the first time it is written, not retrofitted.
+precondition, does the stale one reliably lose?) before Servicing treats
+`QuoteRevisionMismatch` as authoritative. If it turns out weak, the honest position
+is that the precondition narrows a window rather than closing it, and the servicing
+lock (`symfony/lock`, one per quote id, per the parent design) is what actually
+serialises writes.
