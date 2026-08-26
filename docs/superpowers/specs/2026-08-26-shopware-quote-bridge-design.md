@@ -166,12 +166,62 @@ Per-method mapping:
 | Interface method | SwagCommercial call |
 | --- | --- |
 | `fetchSnapshot` | `EntityRepository` search on `quote` (generic DAL, associations: lineItems, comments, stateMachineState, currency) |
-| `updateLineItems` | `EntityRepository::update()` on `quote_line_item` (generic DAL) |
+| `updateLineItems` | `EntityRepository::update()` on `quote_line_item` (generic DAL) — see the custom-price constraint below |
 | `addProduct` | `QuoteManipulation::addProduct()` (`@internal`) |
-| `recalculate` | `QuoteCalculator::recalculate()` (not `@internal`) |
+| `recalculate` | `SalesChannelContextRestorer::restoreByQuote()` → `QuoteCalculator::recalculate()` (neither `@internal`) |
 | `updateQuote` | `EntityRepository::update()` on `quote` (generic DAL) |
 | `addComment` | `QuoteCommenter::comment()` (`@internal`) |
 | `transition` | `QuoteState::transition()` (`@internal`) |
+
+`recalculate` needs two services, not one: `QuoteCalculator::recalculate()` takes a
+`SalesChannelContext`, not a plain `Context`, and the only supported way to build
+one for an existing quote is `SalesChannelContextRestorer::restoreByQuote($quoteId,
+$context)` — exactly what `QuoteActionController::recalculate()` does. The restorer
+is **not** `@internal` at class level (only its constructor is, Shopware's standard
+"inject, don't instantiate" marker), so this does not lengthen the `@internal`
+list. `QuoteManipulation` takes a plain `Context` and restores internally, so only
+`recalculate` needs the restorer at the call site.
+
+### The custom-price constraint (verified in SwagCommercial source)
+
+A repriced line item is only honoured if it also carries
+`customFields['quote_custom_offer_price'] === true`. From
+`Domain/Transformer/QuoteLineItemTransformer.php`:
+
+```php
+$customFields = $entity->getCustomFields();
+if (\is_array($customFields) && ($customFields['quote_custom_offer_price'] ?? null) === true) {
+    $lineItem->addExtension(ProductCartProcessor::CUSTOM_PRICE, new ArrayStruct());
+}
+```
+
+Without that extension, the next `recalculate()` re-prices the line from the
+catalog and **silently discards** the `priceDefinition` we just wrote. So
+`updateLineItems`' price path must write, in the same DAL call:
+
+- a `priceDefinition` (`type: 'quantity'`, `price`, `quantity`, `isCalculated`,
+  `taxRules`) — not a bare `unitPrice` field, and
+- `customFields: ['quote_custom_offer_price' => true]`.
+
+This is the single most load-bearing detail in the whole bridge: the failure mode
+is a money path that looks like it worked and didn't. It is confirmed in
+SwagCommercial's own source, not inferred from the TS implementation's comment
+about it.
+
+Two consequences for the value objects: `QuoteLineItemChange.unitPriceNet` is a
+*net unit price the gateway turns into a full price definition*, not a field
+written verbatim; and `customFields` appears on two different surfaces —
+`QuoteLineItemChange` (line item, written by the gateway itself for the
+custom-price flag) versus `QuoteUpdate.customFields` (the quote, caller-supplied).
+The interface must not conflate them.
+
+The `taxRules` value is an open question for the spike, not a settled design: the
+TS implementation hardcoded 19% and noted that recalculation interprets `price` in
+the *cart's* tax mode, which may differ from the space the quote's stored prices
+read in — its workaround was to measure the saved result and rewrite once with the
+observed factor. Whether an in-process write needs that same two-pass correction is
+exactly the kind of thing `tests/Integration/` has to establish before Servicing
+can trust a single-pass write.
 
 ## Runtime gate
 
@@ -180,8 +230,17 @@ pattern already used elsewhere in this codebase:
 
 - `QuoteGatewayFactory`: `class_exists('Shopware\Commercial\B2B\QuoteManagement\Domain\Admin\QuoteManipulation')`
   (string literal, not `::class`) gates whether `SwagCommercialQuoteGateway` gets
-  built at all; the license toggle (`QUOTE_MANAGEMENT-8702512`, same constant the
-  Admin API route condition uses) gates whether it's actually usable.
+  built at all; the license toggle gates whether it's actually usable.
+- **The toggle is `QUOTE_MANAGEMENT-6302947`, not `QUOTE_MANAGEMENT-8702512`.**
+  These are two different toggles and the distinction matters here. `8702512`
+  guards the Admin API *route* (`QuoteActionController`'s route condition);
+  `6302947` is what every service we actually call checks internally —
+  `QuoteManipulation`, `QuoteCommenter`, `QuoteState`, `QuoteCalculator` and
+  `SalesChannelContextRestorer` all run `License::check('QUOTE_MANAGEMENT-6302947')`
+  on entry. Since this bridge calls the services directly and never touches the
+  route, gating on `8702512` would check a toggle unrelated to our code path: the
+  factory would hand back a gateway that throws a license exception on the first
+  write. Gate on `6302947`.
 - `services.php` registers `QuoteGatewayInterface` from the factory with
   `autowire(false)` and a nullable/ignore-on-invalid reference, matching how
   `QuoteCapabilityProfileContributor` is already wired in this repo.
@@ -221,6 +280,24 @@ any other TDD cycle. Findings that change the design (e.g. if recalculate turns 
 not to see a same-request line-item write) get folded back into this spec before
 implementation continues, not discovered after.
 
+Specific things the suite must establish, beyond one test per method:
+
+1. **Custom-price survival.** Write a line price, then `recalculate()`, then
+   re-read: the price must still be ours. This is the constraint above, and it is
+   the one test that must exist before any other write is trusted.
+2. **Tax-mode fidelity.** Whether the net price written comes back as the net price
+   stored, or needs the TS implementation's measure-and-rewrite second pass.
+3. **Expiration ordering.** Whether `setExpiration` before the `sent` transition is
+   still required, or whether that was an Admin-API-path artefact.
+4. **Comment authorship.** `QuoteCommenter::comment()` derives `createdById` from
+   `AdminApiSource::getUserId()`. In a message handler there is no admin user, so
+   `createdById`, `customerId` and `employeeId` are all likely null — record what an
+   agent-authored comment actually looks like in the database. Issue #4's
+   re-entrancy design depends on being able to tell an agent comment from a buyer
+   comment by author; if all three fields come back null, that check needs another
+   discriminator (a line-item custom field, or the `customFields` surface
+   `updateQuote` already exposes) and issue #4 needs to know that early.
+
 ## Non-goals
 
 - Order-fulfillment operations (`attachPoReference`, `acknowledgeOrder` in the TS
@@ -254,3 +331,33 @@ against real concurrent-write behavior.** The quote-versioning spike question
 applies most directly to these two methods, since they're the ones batching
 multiple field writes in a single DAL call. First thing `tests/Integration/`
 should cover.
+
+## Open question: does the interface need to express quote version?
+
+The interface currently hides Shopware's context entirely, which implies the
+bridge always operates on one version — presumably `Defaults::LIVE_VERSION`. That
+may be wrong, and it is the one unresolved design question in this spec.
+
+SwagCommercial treats quote versioning as load-bearing: `QuoteManipulation`
+branches on `$context->getVersionId() !== Defaults::LIVE_VERSION` and builds a
+draft context when it differs; `QuoteActionController::withdrawQuote()` explicitly
+forces `createWithVersionId(Defaults::LIVE_VERSION)`; there is a whole
+`QuoteSnapshotVersionResolver` behind a `detail-mode` route. Separately, the parent
+design doc's execution model says the servicing message "carries the quote's
+version marker; the handler re-reads and aborts if it moved" — optimistic
+concurrency this interface has no way to express either.
+
+Two options, both deferrable to the spike but not past it:
+
+- **Bridge always writes live, interface stays as-is.** Simplest, and probably
+  correct for an agent that only ever services quotes a buyer can see. The spike
+  confirms nothing in the reprice/recalculate path needs a draft version, and the
+  spec gains an explicit sentence saying so.
+- **Interface gains an expected-version parameter** (e.g. `fetchSnapshot` returns
+  the version marker, and the write methods take it back for a compare-and-set).
+  Needed if issue #4's abort-if-moved check has to be enforced at the write, not
+  just re-read before it.
+
+Resolving this needs the versioning spike result, so it is listed here rather than
+decided. It should not reach implementation undecided, because it changes the
+interface signature that Servicing will depend on.
