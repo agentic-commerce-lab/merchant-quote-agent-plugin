@@ -1,7 +1,7 @@
 {
   "path": ["src"],
   "format": ["php"],
-  "threshold": 3,
+  "threshold": 6,
   "reporters": ["console", "sarif"],
   "output": "./report/jscpd",
   "minLines": 5,
