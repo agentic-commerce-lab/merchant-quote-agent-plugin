@@ -13,12 +13,10 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  */
 final class ValueCeilingViolation
 {
-    private const float EPSILON = 0.01;
-
     public static function check(QuoteSnapshot $final, QuoteLimits $limits): ?string
     {
         $ceiling = $limits->valueCeiling;
-        if ($ceiling === null || $final->totalNet <= ($ceiling->net + self::EPSILON)) {
+        if ($ceiling === null || $final->totalNet <= ($ceiling->net + Epsilon::MONEY)) {
             return null;
         }
 

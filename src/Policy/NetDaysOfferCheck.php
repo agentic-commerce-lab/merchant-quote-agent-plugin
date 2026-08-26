@@ -12,8 +12,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\PaymentPolicy;
  */
 final class NetDaysOfferCheck
 {
-    private const float EPSILON = 1e-6;
-
     public function check(OfferedPayment $offer, ?PaymentPolicy $payment): ?string
     {
         if ($offer->netDays === null) {
@@ -25,7 +23,7 @@ final class NetDaysOfferCheck
             return 'numeric net-days is not configured';
         }
 
-        return $offer->netDays > ($ceiling + self::EPSILON)
+        return $offer->netDays > ($ceiling + Epsilon::RATE)
             ? sprintf('net %d days exceeds the %d-day ceiling', $offer->netDays, $ceiling)
             : null;
     }

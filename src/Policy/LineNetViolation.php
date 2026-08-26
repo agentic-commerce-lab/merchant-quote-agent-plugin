@@ -16,8 +16,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
  */
 final class LineNetViolation
 {
-    private const float EPSILON = 0.01;
-
     /** @return list<string> */
     public static function check(
         QuoteLineSnapshot $line,
@@ -37,7 +35,7 @@ final class LineNetViolation
         $label = $line->label() ?? $line->lineItemId();
 
         $violations = [];
-        if ($priceNet < (($referenceNet * $maxLineFactor) - self::EPSILON)) {
+        if ($priceNet < (($referenceNet * $maxLineFactor) - Epsilon::MONEY)) {
             $violations[] = sprintf(
                 'line "%s" priced %s net below the allowed minimum %s',
                 $label,
@@ -45,7 +43,7 @@ final class LineNetViolation
                 number_format($referenceNet * $maxLineFactor, decimals: 2, thousands_separator: ''),
             );
         }
-        if ($priceNet > ($referenceNet + self::EPSILON)) {
+        if ($priceNet > ($referenceNet + Epsilon::MONEY)) {
             $violations[] = sprintf(
                 'line "%s" priced %s net above its reference price %s',
                 $label,

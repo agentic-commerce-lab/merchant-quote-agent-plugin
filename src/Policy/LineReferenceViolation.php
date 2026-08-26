@@ -15,8 +15,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
  */
 final class LineReferenceViolation
 {
-    private const float EPSILON = 1e-6;
-
     /** @param array<string, QuoteLineSnapshot> $reference */
     public static function check(
         QuoteLinePrice $price,
@@ -29,11 +27,11 @@ final class LineReferenceViolation
             return sprintf('line %s is not on this quote', $price->lineItemId);
         }
 
-        if ($price->unitPriceNet > ($line->unitPriceNet + self::EPSILON)) {
+        if ($price->unitPriceNet > ($line->unitPriceNet + Epsilon::RATE)) {
             return sprintf('line "%s" priced above its current price', $line->label() ?? $price->lineItemId);
         }
 
-        if (($price->unitPriceNet + self::EPSILON) < ($line->unitPriceNet * $floorFactor)) {
+        if (($price->unitPriceNet + Epsilon::RATE) < ($line->unitPriceNet * $floorFactor)) {
             return sprintf(
                 'line "%s" price %s exceeds the %s%% limit',
                 $line->label() ?? $price->lineItemId,

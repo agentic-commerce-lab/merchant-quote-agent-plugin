@@ -13,8 +13,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\OfferedDelivery;
  */
 final class FreeShipOfferCheck
 {
-    private const float EPSILON = 1e-6;
-
     public function check(OfferedDelivery $offer, float $orderTotalNet, ?DeliveryPolicy $delivery): ?string
     {
         if (!($offer->freeShipping ?? false)) {
@@ -34,12 +32,12 @@ final class FreeShipOfferCheck
 
         $byOrderSize =
             $delivery->freeShippingAboveNet !== null
-            && ($orderTotalNet + self::EPSILON) >= $delivery->freeShippingAboveNet;
+            && ($orderTotalNet + Epsilon::RATE) >= $delivery->freeShippingAboveNet;
         $byWaiverCap =
             $delivery->maxShippingWaiverNet !== null
             && (
                 $offer->shippingCostNet === null
-                || $offer->shippingCostNet <= ($delivery->maxShippingWaiverNet + self::EPSILON)
+                || $offer->shippingCostNet <= ($delivery->maxShippingWaiverNet + Epsilon::RATE)
             );
 
         return $byOrderSize || $byWaiverCap;

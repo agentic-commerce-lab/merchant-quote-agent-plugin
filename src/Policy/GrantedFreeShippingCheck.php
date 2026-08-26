@@ -13,8 +13,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  */
 final class GrantedFreeShippingCheck
 {
-    private const float EPSILON = 1e-6;
-
     public function check(DeliveryDecision $decision, DeliveryPolicy $policy, QuoteSnapshot $snapshot): ?string
     {
         if (!($decision->freeShippingGranted ?? false)) {
@@ -23,7 +21,7 @@ final class GrantedFreeShippingCheck
 
         $byOrderSize =
             $policy->freeShippingAboveNet !== null
-            && ($snapshot->totalNet + self::EPSILON) >= $policy->freeShippingAboveNet;
+            && ($snapshot->totalNet + Epsilon::RATE) >= $policy->freeShippingAboveNet;
         // The waiver-cap path depends on the shipping cost (not on the
         // decision), so it can only be re-verified as far as the policy
         // permitting it at all.

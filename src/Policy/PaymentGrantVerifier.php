@@ -29,14 +29,11 @@ final class PaymentGrantVerifier
             return $this->grantsAnything($decision) ? ['payment terms granted with no payment policy'] : [];
         }
 
-        return array_values(array_filter(
-            [
-                $this->term->check($decision, $policy),
-                $this->netDays->check($decision, $policy),
-                $this->deposit->check($decision, $policy),
-            ],
-            static fn(?string $v): bool => $v !== null,
-        ));
+        return array_values(array_filter([
+            $this->term->check($decision, $policy),
+            $this->netDays->check($decision, $policy),
+            $this->deposit->check($decision, $policy),
+        ]));
     }
 
     private function grantsAnything(PaymentDecision $decision): bool

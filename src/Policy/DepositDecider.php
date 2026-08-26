@@ -13,15 +13,13 @@ use MerchantQuoteAgentPlugin\Policy\Data\PaymentPolicy;
  */
 final class DepositDecider
 {
-    private const float EPSILON = 1e-6;
-
     public static function decide(float $percent, PaymentPolicy $policy): PaymentDecision
     {
         if ($policy->minDepositPercent === null) {
             return new PaymentDecision(band: Band::Escalate, reason: 'deposit terms not configured');
         }
 
-        if (($percent + self::EPSILON) >= $policy->minDepositPercent) {
+        if (($percent + Epsilon::RATE) >= $policy->minDepositPercent) {
             return new PaymentDecision(band: Band::Grant, grantedDepositPercent: $percent);
         }
 

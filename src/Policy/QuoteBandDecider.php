@@ -16,8 +16,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  */
 final class QuoteBandDecider
 {
-    private const float EPSILON = 1e-6;
-
     private readonly QuoteAutoReplyPricer $pricer;
 
     public function __construct(?QuoteAutoReplyPricer $pricer = null)
@@ -28,7 +26,7 @@ final class QuoteBandDecider
     public function decide(QuoteSnapshot $effective, QuoteLimits $limits): QuoteDecision
     {
         $ceiling = $limits->valueCeiling;
-        if ($ceiling !== null && $effective->totalNet > ($ceiling->net + self::EPSILON)) {
+        if ($ceiling !== null && $effective->totalNet > ($ceiling->net + Epsilon::RATE)) {
             return QuoteDecision::escalate(new QuoteEscalationDetails(
                 reason: QuoteEscalationReason::QuoteValueLimitExceeded,
                 requestedDiscountPercent: MoneyMath::requestedDiscount($effective),
@@ -36,7 +34,7 @@ final class QuoteBandDecider
         }
 
         $discountPercent = max(0.0, MoneyMath::requestedDiscount($effective) ?? 0.0);
-        if ($discountPercent > ($limits->maxDiscountPercent + self::EPSILON)) {
+        if ($discountPercent > ($limits->maxDiscountPercent + Epsilon::RATE)) {
             return QuoteDecision::escalate(new QuoteEscalationDetails(
                 reason: QuoteEscalationReason::DiscountLimitExceeded,
                 requestedDiscountPercent: $discountPercent,

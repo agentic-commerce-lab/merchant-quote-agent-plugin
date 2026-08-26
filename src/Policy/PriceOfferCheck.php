@@ -12,14 +12,12 @@ use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
  */
 final class PriceOfferCheck
 {
-    private const float EPSILON = 1e-6;
-
     /** @return list<string> */
     public function check(OfferedPrice $offer, NegotiationPolicy $policy): array
     {
         if (
             $offer->discountPercent !== null
-            && $offer->discountPercent > ($policy->price->maxDiscountPercent + self::EPSILON)
+            && $offer->discountPercent > ($policy->price->maxDiscountPercent + Epsilon::RATE)
         ) {
             return [sprintf(
                 'discount %s%% exceeds the %s%% limit',

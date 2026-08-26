@@ -12,8 +12,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\OfferedDelivery;
  */
 final class LeadTimeOfferCheck
 {
-    private const float EPSILON = 1e-6;
-
     public function check(OfferedDelivery $offer, ?DeliveryPolicy $delivery): ?string
     {
         if ($offer->committedLeadTimeDays === null) {
@@ -25,7 +23,7 @@ final class LeadTimeOfferCheck
             return 'committed lead time is not configured';
         }
 
-        return ($offer->committedLeadTimeDays + self::EPSILON) < $floor
+        return ($offer->committedLeadTimeDays + Epsilon::RATE) < $floor
             ? sprintf('lead time %dd is faster than the %dd floor', $offer->committedLeadTimeDays, $floor)
             : null;
     }

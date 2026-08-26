@@ -12,8 +12,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\PaymentPolicy;
  */
 final class DepositOfferCheck
 {
-    private const float EPSILON = 1e-6;
-
     public function check(OfferedPayment $offer, ?PaymentPolicy $payment): ?string
     {
         if ($offer->depositPercent === null) {
@@ -25,7 +23,7 @@ final class DepositOfferCheck
             return 'deposit terms are not configured';
         }
 
-        return ($offer->depositPercent + self::EPSILON) < $minimum
+        return ($offer->depositPercent + Epsilon::RATE) < $minimum
             ? sprintf('deposit %s%% is below the %s%% minimum', $offer->depositPercent, $minimum)
             : null;
     }

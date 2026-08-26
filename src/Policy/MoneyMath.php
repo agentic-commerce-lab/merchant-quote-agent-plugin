@@ -22,8 +22,11 @@ final class MoneyMath
         return (($snapshot->totalNet - $snapshot->buyerTargetNet) / $snapshot->totalNet) * 100;
     }
 
+    // PHP's round() breaks ties away from zero; the ported TS uses JS's
+    // Math.round(), which breaks ties toward +Infinity. floor(x + 0.5)
+    // replicates Math.round() exactly, including on negative values.
     public static function roundMoney(float $value): float
     {
-        return round($value * 100) / 100;
+        return floor(($value * 100) + 0.5) / 100;
     }
 }

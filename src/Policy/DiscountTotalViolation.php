@@ -16,8 +16,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  */
 final class DiscountTotalViolation
 {
-    private const float EPSILON = 0.01;
-
     public static function check(
         QuoteSnapshot $reference,
         QuoteSnapshot $final,
@@ -31,7 +29,7 @@ final class DiscountTotalViolation
         $priceFinalNet = $final->totalNet + $allowedExtraDiscountNet;
         $totalDiscount = (($reference->totalNet - $priceFinalNet) / $reference->totalNet) * 100;
 
-        return $totalDiscount > ($limits->maxDiscountPercent + self::EPSILON)
+        return $totalDiscount > ($limits->maxDiscountPercent + Epsilon::MONEY)
             ? sprintf(
                 'total discount %s%% exceeds the %s%% limit',
                 number_format($totalDiscount, decimals: 1, thousands_separator: ''),

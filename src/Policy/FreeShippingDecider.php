@@ -14,16 +14,14 @@ use MerchantQuoteAgentPlugin\Policy\Data\DeliveryPolicy;
  */
 final class FreeShippingDecider
 {
-    private const float EPSILON = 1e-6;
-
     public static function decide(DeliveryAsk $ask, DeliveryPolicy $policy, float $orderTotalNet): DeliveryDecision
     {
         $byOrderSize =
-            $policy->freeShippingAboveNet !== null && ($orderTotalNet + self::EPSILON) >= $policy->freeShippingAboveNet;
+            $policy->freeShippingAboveNet !== null && ($orderTotalNet + Epsilon::RATE) >= $policy->freeShippingAboveNet;
         $byWaiverCap =
             $policy->maxShippingWaiverNet !== null
             && $ask->shippingCostNet !== null
-            && $ask->shippingCostNet <= ($policy->maxShippingWaiverNet + self::EPSILON);
+            && $ask->shippingCostNet <= ($policy->maxShippingWaiverNet + Epsilon::RATE);
 
         return $byOrderSize || $byWaiverCap
             ? new DeliveryDecision(band: Band::Grant, freeShippingGranted: true)

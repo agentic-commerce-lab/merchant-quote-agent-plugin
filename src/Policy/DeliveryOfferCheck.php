@@ -21,13 +21,10 @@ final class DeliveryOfferCheck
     /** @return list<string> */
     public function check(ProposedOffer $offer, NegotiationPolicy $policy): array
     {
-        return array_values(array_filter(
-            [
-                $this->freeShip->check($offer->delivery, $offer->orderTotalNet, $policy->delivery),
-                $this->expedited->check($offer->delivery, $policy->delivery),
-                $this->leadTime->check($offer->delivery, $policy->delivery),
-            ],
-            static fn(?string $v): bool => $v !== null,
-        ));
+        return array_values(array_filter([
+            $this->freeShip->check($offer->delivery, $offer->orderTotalNet, $policy->delivery),
+            $this->expedited->check($offer->delivery, $policy->delivery),
+            $this->leadTime->check($offer->delivery, $policy->delivery),
+        ]));
     }
 }

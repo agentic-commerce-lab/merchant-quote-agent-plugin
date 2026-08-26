@@ -13,15 +13,13 @@ use MerchantQuoteAgentPlugin\Policy\Data\PaymentPolicy;
  */
 final class NetDaysDecider
 {
-    private const float EPSILON = 1e-6;
-
     public static function decide(int $days, PaymentPolicy $policy): PaymentDecision
     {
         if ($policy->maxNetDays === null) {
             return new PaymentDecision(band: Band::Escalate, reason: 'numeric net-days not configured');
         }
 
-        if ($days <= ($policy->maxNetDays + self::EPSILON)) {
+        if ($days <= ($policy->maxNetDays + Epsilon::RATE)) {
             return new PaymentDecision(band: Band::Grant, grantedNetDays: $days);
         }
 

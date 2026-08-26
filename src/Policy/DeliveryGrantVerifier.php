@@ -30,14 +30,11 @@ final class DeliveryGrantVerifier
             return $this->grantsAnything($decision) ? ['delivery granted with no delivery policy'] : [];
         }
 
-        return array_values(array_filter(
-            [
-                $this->freeShipping->check($decision, $policy, $snapshot),
-                $this->expedited->check($decision, $policy),
-                $this->leadTime->check($decision, $policy),
-            ],
-            static fn(?string $v): bool => $v !== null,
-        ));
+        return array_values(array_filter([
+            $this->freeShipping->check($decision, $policy, $snapshot),
+            $this->expedited->check($decision, $policy),
+            $this->leadTime->check($decision, $policy),
+        ]));
     }
 
     private function grantsAnything(DeliveryDecision $decision): bool

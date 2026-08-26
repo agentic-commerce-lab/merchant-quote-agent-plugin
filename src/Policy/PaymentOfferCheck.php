@@ -21,13 +21,10 @@ final class PaymentOfferCheck
     /** @return list<string> */
     public function check(ProposedOffer $offer, NegotiationPolicy $policy): array
     {
-        return array_values(array_filter(
-            [
-                $this->term->check($offer->payment, $policy->payment),
-                $this->netDays->check($offer->payment, $policy->payment),
-                $this->deposit->check($offer->payment, $policy->payment),
-            ],
-            static fn(?string $v): bool => $v !== null,
-        ));
+        return array_values(array_filter([
+            $this->term->check($offer->payment, $policy->payment),
+            $this->netDays->check($offer->payment, $policy->payment),
+            $this->deposit->check($offer->payment, $policy->payment),
+        ]));
     }
 }

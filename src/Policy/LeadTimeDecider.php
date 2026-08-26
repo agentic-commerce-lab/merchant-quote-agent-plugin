@@ -13,15 +13,13 @@ use MerchantQuoteAgentPlugin\Policy\Data\DeliveryPolicy;
  */
 final class LeadTimeDecider
 {
-    private const float EPSILON = 1e-6;
-
     public static function decide(int $requestedDays, DeliveryPolicy $policy): DeliveryDecision
     {
         if ($policy->committedLeadTimeDaysMin === null) {
             return new DeliveryDecision(band: Band::Escalate, reason: 'no committed lead time configured');
         }
 
-        if (($requestedDays + self::EPSILON) >= $policy->committedLeadTimeDaysMin) {
+        if (($requestedDays + Epsilon::RATE) >= $policy->committedLeadTimeDaysMin) {
             return new DeliveryDecision(band: Band::Grant, committedLeadTimeDays: $requestedDays);
         }
 

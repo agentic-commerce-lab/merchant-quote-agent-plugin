@@ -12,8 +12,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
  */
 final class BundleGrantVerifier
 {
-    private const float EPSILON = 1e-6;
-
     /** @return list<string> */
     public function verify(?BundleDecision $decision, NegotiationPolicy $policy): array
     {
@@ -21,7 +19,7 @@ final class BundleGrantVerifier
             return [];
         }
 
-        if ($decision->grantedDiscountPercent > ($policy->price->maxDiscountPercent + self::EPSILON)) {
+        if ($decision->grantedDiscountPercent > ($policy->price->maxDiscountPercent + Epsilon::RATE)) {
             return [sprintf(
                 'bundle discount %s%% exceeds the price ceiling %s%%',
                 $decision->grantedDiscountPercent,

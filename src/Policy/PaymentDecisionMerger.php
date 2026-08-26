@@ -21,10 +21,13 @@ final class PaymentDecisionMerger
         $grantedNetDays = null;
         $grantedDepositPercent = null;
 
+        // Last-non-null wins per field, matching TS's Object.assign(grant,
+        // outcome.grant) — see DeliveryDecisionMerger for why this matters
+        // even though the three payment checks are field-disjoint today.
         foreach ($outcomes as $outcome) {
-            $grantedTerm ??= $outcome->grantedTerm;
-            $grantedNetDays ??= $outcome->grantedNetDays;
-            $grantedDepositPercent ??= $outcome->grantedDepositPercent;
+            $grantedTerm = $outcome->grantedTerm ?? $grantedTerm;
+            $grantedNetDays = $outcome->grantedNetDays ?? $grantedNetDays;
+            $grantedDepositPercent = $outcome->grantedDepositPercent ?? $grantedDepositPercent;
             if ($outcome->reason !== null) {
                 $reasons[] = $outcome->reason;
             }

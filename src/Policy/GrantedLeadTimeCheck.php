@@ -12,8 +12,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\DeliveryPolicy;
  */
 final class GrantedLeadTimeCheck
 {
-    private const float EPSILON = 1e-6;
-
     public function check(DeliveryDecision $decision, DeliveryPolicy $policy): ?string
     {
         $floor = $policy->committedLeadTimeDaysMin;
@@ -21,7 +19,7 @@ final class GrantedLeadTimeCheck
             return null;
         }
 
-        return ($decision->committedLeadTimeDays + self::EPSILON) < $floor
+        return ($decision->committedLeadTimeDays + Epsilon::RATE) < $floor
             ? sprintf('committed lead time %dd is faster than the %dd floor', $decision->committedLeadTimeDays, $floor)
             : null;
     }

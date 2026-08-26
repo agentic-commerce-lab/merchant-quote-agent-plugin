@@ -19,13 +19,10 @@ final class TotalsOfferVerifier
         QuoteLimits $limits,
         float $allowedExtraDiscountNet,
     ): array {
-        return array_values(array_filter(
-            [
-                DiscountTotalViolation::check($reference, $final, $limits, $allowedExtraDiscountNet),
-                ValueCeilingViolation::check($final, $limits),
-                CurrencyMismatchViolation::check($final, $limits),
-            ],
-            static fn(?string $v): bool => $v !== null,
-        ));
+        return array_values(array_filter([
+            DiscountTotalViolation::check($reference, $final, $limits, $allowedExtraDiscountNet),
+            ValueCeilingViolation::check($final, $limits),
+            CurrencyMismatchViolation::check($final, $limits),
+        ]));
     }
 }

@@ -12,15 +12,13 @@ use MerchantQuoteAgentPlugin\Policy\Data\PaymentPolicy;
  */
 final class GrantedNetDaysCheck
 {
-    private const float EPSILON = 1e-6;
-
     public function check(PaymentDecision $decision, PaymentPolicy $policy): ?string
     {
         if ($decision->grantedNetDays === null || $policy->maxNetDays === null) {
             return null;
         }
 
-        return $decision->grantedNetDays > ($policy->maxNetDays + self::EPSILON)
+        return $decision->grantedNetDays > ($policy->maxNetDays + Epsilon::RATE)
             ? sprintf('granted net days %d exceeds the %d ceiling', $decision->grantedNetDays, $policy->maxNetDays)
             : null;
     }

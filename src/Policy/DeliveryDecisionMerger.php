@@ -22,10 +22,14 @@ final class DeliveryDecisionMerger
         $expeditedGranted = null;
         $committedLeadTimeDays = null;
 
+        // Last-non-null wins per field, matching TS's Object.assign(grant,
+        // outcome.grant) — each check only ever sets its own field today, so
+        // this never actually collides, but the merge order should match the
+        // source exactly rather than rely on that staying true.
         foreach ($outcomes as $outcome) {
-            $freeShippingGranted ??= $outcome->freeShippingGranted;
-            $expeditedGranted ??= $outcome->expeditedGranted;
-            $committedLeadTimeDays ??= $outcome->committedLeadTimeDays;
+            $freeShippingGranted = $outcome->freeShippingGranted ?? $freeShippingGranted;
+            $expeditedGranted = $outcome->expeditedGranted ?? $expeditedGranted;
+            $committedLeadTimeDays = $outcome->committedLeadTimeDays ?? $committedLeadTimeDays;
             if ($outcome->reason !== null) {
                 $reasons[] = $outcome->reason;
             }
