@@ -1,0 +1,425 @@
+[
+  {
+    "description": "a deeper generated discount line is not a line-price violation (round 2)",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 950,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          },
+          {
+            "lineItemId": "discount",
+            "quantity": 10,
+            "unitPriceNet": -5,
+            "totalNet": -50
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 920,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          },
+          {
+            "lineItemId": "discount",
+            "quantity": 10,
+            "unitPriceNet": -8,
+            "totalNet": -80
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": []
+  },
+  {
+    "description": "offer within all limits -> no violations",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 950,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 95,
+            "totalNet": 950
+          }
+        ],
+        "expirationDate": "2026-08-01T00:00:00Z"
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": []
+  },
+  {
+    "description": "total discount beyond limit -> violation",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 850,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 85,
+            "totalNet": 850
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": [
+      "total discount 15.0% exceeds the 10% limit",
+      "line \"l1\" priced 85.00 net below the allowed minimum 90.00"
+    ]
+  },
+  {
+    "description": "single line below allowed minimum -> violation even when total passes",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 2000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          },
+          {
+            "lineItemId": "l2",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1800,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 80,
+            "totalNet": 800
+          },
+          {
+            "lineItemId": "l2",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": [
+      "line \"l1\" priced 80.00 net below the allowed minimum 90.00"
+    ]
+  },
+  {
+    "description": "line priced above its reference -> violation (never raise prices)",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1100,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 110,
+            "totalNet": 1100
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": [
+      "line \"l1\" priced 110.00 net above its reference price 100.00"
+    ]
+  },
+  {
+    "description": "quote value above limit and validity beyond window -> violations",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 6000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 600,
+            "totalNet": 6000
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 6000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 600,
+            "totalNet": 6000
+          }
+        ],
+        "expirationDate": "2026-12-24T00:00:00Z"
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": [
+      "quote value 6000.00 exceeds the auto-reply limit 5000",
+      "offer validity 2026-12-24 exceeds the 14-day window"
+    ]
+  },
+  {
+    "description": "final snapshot in gross line space -> normalized to net, no false violation",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 950,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 113.05,
+            "totalNet": 1130.5
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": []
+  },
+  {
+    "description": "tax-deflated saved prices -> caught in net terms",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 756.3,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 90,
+            "totalNet": 900
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": [
+      "total discount 24.4% exceeds the 10% limit",
+      "line \"l1\" priced 75.63 net below the allowed minimum 90.00"
+    ]
+  },
+  {
+    "description": "Shopware-generated lines (e.g. discount line) are skipped per-line",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 950,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          },
+          {
+            "lineItemId": "discount-line",
+            "quantity": 1,
+            "unitPriceNet": -50,
+            "totalNet": -50
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": []
+  }
+]
