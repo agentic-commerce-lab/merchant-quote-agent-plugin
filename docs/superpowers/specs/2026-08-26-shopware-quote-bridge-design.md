@@ -77,12 +77,14 @@ that would need the same live verification as direct injection anyway, for less
 benefit). Direct injection is simplest by a comfortable margin **given the plugin
 already runs where the target does**.
 
-**Use `QuoteManipulation`/`QuoteCommenter`/`QuoteState` directly** for add-product,
-comment, and state transition, rather than reconstructing them from generic DAL
-writes. Fewer places to get subtly wrong, matches SwagCommercial's own intended
-usage — at the cost of three concrete `@internal` dependencies, which get one
-doc-comment block listing them (below), satisfying the issue's own done-when
-criterion.
+**Use `QuoteManipulation` and `QuoteCommenter` directly** for add-product and
+comment, rather than reconstructing them from generic DAL writes. Fewer places to
+get subtly wrong, matches SwagCommercial's own intended usage — at the cost of two
+concrete `@internal` dependencies, which get one doc-comment block listing them
+(below), satisfying the issue's own done-when criterion. `QuoteState` is
+**not** used, because it is a thin wrapper over a Shopware-core service and so
+earns its `@internal` cost least of the three; the reasoning is under
+"Implementation".
 
 **One interface, one implementation**, per the issue. `QuoteGatewayInterface` is
 the only thing anything else in the plugin depends on; `SwagCommercialQuoteGateway`
@@ -99,16 +101,20 @@ one call, so the interface groups by *entity written to*:
 interface QuoteGatewayInterface
 {
     /** @throws QuoteNotFoundException */
-    public function fetchSnapshot(string $quoteId): QuoteSnapshot;
+    public function fetchSnapshot(string $quoteId, QuoteVersion $version = QuoteVersion::Live): QuoteSnapshot;
 
-    /** @param list<QuoteLineItemChange> $changes */
-    public function updateLineItems(string $quoteId, array $changes): void;
+    /**
+     * @param list<QuoteLineItemChange> $changes
+     * @throws QuoteRevisionMismatch
+     */
+    public function updateLineItems(string $quoteId, array $changes, ?QuoteRevision $expected = null): void;
 
     public function addProduct(string $quoteId, string $productId, int $quantity): void;
 
     public function recalculate(string $quoteId): void;
 
-    public function updateQuote(string $quoteId, QuoteUpdate $update): void;
+    /** @throws QuoteRevisionMismatch */
+    public function updateQuote(string $quoteId, QuoteUpdate $update, ?QuoteRevision $expected = null): void;
 
     public function addComment(string $quoteId, string $comment): void;
 
@@ -133,6 +139,12 @@ same style as the Policy module's DTOs:
   resolve to a quote — the interface always returns a real snapshot or throws,
   never null, since Servicing only ever calls it with an id it already believes
   exists.
+- **`QuoteVersion`**: two-case enum, `Live`/`Snapshot` — which DAL version lane to
+  read. See "Versioning" below.
+- **`QuoteRevision`**: `versionId`, `updatedAt`, `contentDigest`. Carried on every
+  `QuoteSnapshot`; passed back into a write as an optional precondition.
+- **`QuoteRevisionMismatch`**: thrown by a write whose `$expected` revision no
+  longer matches what is stored.
 - **`QuoteTransition`**: backed enum, `Process`/`Sent`/`Decline`/`RequestChange` —
   the four actions the agent's servicing flow actually drives (`process`, `sent`,
   `decline`, `request_change` are `QuoteStates::ACTION_*` technical names).
@@ -143,23 +155,121 @@ same style as the Policy module's DTOs:
 
 No `Context`/`SalesChannelContext` parameter anywhere on the interface — building
 and threading Shopware's request context is `SwagCommercialQuoteGateway`'s
-implementation detail, never exposed above the bridge.
+implementation detail, never exposed above the bridge. `QuoteVersion` is the one
+piece of Shopware's versioning the interface *does* expose, because it carries
+domain meaning rather than plumbing (below).
+
+## Versioning, and what signing can actually guarantee
+
+SwagCommercial uses DAL versioning for quotes in a way that matters to us, so the
+interface follows it rather than hiding it. `QuoteDefinition` is version-aware
+(`VersionField`), and there are two lanes plus a mechanism:
+
+- **`Defaults::LIVE_VERSION`** — the working copy.
+- **`QuoteEntity::SNAPSHOT_VERSION_ID`** — a single fixed constant
+  (`019cfaaf020219939ba2eea26ba651ae`), not a per-quote UUID. This is the
+  "what the counterparty last saw" lane: `QuoteSnapshotVersionResolver` loads it
+  for the storefront in `open`/`in_review`/`reopen`/`change_requested`/`withdrawn`
+  and for the admin in `replied`.
+- **Per-quote draft versions** via `QuoteCreateDraftVersionRoute` /
+  `QuoteSaveDraftVersionRoute` / `QuoteDeleteDraftVersionRoute` — real Shopware
+  fork-and-merge drafts, used by the storefront draft manager.
+
+`QuoteVersion` is therefore a two-case enum, `Live` and `Snapshot`, mapping onto
+the first two. Draft versions are out of scope: they are a storefront editing
+affordance, and an agent servicing pass has no reason to fork one.
+
+The snapshot lane is the interesting one, because it is *already* semantically
+"the state both parties agreed on" — which is exactly what a signature wants to
+cover.
+
+**But a versionId is not an integrity proof, and it is worth being blunt about
+that.** `SNAPSHOT_VERSION_ID` is a hardcoded constant shared by every quote in the
+shop; the same id points at different content after every save. Signing
+`{quoteId, versionId}` would produce something that looks like a tamper-evident
+receipt and isn't — it would verify happily against modified content. Content
+integrity requires signing a **digest over the content**. The versionId belongs
+*inside* that signed payload as metadata (which lane, which revision), never as
+the thing being signed.
+
+So the bridge's contribution to signing is three things, none of them crypto:
+
+1. **`QuoteRevision`** — `versionId`, `updatedAt`, and `contentDigest` (SHA-256
+   over the canonical serialization of the returned `QuoteSnapshot`). Returned as
+   part of every `QuoteSnapshot`.
+2. **A deterministic canonical form for `QuoteSnapshot`** — stable field order,
+   stable float and date formatting. This is a genuine bridge responsibility: a
+   digest is only comparable across parties if both serialize identically, and the
+   existing TS implementation already has `canonicalizeJson` for exactly this in
+   `src/crypto/a2cn-crypto.ts`.
+3. **An optional write precondition** — pass the `QuoteRevision` you read back into
+   `updateLineItems`/`updateQuote`, and the gateway refuses the write with
+   `QuoteRevisionMismatch` if the stored revision has moved. This is what gives
+   issue #4's "re-read and abort if it moved" teeth at the write itself rather than
+   only before it.
+
+**The signing itself does not live here.** ES256/JWS over that digest belongs to
+the Protocol module and the A2CN act chain, which already does precisely this
+pattern (`sha256Base64Url(canonicalizeJson(...))` then `signCompactJws`, per
+`seller-mandate.ts`) and already has an agreed on-quote representation for the
+result (below). Putting crypto in the bridge would break the one rule this module
+exists to enforce — that the version-fragile Shopware seam stays free of domain
+logic.
+
+### The act chain constrains `updateQuote.customFields`
+
+The A2CN act chain — the existing mechanism by which both parties record and verify
+what was offered — is persisted on the quote's `customFields`, one act per
+top-level key (`a2cn_act_0003_s`), and the reason is spelled out in
+`merchant-quote-agent/src/a2cn/chain.ts`:
+
+> Shopware merges customFields shallowly on update, so separate keys make the
+> buyer's append and ours conflict-free. […] the role suffix means the two parties
+> can never write the same key, so a concurrent append at the same sequence keeps
+> BOTH acts rather than one clobbering the other.
+
+That makes shallow-merge semantics a **correctness requirement** on this interface,
+not an implementation nicety. `QuoteUpdate.customFields` must merge the given
+top-level keys and leave every other key untouched — the TS surface had a separate
+`appendCustomField` function for exactly this reason, and collapsing it into a
+general `updateQuote` (as an earlier draft of this spec did) risks a write that
+replaces the map and destroys the buyer's half of the act chain. Shopware's
+`CustomFields` field type is believed to merge rather than replace on
+`EntityRepository::update()`; since the failure mode is silent loss of the
+counterparty's signed acts, `tests/Integration/` verifies it explicitly rather than
+trusting it.
 
 ## Implementation
 
 `SwagCommercialQuoteGateway implements QuoteGatewayInterface`, one file, with a
-class-level doc comment listing its three `@internal` dependencies up front:
+class-level doc comment listing its `@internal` dependencies up front:
 
 ```php
 /**
  * @internal-dependencies
  * - Shopware\Commercial\B2B\QuoteManagement\Domain\Admin\QuoteManipulation::addProduct()
  * - Shopware\Commercial\B2B\QuoteManagement\Domain\Comment\QuoteCommenter::comment()
- * - Shopware\Commercial\B2B\QuoteManagement\Domain\State\QuoteState::transition()
- * A SwagCommercial release can change any of these without notice; integration
+ * A SwagCommercial release can change either of these without notice; integration
  * tests (tests/Integration/) are what catches it, not static analysis.
  */
 ```
+
+Two, not three. `QuoteState::transition()` is deliberately **not** used, even
+though it is the obvious call: reading it, the whole method is a `License::check`,
+a `StateMachineRegistry::transition(new Transition('quote', $id, $transitionName,
+'stateId'), $context)`, and a null-check on the resulting `toPlace`.
+`StateMachineRegistry` is Shopware **core**, and `QuoteDefinition::ENTITY_NAME` is
+the string `'quote'`. So depending on `QuoteState` buys about eight lines of
+reconstruction and costs a third `@internal` surface — the worst ratio of the
+three. `QuoteManipulation` (a real cart round-trip through the Processor) and
+`QuoteCommenter` (line-item-history and reply wiring) genuinely earn their keep;
+this one does not. The gateway calls `StateMachineRegistry::transition()` directly
+with `QuoteTransition`'s value as the transition name.
+
+Note this means the license check for transitions is ours to make, not
+SwagCommercial's: `QuoteState` would have run `License::check('QUOTE_MANAGEMENT-6302947')`
+for us. The factory-level gate (below) covers it, which is why the gate has to be
+on the right toggle.
 
 Per-method mapping:
 
@@ -171,7 +281,7 @@ Per-method mapping:
 | `recalculate` | `SalesChannelContextRestorer::restoreByQuote()` → `QuoteCalculator::recalculate()` (neither `@internal`) |
 | `updateQuote` | `EntityRepository::update()` on `quote` (generic DAL) |
 | `addComment` | `QuoteCommenter::comment()` (`@internal`) |
-| `transition` | `QuoteState::transition()` (`@internal`) |
+| `transition` | Shopware core `StateMachineRegistry::transition()` (zero SwagCommercial classes — see above) |
 
 `recalculate` needs two services, not one: `QuoteCalculator::recalculate()` takes a
 `SalesChannelContext`, not a plain `Context`, and the only supported way to build
@@ -305,20 +415,27 @@ Specific things the suite must establish, beyond one test per method:
   acceptance is handled, not this bridge.
 - A fallback/null implementation of `QuoteGatewayInterface` for shops without
   SwagCommercial — capability absence is handled one layer up (issue #1).
-- Reconstructing `QuoteManipulation`/`QuoteCommenter`/`QuoteState`'s behavior from
-  generic DAL writes to avoid `@internal` entirely — verified possible (see
-  "What we verified"), decided against for this issue in favor of less
-  reconstruction risk. Worth revisiting if these three internals prove unstable in
-  practice.
+- Reconstructing `QuoteManipulation`/`QuoteCommenter`'s behavior from generic DAL
+  writes to avoid `@internal` entirely — verified possible (see "What we
+  verified"), decided against in favor of less reconstruction risk, since unlike
+  `QuoteState` these two carry real logic. Worth revisiting if either proves
+  unstable in practice.
+- Per-quote draft versions (`QuoteCreateDraftVersionRoute` and friends) — a
+  storefront editing affordance; an agent servicing pass has no reason to fork one.
+- The crypto itself. The bridge produces a canonical, digestible snapshot and a
+  revision marker; ES256/JWS signing and act-chain construction belong to the
+  Protocol module, which already has both.
 
 ## Risks
 
 **The `@internal` dependencies are the real fragility.** A SwagCommercial patch
-release changing `QuoteManipulation::addProduct()`'s signature, or `QuoteCommenter`
-/`QuoteState`'s, surfaces at runtime or in `tests/Integration/`, not in `mago
-analyze` — this is the accepted tradeoff ADR 0001 already names. The class-level
-doc comment on `SwagCommercialQuoteGateway` is what keeps this list visible and
-shrinkable rather than ambient, per the issue's own done-when criterion.
+release changing `QuoteManipulation::addProduct()`'s or `QuoteCommenter::comment()`'s
+signature surfaces at runtime or in `tests/Integration/`, not in `mago analyze` —
+this is the accepted tradeoff ADR 0001 already names. The class-level doc comment
+on `SwagCommercialQuoteGateway` is what keeps this list visible and shrinkable
+rather than ambient, per the issue's own done-when criterion. `QuoteCommenter::comment()`
+is additionally marked `@deprecated tag:v6.8.0` on its `$state` parameter, so that
+call site will need revisiting for 6.8 regardless.
 
 **Integration tests need the live shop to keep existing.** `tests/Integration/`
 is only as good as `shopware-trunk` staying up and matching a version we've
@@ -332,32 +449,21 @@ applies most directly to these two methods, since they're the ones batching
 multiple field writes in a single DAL call. First thing `tests/Integration/`
 should cover.
 
-## Open question: does the interface need to express quote version?
+**The write precondition is not free, and may not be a true compare-and-set.**
+Shopware's DAL has no native CAS. Enforcing `$expected` means re-reading the
+revision and comparing inside a `Connection::transactional()` around the write —
+which narrows the race but is not the same as a database-level conditional update,
+and the isolation level decides how much it actually buys. `tests/Integration/`
+has to establish what the guarantee really is (two concurrent writers, one stale
+precondition, does the stale one reliably lose?) before Servicing or the A2CN act
+chain treats `QuoteRevisionMismatch` as authoritative. If it turns out weak, the
+honest fallback is that the precondition is an optimisation and the act chain's
+own hash comparison remains the real integrity check.
 
-The interface currently hides Shopware's context entirely, which implies the
-bridge always operates on one version — presumably `Defaults::LIVE_VERSION`. That
-may be wrong, and it is the one unresolved design question in this spec.
-
-SwagCommercial treats quote versioning as load-bearing: `QuoteManipulation`
-branches on `$context->getVersionId() !== Defaults::LIVE_VERSION` and builds a
-draft context when it differs; `QuoteActionController::withdrawQuote()` explicitly
-forces `createWithVersionId(Defaults::LIVE_VERSION)`; there is a whole
-`QuoteSnapshotVersionResolver` behind a `detail-mode` route. Separately, the parent
-design doc's execution model says the servicing message "carries the quote's
-version marker; the handler re-reads and aborts if it moved" — optimistic
-concurrency this interface has no way to express either.
-
-Two options, both deferrable to the spike but not past it:
-
-- **Bridge always writes live, interface stays as-is.** Simplest, and probably
-  correct for an agent that only ever services quotes a buyer can see. The spike
-  confirms nothing in the reprice/recalculate path needs a draft version, and the
-  spec gains an explicit sentence saying so.
-- **Interface gains an expected-version parameter** (e.g. `fetchSnapshot` returns
-  the version marker, and the write methods take it back for a compare-and-set).
-  Needed if issue #4's abort-if-moved check has to be enforced at the write, not
-  just re-read before it.
-
-Resolving this needs the versioning spike result, so it is listed here rather than
-decided. It should not reach implementation undecided, because it changes the
-interface signature that Servicing will depend on.
+**`contentDigest` stability is a compatibility surface.** Once a digest is signed
+and handed to a counterparty, the canonical serialization that produced it can
+never change without invalidating every prior signature. Adding a field to
+`Bridge\Data\QuoteSnapshot` changes the digest. That needs a version tag inside
+the signed payload from day one — the Protocol module's concern, but the bridge is
+what makes it possible or impossible, so the canonical form should be
+version-tagged the first time it is written, not retrofitted.
