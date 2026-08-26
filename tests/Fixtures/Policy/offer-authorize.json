@@ -1,0 +1,164 @@
+[
+  {
+    "description": "a line at the band floor is approved",
+    "input": {
+      "offer": {
+        "orderTotalNet": 1000,
+        "linePricesNet": [
+          {
+            "lineItemId": "l1",
+            "unitPriceNet": 90
+          }
+        ],
+        "quoteLines": [
+          {
+            "lineItemId": "l1",
+            "label": "Widget",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "validityDays": 14
+        }
+      }
+    },
+    "expected": {
+      "approved": true,
+      "violations": [],
+      "limits": {
+        "maxDiscountPercent": 10,
+        "allowedPaymentTerms": [],
+        "freeShippingAllowed": false,
+        "expeditedAllowed": false
+      }
+    }
+  },
+  {
+    "description": "a line below the band is refused",
+    "input": {
+      "offer": {
+        "orderTotalNet": 1000,
+        "linePricesNet": [
+          {
+            "lineItemId": "l1",
+            "unitPriceNet": 80
+          }
+        ],
+        "quoteLines": [
+          {
+            "lineItemId": "l1",
+            "label": "Widget",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "validityDays": 14
+        }
+      }
+    },
+    "expected": {
+      "approved": false,
+      "violations": [
+        "line \"Widget\" price 80 exceeds the 10% limit"
+      ],
+      "limits": {
+        "maxDiscountPercent": 10,
+        "allowedPaymentTerms": [],
+        "freeShippingAllowed": false,
+        "expeditedAllowed": false
+      }
+    }
+  },
+  {
+    "description": "a line priced above its current price is refused",
+    "input": {
+      "offer": {
+        "orderTotalNet": 1000,
+        "linePricesNet": [
+          {
+            "lineItemId": "l1",
+            "unitPriceNet": 120
+          }
+        ],
+        "quoteLines": [
+          {
+            "lineItemId": "l1",
+            "label": "Widget",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "validityDays": 14
+        }
+      }
+    },
+    "expected": {
+      "approved": false,
+      "violations": [
+        "line \"Widget\" priced above its current price"
+      ],
+      "limits": {
+        "maxDiscountPercent": 10,
+        "allowedPaymentTerms": [],
+        "freeShippingAllowed": false,
+        "expeditedAllowed": false
+      }
+    }
+  },
+  {
+    "description": "an unknown line id is refused",
+    "input": {
+      "offer": {
+        "orderTotalNet": 1000,
+        "linePricesNet": [
+          {
+            "lineItemId": "zz",
+            "unitPriceNet": 95
+          }
+        ],
+        "quoteLines": [
+          {
+            "lineItemId": "l1",
+            "label": "Widget",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "validityDays": 14
+        }
+      }
+    },
+    "expected": {
+      "approved": false,
+      "violations": [
+        "line zz is not on this quote"
+      ],
+      "limits": {
+        "maxDiscountPercent": 10,
+        "allowedPaymentTerms": [],
+        "freeShippingAllowed": false,
+        "expeditedAllowed": false
+      }
+    }
+  }
+]
