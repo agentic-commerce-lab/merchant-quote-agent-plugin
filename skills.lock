@@ -1,0 +1,13 @@
+{
+  "skills": [
+    {
+      "name": "acl-quality-gate",
+      "source": "agentic-commerce-lab/acl-skills",
+      "commit": "d6c0bb16d50c0b55d985b5472d95857a47bee02b",
+      "pack": "php",
+      "mode": "strict",
+      "gatedRoots": ["."],
+      "vendoredPath": null
+    }
+  ]
+}

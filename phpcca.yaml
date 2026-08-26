@@ -1,0 +1,27 @@
+# ACL quality gate — phpcca (Phauthentic Cognitive Code Analysis), ADVISORY ONLY.
+# phpcca measures cognitive complexity + method length and surfaces hotspots; it does
+# NOT fail CI on a breach (`analyse` exits non-zero only on pipeline errors). Run it via
+# the non-blocking `quality:maintainability` / `quality:hotspots` tasks, never in the
+# blocking `quality` aggregate. Keep the show*Complexity flags false so it owns cognitive
+# + method length only and does not double-report against Mago's cyclomatic/nesting rules.
+cognitive:
+  excludeFilePatterns:
+    - '(.*)Test.php'
+  excludePatterns:
+    - '(.*)::__construct'
+  showHalsteadComplexity: false
+  showCyclomaticComplexity: false
+  showDetailedCognitiveMetrics: true
+  groupByClass: true
+  metrics:
+    lineCount: { threshold: 75, scale: 25.0, enabled: true }   # method length (~75 LOC)
+    argCount: { threshold: 5, scale: 1.0, enabled: true }
+    returnCount: { threshold: 2, scale: 5.0, enabled: true }
+    variableCount: { threshold: 4, scale: 5.0, enabled: true }
+    propertyCallCount: { threshold: 4, scale: 15.0, enabled: true }
+    ifCount: { threshold: 3, scale: 1.0, enabled: true }
+    ifNestingLevel: { threshold: 1, scale: 1.0, enabled: true }
+    elseCount: { threshold: 1, scale: 1.0, enabled: true }
+  cache:
+    enabled: true
+    directory: './.phpcca.cache'

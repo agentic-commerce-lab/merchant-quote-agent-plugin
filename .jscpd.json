@@ -1,0 +1,12 @@
+{
+  "path": ["src"],
+  "format": ["php"],
+  "threshold": 3,
+  "reporters": ["console", "sarif"],
+  "output": "./report/jscpd",
+  "minLines": 5,
+  "minTokens": 50,
+  "absolute": true,
+  "gitignore": true,
+  "ignore": ["**/vendor/**", "**/var/**", "**/build/**", "**/dist/**", "**/tests/**"]
+}

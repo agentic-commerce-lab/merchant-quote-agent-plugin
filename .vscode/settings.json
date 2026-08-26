@@ -1,0 +1,7 @@
+{
+  "editor.formatOnSave": false,
+  "[php]": {
+    "editor.defaultFormatter": "mageddo.mago"
+  },
+  "mago.enable": true
+}

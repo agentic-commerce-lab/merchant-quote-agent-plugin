@@ -1,0 +1,90 @@
+name: Dependency Freshness Weekly
+
+on:
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: dependency-freshness-weekly-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Weekly dependency report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+          tools: composer
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Verify composer scripts
+        run: |
+          php -r '$c=json_decode(file_get_contents("composer.json"),true); if(!isset($c["scripts"]["quality:deps"])){fwrite(STDERR,"Missing composer script: quality:deps\n"); fwrite(STDERR,"Merge assets/configs/composer-scripts.fragment.json before enabling this workflow.\n"); exit(1);} echo "ok\n";'
+
+      - name: Build dependency report
+        run: |
+          composer run quality:deps > dependency-outdated.txt 2>&1 || true
+
+          {
+            echo "## Dependency freshness"
+            echo
+            echo "Weekly Composer dependency freshness report for \`${GITHUB_REPOSITORY}\`."
+            echo
+            echo "- Workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo
+            echo '```text'
+            cat dependency-outdated.txt
+            echo '```'
+            echo
+            echo "Review wanted updates; prefer security, patch, and minor updates before major migrations."
+          } > dependency-freshness.md
+
+      - name: Create or update dependency freshness issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: Dependency freshness report
+        run: |
+          gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --search "$ISSUE_TITLE in:title" \
+            --json number,title > open-issues.json
+
+          existing_issue="$(
+            php -r '$issues=json_decode(file_get_contents("open-issues.json"),true)?:[]; foreach($issues as $i){ if(($i["title"]??null)===getenv("ISSUE_TITLE")){ echo $i["number"]; break; } }'
+          )"
+
+          label_args=()
+          if gh label create dependency-freshness --color 1f883d --description "Dependency freshness reports" --repo "$GITHUB_REPOSITORY" 2>/dev/null \
+            || gh label list --repo "$GITHUB_REPOSITORY" --search dependency-freshness --json name --jq '.[].name' | grep -qx dependency-freshness; then
+            label_args=(--label dependency-freshness)
+          fi
+
+          if [ -n "$existing_issue" ]; then
+            gh issue edit "$existing_issue" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body-file dependency-freshness.md
+          else
+            gh issue create \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$ISSUE_TITLE" \
+              --body-file dependency-freshness.md \
+              "${label_args[@]}"
+          fi

@@ -1,0 +1,55 @@
+{
+    "name": "shopware/merchant-quote-agent-plugin",
+    "description": "Merchant quote agent plugin",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3"
+    },
+    "require-dev": {
+        "captainhook/captainhook": "^5.25",
+        "captainhook/hook-installer": "^1.0",
+        "carthage-software/mago": "^1.30",
+        "phauthentic/cognitive-code-analysis": "^1.11",
+        "shipmonk/composer-dependency-analyser": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "MerchantQuoteAgentPlugin\\": "src/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "8.3.32"
+        },
+        "allow-plugins": {
+            "captainhook/hook-installer": true,
+            "carthage-software/mago": true
+        }
+    },
+    "scripts": {
+        "format": "mago fmt",
+        "format:check": "mago fmt --check",
+        "lint": "mago lint",
+        "lint:fix": "mago lint --fix",
+        "typecheck": "mago analyze",
+        "quality:filesize": "php scripts/check_file_length.php src",
+        "quality:dupes": "jscpd",
+        "quality:boundaries": "mago guard",
+        "quality:depcheck": "composer-dependency-analyser",
+        "quality:security": "composer audit",
+        "quality": [
+            "@format:check",
+            "@lint",
+            "@typecheck",
+            "@quality:filesize",
+            "@quality:dupes",
+            "@quality:depcheck",
+            "@quality:security"
+        ],
+        "quality:deps": "composer outdated --direct",
+        "quality:maintainability": "phpcca analyse src",
+        "quality:hotspots": "phpcca churn src"
+    }
+}

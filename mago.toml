@@ -1,0 +1,46 @@
+## ACL quality gate — Mago config (format + lint + analyzer + guard).
+## Mago is a single Rust binary: no PHP runtime needed to run it.
+
+version = "1.47.4"
+php-version = "8.3"
+
+[source]
+paths = ["src"]
+excludes = ["var/**", "build/**", "dist/**", "vendor/**"]
+extensions = ["php"]
+
+[formatter]
+# Defaults are fine; `mago fmt --check` gates formatting, `mago fmt` rewrites.
+
+[linter]
+minimum-fail-level = "error"
+
+[linter.rules]
+# Maintainability thresholds (shared threshold-parity targets).
+cyclomatic-complexity = { level = "error", threshold = 10 }
+excessive-parameter-list = { level = "error", threshold = 5 }
+excessive-nesting = { level = "error", threshold = 4 }
+# Conventions enforced mechanically.
+strict-types = { level = "error", allow-disabling = false }
+no-debug-symbols = { level = "error" } # default is `note`; MUST bump to error to gate
+
+[analyzer]
+# Type-checking is always-on (≈ PHPStan max); no level system. Opinionated strictness:
+find-unused-parameters = true
+analyze-dead-code = true
+check-property-initialization = true
+check-missing-override = true
+check-use-statements = true
+strict-array-index-existence = true
+# check-throws is noisy; keep it on but tame it.
+check-throws = true
+unchecked-exceptions = ["RuntimeException", "LogicException"]
+ignore = [
+  { code = "check-throws", in = "tests/" },
+]
+
+[guard]
+# Opt-in architecture boundaries (quality:boundaries). Projects declare layers here:
+#   [guard.perimeter]
+#   layering = ["App\\Domain", "App\\Application", "App\\Infrastructure"]
+# Left empty by default; the gate runs guard only once layers are configured.

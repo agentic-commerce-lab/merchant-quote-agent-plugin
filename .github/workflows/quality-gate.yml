@@ -1,0 +1,72 @@
+name: Quality Gate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+          tools: composer
+
+      - name: Setup Mago
+        uses: nhedger/setup-mago@v1
+
+      - name: Setup jscpd
+        run: npm install -g jscpd@5
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Verify composer scripts
+        run: |
+          php -r '$req=["format:check","lint","typecheck","quality:filesize","quality:dupes","quality:depcheck","quality:security"]; $c=json_decode(file_get_contents("composer.json"),true); $s=$c["scripts"]??[]; $m=array_values(array_filter($req, fn($x)=>!isset($s[$x]))); if($m){fwrite(STDERR,"Missing composer scripts: ".implode(", ",$m)."\n"); fwrite(STDERR,"Merge assets/configs/composer-scripts.fragment.json or provide intentional replacements before enabling this workflow.\n"); exit(1);} echo "All required composer scripts present\n";'
+
+      - name: Format
+        run: composer run format:check
+
+      - name: Lint
+        run: composer run lint
+
+      - name: Typecheck
+        run: composer run typecheck
+
+      - name: File length
+        run: composer run quality:filesize
+
+      - name: Duplication
+        run: composer run quality:dupes
+
+      - name: Dependency hygiene
+        run: composer run quality:depcheck
+
+      - name: Security audit
+        run: composer run quality:security
+
+      # Advisory (non-blocking): surfaces cognitive complexity + method length.
+      # phpcca does not fail on a threshold breach, so this never blocks the gate.
+      - name: Maintainability (advisory)
+        run: composer run quality:maintainability || true
