@@ -1,0 +1,33 @@
+[
+  {
+    "description": "3-round per-line chain: round 3 at the catalog-anchored floor is approved",
+    "input": {
+      "offer": {
+        "orderTotalNet": 900,
+        "linePricesNet": [{ "lineItemId": "l1", "unitPriceNet": 90 }],
+        "quoteLines": [
+          { "lineItemId": "l1", "label": "Widget", "quantity": 10, "unitPriceNet": 100, "totalNet": 1000 }
+        ]
+      },
+      "policy": { "price": { "maxDiscountPercent": 10, "validityDays": 14 } }
+    },
+    "expected": { "approved": true, "violations": [] }
+  },
+  {
+    "description": "3-round per-line chain: a further round-3 ask past the catalog-anchored floor is rejected, not just past the previous round's price",
+    "input": {
+      "offer": {
+        "orderTotalNet": 850,
+        "linePricesNet": [{ "lineItemId": "l1", "unitPriceNet": 85 }],
+        "quoteLines": [
+          { "lineItemId": "l1", "label": "Widget", "quantity": 10, "unitPriceNet": 100, "totalNet": 1000 }
+        ]
+      },
+      "policy": { "price": { "maxDiscountPercent": 10, "validityDays": 14 } }
+    },
+    "expected": {
+      "approved": false,
+      "violations": ["line \"Widget\" price 85 exceeds the 10% limit"]
+    }
+  }
+]

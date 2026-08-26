@@ -1,0 +1,320 @@
+[
+  {
+    "description": "clean decision yields no violations",
+    "input": {
+      "decision": {
+        "overall": "grant",
+        "price": {
+          "kind": "auto_reply",
+          "discountPercent": 0,
+          "perLineAsks": false,
+          "lineUnitPricesNet": [],
+          "validityDays": 14
+        },
+        "escalationReasons": [],
+        "payment": {
+          "band": "grant",
+          "grantedTerm": "net_30"
+        }
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "validityDays": 14
+        },
+        "delivery": {
+          "expeditedAllowed": false,
+          "committedLeadTimeDaysMin": 3,
+          "freeShippingAboveNet": 1000
+        },
+        "payment": {
+          "allowedTerms": [
+            "net_30"
+          ],
+          "maxNetDays": 30,
+          "minDepositPercent": 20
+        },
+        "bundle": {
+          "volumeTiers": [
+            {
+              "minQty": 10,
+              "discountPercent": 5
+            }
+          ]
+        }
+      },
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 500,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 5,
+            "unitPriceNet": 100,
+            "totalNet": 500
+          }
+        ]
+      }
+    },
+    "expected": []
+  },
+  {
+    "description": "flags expedited granted against a policy that forbids it",
+    "input": {
+      "decision": {
+        "overall": "grant",
+        "price": {
+          "kind": "auto_reply",
+          "discountPercent": 0,
+          "perLineAsks": false,
+          "lineUnitPricesNet": [],
+          "validityDays": 14
+        },
+        "escalationReasons": [],
+        "delivery": {
+          "band": "grant",
+          "expeditedGranted": true
+        }
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "validityDays": 14
+        },
+        "delivery": {
+          "expeditedAllowed": false,
+          "committedLeadTimeDaysMin": 3,
+          "freeShippingAboveNet": 1000
+        },
+        "payment": {
+          "allowedTerms": [
+            "net_30"
+          ],
+          "maxNetDays": 30,
+          "minDepositPercent": 20
+        },
+        "bundle": {
+          "volumeTiers": [
+            {
+              "minQty": 10,
+              "discountPercent": 5
+            }
+          ]
+        }
+      },
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 500,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 5,
+            "unitPriceNet": 100,
+            "totalNet": 500
+          }
+        ]
+      }
+    },
+    "expected": [
+      "expedited shipping granted but not allowed by policy"
+    ]
+  },
+  {
+    "description": "flags free shipping granted below the threshold with no waiver cap",
+    "input": {
+      "decision": {
+        "overall": "grant",
+        "price": {
+          "kind": "auto_reply",
+          "discountPercent": 0,
+          "perLineAsks": false,
+          "lineUnitPricesNet": [],
+          "validityDays": 14
+        },
+        "escalationReasons": [],
+        "delivery": {
+          "band": "grant",
+          "freeShippingGranted": true
+        }
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "validityDays": 14
+        },
+        "delivery": {
+          "expeditedAllowed": false,
+          "committedLeadTimeDaysMin": 3,
+          "freeShippingAboveNet": 1000
+        },
+        "payment": {
+          "allowedTerms": [
+            "net_30"
+          ],
+          "maxNetDays": 30,
+          "minDepositPercent": 20
+        },
+        "bundle": {
+          "volumeTiers": [
+            {
+              "minQty": 10,
+              "discountPercent": 5
+            }
+          ]
+        }
+      },
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 500,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 5,
+            "unitPriceNet": 100,
+            "totalNet": 500
+          }
+        ]
+      }
+    },
+    "expected": [
+      "free shipping granted but policy permits neither path"
+    ]
+  },
+  {
+    "description": "flags a payment term outside the allowed set",
+    "input": {
+      "decision": {
+        "overall": "grant",
+        "price": {
+          "kind": "auto_reply",
+          "discountPercent": 0,
+          "perLineAsks": false,
+          "lineUnitPricesNet": [],
+          "validityDays": 14
+        },
+        "escalationReasons": [],
+        "payment": {
+          "band": "grant",
+          "grantedTerm": "net_60"
+        }
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "validityDays": 14
+        },
+        "delivery": {
+          "expeditedAllowed": false,
+          "committedLeadTimeDaysMin": 3,
+          "freeShippingAboveNet": 1000
+        },
+        "payment": {
+          "allowedTerms": [
+            "net_30"
+          ],
+          "maxNetDays": 30,
+          "minDepositPercent": 20
+        },
+        "bundle": {
+          "volumeTiers": [
+            {
+              "minQty": 10,
+              "discountPercent": 5
+            }
+          ]
+        }
+      },
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 500,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 5,
+            "unitPriceNet": 100,
+            "totalNet": 500
+          }
+        ]
+      }
+    },
+    "expected": [
+      "granted payment term net_60 is not in the allowed set"
+    ]
+  },
+  {
+    "description": "flags a bundle discount above the price ceiling",
+    "input": {
+      "decision": {
+        "overall": "grant",
+        "price": {
+          "kind": "auto_reply",
+          "discountPercent": 0,
+          "perLineAsks": false,
+          "lineUnitPricesNet": [],
+          "validityDays": 14
+        },
+        "escalationReasons": [],
+        "bundle": {
+          "band": "grant",
+          "grantedDiscountPercent": 25
+        }
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "validityDays": 14
+        },
+        "delivery": {
+          "expeditedAllowed": false,
+          "committedLeadTimeDaysMin": 3,
+          "freeShippingAboveNet": 1000
+        },
+        "payment": {
+          "allowedTerms": [
+            "net_30"
+          ],
+          "maxNetDays": 30,
+          "minDepositPercent": 20
+        },
+        "bundle": {
+          "volumeTiers": [
+            {
+              "minQty": 10,
+              "discountPercent": 5
+            }
+          ]
+        }
+      },
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 500,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 5,
+            "unitPriceNet": 100,
+            "totalNet": 500
+          }
+        ]
+      }
+    },
+    "expected": [
+      "bundle discount 25% exceeds the price ceiling 10%"
+    ]
+  }
+]

@@ -1,0 +1,286 @@
+[
+  {
+    "description": "price-only proposal reproduces decideQuote exactly (grant)",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ],
+        "buyerTargetNet": 4141.99
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "maxQuoteValueNet": 50000,
+          "validityDays": 14
+        },
+        "delivery": {
+          "freeShippingAboveNet": 1000,
+          "maxShippingWaiverNet": 20,
+          "expeditedAllowed": true,
+          "committedLeadTimeDaysMin": 3
+        },
+        "payment": {
+          "allowedTerms": [
+            "prepaid",
+            "net_30"
+          ],
+          "maxNetDays": 30,
+          "minDepositPercent": 20
+        },
+        "bundle": {
+          "volumeTiers": [
+            {
+              "minQty": 10,
+              "discountPercent": 5
+            },
+            {
+              "minQty": 50,
+              "discountPercent": 15
+            }
+          ]
+        }
+      },
+      "proposal": null
+    },
+    "expected": {
+      "overall": "grant",
+      "price": {
+        "kind": "auto_reply",
+        "discountPercent": 5.00022935779817,
+        "perLineAsks": false,
+        "lineUnitPricesNet": [
+          {
+            "lineItemId": "l1",
+            "unitPriceNet": 103.55
+          }
+        ],
+        "validityDays": 14
+      },
+      "escalationReasons": []
+    }
+  },
+  {
+    "description": "any escalating dimension escalates the whole decision",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ]
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "maxQuoteValueNet": 50000,
+          "validityDays": 14
+        },
+        "delivery": {
+          "freeShippingAboveNet": 1000,
+          "maxShippingWaiverNet": 20,
+          "expeditedAllowed": true,
+          "committedLeadTimeDaysMin": 3
+        },
+        "payment": {
+          "allowedTerms": [
+            "prepaid",
+            "net_30"
+          ],
+          "maxNetDays": 30,
+          "minDepositPercent": 20
+        },
+        "bundle": {
+          "volumeTiers": [
+            {
+              "minQty": 10,
+              "discountPercent": 5
+            },
+            {
+              "minQty": 50,
+              "discountPercent": 15
+            }
+          ]
+        }
+      },
+      "proposal": {
+        "payment": {
+          "requestedTerm": "net_90"
+        }
+      }
+    },
+    "expected": {
+      "overall": "escalate",
+      "price": {
+        "kind": "auto_reply",
+        "discountPercent": 0,
+        "perLineAsks": false,
+        "lineUnitPricesNet": [
+          {
+            "lineItemId": "l1",
+            "unitPriceNet": 109
+          }
+        ],
+        "validityDays": 14
+      },
+      "payment": {
+        "band": "escalate",
+        "reason": "payment term net_90 not in the allowed set"
+      },
+      "escalationReasons": [
+        "payment: payment term net_90 not in the allowed set"
+      ]
+    }
+  },
+  {
+    "description": "a counter (no escalation) yields overall counter",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ]
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "maxQuoteValueNet": 50000,
+          "validityDays": 14
+        },
+        "delivery": {
+          "freeShippingAboveNet": 1000,
+          "maxShippingWaiverNet": 20,
+          "expeditedAllowed": true,
+          "committedLeadTimeDaysMin": 3
+        },
+        "payment": {
+          "allowedTerms": [
+            "prepaid",
+            "net_30"
+          ],
+          "maxNetDays": 30,
+          "minDepositPercent": 20
+        },
+        "bundle": {
+          "volumeTiers": [
+            {
+              "minQty": 10,
+              "discountPercent": 5
+            },
+            {
+              "minQty": 50,
+              "discountPercent": 15
+            }
+          ]
+        }
+      },
+      "proposal": {
+        "payment": {
+          "requestedNetDays": 45
+        }
+      }
+    },
+    "expected": {
+      "overall": "counter",
+      "price": {
+        "kind": "auto_reply",
+        "discountPercent": 0,
+        "perLineAsks": false,
+        "lineUnitPricesNet": [
+          {
+            "lineItemId": "l1",
+            "unitPriceNet": 109
+          }
+        ],
+        "validityDays": 14
+      },
+      "payment": {
+        "band": "counter",
+        "grantedNetDays": 30,
+        "reason": "net days countered down to 30"
+      },
+      "escalationReasons": []
+    }
+  },
+  {
+    "description": "escalate-by-default: dimension asked with no configured sub-policy escalates",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ]
+      },
+      "policy": {
+        "price": {
+          "maxDiscountPercent": 10,
+          "maxQuoteValueNet": 50000,
+          "validityDays": 14
+        }
+      },
+      "proposal": {
+        "delivery": {
+          "freeShipping": true
+        }
+      }
+    },
+    "expected": {
+      "overall": "escalate",
+      "price": {
+        "kind": "auto_reply",
+        "discountPercent": 0,
+        "perLineAsks": false,
+        "lineUnitPricesNet": [
+          {
+            "lineItemId": "l1",
+            "unitPriceNet": 109
+          }
+        ],
+        "validityDays": 14
+      },
+      "delivery": {
+        "band": "escalate",
+        "reason": "no delivery policy configured"
+      },
+      "escalationReasons": [
+        "delivery: no delivery policy configured"
+      ]
+    }
+  }
+]

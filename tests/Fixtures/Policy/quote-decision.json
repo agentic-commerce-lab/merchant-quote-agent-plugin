@@ -1,0 +1,605 @@
+[
+  {
+    "description": "within limits -> auto_reply at asked discount",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ],
+        "buyerTargetNet": 4141.99
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 5.00022935779817,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 103.55
+        }
+      ],
+      "validityDays": 14
+    }
+  },
+  {
+    "description": "exactly at the limit -> auto_reply",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ],
+        "buyerTargetNet": 3924
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 10,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 98.1
+        }
+      ],
+      "validityDays": 14
+    }
+  },
+  {
+    "description": "beyond discount limit -> escalate with reason",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ],
+        "buyerTargetNet": 3800
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "escalate",
+      "reason": "discount_limit_exceeded",
+      "requestedDiscountPercent": 12.844036697247708
+    }
+  },
+  {
+    "description": "no buyer target -> auto_reply at current prices, zero discount",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 0,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 109
+        }
+      ],
+      "validityDays": 14
+    }
+  },
+  {
+    "description": "per-line asks -> each line gets exactly its ask, never above current",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 20,
+            "unitPriceNet": 109,
+            "totalNet": 2180,
+            "requestedUnitPrice": 103.55
+          },
+          {
+            "lineItemId": "l2",
+            "quantity": 20,
+            "unitPriceNet": 109,
+            "totalNet": 2180,
+            "requestedUnitPrice": 120
+          }
+        ],
+        "buyerTargetNet": 4141.99
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 5.00022935779817,
+      "perLineAsks": true,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 103.55
+        },
+        {
+          "lineItemId": "l2",
+          "unitPriceNet": 109
+        }
+      ],
+      "validityDays": 14
+    }
+  },
+  {
+    "description": "no auto counter: ask above grantable max escalates even within counter window",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ],
+        "buyerTargetNet": 3800
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14,
+        "counterOfferMaxPercent": 25
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "escalate",
+      "reason": "discount_limit_exceeded",
+      "requestedDiscountPercent": 12.844036697247708
+    }
+  },
+  {
+    "description": "no auto counter: ask within max is granted as asked",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ],
+        "buyerTargetNet": 4141.99
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14,
+        "counterOfferMaxPercent": 25
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 5.00022935779817,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 103.55
+        }
+      ],
+      "validityDays": 14
+    }
+  },
+  {
+    "description": "interpreted extra discount composes with structured ask, within limit",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ],
+        "buyerTargetNet": 4141.99
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": {
+        "additionalDiscountPercent": 4,
+        "lineChanges": [],
+        "addProducts": [],
+        "clarificationQuestions": [],
+        "humanReviewRequests": []
+      }
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 8.800229357798166,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 99.41
+        }
+      ],
+      "validityDays": 14
+    }
+  },
+  {
+    "description": "interpreted extra discount composes with structured ask, beyond limit",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ],
+        "buyerTargetNet": 4141.99
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": {
+        "additionalDiscountPercent": 8,
+        "lineChanges": [],
+        "addProducts": [],
+        "clarificationQuestions": [],
+        "humanReviewRequests": []
+      }
+    },
+    "expected": {
+      "kind": "escalate",
+      "reason": "discount_limit_exceeded",
+      "requestedDiscountPercent": 12.600229357798161
+    }
+  },
+  {
+    "description": "renegotiation change_requested: comment ask overrides stale structured ask",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "change_requested",
+        "currencyIso": "EUR",
+        "totalNet": 4117.65,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 490,
+            "totalNet": 4900,
+            "requestedUnitPrice": 400
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": {
+        "lineChanges": [
+          {
+            "lineItemId": "l1",
+            "targetUnitPrice": 478
+          }
+        ],
+        "addProducts": [],
+        "clarificationQuestions": [],
+        "humanReviewRequests": []
+      }
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 2.4489696793073645,
+      "perLineAsks": true,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 478
+        }
+      ],
+      "validityDays": 14
+    }
+  },
+  {
+    "description": "renegotiation on OPEN quote: structured field wins -> escalate",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4117.65,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 490,
+            "totalNet": 4900,
+            "requestedUnitPrice": 400
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": {
+        "lineChanges": [
+          {
+            "lineItemId": "l1",
+            "targetUnitPrice": 478
+          }
+        ],
+        "addProducts": [],
+        "clarificationQuestions": [],
+        "humanReviewRequests": []
+      }
+    },
+    "expected": {
+      "kind": "escalate",
+      "reason": "discount_limit_exceeded",
+      "requestedDiscountPercent": 18.367272594805286
+    }
+  },
+  {
+    "description": "best-price ask -> grant exactly the configured maximum, no escalation",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": {
+        "bestPriceRequested": true,
+        "lineChanges": [],
+        "addProducts": [],
+        "clarificationQuestions": [],
+        "humanReviewRequests": []
+      }
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 10,
+      "perLineAsks": true,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 98.1
+        }
+      ],
+      "validityDays": 14
+    }
+  },
+  {
+    "description": "human-review asks always escalate, even when pricing is in limits",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ],
+        "buyerTargetNet": 4141.99
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": {
+        "lineChanges": [],
+        "addProducts": [],
+        "clarificationQuestions": [],
+        "humanReviewRequests": [
+          "Asked whether 500 units are on stock"
+        ]
+      }
+    },
+    "expected": {
+      "kind": "escalate",
+      "reason": "needs_human_review",
+      "humanReviewRequests": [
+        "Asked whether 500 units are on stock"
+      ],
+      "requestedDiscountPercent": 5.00022935779817
+    }
+  },
+  {
+    "description": "above max quote value -> escalate regardless of discount",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 60000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 60000
+          }
+        ],
+        "buyerTargetNet": 59000
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "escalate",
+      "reason": "quote_value_limit_exceeded",
+      "requestedDiscountPercent": 1.6666666666666667
+    }
+  },
+  {
+    "description": "buyer target above current price -> reply at current prices",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 4360,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 40,
+            "unitPriceNet": 109,
+            "totalNet": 4360
+          }
+        ],
+        "buyerTargetNet": 5000
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 0,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 109
+        }
+      ],
+      "validityDays": 14
+    }
+  }
+]
