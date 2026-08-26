@@ -16,9 +16,10 @@ final readonly class QuoteLineSnapshot
         public QuoteLineIdentity $identity,
         #[Assert\PositiveOrZero]
         public int $quantity = 0,
-        #[Assert\PositiveOrZero]
+        // Not PositiveOrZero: Shopware-generated lines (e.g. the quote-discount
+        // line) are legitimately negative — see LineNetViolation, which skips
+        // the price-band check for exactly this reason.
         public float $unitPriceNet = 0.0,
-        #[Assert\PositiveOrZero]
         public float $totalNet = 0.0,
         #[Assert\PositiveOrZero]
         public ?float $requestedUnitPrice = null,
@@ -34,11 +35,11 @@ final readonly class QuoteLineSnapshot
         return $this->identity->label;
     }
 
-    /** @throws \TypeError|\ValueError */
+    /** @throws \TypeError|\CuyZ\Valinor\Mapper\MappingError */
     public static function fromArray(array $data): self
     {
         return new self(
-            identity: QuoteLineIdentity::fromArray($data),
+            identity: ArrayMapper::mapObject(QuoteLineIdentity::class, $data),
             quantity: OptionalShape::int($data, 'quantity') ?? 0,
             unitPriceNet: OptionalShape::float($data, 'unitPriceNet') ?? 0.0,
             totalNet: OptionalShape::float($data, 'totalNet') ?? 0.0,

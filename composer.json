@@ -5,6 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "cuyz/valinor": "^2.6",
         "shopware/core": "~6.7.0",
         "symfony/dependency-injection": "^7.4",
         "symfony/validator": "^7.4",

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Policy;
 
 use MerchantQuoteAgentPlugin\Policy\BundleDecider;
+use MerchantQuoteAgentPlugin\Policy\Data\ArrayMapper;
 use MerchantQuoteAgentPlugin\Policy\Data\BundlePolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
@@ -17,7 +18,7 @@ final class BundleDeciderTest extends TestCase
     public function testMatchesTsFixture(string $description, array $input, array $expected): void
     {
         $snapshot = QuoteSnapshot::fromArray($input['snapshot']);
-        $policy = BundlePolicy::fromArray($input['policy']);
+        $policy = ArrayMapper::mapObject(BundlePolicy::class, $input['policy']);
         $priceLimits = QuoteLimits::fromArray($input['priceLimits']);
 
         $decision = (new BundleDecider())->decide($snapshot, $policy, $priceLimits);

@@ -17,12 +17,12 @@ final readonly class NegotiationProposal
         public ?NegotiationAsks $nonPrice = null,
     ) {}
 
-    /** @throws \TypeError|\ValueError */
+    /** @throws \TypeError|\ValueError|\CuyZ\Valinor\Mapper\MappingError */
     public static function fromArray(array $data): self
     {
         return new self(
             price: NestedShape::object($data, 'price', CommentInterpretation::fromArray(...)),
-            nonPrice: NegotiationAsks::fromArray($data),
+            nonPrice: ArrayMapper::mapObject(NegotiationAsks::class, $data),
         );
     }
 }

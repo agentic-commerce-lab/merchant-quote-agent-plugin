@@ -16,14 +16,4 @@ final readonly class PaymentPolicy
         #[Assert\Range(min: 0, max: 100)]
         public ?float $minDepositPercent = null,
     ) {}
-
-    /** @throws \TypeError|\ValueError */
-    public static function fromArray(array $data): self
-    {
-        return new self(
-            allowedTerms: ListShape::ofStrings($data, 'allowedTerms', PaymentTerm::from(...)),
-            maxNetDays: OptionalShape::int($data, 'maxNetDays'),
-            minDepositPercent: OptionalShape::float($data, 'minDepositPercent'),
-        );
-    }
 }

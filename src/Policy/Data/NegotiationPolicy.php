@@ -18,14 +18,18 @@ final readonly class NegotiationPolicy
         public ?BundlePolicy $bundle = null,
     ) {}
 
-    /** @throws \TypeError|\ValueError */
+    /** @throws \TypeError|\ValueError|\CuyZ\Valinor\Mapper\MappingError */
     public static function fromArray(array $data): self
     {
+        $delivery = OptionalShape::array($data, 'delivery');
+        $payment = OptionalShape::array($data, 'payment');
+        $bundle = OptionalShape::array($data, 'bundle');
+
         return new self(
             price: QuoteLimits::fromArray(NestedShape::array($data, 'price')),
-            delivery: NestedShape::object($data, 'delivery', DeliveryPolicy::fromArray(...)),
-            payment: NestedShape::object($data, 'payment', PaymentPolicy::fromArray(...)),
-            bundle: NestedShape::object($data, 'bundle', BundlePolicy::fromArray(...)),
+            delivery: $delivery === null ? null : ArrayMapper::mapObject(DeliveryPolicy::class, $delivery),
+            payment: $payment === null ? null : ArrayMapper::mapObject(PaymentPolicy::class, $payment),
+            bundle: $bundle === null ? null : ArrayMapper::mapObject(BundlePolicy::class, $bundle),
         );
     }
 }

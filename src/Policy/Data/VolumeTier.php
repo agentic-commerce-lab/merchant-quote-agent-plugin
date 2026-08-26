@@ -14,13 +14,4 @@ final readonly class VolumeTier
         #[Assert\Range(min: 0, max: 100)]
         public float $discountPercent,
     ) {}
-
-    /** @throws \TypeError|\ValueError */
-    public static function fromArray(array $data): self
-    {
-        return new self(
-            minQty: RequiredShape::int($data, 'minQty'),
-            discountPercent: RequiredShape::float($data, 'discountPercent'),
-        );
-    }
 }

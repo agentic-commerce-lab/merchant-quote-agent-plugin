@@ -23,19 +23,21 @@ final readonly class CommentInterpretation
         public ?NegotiationAsks $negotiation = null,
     ) {}
 
-    /** @throws \TypeError|\ValueError */
+    /** @throws \TypeError|\CuyZ\Valinor\Mapper\MappingError */
     public static function fromArray(array $data): self
     {
+        $negotiation = OptionalShape::array($data, 'negotiation');
+
         return new self(
-            price: PriceAsk::fromArray($data),
-            structural: StructuralAsks::fromArray($data),
+            price: ArrayMapper::mapObject(PriceAsk::class, $data),
+            structural: ArrayMapper::mapObject(StructuralAsks::class, $data),
             clarificationQuestions: ListShape::ofStrings(
                 $data,
                 'clarificationQuestions',
                 static fn(string $s): string => $s,
             ),
             humanReviewRequests: ListShape::ofStrings($data, 'humanReviewRequests', static fn(string $s): string => $s),
-            negotiation: NestedShape::object($data, 'negotiation', NegotiationAsks::fromArray(...)),
+            negotiation: $negotiation === null ? null : ArrayMapper::mapObject(NegotiationAsks::class, $negotiation),
         );
     }
 }

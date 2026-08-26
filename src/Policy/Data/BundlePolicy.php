@@ -10,10 +10,4 @@ final readonly class BundlePolicy
     public function __construct(
         public array $volumeTiers = [],
     ) {}
-
-    /** @throws \TypeError|\ValueError */
-    public static function fromArray(array $data): self
-    {
-        return new self(volumeTiers: ListShape::of($data, 'volumeTiers', VolumeTier::fromArray(...)));
-    }
 }

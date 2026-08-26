@@ -16,15 +16,4 @@ final readonly class DeliveryAsk
         #[Assert\PositiveOrZero]
         public ?int $requestedLeadTimeDays = null,
     ) {}
-
-    /** @throws \TypeError|\ValueError */
-    public static function fromArray(array $data): self
-    {
-        return new self(
-            freeShipping: OptionalShape::bool($data, 'freeShipping'),
-            shippingCostNet: OptionalShape::float($data, 'shippingCostNet'),
-            expedited: OptionalShape::bool($data, 'expedited'),
-            requestedLeadTimeDays: OptionalShape::int($data, 'requestedLeadTimeDays'),
-        );
-    }
 }

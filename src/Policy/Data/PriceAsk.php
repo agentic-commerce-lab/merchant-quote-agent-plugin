@@ -13,13 +13,4 @@ final readonly class PriceAsk
         public ?float $additionalDiscountPercent = null,
         public ?bool $bestPriceRequested = null,
     ) {}
-
-    /** @throws \TypeError|\ValueError */
-    public static function fromArray(array $data): self
-    {
-        return new self(
-            additionalDiscountPercent: OptionalShape::float($data, 'additionalDiscountPercent'),
-            bestPriceRequested: OptionalShape::bool($data, 'bestPriceRequested'),
-        );
-    }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Policy;
 
+use MerchantQuoteAgentPlugin\Policy\Data\ArrayMapper;
 use MerchantQuoteAgentPlugin\Policy\Data\DeliveryAsk;
 use MerchantQuoteAgentPlugin\Policy\Data\DeliveryPolicy;
 use MerchantQuoteAgentPlugin\Policy\DeliveryDecider;
@@ -15,8 +16,8 @@ final class DeliveryDeciderTest extends TestCase
     #[DataProvider('fixtures')]
     public function testMatchesTsFixture(string $description, array $input, array $expected): void
     {
-        $ask = DeliveryAsk::fromArray($input['ask']);
-        $policy = $input['policy'] === null ? null : DeliveryPolicy::fromArray($input['policy']);
+        $ask = ArrayMapper::mapObject(DeliveryAsk::class, $input['ask']);
+        $policy = $input['policy'] === null ? null : ArrayMapper::mapObject(DeliveryPolicy::class, $input['policy']);
 
         $decision = (new DeliveryDecider())->decide($ask, $policy, (float) $input['orderTotalNet']);
 

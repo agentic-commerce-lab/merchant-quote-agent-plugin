@@ -15,14 +15,4 @@ final readonly class InterpretedProductAddition
         #[Assert\PositiveOrZero]
         public ?float $targetUnitPrice = null,
     ) {}
-
-    /** @throws \TypeError|\ValueError */
-    public static function fromArray(array $data): self
-    {
-        return new self(
-            productRef: RequiredShape::string($data, 'productRef'),
-            quantity: RequiredShape::int($data, 'quantity'),
-            targetUnitPrice: OptionalShape::float($data, 'targetUnitPrice'),
-        );
-    }
 }

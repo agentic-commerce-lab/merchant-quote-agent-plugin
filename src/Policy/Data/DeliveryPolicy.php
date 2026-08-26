@@ -17,15 +17,4 @@ final readonly class DeliveryPolicy
         #[Assert\PositiveOrZero]
         public ?int $committedLeadTimeDaysMin = null,
     ) {}
-
-    /** @throws \TypeError|\ValueError */
-    public static function fromArray(array $data): self
-    {
-        return new self(
-            freeShippingAboveNet: OptionalShape::float($data, 'freeShippingAboveNet'),
-            maxShippingWaiverNet: OptionalShape::float($data, 'maxShippingWaiverNet'),
-            expeditedAllowed: OptionalShape::bool($data, 'expeditedAllowed'),
-            committedLeadTimeDaysMin: OptionalShape::int($data, 'committedLeadTimeDaysMin'),
-        );
-    }
 }

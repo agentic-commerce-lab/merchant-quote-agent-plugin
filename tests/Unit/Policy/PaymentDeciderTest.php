@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Policy;
 
+use MerchantQuoteAgentPlugin\Policy\Data\ArrayMapper;
 use MerchantQuoteAgentPlugin\Policy\Data\PaymentAsk;
 use MerchantQuoteAgentPlugin\Policy\Data\PaymentPolicy;
 use MerchantQuoteAgentPlugin\Policy\PaymentDecider;
@@ -15,8 +16,8 @@ final class PaymentDeciderTest extends TestCase
     #[DataProvider('fixtures')]
     public function testMatchesTsFixture(string $description, array $input, array $expected): void
     {
-        $ask = PaymentAsk::fromArray($input['ask']);
-        $policy = PaymentPolicy::fromArray($input['policy']);
+        $ask = ArrayMapper::mapObject(PaymentAsk::class, $input['ask']);
+        $policy = ArrayMapper::mapObject(PaymentPolicy::class, $input['policy']);
 
         $decision = (new PaymentDecider())->decide($ask, $policy);
 
