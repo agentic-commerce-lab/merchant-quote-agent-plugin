@@ -7,7 +7,7 @@
         "php": "^8.3",
         "shopware/core": "~6.7.0",
         "symfony/dependency-injection": "^7.4",
-        "ucp-php-sdk/core": "^0.0.2"
+        "ucp-php-sdk/core": ">=0.0.5 <0.1.0"
     },
     "require-dev": {
         "captainhook/captainhook": "^5.25",

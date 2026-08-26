@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "43c2eb79c9db44983c06a115861f7a5a",
+    "content-hash": "0024e576404e4f56406803ffbafdb371",
     "packages": [
         {
             "name": "brick/math",
@@ -11456,19 +11456,23 @@
         },
         {
             "name": "ucp-php-sdk/core",
-            "version": "0.0.2",
+            "version": "0.0.5",
             "source": {
                 "type": "git",
                 "url": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-core.git",
-                "reference": "41a4fa08b15cecce54c8b624764121de3aef006f"
+                "reference": "53218071406fd5566d9e051fefed910576f8d5c4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/agentic-commerce-alliance/ucp-php-sdk-core/zipball/41a4fa08b15cecce54c8b624764121de3aef006f",
-                "reference": "41a4fa08b15cecce54c8b624764121de3aef006f",
+                "url": "https://api.github.com/repos/agentic-commerce-alliance/ucp-php-sdk-core/zipball/53218071406fd5566d9e051fefed910576f8d5c4",
+                "reference": "53218071406fd5566d9e051fefed910576f8d5c4",
                 "shasum": ""
             },
             "require": {
+                "ext-filter": "*",
+                "ext-iconv": "*",
+                "ext-mbstring": "*",
+                "ext-openssl": "*",
                 "php": "^8.1",
                 "phpseclib/phpseclib": "^3.0"
             },
@@ -11485,9 +11489,9 @@
             "description": "Core library for the UCP PHP SDK",
             "support": {
                 "issues": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-core/issues",
-                "source": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-core/tree/0.0.2"
+                "source": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-core/tree/0.0.5"
             },
-            "time": "2026-07-22T07:47:56+00:00"
+            "time": "2026-08-06T12:35:02+00:00"
         },
         {
             "name": "webmozart/assert",
