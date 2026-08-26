@@ -1,21 +1,30 @@
 {
     "name": "shopware/merchant-quote-agent-plugin",
     "description": "Merchant quote agent plugin",
-    "type": "library",
+    "type": "shopware-platform-plugin",
     "license": "MIT",
     "require": {
-        "php": "^8.3"
+        "php": "^8.3",
+        "shopware/core": "~6.7.0",
+        "symfony/dependency-injection": "^7.4",
+        "ucp-php-sdk/core": "^0.0.2"
     },
     "require-dev": {
         "captainhook/captainhook": "^5.25",
         "captainhook/hook-installer": "^1.0",
         "carthage-software/mago": "^1.30",
         "phauthentic/cognitive-code-analysis": "^1.11",
+        "phpunit/phpunit": "^11.5",
         "shipmonk/composer-dependency-analyser": "^1.0"
     },
     "autoload": {
         "psr-4": {
             "MerchantQuoteAgentPlugin\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MerchantQuoteAgentPlugin\\Tests\\": "tests/"
         }
     },
     "config": {
@@ -25,7 +34,8 @@
         },
         "allow-plugins": {
             "captainhook/hook-installer": true,
-            "carthage-software/mago": true
+            "carthage-software/mago": true,
+            "symfony/runtime": true
         }
     },
     "scripts": {
@@ -51,5 +61,15 @@
         "quality:deps": "composer outdated --direct",
         "quality:maintainability": "phpcca analyse src",
         "quality:hotspots": "phpcca churn src"
+    },
+    "extra": {
+        "shopware-plugin-class": "MerchantQuoteAgentPlugin\\MerchantQuoteAgentPlugin",
+        "label": {
+            "en-GB": "Merchant Quote Agent",
+            "de-DE": "Merchant Quote Agent"
+        },
+        "description": {
+            "en-GB": "Autonomous B2B quote negotiation within merchant-defined limits."
+        }
     }
 }
