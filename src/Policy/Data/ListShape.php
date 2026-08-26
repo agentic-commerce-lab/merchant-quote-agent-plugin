@@ -14,7 +14,7 @@ final class ListShape
      */
     public static function of(array $data, string $key, callable $mapper): array
     {
-        return self::map($data, $key, static fn(mixed $item): array => self::asArray($item), $mapper);
+        return self::map($data, $key, self::asArray(...), $mapper);
     }
 
     /**
@@ -25,7 +25,7 @@ final class ListShape
      */
     public static function ofStrings(array $data, string $key, callable $mapper): array
     {
-        return self::map($data, $key, static fn(mixed $item): string => self::asString($item), $mapper);
+        return self::map($data, $key, self::asString(...), $mapper);
     }
 
     /**
