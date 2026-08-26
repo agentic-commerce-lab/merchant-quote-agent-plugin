@@ -41,6 +41,8 @@
         }
     },
     "scripts": {
+        "test": "phpunit",
+        "test:integration": "scripts/sync-to-shop.sh && docker exec -w /var/www/html/custom/plugins/MerchantQuoteAgentPlugin shopware-trunk php8.3 /var/www/html/vendor/bin/phpunit -c phpunit.integration.xml.dist",
         "format": "mago fmt",
         "format:check": "mago fmt --check",
         "lint": "mago lint",
