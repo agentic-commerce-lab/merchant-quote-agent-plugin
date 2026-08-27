@@ -15,10 +15,12 @@ use ShipMonk\ComposerDependencyAnalyser\Config\Configuration;
 $config = (new Configuration())
     ->addPathToScan(__DIR__ . '/src', isDev: false)
     // Symfony's PHP-DI DSL helper used by src/Resources/config/services.php. It
-    // ships in symfony/dependency-injection, which IS declared — but the
-    // analyser indexes classmap autoloading and this is a `files` autoload
-    // function, so it cannot attribute it to a package. A tool limitation, not
-    // an undeclared dependency.
+    // ships in symfony/dependency-injection, which IS declared in composer.json
+    // (^7.4). The analyser resolves symbols to packages through the classmap,
+    // and Composer cannot autoload free functions at all — `service()` is
+    // declared at the foot of the PSR-4 class file Loader/Configurator/
+    // ContainerConfigurator.php, so the function symbol has no package to
+    // attribute it to. A tool limitation, not an undeclared dependency.
     ->ignoreUnknownFunctions(['Symfony\Component\DependencyInjection\Loader\Configurator\service']);
 
 // Scan tests as dev paths only when the directory exists (addPathToScan throws on a
