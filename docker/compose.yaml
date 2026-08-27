@@ -1,0 +1,29 @@
+# The plugin's dedicated test shop. One shop for every worktree: the fixed
+# `name:` makes `docker compose -f docker/compose.yaml …` from any checkout
+# address the same project, container and volumes.
+#
+# The image is pinned by digest on purpose: SwagCommercial 7.13.1 requires
+# shopware/core >=6.7.13.1 <6.8, which this 6.7.x-dev build satisfies and a
+# 6.7.2.x release image does not; and the seed is a dump of the same build.
+# Bring-up is scripts/shop-setup.sh — this file holds no secrets and needs
+# no .env of its own.
+name: merchant-quote-shop
+
+services:
+  shop:
+    image: ${SHOP_IMAGE:-dockware/shopware@sha256:458696e775b08d0bc9fa38874a6f9a706e16047ba7109934104b271b618f4e3d}
+    container_name: merchant-quote-shop
+    ports:
+      - "${SHOP_PORT:-8095}:80"      # the old shop keeps 8090 until it is retired
+      - "${SHOP_MAIL_PORT:-8096}:1080" # mailcatcher UI: the flows on in_review/replied send mail here
+    environment:
+      PHP_VERSION: "8.3"
+      XDEBUG_ENABLED: "0"
+      SW_TASKS_ENABLED: "0"
+    volumes:
+      - db:/var/lib/mysql
+      - html:/var/www/html
+
+volumes:
+  db:
+  html:
