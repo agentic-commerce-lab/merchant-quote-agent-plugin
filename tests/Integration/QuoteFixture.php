@@ -105,6 +105,39 @@ final class QuoteFixture
         return $id;
     }
 
+    /**
+     * A quote currently in a given state, so a test can drive a transition
+     * that state actually offers. Separate from anyQuoteId() because the
+     * quote.state machine only offers `process` from open or change_requested.
+     *
+     * @throws \RuntimeException when the shop has no quote in that state
+     */
+    public static function quoteInState(ContainerInterface $container, Context $context, string $state): string
+    {
+        $repository = $container->get('quote.repository');
+
+        if (!$repository instanceof EntityRepository) {
+            throw new \RuntimeException('quote.repository is not an EntityRepository.');
+        }
+
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('stateMachineState.technicalName', $state));
+        $criteria->addSorting(new FieldSorting('quoteNumber'));
+        $criteria->setLimit(1);
+
+        $id = $repository->searchIds($criteria, $context)->firstId();
+
+        if ($id === null) {
+            throw new \RuntimeException(sprintf(
+                'No quote in state "%s" exists in the shop. Move one there through the admin, or '
+                . 'pick a state the seed actually contains.',
+                $state,
+            ));
+        }
+
+        return $id;
+    }
+
     /** @param list<string> $states */
     private static function editableQuoteCriteria(
         ContainerInterface $container,
