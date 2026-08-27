@@ -1,0 +1,67 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Bridge;
+
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteVersion;
+use Shopware\Core\Framework\Context;
+
+/**
+ * The only class in this plugin that reaches SwagCommercial. Its @internal
+ * dependencies are confined to Bridge\Commercial adapters and listed there.
+ */
+final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
+{
+    public function __construct(
+        private QuoteSnapshotReader $reader,
+    ) {}
+
+    #[\Override]
+    public function fetchSnapshot(string $quoteId, QuoteVersion $version = QuoteVersion::Live): QuoteSnapshot
+    {
+        return $this->reader->read($quoteId, $version, Context::createDefaultContext());
+    }
+
+    /** @param list<QuoteLineItemChange> $changes */
+    #[\Override]
+    public function updateLineItems(string $quoteId, array $changes, ?QuoteRevision $expected = null): void
+    {
+        throw new \LogicException('Not implemented until plan Task 5.');
+    }
+
+    #[\Override]
+    public function addProduct(string $quoteId, string $productId, int $quantity): void
+    {
+        throw new \LogicException('Not implemented until plan Task 7.');
+    }
+
+    #[\Override]
+    public function recalculate(string $quoteId): void
+    {
+        throw new \LogicException('Not implemented until plan Task 7.');
+    }
+
+    #[\Override]
+    public function updateQuote(string $quoteId, QuoteUpdate $update, ?QuoteRevision $expected = null): void
+    {
+        throw new \LogicException('Not implemented until plan Task 6.');
+    }
+
+    #[\Override]
+    public function addComment(string $quoteId, string $comment): void
+    {
+        throw new \LogicException('Not implemented until plan Task 8.');
+    }
+
+    #[\Override]
+    public function transition(string $quoteId, QuoteTransition $action): void
+    {
+        throw new \LogicException('Not implemented until plan Task 8.');
+    }
+}

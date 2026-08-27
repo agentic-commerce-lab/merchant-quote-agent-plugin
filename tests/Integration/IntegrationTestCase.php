@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Bridge\QuoteSnapshotReader;
+use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
+use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\Test\TestCaseBase\DatabaseTransactionBehaviour;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelTestBehaviour;
@@ -42,15 +46,21 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
-     * The bridge gateway under test. Task 4 fills this in by hand-constructing
-     * from container services; Task 9 replaces the body with a DI lookup once
-     * QuoteGatewayInterface is registered. Kept here so the six integration
-     * test classes share one override point instead of duplicating a helper.
-     *
-     * @throws \LogicException until plan Task 4
+     * The bridge gateway under test, hand-constructed from container
+     * services: the plugin is deliberately not installed into this shop
+     * (composer constraints are unsatisfiable, see Task 1), so `services.php`
+     * never loads and `QuoteGatewayInterface` cannot be resolved from the
+     * container. Task 9 replaces this body with a DI lookup once it can be.
+     * Kept here so the six integration test classes share one override point
+     * instead of duplicating a helper.
      */
-    protected static function gateway(): never
+    protected static function gateway(): QuoteGatewayInterface
     {
-        throw new \LogicException('Not available until plan Task 4.');
+        /** @var \Shopware\Core\Framework\DataAbstractionLayer\EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $quoteRepository */
+        $quoteRepository = static::getContainer()->get('quote.repository');
+
+        $reader = new QuoteSnapshotReader($quoteRepository, new QuoteVersionResolver());
+
+        return new SwagCommercialQuoteGateway($reader);
     }
 }
