@@ -49,51 +49,53 @@ step_home() {
           die "$key was altered while reading $HOME_DIR/.env — single-quote it (see docker/.env.example)"
       fi
   done
-  SHOP_URL="${SHOP_URL:-http://localhost:8095}"
-  SHOP_ADMIN_USER="${SHOP_ADMIN_USER:-mqadmin}"
-  SHOP_ADMIN_EMAIL="${SHOP_ADMIN_EMAIL:-mqadmin@example.com}"
-  SHOP_BUYERS="${SHOP_BUYERS:-}"
-}
-
-# fetch_release <github repo> <tag> <asset>: skip when the asset is already in
-# MQ_SHOP_HOME/plugins — which is also the hand-copied fallback for anyone
-# without access to the release.
-fetch_release() {
-  local target="$HOME_DIR/plugins/$3"
-  if [ -f "$target" ]; then log "have $3"; return; fi
-  log "downloading $3 from $1 $2"
-  gh release download "$2" -R "$1" -p "$3" -D "$HOME_DIR/plugins" \
-    || die "could not download $3 (no gh auth for $1?). Put the file at $target yourself and rerun"
+  : "${SHOP_URL:=http://localhost:8095}"
+  : "${SHOP_ADMIN_USER:=admin}"
+  : "${SHOP_ADMIN_EMAIL:=admin@example.com}"
+  : "${SHOP_BUYERS:=10000 10001 10002}"
 }
 
 step_fetch() {
-  fetch_release shopware/SwagCommercial   "$SWAG_COMMERCIAL_VERSION"  SwagCommercial.zip
-  fetch_release shopware/agentic-commerce "$AGENTIC_COMMERCE_VERSION" SwagAgenticCommerce.zip
+  local tag file
+  for plugin in \
+    "shopware/commercial:${SWAG_COMMERCIAL_VERSION}:SwagCommercial-${SWAG_COMMERCIAL_VERSION}.zip:SwagCommercial.zip" \
+    "agentic-commerce/agentic-commerce:${AGENTIC_COMMERCE_VERSION}:AgenticCommerce-${AGENTIC_COMMERCE_VERSION}.zip:SwagAgenticCommerce.zip"
+  do
+    IFS=: read -r repo tag release_asset local_name <<< "$plugin"
+    file="$HOME_DIR/plugins/$local_name"
+    if [ -f "$file" ]; then log "have $local_name"; continue; fi
+    log "downloading $repo $tag -> $local_name"
+    # Tag names: commercial tags are "7.13.1", agentic-commerce tags are "v1.2.0".
+    gh release download "$tag" --repo "$repo" --pattern "$release_asset" --output "$file" \
+      || gh release download "v$tag" --repo "$repo" --pattern "$release_asset" --output "$file" \
+      || die "cannot download $repo $tag — put $local_name into $HOME_DIR/plugins/ by hand and rerun"
+  done
 }
 
 step_boot() {
-  log "starting $CONTAINER"
+  log "starting docker compose"
   docker compose -f "$REPO/docker/compose.yaml" up -d
-  local i
-  for i in $(seq 1 60); do
-    if console about >/dev/null 2>&1; then return; fi
+  log "waiting for $CONTAINER to become healthy"
+  local i=0
+  until [ "$(docker inspect -f '{{.State.Health.Status}}' "$CONTAINER" 2>/dev/null)" = "healthy" ]; do
     sleep 2
+    i=$((i+2))
+    [ "$i" -lt 60 ] || die "$CONTAINER did not become healthy within 60s"
   done
-  die "$CONTAINER did not answer bin/console within 120s (docker logs $CONTAINER)"
 }
 
 step_seed() {
-  local quotes seed
-  seed="$HOME_DIR/seed/shopware.sql.gz"
-  quotes="$(sql 'SELECT COUNT(*) FROM quote' || true)"
-  if [ "${quotes:-0}" -gt 0 ]; then log "database already seeded ($quotes quote rows)"; return; fi
+  local tables
+  tables="$(sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='shopware'")" || tables=0
+  if [ "$tables" -gt 0 ]; then log "database has $tables tables; skipping seed"; return; fi
+  local seed="$HOME_DIR/seed/shopware.sql.gz"
   [ -f "$seed" ] \
     || die "no seed at $seed — run scripts/shop-export-seed.sh against the old shop first"
   # A failed export leaves a valid but near-empty gzip behind, which -f alone accepts.
   gzip -t "$seed" 2>/dev/null \
     || die "$seed is not a valid gzip — re-run scripts/shop-export-seed.sh"
-  [ "$(wc -c < "$seed")" -gt 1000000 ] \
-    || die "$seed is only $(wc -c < "$seed") bytes; a real seed is ~1.7 MB — re-run scripts/shop-export-seed.sh"
+  [ "$(wc -c < "$seed")" -gt 500000 ] \
+    || die "$seed is only $(wc -c < "$seed") bytes; a real seed is >500 KB — re-run scripts/shop-export-seed.sh"
   log "importing seed"
   gunzip -c "$seed" | docker exec -i "$CONTAINER" mysql -uroot -proot -h127.0.0.1 shopware
 }
@@ -111,6 +113,16 @@ step_urls() {
   # external SHOP_URL (which may be https, path-suffixed, or a different host
   # entirely once this is reached over a VM or tunnel).
   sql "UPDATE sales_channel_domain SET url='http://host.docker.internal:${port}' WHERE url LIKE 'http://host.docker.internal:%'"
+
+  # Clean up any obsolete app records from seed if manifest is missing on disk
+  if in_shop test ! -d "custom/apps/QuoteAgent"; then
+    sql "DELETE FROM app_translation WHERE app_id IN (SELECT id FROM app WHERE name='QuoteAgent')"
+    sql "DELETE FROM app WHERE name='QuoteAgent'"
+  fi
+  # Synchronize the shop-id fingerprint with the new APP_URL and sales channel domains
+  # so Shopware Administration never triggers the "shop identifier has changed" modal
+  console app:shop-id:change move-shop-permanently -n >/dev/null 2>&1 || true
+
   console cache:clear -n >/dev/null
 }
 
@@ -210,7 +222,11 @@ step_license() {
 }
 
 step_admin() {
-  if [ "$(sql "SELECT COUNT(*) FROM user WHERE username='${SHOP_ADMIN_USER}' AND admin=1")" = "1" ]; then log "admin ${SHOP_ADMIN_USER} exists"; return; fi
+  if [ "$(sql "SELECT COUNT(*) FROM user WHERE username='${SHOP_ADMIN_USER}' AND admin=1")" = "1" ]; then
+    log "ensuring password for admin ${SHOP_ADMIN_USER}"
+    console user:change-password "${SHOP_ADMIN_USER}" --password="${SHOP_ADMIN_PASSWORD}" -n >/dev/null
+    return
+  fi
   log "creating admin ${SHOP_ADMIN_USER}"
   console user:create "$SHOP_ADMIN_USER" --admin --password="$SHOP_ADMIN_PASSWORD" \
     --email="$SHOP_ADMIN_EMAIL" --firstName=Merchant --lastName=Quote -n >/dev/null

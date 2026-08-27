@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Export the borrowed shop's database as the seed for merchant-quote-shop.
+# Export the shop's database as the seed for merchant-quote-shop.
 #
-# Run once, now, before the shopware-trunk container disappears (its compose
-# project no longer exists on disk). Rerun only to refresh the seed on purpose.
-# The dump carries demo customers and the SwagCommercial licence key: it lives
-# under MQ_SHOP_HOME and is never committed.
+# Default source is the dedicated merchant-quote-shop container. Rerun to refresh
+# the seed on purpose. The dump carries demo customers and the SwagCommercial
+# licence key: it lives under MQ_SHOP_HOME and is never committed.
 set -euo pipefail
 
-SOURCE="${SEED_SOURCE_CONTAINER:-shopware-trunk}"
+SOURCE="${SEED_SOURCE_CONTAINER:-merchant-quote-shop}"
 HOME_DIR="${MQ_SHOP_HOME:-$HOME/.cache/merchant-quote-shop}"
 OUT="$HOME_DIR/seed/shopware.sql.gz"
 
