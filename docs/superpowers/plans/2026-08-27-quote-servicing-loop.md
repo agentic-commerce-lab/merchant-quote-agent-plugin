@@ -1137,7 +1137,9 @@ final class QuoteServicingLockTest extends TestCase
         $locks->for('quote-2');
 
         self::assertCount(1, $logger->records);
-        self::assertStringContainsString('host-local', $logger->records[0]);
+        // implode rather than [0]: Mago's strict-array-index-existence cannot
+        // see that assertCount already guarantees the index.
+        self::assertStringContainsString('host-local', implode("\n", $logger->records));
     }
 
     public function testASemaphoreStoreIsAlsoHostLocal(): void
@@ -1170,7 +1172,9 @@ final class QuoteServicingLockTest extends TestCase
             /**
              * @param mixed $level
              * @param string|\Stringable $message
-             * @param array<string, mixed> $context
+             * @param array<array-key, mixed> $context — array-key, not string:
+             *        narrowing below PSR-3's own signature is a contravariance
+             *        violation that full-strictness analyze rejects.
              */
             #[\Override]
             public function log($level, $message, array $context = []): void

@@ -51,7 +51,7 @@ final class QuoteServicingLockTest extends TestCase
         $locks->for('quote-2');
 
         self::assertCount(1, $logger->records);
-        self::assertStringContainsString('host-local', $logger->records[0]);
+        self::assertStringContainsString('host-local', implode("\n", $logger->records));
     }
 
     public function testASemaphoreStoreIsAlsoHostLocal(): void
@@ -84,7 +84,7 @@ final class QuoteServicingLockTest extends TestCase
             /**
              * @param mixed $level
              * @param string|\Stringable $message
-             * @param array<string, mixed> $context
+             * @param array<array-key, mixed> $context
              */
             #[\Override]
             public function log($level, $message, array $context = []): void
