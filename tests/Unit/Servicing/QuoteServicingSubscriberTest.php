@@ -10,6 +10,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLifecycle;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
@@ -207,7 +208,7 @@ final class QuoteServicingSubscriberTest extends TestCase
         $buyerSnapshot = $this->createSnapshot('quote-buyer', 'in_review', $revision);
         $staffSnapshot = $this->createSnapshot('quote-staff', 'in_review', $revision);
         $authorlessSnapshot = $this->createSnapshot('quote-authorless', 'in_review', $revision, customFields: [
-            MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT => 'A different agent note.',
+            MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_ID => 'comment-from-an-earlier-agent-write',
         ]);
 
         $this->gateway
@@ -261,14 +262,14 @@ final class QuoteServicingSubscriberTest extends TestCase
         self::assertSame(['quote-buyer', 'quote-staff', 'quote-authorless'], $dispatchedQuoteIds);
     }
 
-    public function testOnQuoteCommentWrittenDispatchesWhenCreatedByAuthorMatchesAgentStamp(): void
+    public function testOnQuoteCommentWrittenDispatchesAuthoredCommentEvenWhenItsIdMatchesAgentMarker(): void
     {
         $revision = new QuoteRevision(
             '018b449b2ba170a4a589cf8cb59a35e4',
             new \DateTimeImmutable('2026-08-27 12:00:00.123456'),
         );
         $snapshot = $this->createSnapshot('quote-staff', 'in_review', $revision, customFields: [
-            MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT => 'Shared comment text.',
+            MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_ID => 'comment-0',
         ]);
 
         $this->gateway->expects(self::once())->method('fetchSnapshot')->with('quote-staff')->willReturn($snapshot);
@@ -298,20 +299,20 @@ final class QuoteServicingSubscriberTest extends TestCase
         $subscriber->onQuoteCommentWritten($event);
     }
 
-    public function testOnQuoteCommentWrittenSkipsLiveAgentContextAndMatchingPersistedStamp(): void
+    public function testOnQuoteCommentWrittenPromotesLiveAgentCommentIdWithoutDispatching(): void
     {
         $context = Context::createDefaultContext();
         $context->addState(MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING);
 
-        $revision = new QuoteRevision(
-            '018b449b2ba170a4a589cf8cb59a35e4',
-            new \DateTimeImmutable('2026-08-27 12:00:00.123456'),
-        );
-        $snapshot = $this->createSnapshot('quote-agent', 'in_review', $revision, customFields: [
-            MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT => 'Agent offer details here.',
-        ]);
+        $this->gateway->expects(self::never())->method('fetchSnapshot');
+        $this->gateway
+            ->expects(self::once())
+            ->method('updateQuote')
+            ->with('quote-live-agent', self::callback(static function (QuoteUpdate $update): bool {
+                self::assertSame(['quote_agent_last_comment_id' => 'comment-0'], $update->customFields);
 
-        $this->gateway->expects(self::once())->method('fetchSnapshot')->with('quote-agent')->willReturn($snapshot);
+                return true;
+            }));
         $this->bus->expects(self::never())->method('dispatch');
 
         $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway);
@@ -324,17 +325,6 @@ final class QuoteServicingSubscriberTest extends TestCase
                 'comment' => 'Can we get a discount?',
             ],
         ], $context);
-
-        $subscriber->onQuoteCommentWritten($event);
-
-        $event = $this->createCommentWrittenEvent([
-            [
-                'quoteId' => 'quote-agent',
-                'customerId' => null,
-                'employeeId' => null,
-                'comment' => 'Agent offer details here.',
-            ],
-        ], Context::createDefaultContext());
 
         $subscriber->onQuoteCommentWritten($event);
     }

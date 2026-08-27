@@ -12,7 +12,7 @@ final class QuoteCommentFilter
     private function __construct() {}
 
     /** @param array<string, mixed> $payload */
-    public static function shouldSkipComment(array $payload, QuoteSnapshot $snapshot): bool
+    public static function shouldSkipComment(array $payload, ?string $commentId, QuoteSnapshot $snapshot): bool
     {
         if (
             \array_key_exists('createdById', $payload) && $payload['createdById'] !== null
@@ -22,16 +22,15 @@ final class QuoteCommentFilter
             return false;
         }
 
-        if (!\is_string($payload['comment'] ?? null)) {
+        if ($commentId === null) {
             return false;
         }
 
-        $comment = $payload['comment'];
         $customFields = $snapshot->lifecycle->customFields;
 
-        return self::matchesPersistedAgentComment(
-            $customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT] ?? null,
-            $comment,
+        return self::matchesPersistedAgentCommentId(
+            $customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_ID] ?? null,
+            $commentId,
         );
     }
 
@@ -40,8 +39,8 @@ final class QuoteCommentFilter
         return QuoteServicingStates::isServiceable($state);
     }
 
-    private static function matchesPersistedAgentComment(mixed $persistedComment, string $comment): bool
+    private static function matchesPersistedAgentCommentId(mixed $persistedCommentId, string $commentId): bool
     {
-        return \is_string($persistedComment) && $persistedComment === $comment;
+        return \is_string($persistedCommentId) && $persistedCommentId === $commentId;
     }
 }

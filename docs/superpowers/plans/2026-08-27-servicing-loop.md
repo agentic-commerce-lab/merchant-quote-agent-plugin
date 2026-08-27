@@ -16,8 +16,8 @@
 
 ## File ownership map
 
-- `src/MerchantQuoteAgentPlugin.php`: canonical agent context-state and comment-stamp identifiers.
-- `src/Bridge/SwagCommercialQuoteGateway.php`: stamps every agent write context and persists comment provenance before writing a comment.
+- `src/MerchantQuoteAgentPlugin.php`: canonical agent context-state and exact comment-row identifiers.
+- `src/Bridge/SwagCommercialQuoteGateway.php`: stamps every agent write context; the comment event path persists the resulting row identity.
 - `src/Bridge/Data/QuoteIdentity.php`, `src/Bridge/QuoteSnapshotReader.php`: carry the sales-channel id needed by the async message.
 - `src/Servicing/Data/ServiceQuoteMessage.php`: serializable queue contract with stable message UUID.
 - `src/Servicing/Attempt/`: Shopware DAL definition, entity, collection, and repository-backed attempt store.
@@ -243,11 +243,13 @@ git commit -m "feat: persist quote servicing delivery attempts"
 
 ---
 
-### Task 3: Stamp all agent writes and persist comment provenance
+### Task 3: Stamp all agent writes and persist exact comment-row provenance
 
 **Files:**
 - Modify: `src/MerchantQuoteAgentPlugin.php`
 - Modify: `src/Bridge/SwagCommercialQuoteGateway.php`
+- Create: `src/Servicing/QuoteCommentProvenancePromoter.php`
+- Create: `src/Servicing/QuoteCommentWriteResultInspector.php`
 - Delete after updating consumers: `src/Servicing/ServicingConstants.php`
 - Modify: `tests/Integration/AddCommentTest.php`
 - Modify: `tests/Integration/ServicingSubscriberTest.php`
@@ -255,12 +257,12 @@ git commit -m "feat: persist quote servicing delivery attempts"
 
 - [ ] **Step 1: Write the live provenance regression test**
 
-Register the actual subscriber method as a temporary listener for `quote_comment.written`, use a mock bus that expects no dispatch, call `$gateway->addComment($quoteId, $text)`, then always remove the listener in `finally`. Assert both persisted and synchronous discriminators:
+Register the actual subscriber method as a temporary listener for `quote_comment.written`, use a mock bus that expects no dispatch, call `$gateway->addComment($quoteId, $text)`, then always remove the listener in `finally`. Capture the live event's string `EntityWriteResult` primary key and assert both discriminators:
 
 ```php
 self::assertSame(
-    $text,
-    $gateway->fetchSnapshot($quoteId)->lifecycle->customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT] ?? null,
+    $commentId,
+    $gateway->fetchSnapshot($quoteId)->lifecycle->customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_ID] ?? null,
 );
 self::assertTrue($eventContextHadAgentState);
 ```
@@ -269,7 +271,7 @@ self::assertTrue($eventContextHadAgentState);
 
 Run: `composer run test:integration -- --filter 'AgentComment.*Suppresses|Comment.*Provenance'`
 
-Expected: FAIL because the gateway currently uses an unmarked default context and does not persist the comment text.
+Expected: FAIL because the gateway currently uses an unmarked default context and does not persist the exact comment-row id.
 
 - [ ] **Step 3: Define the canonical identifiers**
 
@@ -277,7 +279,7 @@ Add to `MerchantQuoteAgentPlugin`:
 
 ```php
 public const CONTEXT_STATE_AGENT_SERVICING = 'merchant_quote_agent_servicing';
-public const LAST_AGENT_COMMENT_TEXT = 'quote_agent_last_comment_text';
+public const LAST_AGENT_COMMENT_ID = 'quote_agent_last_comment_id';
 ```
 
 Update subscriber/filter/tests to use these root constants, then delete `ServicingConstants.php` so there is one owner.
@@ -298,18 +300,18 @@ private static function createAgentContext(): Context
 
 Use it for every write-side gateway operation: `updateLineItems`, `addProduct`, `recalculate`, `updateQuote`, `addComment`, and `transition`. Keep reads on a plain default context.
 
-- [ ] **Step 5: Stamp before writing the comment**
+- [ ] **Step 5: Promote the generated live comment id**
 
-Inside `addComment()`, after the existence read and before `QuoteCommentWriterInterface::comment()`, use the same agent context for:
+Inside `addComment()`, retain the existence read and call `QuoteCommentWriterInterface::comment()` with the agent context. Do not pre-stamp text. In `QuoteCommentEventDispatcher`, ignore non-live snapshot projection results; Shopware emits one before the live event for the same comment id. For each live agent-context result with non-empty string quote and comment ids, persist the generated id and never dispatch:
 
 ```php
-$this->writers->quote->write(
+$gateway->updateQuote(
     $quoteId,
-    new QuoteUpdate(customFields: [MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT => $comment]),
-    $context,
+    new QuoteUpdate(customFields: [MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_ID => $commentId]),
 );
-$this->lifecycle->comments->comment($quoteId, $comment, $context);
 ```
+
+For an ordinary/replayed event, pass the write-result primary key to `QuoteCommentFilter`: suppress only an author-less row whose id exactly matches the persisted id. Authored rows and distinct author-less rows remain eligible even when their text is identical. A quote write cannot recurse because the subscriber does not subscribe to `quote.written`.
 
 - [ ] **Step 6: Verify bridge and servicing regressions**
 
@@ -320,12 +322,12 @@ composer run test:integration -- --filter 'AddCommentTest|ServicingSubscriberTes
 vendor/bin/phpunit tests/Unit/Servicing/QuoteServicingSubscriberTest.php
 ```
 
-Expected: agent context and persisted stamp suppress dispatch; buyer and unmatched author-less comments still dispatch.
+Expected: the live agent event persists its exact row id without dispatch; replay of that id is suppressed; buyer, staff, and different-id author-less comments still dispatch. Duplicate eligible rows for one quote still produce one message.
 
 - [ ] **Step 7: Commit the provenance slice**
 
 ```bash
-git add -- src/MerchantQuoteAgentPlugin.php src/Bridge/SwagCommercialQuoteGateway.php src/Servicing/ServicingConstants.php tests/Integration/AddCommentTest.php tests/Integration/ServicingSubscriberTest.php tests/Unit/Servicing/QuoteServicingSubscriberTest.php
+git add -- src/MerchantQuoteAgentPlugin.php src/Bridge/SwagCommercialQuoteGateway.php src/Servicing/QuoteCommentProvenancePromoter.php src/Servicing/QuoteCommentWriteResultInspector.php src/Servicing/ServicingConstants.php tests/Integration/AddCommentTest.php tests/Integration/ServicingSubscriberTest.php tests/Unit/Servicing/QuoteServicingSubscriberTest.php
 git commit -m "fix: mark quote agent writes for reentrancy suppression"
 ```
 
@@ -350,7 +352,7 @@ $attempts->expects(self::once())->method('recordDelivery')->with($message->messa
 $attempts->expects(self::once())->method('completeDelivery')->with($message->messageId);
 ```
 
-For pipeline failure, assert `completeDelivery()` is never called and the lock is released. For exhaustion, return `5`, assert the pipeline is never called, and expect `QuoteServicingAttemptsExhaustedException` implementing `UnrecoverableExceptionInterface`.
+For pipeline failure, assert `completeDelivery()` is never called and the lock is released. For a generic snapshot-fetch failure, assert the same retention and propagation. For `QuoteNotFoundException`, assert the deleted quote is terminally handled by completing the row, returning without the pipeline, and releasing the lock. For exhaustion, return `5`, assert the pipeline is never called, and expect `QuoteServicingAttemptsExhaustedException` implementing `UnrecoverableExceptionInterface`.
 
 For lock contention, assert the handler throws `QuoteServicingBusyException` implementing `RecoverableExceptionInterface`, reports a 5,000 ms retry delay, never records or completes an attempt, and does not release the lock owned by the other worker. Retrying instead of acknowledging the message preserves a newer buyer update that the in-flight pass may not contain; recording only after lock acquisition keeps contention outside the durable pipeline-attempt budget.
 
@@ -373,7 +375,7 @@ private const LOCK_TTL_SECONDS = 300.0;
 private const MAX_PIPELINE_DELIVERIES = 4;
 ```
 
-Attempt the lock non-blocking. If acquisition fails, log the contention and throw `QuoteServicingBusyException` with a 5,000 ms retry delay before calling the attempt store. After acquiring the lock, call `recordDelivery()`. When the count is greater than four, log a warning and throw the exhausted exception before fetching the quote or calling the pipeline. On stale revision, inactive state, and successful pipeline completion, call `completeDelivery()` before returning. Do not complete the row when fetching or pipeline execution throws. Always release an acquired lock in `finally`.
+Attempt the lock non-blocking. If acquisition fails, log the contention and throw `QuoteServicingBusyException` with a 5,000 ms retry delay before calling the attempt store. After acquiring the lock, call `recordDelivery()`. When the count is greater than four, log a warning and throw the exhausted exception before fetching the quote or calling the pipeline. On `QuoteNotFoundException`, stale revision, inactive state, and successful pipeline completion, call `completeDelivery()` before returning. Do not complete the row when any other fetch failure or pipeline execution throws. Always release an acquired lock in `finally`.
 
 Keep exactly five constructor dependencies: `LockFactory`, `QuoteServicingPipelineInterface`, `LoggerInterface`, `?QuoteGatewayInterface`, and `ServicingAttemptStoreInterface`.
 

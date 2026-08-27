@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Bridge\Data;
 
 /**
- * `createdById` / `customerId` are how a reader tells an agent-authored comment
- * from a buyer's. Task 8 records what they actually contain for our own writes.
+ * Authorship fields identify buyer and staff comments when present. Agent
+ * comments are author-less in the live shop and use their exact DAL row id as
+ * the separate re-entrancy discriminator.
  */
 final readonly class QuoteComment
 {

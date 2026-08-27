@@ -98,11 +98,6 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
         // interface. One redundant read keeps the isolation the interface promises
         // without declaring doctrine/dbal.
         $this->reader->read($quoteId, QuoteVersion::Live, $context);
-        $this->writers->quote->write(
-            $quoteId,
-            new QuoteUpdate(customFields: [MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT => $comment]),
-            $context,
-        );
         $this->lifecycle->comments->comment($quoteId, $comment, $context);
     }
 

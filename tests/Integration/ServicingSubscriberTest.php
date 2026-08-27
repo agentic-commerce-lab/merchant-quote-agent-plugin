@@ -146,23 +146,48 @@ final class ServicingSubscriberTest extends IntegrationTestCase
         $subscriber->onQuoteStateEnter(self::stateTransitionEvent($quoteId, $context));
     }
 
-    public function testAgentCommentDiscriminatorSuppressesDispatch(): void
+    public function testAgentCommentIdSuppressesOnlyTheExactAuthorlessReplay(): void
     {
         $gateway = static::gateway();
         $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'in_review');
         $commentText = 'Agent stamped offer note ' . Uuid::randomHex();
+        $agentCommentId = Uuid::randomHex();
 
-        // Stamp quote customFields with the agent comment text
         $gateway->updateQuote($quoteId, new QuoteUpdate(customFields: [
-            MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT => $commentText,
+            MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_ID => $agentCommentId,
         ]));
 
+        $dispatched = [];
         $bus = $this->createMock(MessageBusInterface::class);
-        $bus->expects(self::never())->method('dispatch');
+        $bus
+            ->expects(self::once())
+            ->method('dispatch')
+            ->willReturnCallback(static function (ServiceQuoteMessage $message) use (&$dispatched): Envelope {
+                $dispatched[] = $message;
+
+                return new Envelope($message);
+            });
 
         $subscriber = new QuoteServicingSubscriber($bus, $gateway);
 
-        $writeEvent = new EntityWrittenEvent(
+        $replayEvent = new EntityWrittenEvent(
+            'quote_comment',
+            [
+                new EntityWriteResult(
+                    $agentCommentId,
+                    [
+                        'quoteId' => $quoteId,
+                        'comment' => $commentText,
+                        'customerId' => null,
+                        'employeeId' => null,
+                    ],
+                    'quote_comment',
+                    EntityWriteResult::OPERATION_INSERT,
+                ),
+            ],
+            Context::createDefaultContext(),
+        );
+        $laterSameTextEvent = new EntityWrittenEvent(
             'quote_comment',
             [
                 new EntityWriteResult(
@@ -180,7 +205,11 @@ final class ServicingSubscriberTest extends IntegrationTestCase
             Context::createDefaultContext(),
         );
 
-        $subscriber->onQuoteCommentWritten($writeEvent);
+        $subscriber->onQuoteCommentWritten($replayEvent);
+        $subscriber->onQuoteCommentWritten($laterSameTextEvent);
+
+        self::assertCount(1, $dispatched);
+        self::assertSame($quoteId, $dispatched[0]->quoteId);
     }
 
     public function testDuplicateEligibleCommentRowsDispatchOneMessageForTheQuote(): void

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Servicing;
 
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use MerchantQuoteAgentPlugin\Servicing\Attempt\ServicingAttemptStoreInterface;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Exception\QuoteServicingAttemptsExhaustedException;
@@ -36,7 +37,6 @@ final readonly class QuoteServicingHandler
      * @throws QuoteServicingUnavailableException when SwagCommercial cannot provide the quote gateway
      * @throws QuoteServicingBusyException when another worker currently services the quote
      * @throws QuoteServicingAttemptsExhaustedException when the message exceeds its delivery bound
-     * @throws \MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException when the quote no longer exists
      */
     public function __invoke(ServiceQuoteMessage $message): void
     {
@@ -73,7 +73,13 @@ final readonly class QuoteServicingHandler
                 );
             }
 
-            $snapshot = $this->gateway->fetchSnapshot($message->quoteId);
+            try {
+                $snapshot = $this->gateway->fetchSnapshot($message->quoteId);
+            } catch (QuoteNotFoundException) {
+                $this->attemptStore->completeDelivery($message->messageId);
+
+                return;
+            }
 
             if (!$snapshot->revision->matches($message->revision)) {
                 $this->logger->info('Quote revision mismatch: quote was modified since message was queued. Aborting stale pass.', [

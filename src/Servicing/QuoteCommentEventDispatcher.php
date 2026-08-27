@@ -6,7 +6,6 @@ namespace MerchantQuoteAgentPlugin\Servicing;
 
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
-use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -23,21 +22,17 @@ final class QuoteCommentEventDispatcher
         QuoteGatewayInterface $gateway,
         MessageBusInterface $bus,
     ): void {
-        if ($event->getContext()->hasState(MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING)) {
-            return;
-        }
-
         /** @var array<string, bool> $dispatchedQuotes */
         $dispatchedQuotes = [];
 
         foreach ($event->getWriteResults() as $result) {
-            $payload = $result->getPayload();
-            if (!\is_string($payload['quoteId'] ?? null)) {
+            if (!QuoteCommentWriteResultInspector::isLive($result)) {
                 continue;
             }
 
-            $quoteId = $payload['quoteId'];
-            if ($quoteId === '' || ($dispatchedQuotes[$quoteId] ?? false)) {
+            $payload = $result->getPayload();
+            $quoteId = QuoteCommentWriteResultInspector::quoteId($result);
+            if ($quoteId === null || ($dispatchedQuotes[$quoteId] ?? false)) {
                 continue;
             }
 
@@ -47,7 +42,11 @@ final class QuoteCommentEventDispatcher
                 continue;
             }
 
-            if (QuoteCommentFilter::shouldSkipComment($payload, $snapshot)) {
+            if (QuoteCommentFilter::shouldSkipComment(
+                $payload,
+                QuoteCommentWriteResultInspector::commentId($result),
+                $snapshot,
+            )) {
                 continue;
             }
 

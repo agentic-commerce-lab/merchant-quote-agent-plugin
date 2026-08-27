@@ -77,6 +77,12 @@ final readonly class QuoteServicingSubscriber implements EventSubscriberInterfac
             return;
         }
 
+        if ($event->getContext()->hasState(MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING)) {
+            QuoteCommentProvenancePromoter::promote($event, $this->gateway);
+
+            return;
+        }
+
         QuoteCommentEventDispatcher::dispatchEligible($event, $this->gateway, $this->bus);
     }
 }

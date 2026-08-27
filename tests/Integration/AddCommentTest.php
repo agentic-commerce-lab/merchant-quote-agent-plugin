@@ -27,7 +27,8 @@ final class AddCommentTest extends IntegrationTestCase
         $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
         $text = 'Agent provenance note ' . Uuid::randomHex();
         $eventContext = null;
-        $stampAtCommentEvent = null;
+        $commentId = null;
+        $persistedCommentId = null;
 
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
@@ -38,17 +39,20 @@ final class AddCommentTest extends IntegrationTestCase
 
         $listener = static function (EntityWrittenEvent $event) use (
             &$eventContext,
-            &$stampAtCommentEvent,
+            &$commentId,
+            &$persistedCommentId,
             $gateway,
             $quoteId,
             $subscriber,
         ): void {
             $eventContext = $event->getContext();
-            $stampAtCommentEvent =
+            $primaryKey = $event->getWriteResults()[0]->getPrimaryKey() ?? null;
+            $commentId = \is_string($primaryKey) ? $primaryKey : null;
+            $subscriber->onQuoteCommentWritten($event);
+            $persistedCommentId =
                 $gateway->fetchSnapshot(
                     $quoteId,
-                )->lifecycle->customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT] ?? null;
-            $subscriber->onQuoteCommentWritten($event);
+                )->lifecycle->customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_ID] ?? null;
         };
 
         $dispatcher->addListener('quote_comment.written', $listener);
@@ -61,12 +65,13 @@ final class AddCommentTest extends IntegrationTestCase
 
         self::assertInstanceOf(Context::class, $eventContext);
         self::assertTrue($eventContext->hasState(MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING));
-        self::assertSame($text, $stampAtCommentEvent, 'The persisted stamp must exist before the comment event.');
+        self::assertNotNull($commentId);
+        self::assertTrue(Uuid::isValid($commentId));
+        self::assertSame($commentId, $persistedCommentId);
         self::assertSame(
-            $text,
-            $gateway->fetchSnapshot(
-                $quoteId,
-            )->lifecycle->customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT] ?? null,
+            $commentId,
+            $gateway->fetchSnapshot($quoteId)->lifecycle->customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_ID]
+            ?? null,
         );
     }
 

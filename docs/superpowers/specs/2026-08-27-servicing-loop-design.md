@@ -86,11 +86,12 @@ The subscriber listens to state machine transitions and quote comments, translat
 5. `quote_comment.written` — A comment was inserted on a quote
 
 #### Event Filtering Rules
-- **Context state filter:** If the event's `Context` carries `MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING`, the write originated in the agent's own servicing loop; skip immediately without database queries.
+- **Version filter:** Ignore non-live quote-comment projection writes. Shopware promotes the same comment row through a snapshot version before emitting the live write, and only the live row is an actionable trigger.
+- **Context state promotion:** If a live event's `Context` carries `MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING`, the write originated in the agent's own servicing loop. Persist the valid string `EntityWriteResult` primary key under `quote_agent_last_comment_id` on that quote, then return without dispatching. The nested quote update cannot recurse because the subscriber does not listen to `quote.written`.
 - **State transition filter:** Ignore transitions into terminal or inactive states (`replied`, `accepted`, `declined`, `cancelled`, `expired`, `draft`).
 - **Comment discriminator filter:**
   - If `customerId` or `employeeId` is present: Valid buyer/merchant staff comment $\rightarrow$ dispatch.
-  - If author-less (`createdById`, `customerId`, and `employeeId` are null): Check quote `customFields['quote_agent_last_comment_text']`. If the written comment text matches the agent's recorded comment, skip. Otherwise $\rightarrow$ dispatch.
+  - If author-less (`createdById`, `customerId`, and `employeeId` are null): Check quote `customFields['quote_agent_last_comment_id']`. If the write result's string primary key exactly matches the recorded agent comment id, skip. Otherwise $\rightarrow$ dispatch, even when the text is identical to an earlier agent comment.
 
 #### Dispatch Payload
 The subscriber reads the live `QuoteSnapshot` to extract:
@@ -155,7 +156,7 @@ As verified in the Issue #3 spike:
    - Throw `QuoteServicingUnavailableException`, which implements Messenger's `UnrecoverableExceptionInterface`, to park the message in the failure transport rather than looping.
 2. **Acquire Lock:** Attempt non-blocking acquisition. If it fails, throw `QuoteServicingBusyException` with a 5,000 ms retry delay before touching the attempt ledger. Messenger retries the distinct message after the active pass releases the lock, preserving updates that arrived while servicing was in flight without burning a pipeline delivery attempt.
 3. **Record Delivery:** Increment the durable Shopware DAL attempt row keyed by `$message->messageId`. If the delivery count exceeds four (the initial delivery plus Shopware's three configured retries), throw an unrecoverable Messenger exception so the transport parks the poison message without invoking the pipeline again.
-4. **Fetch Live Snapshot:** `$snapshot = $gateway->fetchSnapshot($message->quoteId);`
+4. **Fetch Live Snapshot:** `$snapshot = $gateway->fetchSnapshot($message->quoteId);`. If this narrowly throws `QuoteNotFoundException`, the quote was deleted and is no longer actionable: complete the delivery row and return. Other fetch failures propagate and retain the row for bounded retry.
 5. **Assert Revision:**
    ```php
    if (!$snapshot->revision->matches($message->revision)) {
@@ -203,10 +204,10 @@ When `QuoteCommenter` runs via default context, `createdById`, `customerId`, and
 1. **Context Flag:**
    Define `MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING = 'merchant_quote_agent_servicing'`.
    Any write or comment issued by the agent gateway runs in a context containing this state.
-2. **Quote CustomField Stamp:**
-   Define `MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT = 'quote_agent_last_comment_text'`.
-   Before the gateway writes an agent comment, it updates the quote's custom fields with the exact comment text under this key, then writes the comment with the same agent-state context. The persisted stamp suppresses delayed/out-of-process event delivery; the context state suppresses synchronous delivery.
-   If `quote_comment.written` receives an author-less comment matching this text, it is ignored.
+2. **Exact Comment-Row Discriminator:**
+   Define `MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_ID = 'quote_agent_last_comment_id'`.
+   The gateway writes the comment with the agent-state context but does not guess or pre-stamp its id. On the synchronous live `quote_comment.written` event, the subscriber reads the valid, non-empty string primary key from `EntityWriteResult`, persists that exact id through `updateQuote()`, and never dispatches. Shopware also emits an earlier non-live projection event for the same row; the subscriber ignores that projection so it cannot race the live provenance promotion.
+   A later ordinary/replayed author-less event is ignored only when its primary-key id exactly matches the persisted id. Authored comments remain eligible, and a distinct author-less row with identical text dispatches normally.
 
 ---
 
@@ -228,13 +229,15 @@ When `QuoteCommenter` runs via default context, `createdById`, `customerId`, and
 - `QuoteServicingSubscriberTest`:
   - Dispatches message on `quote.requested` and `state_enter.quote.state.open`, `in_review`, `change_requested`.
   - Ignores `replied`, `accepted`, `declined`, `draft`.
-  - Skips when context has `CONTEXT_STATE_AGENT_SERVICING`.
-  - Skips author-less comments matching `quote_agent_last_comment_text`.
+  - Promotes a valid live agent-context comment id without dispatching and ignores non-live snapshot projections.
+  - Skips only an author-less replay whose primary key matches `quote_agent_last_comment_id`.
+  - Dispatches an authored comment or a distinct author-less row even when its text matches an agent comment.
   - Dispatches message for buyer/staff comments.
 - `QuoteServicingHandlerTest`:
   - Acquires lock non-blocking and releases in `finally`.
   - Throws a recoverable busy exception with a 5,000 ms delay if the lock is already held, without recording or completing a delivery attempt.
   - Aborts on revision mismatch.
+  - Completes a delivery when the quote was deleted, while retaining the row and propagating other fetch failures.
   - Calls `QuoteServicingPipelineInterface` on valid message.
   - Handles null gateway with warning log and unrecoverable exception.
   - Records delivery before invoking the pipeline, clears it after handled completion, and parks a fifth crash delivery without invoking the pipeline.

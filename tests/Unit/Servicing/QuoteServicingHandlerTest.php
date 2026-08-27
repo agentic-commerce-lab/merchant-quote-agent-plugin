@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use MerchantQuoteAgentPlugin\Servicing\Attempt\ServicingAttemptStoreInterface;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Exception\QuoteServicingAttemptsExhaustedException;
@@ -242,6 +243,66 @@ final class QuoteServicingHandlerTest extends TestCase
             attemptStore: $this->attemptStore,
         );
         $handler($message);
+    }
+
+    public function testCompletesDeliveryWhenQuoteWasDeletedBeforeSnapshotFetch(): void
+    {
+        $revision = new QuoteRevision(self::REVISION_ID, new \DateTimeImmutable('2026-08-27 12:00:00.123456'));
+        $message = new ServiceQuoteMessage(
+            messageId: self::MESSAGE_ID,
+            quoteId: self::QUOTE_ID,
+            salesChannelId: 'sales-channel-456',
+            revision: $revision,
+        );
+        $calls = [];
+
+        $this->lockFactory->expects(self::once())->method('createLock')->willReturn($this->lock);
+        $this->lock->expects(self::once())->method('acquire')->with(false)->willReturn(true);
+        $this->lock->expects(self::once())->method('release');
+        $this->attemptStore
+            ->expects(self::once())
+            ->method('recordDelivery')
+            ->with(self::MESSAGE_ID)
+            ->willReturnCallback(static function (string $messageId) use (&$calls): int {
+                $calls[] = 'record:' . $messageId;
+
+                return 1;
+            });
+        $this->gateway
+            ->expects(self::once())
+            ->method('fetchSnapshot')
+            ->with(self::QUOTE_ID)
+            ->willReturnCallback(static function (string $quoteId) use (&$calls): never {
+                $calls[] = 'fetch:' . $quoteId;
+
+                throw QuoteNotFoundException::forId($quoteId);
+            });
+        $this->pipeline->expects(self::never())->method('service');
+        $this->attemptStore
+            ->expects(self::once())
+            ->method('completeDelivery')
+            ->with(self::MESSAGE_ID)
+            ->willReturnCallback(static function (string $messageId) use (&$calls): void {
+                $calls[] = 'complete:' . $messageId;
+            });
+
+        $handler = new QuoteServicingHandler(
+            lockFactory: $this->lockFactory,
+            pipeline: $this->pipeline,
+            logger: $this->logger,
+            gateway: $this->gateway,
+            attemptStore: $this->attemptStore,
+        );
+        $handler($message);
+
+        self::assertSame(
+            [
+                'record:' . self::MESSAGE_ID,
+                'fetch:' . self::QUOTE_ID,
+                'complete:' . self::MESSAGE_ID,
+            ],
+            $calls,
+        );
     }
 
     public function testThrowsUnrecoverableUnavailableExceptionBeforeLockingWhenGatewayIsNull(): void

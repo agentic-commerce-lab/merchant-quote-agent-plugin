@@ -24,5 +24,5 @@ use Shopware\Core\Framework\Plugin;
 class MerchantQuoteAgentPlugin extends Plugin
 {
     public const CONTEXT_STATE_AGENT_SERVICING = 'merchant_quote_agent_servicing';
-    public const LAST_AGENT_COMMENT_TEXT = 'quote_agent_last_comment_text';
+    public const LAST_AGENT_COMMENT_ID = 'quote_agent_last_comment_id';
 }
