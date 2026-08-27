@@ -21,4 +21,8 @@ use Shopware\Core\Framework\Plugin;
  * defaults and initialises them outside a constructor (setContainer, getName).
  * Shopware's Plugin sets $path via its own constructor. Nothing for us to add.
  */
-class MerchantQuoteAgentPlugin extends Plugin {}
+class MerchantQuoteAgentPlugin extends Plugin
+{
+    public const CONTEXT_STATE_AGENT_SERVICING = 'merchant_quote_agent_servicing';
+    public const LAST_AGENT_COMMENT_TEXT = 'quote_agent_last_comment_text';
+}

@@ -6,8 +6,13 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
+use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingSubscriber;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\Uuid\Uuid;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * `addComment` goes through QuoteCommenter (@internal in SwagCommercial), which
@@ -16,6 +21,55 @@ use Shopware\Core\Framework\Uuid\Uuid;
  */
 final class AddCommentTest extends IntegrationTestCase
 {
+    public function testAgentCommentCarriesLiveAndPersistedProvenanceWithoutRedispatching(): void
+    {
+        $gateway = static::gateway();
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
+        $text = 'Agent provenance note ' . Uuid::randomHex();
+        $eventContext = null;
+        $stampAtCommentEvent = null;
+
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+        $subscriber = new QuoteServicingSubscriber($bus, $gateway);
+
+        $dispatcher = static::getContainer()->get(EventDispatcherInterface::class);
+        self::assertInstanceOf(EventDispatcherInterface::class, $dispatcher);
+
+        $listener = static function (EntityWrittenEvent $event) use (
+            &$eventContext,
+            &$stampAtCommentEvent,
+            $gateway,
+            $quoteId,
+            $subscriber,
+        ): void {
+            $eventContext = $event->getContext();
+            $stampAtCommentEvent =
+                $gateway->fetchSnapshot(
+                    $quoteId,
+                )->lifecycle->customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT] ?? null;
+            $subscriber->onQuoteCommentWritten($event);
+        };
+
+        $dispatcher->addListener('quote_comment.written', $listener);
+
+        try {
+            $gateway->addComment($quoteId, $text);
+        } finally {
+            $dispatcher->removeListener('quote_comment.written', $listener);
+        }
+
+        self::assertInstanceOf(Context::class, $eventContext);
+        self::assertTrue($eventContext->hasState(MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING));
+        self::assertSame($text, $stampAtCommentEvent, 'The persisted stamp must exist before the comment event.');
+        self::assertSame(
+            $text,
+            $gateway->fetchSnapshot(
+                $quoteId,
+            )->lifecycle->customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT] ?? null,
+        );
+    }
+
     public function testCommentIsAppendedAndReadableBack(): void
     {
         $gateway = static::gateway();
