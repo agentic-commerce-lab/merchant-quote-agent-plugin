@@ -100,31 +100,17 @@ step_seed() {
 
 # The seed points at the old shop (localhost:8090). Admin and storefront only
 # work from the host when APP_URL and the sales-channel domains match the URL
-# you actually open, so both follow SHOP_URL.
-# Extracted so Finding 1's coverage can call it in a subshell for arbitrary
-# SHOP_URL values without touching the real shop.
-url_port() {
-  local url="$1" port scheme
-  port="$(printf '%s' "$url" | sed -nE 's#^https?://[^/:]+:([0-9]+)(/.*)?$#\1#p')"
-  if [ -n "$port" ]; then printf '%s' "$port"; return; fi
-  scheme="$(printf '%s' "$url" | sed -nE 's#^(https?)://.*#\1#p')"
-  case "$scheme" in
-    http) printf '80' ;;
-    https) printf '443' ;;
-  esac
-}
-
+# you actually open, so APP_URL and the localhost row follow SHOP_URL.
 step_urls() {
-  local port
-  port="$(url_port "$SHOP_URL")"
+  local port="${SHOP_PORT:-8095}"
   log "pointing the shop at $SHOP_URL"
   in_shop sed -i "s#^APP_URL=.*#APP_URL=${SHOP_URL}#" .env
   sql "UPDATE sales_channel_domain SET url='${SHOP_URL}' WHERE url LIKE 'http://localhost:%' OR url='${SHOP_URL}'"
-  if [ -n "$port" ]; then
-    sql "UPDATE sales_channel_domain SET url='http://host.docker.internal:${port}' WHERE url LIKE 'http://host.docker.internal:%'"
-  else
-    log "SHOP_URL has no derivable port ($SHOP_URL) — leaving the host.docker.internal domain untouched"
-  fi
+  # This row lets the shop reach ITSELF from inside the container, through the
+  # host's published port — that's SHOP_PORT, not anything derivable from the
+  # external SHOP_URL (which may be https, path-suffixed, or a different host
+  # entirely once this is reached over a VM or tunnel).
+  sql "UPDATE sales_channel_domain SET url='http://host.docker.internal:${port}' WHERE url LIKE 'http://host.docker.internal:%'"
   console cache:clear -n >/dev/null
 }
 
