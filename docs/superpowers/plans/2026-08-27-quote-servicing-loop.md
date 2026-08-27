@@ -1630,7 +1630,11 @@ final class ServiceQuoteHandlerTest extends TestCase
     public function testAHeldLockIsRetriedRatherThanDropped(): void
     {
         $locks = new QuoteServicingLock(new LockFactory(new InMemoryStore()), 'redis://x');
-        $locks->for('q1')->acquire();
+        // Keep the Lock in a variable. Symfony's Lock::__destruct() releases on
+        // GC, so `$locks->for('q1')->acquire();` as a discarded temporary does
+        // NOT hold the lock and the test passes for the wrong reason.
+        $held = $locks->for('q1');
+        self::assertTrue($held->acquire());
 
         $gateway = new FakeQuoteGateway([self::snapshot()]);
         $pipeline = self::countingPipeline();
