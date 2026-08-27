@@ -400,6 +400,41 @@ Specific things the suite must establish, beyond one test per method:
    discriminator (a line-item custom field, or the `customFields` surface
    `updateQuote` already exposes) and issue #4 needs to know that early.
 
+### Spike results
+
+Two of the four spikes above were settled by Task 8 against the live shop
+(36 quotes, `taxStatus = gross` throughout). Findings 1 and 2 were settled in
+Task 5.
+
+**3. Expiration ordering — the rule still holds, for a different reason than
+assumed.** It is not an Admin-API artefact, and it is not the `sent` transition:
+a quote transitioned to `replied` with an expiration three weeks in the past
+stays `replied`, and the transition never touches the expiration. What expires
+it is `UpdateQuoteExpireTaskHandler::run()`, out of process, which transitions
+every quote matching `state = replied AND expiration_date <= now`. So `replied`
+plus a stale date IS an auto-expire trigger, and setting the expiration before
+`sent` is what keeps the quote out of that set. Two details worth carrying:
+`QuoteExpirationDateTimeSubscriber` reschedules that task to the earliest pending
+replied expiration on every quote write carrying an `expirationDate`, so the
+window is not bounded by the task's 86400s interval; and a NULL expiration is
+safe (`NULL <= now` is not true), so only a stale date is dangerous, never an
+absent one. `TransitionTest` covers both halves.
+
+**4. Comment authorship — all three fields are null, and that is worse than
+uninformative.** `Context::createDefaultContext()` carries a `SystemSource`, so
+`QuoteCommenter` has neither an `AdminApiSource::getUserId()` nor a
+`SalesChannelApiSource` to derive from: `createdById`, `customerId` and
+`employeeId` all come back null, and `createdAt` is the only field an agent
+comment reliably carries. The collision is measured, not hypothetical — 42 of
+this shop's 118 existing quote comments are already author-less on all three
+fields, while 76 carry an author (4 `createdById`, 72 `customerId`, 0
+`employeeId`). So issue #4's re-entrancy check cannot use the author field: an
+agent comment is indistinguishable from those 42. It needs the `customFields`
+discriminator this spec already names as the fallback. `AddCommentTest` asserts
+the null authorship rather than merely recording it, so it fails if
+SwagCommercial ever starts stamping an author — which is the signal that would
+reopen the cheaper design.
+
 ## Non-goals
 
 - Order-fulfillment operations (`attachPoReference`, `acknowledgeOrder` in the TS

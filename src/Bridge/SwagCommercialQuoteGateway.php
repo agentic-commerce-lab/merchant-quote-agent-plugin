@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteVersion;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
 
 /**
  * The only class in this plugin that reaches SwagCommercial. Its @internal
@@ -21,6 +22,7 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
     public function __construct(
         private QuoteSnapshotReader $reader,
         private QuoteWriters $writers,
+        private QuoteLifecycleWriters $lifecycle,
     ) {}
 
     #[\Override]
@@ -73,15 +75,40 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
         $this->writers->quote->write($quoteId, $update, $context);
     }
 
+    /**
+     * A quote id off a message may have been deleted since it was queued, and
+     * QuoteCommenter does not check: it inserts the row and lets MySQL reject
+     * it on `fk.quote_comment.quote_id`, so the caller sees Doctrine's
+     * ForeignKeyConstraintViolationException. Deliberately NOT translated to
+     * QuoteNotFoundException — the spec scopes that exception to
+     * `fetchSnapshot`, and translating would either put a doctrine/dbal import
+     * into production code (an undeclared dependency) or cost a redundant read
+     * on every comment. AddCommentTest pins the behaviour so the choice is
+     * visible rather than accidental.
+     */
     #[\Override]
     public function addComment(string $quoteId, string $comment): void
     {
-        throw new \LogicException('Not implemented until plan Task 8.');
+        $this->lifecycle->comments->comment($quoteId, $comment, Context::createDefaultContext());
     }
 
+    /**
+     * No revision precondition, unlike the write methods above: a transition is
+     * a state-machine action rather than a field write, and SwagCommercial's own
+     * admin controller does not gate it either. An action the current state does
+     * not offer is rejected by the state machine, which is the check that
+     * matters here.
+     *
+     * An id that resolves to no quote surfaces as Shopware's own
+     * StateMachineException ("Unable to read entity quote with id …"), not as
+     * QuoteNotFoundException: it is already a typed Shopware error saying
+     * exactly that, and narrowing it would mean matching on its error code.
+     *
+     * @throws IllegalTransitionException
+     */
     #[\Override]
     public function transition(string $quoteId, QuoteTransition $action): void
     {
-        throw new \LogicException('Not implemented until plan Task 8.');
+        $this->lifecycle->state->transition($quoteId, $action, Context::createDefaultContext());
     }
 }

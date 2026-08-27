@@ -80,13 +80,42 @@ final class QuoteFixture
         );
     }
 
-    private static function editableQuoteCriteria(ContainerInterface $container, Context $context): IdSearchResult
+    /**
+     * An editable quote that is currently in one specific state, so a
+     * state-machine test can pick a quote whose state actually offers the
+     * action under test. The alternative — take any quote and skip the test
+     * when the transition is rejected — is a test that silently disables
+     * itself, which this suite does not do.
+     *
+     * @throws \RuntimeException when the shop has no such quote
+     */
+    public static function quoteIdInState(ContainerInterface $container, Context $context, string $state): string
     {
+        $id = self::editableQuoteCriteria($container, $context, [$state])->firstId();
+
+        if ($id === null) {
+            throw new \RuntimeException(sprintf(
+                'No quote in state "%s" with at least one line item exists in the shop. Move a quote '
+                . 'into that state through the admin first — see the plan Task 4 Step 1 for why this '
+                . 'is not generated.',
+                $state,
+            ));
+        }
+
+        return $id;
+    }
+
+    /** @param list<string> $states */
+    private static function editableQuoteCriteria(
+        ContainerInterface $container,
+        Context $context,
+        array $states = self::EDITABLE_STATES,
+    ): IdSearchResult {
         /** @var EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $repository */
         $repository = $container->get('quote.repository');
 
         $criteria = new Criteria();
-        $criteria->addFilter(new EqualsAnyFilter('stateMachineState.technicalName', self::EDITABLE_STATES));
+        $criteria->addFilter(new EqualsAnyFilter('stateMachineState.technicalName', $states));
         $criteria->addFilter(new NotFilter(NotFilter::CONNECTION_AND, [
             new EqualsFilter('lineItems.id', null),
         ]));

@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLineItemWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteRecalculator;
 use MerchantQuoteAgentPlugin\Bridge\QuoteSnapshotReader;
+use MerchantQuoteAgentPlugin\Bridge\QuoteStateTransitioner;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
@@ -16,6 +19,7 @@ use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\Test\TestCaseBase\DatabaseTransactionBehaviour;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelTestBehaviour;
+use Shopware\Core\System\StateMachine\StateMachineRegistry;
 
 /**
  * Base for every bridge integration test. Each test runs in a transaction that
@@ -75,6 +79,12 @@ abstract class IntegrationTestCase extends TestCase
         $productAdder = new SwagCommercialProductAdder(static::commercialService(
             'Shopware\Commercial\B2B\QuoteManagement\Domain\Admin\QuoteManipulation',
         ));
+        $commentWriter = new SwagCommercialCommentWriter(static::commercialService(
+            'Shopware\Commercial\B2B\QuoteManagement\Domain\Comment\QuoteCommenter',
+        ));
+
+        $stateMachineRegistry = static::getContainer()->get(StateMachineRegistry::class);
+        self::assertInstanceOf(StateMachineRegistry::class, $stateMachineRegistry);
 
         return new SwagCommercialQuoteGateway(
             new QuoteSnapshotReader($quoteRepository, new QuoteVersionResolver()),
@@ -84,6 +94,7 @@ abstract class IntegrationTestCase extends TestCase
                 $recalculator,
                 $productAdder,
             ),
+            new QuoteLifecycleWriters($commentWriter, new QuoteStateTransitioner($stateMachineRegistry)),
         );
     }
 }
