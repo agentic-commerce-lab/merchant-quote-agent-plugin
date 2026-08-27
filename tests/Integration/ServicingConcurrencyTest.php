@@ -40,6 +40,7 @@ final class ServicingConcurrencyTest extends IntegrationTestCase
             public bool $busyDeliveryCaught = false;
             public ?int $retryDelay = null;
             public ?\Throwable $busyException = null;
+            public string $busyMessageId = '';
 
             public function __construct(
                 private readonly LockFactory $lockFactory,
@@ -54,8 +55,9 @@ final class ServicingConcurrencyTest extends IntegrationTestCase
             {
                 $this->offerCount++;
 
+                $this->busyMessageId = Uuid::randomHex();
                 $concurrentMessage = new ServiceQuoteMessage(
-                    Uuid::randomHex(),
+                    $this->busyMessageId,
                     $this->quoteId,
                     $this->snapshot->identity->salesChannelId,
                     $this->snapshot->revision,
@@ -92,6 +94,8 @@ final class ServicingConcurrencyTest extends IntegrationTestCase
         self::assertInstanceOf(RecoverableExceptionInterface::class, $pipeline->busyException);
         self::assertSame(5000, $pipeline->retryDelay);
         self::assertSame(1, $pipeline->offerCount, 'The in-flight duplicate produced a second offer.');
+        self::assertNull(self::persistedAttemptCount($pipeline->busyMessageId));
+        self::assertNull(self::persistedAttemptCount($message->messageId));
     }
 
     public function testStaleRevisionMessageAbortsWithoutMutatingQuote(): void
@@ -115,17 +119,17 @@ final class ServicingConcurrencyTest extends IntegrationTestCase
         };
         $handler = self::handler(self::lockFactory(), $pipeline, $gateway, self::attemptStore());
 
-        $handler(
-            new ServiceQuoteMessage(
-                Uuid::randomHex(),
-                $quoteId,
-                $staleSnapshot->identity->salesChannelId,
-                $staleSnapshot->revision,
-            ),
+        $staleMessage = new ServiceQuoteMessage(
+            Uuid::randomHex(),
+            $quoteId,
+            $staleSnapshot->identity->salesChannelId,
+            $staleSnapshot->revision,
         );
+        $handler($staleMessage);
 
         self::assertFalse($pipeline->executed, 'Pipeline executed despite the stale quote revision.');
         self::assertTrue($freshSnapshot->revision->matches($gateway->fetchSnapshot($quoteId)->revision));
+        self::assertNull(self::persistedAttemptCount($staleMessage->messageId));
     }
 
     public function testReplayCommentMessageDoesNotDuplicateACompletedOffer(): void
@@ -233,20 +237,42 @@ final class ServicingConcurrencyTest extends IntegrationTestCase
         self::assertNull(self::persistedAttemptCount($message->messageId));
     }
 
-    public function testLockReleaseAllowsSubsequentRuns(): void
+    public function testHandledPassReleasesTheLockForASubsequentDelivery(): void
     {
+        $gateway = static::gateway();
+        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'open');
+        $snapshot = $gateway->fetchSnapshot($quoteId);
         $lockFactory = self::lockFactory();
-        $quoteId = 'lock-release-test-' . bin2hex(random_bytes(4));
+        $attemptStore = self::attemptStore();
+        $pipeline = new class implements QuoteServicingPipelineInterface {
+            public int $executionCount = 0;
 
-        $firstLock = $lockFactory->createLock('quote_servicing_' . $quoteId, 300.0);
-        self::assertTrue($firstLock->acquire(false), 'Initial lock could not be acquired.');
+            #[\Override]
+            public function service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void
+            {
+                $this->executionCount++;
+            }
+        };
+        $handler = self::handler($lockFactory, $pipeline, $gateway, $attemptStore);
+        $firstMessage = new ServiceQuoteMessage(
+            Uuid::randomHex(),
+            $quoteId,
+            $snapshot->identity->salesChannelId,
+            $snapshot->revision,
+        );
+        $secondMessage = new ServiceQuoteMessage(
+            Uuid::randomHex(),
+            $quoteId,
+            $snapshot->identity->salesChannelId,
+            $snapshot->revision,
+        );
 
-        $secondLock = $lockFactory->createLock('quote_servicing_' . $quoteId, 300.0);
-        self::assertFalse($secondLock->acquire(false), 'Lock was acquired while the first lock was still held.');
+        $handler($firstMessage);
+        $handler($secondMessage);
 
-        $firstLock->release();
-        self::assertTrue($secondLock->acquire(false), 'Lock could not be acquired after the first lock was released.');
-        $secondLock->release();
+        self::assertSame(2, $pipeline->executionCount, 'The second handled delivery could not acquire the quote lock.');
+        self::assertNull(self::persistedAttemptCount($firstMessage->messageId));
+        self::assertNull(self::persistedAttemptCount($secondMessage->messageId));
     }
 
     private static function handler(

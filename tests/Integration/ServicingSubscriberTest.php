@@ -14,6 +14,7 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\Uuid\Uuid;
+use Shopware\Core\System\StateMachine\Transition;
 use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Messenger\Envelope;
@@ -117,25 +118,7 @@ final class ServicingSubscriberTest extends IntegrationTestCase
         $afterSnapshot = $gateway->fetchSnapshot($quoteId);
         self::assertSame('in_review', $afterSnapshot->lifecycle->stateTechnicalName);
 
-        // State event object with getQuoteId() and getContext()
-        $event = new class($quoteId, Context::createDefaultContext()) {
-            public function __construct(
-                private string $quoteId,
-                private Context $context,
-            ) {}
-
-            public function getQuoteId(): string
-            {
-                return $this->quoteId;
-            }
-
-            public function getContext(): Context
-            {
-                return $this->context;
-            }
-        };
-
-        $subscriber->onQuoteStateEnter($event);
+        $subscriber->onQuoteStateEnter(self::stateTransitionEvent($quoteId, Context::createDefaultContext()));
 
         self::assertCount(1, $dispatched);
         /** @var ServiceQuoteMessage $msg */
@@ -160,24 +143,7 @@ final class ServicingSubscriberTest extends IntegrationTestCase
         $context = Context::createDefaultContext();
         $context->addState(MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING);
 
-        $event = new class($quoteId, $context) {
-            public function __construct(
-                private string $quoteId,
-                private Context $context,
-            ) {}
-
-            public function getQuoteId(): string
-            {
-                return $this->quoteId;
-            }
-
-            public function getContext(): Context
-            {
-                return $this->context;
-            }
-        };
-
-        $subscriber->onQuoteStateEnter($event);
+        $subscriber->onQuoteStateEnter(self::stateTransitionEvent($quoteId, $context));
     }
 
     public function testAgentCommentDiscriminatorSuppressesDispatch(): void
@@ -266,5 +232,25 @@ final class ServicingSubscriberTest extends IntegrationTestCase
             'quote_comment',
             EntityWriteResult::OPERATION_INSERT,
         );
+    }
+
+    private static function stateTransitionEvent(string $quoteId, Context $context): object
+    {
+        return new class(new Transition('quote', $quoteId, 'process', 'state-id'), $context) {
+            public function __construct(
+                private readonly Transition $transition,
+                private readonly Context $context,
+            ) {}
+
+            public function getTransition(): Transition
+            {
+                return $this->transition;
+            }
+
+            public function getContext(): Context
+            {
+                return $this->context;
+            }
+        };
     }
 }
