@@ -98,18 +98,14 @@ final class QuoteServicingSubscriberTest extends TestCase
         return new EntityWrittenEvent('quote_comment', $writeResults, $context);
     }
 
-    public function testSubscribesToExpectedEvents(): void
+    public function testOnQuoteStateEnterDispatchesServiceMessage(): void
     {
         $events = QuoteServicingSubscriber::getSubscribedEvents();
-
         self::assertArrayHasKey('state_enter.quote.state.open', $events);
         self::assertArrayHasKey('state_enter.quote.state.in_review', $events);
         self::assertArrayHasKey('state_enter.quote.state.change_requested', $events);
         self::assertArrayHasKey('quote_comment.written', $events);
-    }
 
-    public function testOnQuoteStateEnterDispatchesServiceMessage(): void
-    {
         $revision = new QuoteRevision(
             '018b449b2ba170a4a589cf8cb59a35e4',
             new \DateTimeImmutable('2026-08-27 12:00:00.123456'),
@@ -228,6 +224,36 @@ final class QuoteServicingSubscriberTest extends TestCase
         $subscriber->onQuoteCommentWritten($event);
 
         self::assertSame(['quote-buyer', 'quote-staff', 'quote-authorless'], $dispatchedQuoteIds);
+    }
+
+    public function testOnQuoteCommentWrittenDispatchesWhenCreatedByAuthorMatchesAgentStamp(): void
+    {
+        $revision = new QuoteRevision(
+            '018b449b2ba170a4a589cf8cb59a35e4',
+            new \DateTimeImmutable('2026-08-27 12:00:00.123456'),
+        );
+        $snapshot = $this->createSnapshot('quote-staff', 'in_review', $revision, customFields: [
+            MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT => 'Shared comment text.',
+        ]);
+
+        $this->gateway->expects(self::once())->method('fetchSnapshot')->with('quote-staff')->willReturn($snapshot);
+        $this->bus
+            ->expects(self::once())
+            ->method('dispatch')
+            ->willReturn(new Envelope(new \stdClass()));
+
+        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway, $this->logger);
+        $event = $this->createCommentWrittenEvent([
+            [
+                'quoteId' => 'quote-staff',
+                'createdById' => 'admin-user-123',
+                'customerId' => null,
+                'employeeId' => null,
+                'comment' => 'Shared comment text.',
+            ],
+        ], Context::createDefaultContext());
+
+        $subscriber->onQuoteCommentWritten($event);
     }
 
     public function testOnQuoteCommentWrittenSkipsLiveAgentContextAndMatchingPersistedStamp(): void

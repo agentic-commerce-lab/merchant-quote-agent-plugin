@@ -17,7 +17,8 @@ final class QuoteCommentFilter
     public static function shouldSkipComment(array $payload, QuoteSnapshot $snapshot): bool
     {
         if (
-            \array_key_exists('customerId', $payload) && $payload['customerId'] !== null
+            \array_key_exists('createdById', $payload) && $payload['createdById'] !== null
+            || \array_key_exists('customerId', $payload) && $payload['customerId'] !== null
             || \array_key_exists('employeeId', $payload) && $payload['employeeId'] !== null
         ) {
             return false;
