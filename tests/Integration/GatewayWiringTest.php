@@ -6,35 +6,42 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
+use MerchantQuoteAgentPlugin\Servicing\Attempt\ServicingAttemptDefinition;
+use MerchantQuoteAgentPlugin\Servicing\Attempt\ServicingAttemptStoreInterface;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingHandler;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingSubscriber;
+use Shopware\Core\Framework\Context;
 
 /**
- * Covers `src/Resources/config/services.php` as far as is reachable without
- * installing the plugin.
- *
- * That caveat shapes the whole class. The plugin cannot be installed into this
- * shop — `composer.json` declares `php ^8.3` against a default PHP of 8.2,
- * requires `ucp-php-sdk/core >=0.0.5` where 0.0.2 is what exists, and
- * `cuyz/valinor` is absent from the shop's vendor tree — so Shopware never
- * loads our `services.php` and `getContainer()->get(QuoteGatewayInterface::class)`
- * cannot resolve. What is left is split by who can check it:
- *
- * - **The analyzer** covers the file's structure. `services.php` lives under
- *   `src/`, so `mago analyze` parses it, resolves every `::class` and every
- *   `use`, and would reject a misspelled service class or a missing
- *   `service()` import. No test needs to restate that.
- * - **This test** covers the one thing no analyzer can see: that the four
- *   SwagCommercial ids the file injects are ids a shop with SwagCommercial
- *   actually has. They are string literals by necessity (ADR 0001), so a typo
- *   or an upstream rename is invisible until runtime. It reads them from the
- *   same constants `services.php` references, so there is one copy of each id
- *   in the codebase and this follows it.
- * - **Nothing yet** covers Shopware compiling the file in a real container:
- *   the autowire/autoconfigure defaults resolving, and
- *   `QuoteGatewayInterface` surviving compilation as a factory-produced
- *   service. That needs an install, and is reported as such.
+ * Exercises the installed plugin's compiled service graph against a licensed
+ * shop, including the raw Commercial ids that static analysis cannot verify.
  */
 final class GatewayWiringTest extends IntegrationTestCase
 {
+    public function testLiveSnapshotCarriesSalesChannelIdentity(): void
+    {
+        $context = Context::createDefaultContext();
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), $context);
+
+        $snapshot = static::gateway()->fetchSnapshot($quoteId);
+
+        self::assertNotSame('', $snapshot->identity->salesChannelId);
+    }
+
+    public function testInstalledContainerResolvesTheServicingGraph(): void
+    {
+        $services = [
+            ServicingAttemptDefinition::class,
+            ServicingAttemptStoreInterface::class,
+            QuoteServicingHandler::class,
+            QuoteServicingSubscriber::class,
+        ];
+
+        foreach ($services as $id) {
+            self::assertInstanceOf($id, static::getContainer()->get($id));
+        }
+    }
+
     /**
      * The ids `services.php` injects, resolved against this shop. A failure
      * here means SwagCommercial moved a service, and the fix is the constant

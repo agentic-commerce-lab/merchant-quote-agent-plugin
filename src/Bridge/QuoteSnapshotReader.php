@@ -40,7 +40,10 @@ final readonly class QuoteSnapshotReader
         $this->discountMapper = new QuoteDiscountMapper();
     }
 
-    /** @throws QuoteNotFoundException */
+    /**
+     * @throws QuoteNotFoundException
+     * @throws \UnexpectedValueException when the quote has no valid sales-channel identity
+     */
     public function read(string $quoteId, QuoteVersion $version, Context $context): QuoteSnapshot
     {
         $versionedContext = $this->versionResolver->contextFor($context, $version);
@@ -81,7 +84,18 @@ final readonly class QuoteSnapshotReader
             quoteId: $quoteId,
             quoteNumber: (string) $quote->get('quoteNumber'),
             currencyIso: $iso,
+            salesChannelId: $this->readSalesChannelId($quote, $quoteId),
         );
+    }
+
+    private function readSalesChannelId(Entity $quote, string $quoteId): string
+    {
+        $salesChannelId = $quote->get('salesChannelId');
+        if (!\is_string($salesChannelId) || $salesChannelId === '') {
+            throw new \UnexpectedValueException(sprintf('Quote "%s" has no valid sales-channel identity.', $quoteId));
+        }
+
+        return $salesChannelId;
     }
 
     private function readRevision(Entity $quote, Context $context): QuoteRevision

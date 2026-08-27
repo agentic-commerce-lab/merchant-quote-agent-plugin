@@ -10,5 +10,6 @@ final readonly class QuoteIdentity
         public string $quoteId,
         public string $quoteNumber,
         public string $currencyIso,
+        public string $salesChannelId,
     ) {}
 }
