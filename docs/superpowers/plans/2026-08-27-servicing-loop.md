@@ -336,6 +336,7 @@ git commit -m "fix: mark quote agent writes for reentrancy suppression"
 **Files:**
 - Create/adopt: `src/Servicing/Exception/QuoteServicingException.php`
 - Create/adopt: `src/Servicing/Exception/QuoteServicingUnavailableException.php`
+- Create: `src/Servicing/Exception/QuoteServicingBusyException.php`
 - Create: `src/Servicing/Exception/QuoteServicingAttemptsExhaustedException.php`
 - Create/adopt: `src/Servicing/QuoteServicingHandler.php`
 - Create/adopt: `tests/Unit/Servicing/QuoteServicingHandlerTest.php`
@@ -350,6 +351,8 @@ $attempts->expects(self::once())->method('completeDelivery')->with($message->mes
 ```
 
 For pipeline failure, assert `completeDelivery()` is never called and the lock is released. For exhaustion, return `5`, assert the pipeline is never called, and expect `QuoteServicingAttemptsExhaustedException` implementing `UnrecoverableExceptionInterface`.
+
+For lock contention, assert the handler throws `QuoteServicingBusyException` implementing `RecoverableExceptionInterface`, reports a 5,000 ms retry delay, never records or completes an attempt, and does not release the lock owned by the other worker. Retrying instead of acknowledging the message preserves a newer buyer update that the in-flight pass may not contain; recording only after lock acquisition keeps contention outside the durable pipeline-attempt budget.
 
 - [ ] **Step 2: Run the handler suite and verify RED**
 
@@ -370,7 +373,7 @@ private const LOCK_TTL_SECONDS = 300.0;
 private const MAX_PIPELINE_DELIVERIES = 4;
 ```
 
-After acquiring the lock, call `recordDelivery()`. When the count is greater than four, log a warning and throw the exhausted exception before fetching the quote or calling the pipeline. On stale revision, inactive state, and successful pipeline completion, call `completeDelivery()` before returning. Do not complete the row when fetching or pipeline execution throws. Always release the lock in `finally`.
+Attempt the lock non-blocking. If acquisition fails, log the contention and throw `QuoteServicingBusyException` with a 5,000 ms retry delay before calling the attempt store. After acquiring the lock, call `recordDelivery()`. When the count is greater than four, log a warning and throw the exhausted exception before fetching the quote or calling the pipeline. On stale revision, inactive state, and successful pipeline completion, call `completeDelivery()` before returning. Do not complete the row when fetching or pipeline execution throws. Always release an acquired lock in `finally`.
 
 Keep exactly five constructor dependencies: `LockFactory`, `QuoteServicingPipelineInterface`, `LoggerInterface`, `?QuoteGatewayInterface`, and `ServicingAttemptStoreInterface`.
 
@@ -389,7 +392,7 @@ Expected: handler tests pass; the previous subscriber errors may remain until Ta
 - [ ] **Step 6: Commit the handler slice**
 
 ```bash
-git add -- src/Servicing/Exception/QuoteServicingException.php src/Servicing/Exception/QuoteServicingUnavailableException.php src/Servicing/Exception/QuoteServicingAttemptsExhaustedException.php src/Servicing/QuoteServicingHandler.php tests/Unit/Servicing/QuoteServicingHandlerTest.php
+git add -- src/Servicing/Exception/QuoteServicingException.php src/Servicing/Exception/QuoteServicingUnavailableException.php src/Servicing/Exception/QuoteServicingBusyException.php src/Servicing/Exception/QuoteServicingAttemptsExhaustedException.php src/Servicing/QuoteServicingHandler.php tests/Unit/Servicing/QuoteServicingHandlerTest.php
 git commit -m "feat: bound locked quote servicing deliveries"
 ```
 
@@ -543,7 +546,7 @@ git commit -m "feat: wire the quote servicing runtime"
 
 - [ ] **Step 1: Update all messages and handlers to the final signatures**
 
-Every integration message receives `Uuid::randomHex()` first. Every handler receives the real `ServicingAttemptStoreInterface` after the gateway. Keep the existing nested second handler that runs while the first holds `quote_servicing_<quoteId>`.
+Every integration message receives `Uuid::randomHex()` first. Every handler receives the real `ServicingAttemptStoreInterface` after the gateway. Keep the existing nested second handler that runs while the first holds `quote_servicing_<quoteId>`; catch its recoverable busy exception and prove it has a 5,000 ms retry delay and no attempt-ledger row.
 
 - [ ] **Step 2: Add the durable crash-exhaustion regression**
 
@@ -564,7 +567,7 @@ Run:
 composer run test:integration -- --filter 'ServicingSubscriberTest|ServicingConcurrencyTest|ServicingAttemptStoreTest'
 ```
 
-Expected: duplicate in-flight handlers execute the pipeline once; stale/replayed deliveries do not mutate; agent comments do not dispatch; the fifth crash delivery is unrecoverable before pipeline execution.
+Expected: the in-flight handler executes the pipeline once while the concurrent delivery is explicitly retried without consuming an attempt; stale/replayed deliveries do not mutate; agent comments do not dispatch; the fifth crash delivery is unrecoverable before pipeline execution.
 
 - [ ] **Step 4: Verify Shopware's native queue posture**
 

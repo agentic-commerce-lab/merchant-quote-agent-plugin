@@ -133,7 +133,7 @@ By implementing `AsyncMessageInterface`, Shopware automatically routes this mess
 - **Key Scheme:** `quote_servicing_<quoteId>`.
 - **TTL:** 300.0 seconds (5 minutes). This covers LLM latency (3–15s) while ensuring dead workers do not leave locks permanently acquired.
 - **Acquisition Strategy:** Non-blocking (`$lock->acquire(blocking: false)`).
-  - If the lock cannot be acquired: Another worker is actively servicing the quote. The handler logs this deduplication event and safely discards the message.
+  - If the lock cannot be acquired: Another worker is actively servicing the quote. The handler logs the contention and throws `QuoteServicingBusyException`, a recoverable Messenger exception with a 5,000 ms retry delay. This preserves a newer buyer update that may not be represented by the in-flight pass. The exception is raised before recording a delivery, so lock contention does not consume the message's durable pipeline-attempt budget.
 - **Release Strategy:** `try { ... } finally { $lock->release(); }`.
 
 ---
@@ -153,7 +153,7 @@ As verified in the Issue #3 spike:
 1. **Gateway Availability:** Obtain `?QuoteGatewayInterface` from `QuoteGatewayFactory`. If null (SwagCommercial absent or unlicensed):
    - Log warning.
    - Throw `QuoteServicingUnavailableException`, which implements Messenger's `UnrecoverableExceptionInterface`, to park the message in the failure transport rather than looping.
-2. **Acquire Lock:** `if (!$lock->acquire(false)) { return; }`
+2. **Acquire Lock:** Attempt non-blocking acquisition. If it fails, throw `QuoteServicingBusyException` with a 5,000 ms retry delay before touching the attempt ledger. Messenger retries the distinct message after the active pass releases the lock, preserving updates that arrived while servicing was in flight without burning a pipeline delivery attempt.
 3. **Record Delivery:** Increment the durable Shopware DAL attempt row keyed by `$message->messageId`. If the delivery count exceeds four (the initial delivery plus Shopware's three configured retries), throw an unrecoverable Messenger exception so the transport parks the poison message without invoking the pipeline again.
 4. **Fetch Live Snapshot:** `$snapshot = $gateway->fetchSnapshot($message->quoteId);`
 5. **Assert Revision:**
@@ -233,7 +233,7 @@ When `QuoteCommenter` runs via default context, `createdById`, `customerId`, and
   - Dispatches message for buyer/staff comments.
 - `QuoteServicingHandlerTest`:
   - Acquires lock non-blocking and releases in `finally`.
-  - Skips execution if lock is already held.
+  - Throws a recoverable busy exception with a 5,000 ms delay if the lock is already held, without recording or completing a delivery attempt.
   - Aborts on revision mismatch.
   - Calls `QuoteServicingPipelineInterface` on valid message.
   - Handles null gateway with warning log and unrecoverable exception.
@@ -245,7 +245,7 @@ When `QuoteCommenter` runs via default context, `createdById`, `customerId`, and
 ### 6.2 Integration Tests (in `merchant-quote-shop` Docker Container)
 - `ServicingSubscriberIntegrationTest`: State transition in live shop dispatches `ServiceQuoteMessage` on the bus.
 - `ServicingHandlerConcurrencyIntegrationTest`:
-  - Multiple concurrent triggers for the same quote produce exactly one servicing execution.
+  - A concurrent trigger receives a recoverable busy exception without an attempt-ledger row; after retrying once the lock is available, the distinct delivery can service its newer revision.
   - Stale revision messages abort cleanly without mutating state.
   - Four simulated worker deaths leave a durable counter; the fifth delivery is parked before pipeline execution.
 - `ServicingReentrancyRegressionTest`:
