@@ -1305,6 +1305,7 @@ Where the lock, the fingerprint and the crash counter come together, and where #
 **Files:**
 - Create: `src/Servicing/QuoteServicingPipelineInterface.php`
 - Create: `src/Servicing/ServiceQuoteHandler.php`
+- Modify: `src/Servicing/ServicingFingerprint.php` (add `stamp()` — see Interfaces)
 - Test: `tests/Unit/Servicing/ServiceQuoteHandlerTest.php` (create)
 - Test: `tests/Unit/Servicing/FakeQuoteGateway.php` (create — a shared test double)
 
@@ -1312,6 +1313,7 @@ Where the lock, the fingerprint and the crash counter come together, and where #
 - Consumes: `ServiceQuoteMessage` (Task 6), `ServicingFingerprint` (Task 5), `QuoteServicingLock` (Task 7), `QuoteGatewayInterface`, `QuoteUpdate`, `QuoteNotFoundException`.
 - Produces:
   - `QuoteServicingPipelineInterface::service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void`
+  - `ServicingFingerprint::stamp(QuoteSnapshot $serviced, string $stateAfter): string` — comment components from `$serviced`, state component from `$stateAfter`
   - `ServiceQuoteHandler::ATTEMPTS_KEY` = `'merchant_quote_agent_attempts'`, `ServiceQuoteHandler::MAX_ATTEMPTS` = `4`
   - `ServiceQuoteHandler::__invoke(ServiceQuoteMessage $message): void`
 
@@ -1764,13 +1766,18 @@ final readonly class ServiceQuoteHandler
 
         $pipeline->service($snapshot, $gateway);
 
-        // Recomputed from a FRESH read, not from $fingerprint: the state
-        // component moves on our own writes (open → in_review → replied), so
-        // stamping the compared value would leave the quote looking unserviced.
+        // The fresh read supplies the STATE only. The comment components come
+        // from $snapshot — the buyer input this pass actually consumed.
+        // Stamping of($after) wholesale would claim credit for a buyer comment
+        // that landed DURING the pass and silently drop it: see the spec's
+        // "The stamp describes what was consumed, not what exists afterwards".
         $after = $gateway->fetchSnapshot($message->quoteId);
 
         $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
-            ServicingFingerprint::MARKER_KEY => ServicingFingerprint::of($after),
+            ServicingFingerprint::MARKER_KEY => ServicingFingerprint::stamp(
+                $snapshot,
+                $after->lifecycle->stateTechnicalName,
+            ),
             self::ATTEMPTS_KEY => null,
         ]));
     }
@@ -2707,6 +2714,88 @@ final class ServicingReentrancyTest extends IntegrationTestCase
     }
 }
 ```
+
+Add a third test to the same class. This is the one that catches a wrong stamp composition, and nothing else in the plan does:
+
+```php
+    /**
+     * A buyer comment that lands DURING a servicing pass must still be serviced.
+     *
+     * This is the failure revision-abort was rejected for, and a handler that
+     * stamps `ServicingFingerprint::of($after)` instead of
+     * `ServicingFingerprint::stamp($serviced, $stateAfter)` reintroduces it while
+     * passing every duplicate-suppression test in this file: the post-servicing
+     * read already contains the buyer's new comment, so the stamp claims credit
+     * for input the pass never saw.
+     */
+    public function testABuyerCommentLandingDuringAPassIsServicedByTheNextDelivery(): void
+    {
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
+        $gateway = static::gateway();
+        $locks = new QuoteServicingLock(new LockFactory(new InMemoryStore()), 'redis://x');
+        $message = ServiceQuoteMessage::because($quoteId, ServicingTriggerReason::CommentWritten);
+
+        $repository = static::getContainer()->get('quote_comment.repository');
+        self::assertInstanceOf(EntityRepository::class, $repository);
+        $customerId = $this->anyCustomerId();
+
+        $pipeline = new class($repository, $customerId) implements QuoteServicingPipelineInterface {
+            public int $passes = 0;
+
+            public function __construct(
+                private readonly EntityRepository $comments,
+                private readonly string $customerId,
+            ) {}
+
+            #[\Override]
+            public function service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void
+            {
+                ++$this->passes;
+
+                // A BUYER comment arriving mid-pass. Written through the
+                // repository rather than the gateway because the gateway's
+                // addComment() is author-less by design, and authorship is
+                // exactly what the fingerprint keys on.
+                if ($this->passes === 1) {
+                    $this->comments->create([[
+                        'quoteId' => $snapshot->identity->quoteId,
+                        'comment' => 'buyer follow-up during servicing',
+                        'customerId' => $this->customerId,
+                    ]], Context::createDefaultContext());
+                }
+
+                $gateway->addComment($snapshot->identity->quoteId, 'agent reply');
+            }
+        };
+
+        $handler = new ServiceQuoteHandler($locks, new NullLogger(), $gateway, $pipeline);
+
+        $handler($message);
+        $handler($message);
+
+        self::assertSame(
+            2,
+            $pipeline->passes,
+            'The buyer comment that landed during the first pass was never serviced. The stamp '
+            . 'claimed credit for input the pass never saw — see the spec on stamp composition.',
+        );
+    }
+
+    private function anyCustomerId(): string
+    {
+        $repository = static::getContainer()->get('customer.repository');
+        self::assertInstanceOf(EntityRepository::class, $repository);
+
+        $id = $repository->searchIds(new Criteria(), Context::createDefaultContext())->firstId();
+        self::assertIsString($id, 'The shop has no customer to attribute a buyer comment to.');
+
+        return $id;
+    }
+```
+
+Add `use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;` and `use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;` to the file's imports.
+
+Note the second `$handler($message)` call is expected to service, not to no-op — the opposite of `testAFreshDeliveryAfterAPassIsANoOp`, and the difference is entirely whether a buyer comment intervened. Those two tests together are what pin the composition.
 
 The second test is the strongest single assertion in this plan: it proves against the real database that an agent comment written by the pipeline leaves the fingerprint unchanged, which is the property the whole dedup design rests on.
 

@@ -277,9 +277,13 @@ ServiceQuoteHandler::__invoke(ServiceQuoteMessage $message): void
 
         pipeline->service(snapshot, gateway)
 
-        after = gateway->fetchSnapshot(message->quoteId)
+        after = gateway->fetchSnapshot(message->quoteId)          # for the STATE only
         gateway->updateQuote(quoteId, new QuoteUpdate(customFields: [
-            MARKER_KEY   => ServicingFingerprint::of(after),
+            # Comment components from the snapshot we SERVICED; state from the
+            # fresh read. See "The stamp describes what was consumed" below —
+            # stamping of(after) wholesale silently swallows a buyer comment
+            # that landed mid-pass.
+            MARKER_KEY   => ServicingFingerprint::stamp(snapshot, after->lifecycle->stateTechnicalName),
             ATTEMPTS_KEY => null,
         ]))
     finally
@@ -371,13 +375,49 @@ Why this holds:
   lands, because it is authored and it changes both the count and the maximum.
   This is the hole revision-abort leaves open.
 - **The state half does move on our writes** (`open → in_review → replied`),
-  which is why the marker is recomputed from a *fresh* read after servicing
-  rather than stamped from the pre-servicing value.
+  so the state component has to come from a fresh read after servicing. The
+  comment components must NOT — see below.
 - **Escalation does not loop.** Escalating leaves the state where it is and adds
   no authored comment, so the fingerprint is stamped and the quote stays quiet
   until a human or a buyer moves it.
 - **The marker write does not re-trigger.** `updateQuote` fires neither a state
   transition nor a comment insert, and the trigger subscribes to nothing else.
+
+#### The stamp describes what was consumed, not what exists afterwards
+
+The first draft of this design stamped `ServicingFingerprint::of($after)` — the
+whole fingerprint recomputed from a post-servicing read. That is wrong, and
+wrong in exactly the way that made revision-abort unacceptable.
+
+Walk it through. A buyer comments at T1, which queues a message. The handler
+reads a snapshot whose authored comments are `[T1]` and begins servicing. During
+the pass — LLM latency is seconds — the buyer comments again at T2, queuing a
+second message. The agent then writes its own reply (author-less, so invisible to
+the comment components) and transitions the quote to `replied`. The post-servicing
+read now contains `[T1, T2]`, so `of($after)` is `replied|2|T2`. That gets
+stamped. The second message arrives, computes `replied|2|T2`, finds it equal to
+the stamp, and returns. **The buyer's second ask is never serviced**, and nothing
+anywhere logs a problem.
+
+The stamp has to describe the buyer input the pass actually consumed:
+
+```
+ServicingFingerprint::stamp($serviced, $stateAfter) =
+    $stateAfter | count(authored in $serviced) | max(authored createdAt in $serviced)
+```
+
+Comment components from the pre-servicing snapshot, state from the fresh read.
+Re-walk the same scenario: the stamp becomes `replied|1|T1`, the second message
+computes `replied|2|T2`, they differ, and T2 gets serviced. A genuine duplicate
+with no new input still computes `replied|1|T1` and still returns. An escalation
+that changes no state and adds no authored comment still stamps `open|1|T1` and
+stays quiet.
+
+`of()` remains the function that asks "what does this quote look like now"; the
+handler compares that against the stamp. `stamp()` is the function that answers
+"what had we serviced when we finished". They differ only in where the state
+component comes from, which is precisely the asymmetry the agent's own writes
+create.
 
 `QuoteUpdate.customFields` is shallow-merged per top-level key (#3), so
 `merchant_quote_agent_serviced` sits beside the A2CN act chain without touching
@@ -509,6 +549,7 @@ automated — the crash *budget* is tested above, the crash itself is not.
 | **A non-doctrine transport reopens an ordering hazard.** On `redis://` or `amqp://` the message is visible immediately, so a worker can read the quote before the triggering transaction commits and conclude "nothing new". The default `doctrine://default` makes this impossible because the message row commits with the write. | Documented, not mitigated. A `DelayStamp` would hedge it at the cost of delaying every pass; the fingerprint means the failure mode is a missed trigger, not a corrupted quote. Revisit if a merchant runs a non-doctrine transport. |
 | **Host-local locks.** `LOCK_DSN=flock` gives no cross-node exclusion, which is the same constraint gap #14 named, relocated from the process to the host. | The startup warning in `QuoteServicingLock`, plus a README note. |
 | **`AddCommentTest` is load-bearing for the fingerprint.** If SwagCommercial starts stamping an author on agent comments, our own reply becomes "authored" and the fingerprint starts moving on our own writes. | `AddCommentTest` already asserts the null authorship and fails on that change. `ServicingFingerprintTest` asserts the property that depends on it, so the failure is legible from two directions. |
+| **The stamp composition is load-bearing and easy to get wrong.** Stamping `of($after)` instead of `stamp($serviced, $stateAfter)` reintroduces revision-abort's dropped-comment hole, and does so silently — every test that only checks "duplicate triggers produce one pass" still passes. | A dedicated integration case: service a quote whose pipeline writes a buyer comment mid-pass, then assert a second delivery DOES service it. That test fails under the wrong composition and passes under the right one, which no duplicate-suppression test does. |
 | **A quote at `MAX_ATTEMPTS` stays parked for every future trigger**, not just the message that exhausted the budget, because the counter is keyed by quote. That is the intended behaviour for a quote whose data kills workers, but it means a quote can go permanently unserviced until someone clears the key. | Accepted and deliberate — an hourly segfault loop is worse. The counter is quote state, so it is visible where the escalation surfacing of #6 will already be looking, and the `error` log line names the quote. Clearing it is a `customFields` write, not a database repair. |
 | **A servicing pass slower than the retry budget parks a redundant message.** Roughly seven seconds of contention exhausts 3 retries. | Accepted. Loud (`failed` transport) rather than silent, and harmless — the fingerprint makes a replayed duplicate a no-op. |
 
