@@ -1308,6 +1308,7 @@ Where the lock, the fingerprint and the crash counter come together, and where #
 - Modify: `src/Servicing/ServicingFingerprint.php` (add `stamp()` — see Interfaces)
 - Test: `tests/Unit/Servicing/ServiceQuoteHandlerTest.php` (create)
 - Test: `tests/Unit/Servicing/FakeQuoteGateway.php` (create — a shared test double)
+- Test: `tests/Unit/Servicing/ServicingHandlerFixture.php` (create — the test class's builders, extracted so it fits the method gate)
 
 **Interfaces:**
 - Consumes: `ServiceQuoteMessage` (Task 6), `ServicingFingerprint` (Task 5), `QuoteServicingLock` (Task 7), `QuoteGatewayInterface`, `QuoteUpdate`, `QuoteNotFoundException`.
@@ -1347,6 +1348,60 @@ interface QuoteServicingPipelineInterface
     public function service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void;
 }
 ```
+
+- [ ] **Step 1b: Add `stamp()` to `ServicingFingerprint`**
+
+`of()` answers "what does this quote look like now" and is what the handler compares against. `stamp()` answers "what had we serviced when we finished" — and the two differ in exactly one component, because only the agent's own writes move the state. Append to `src/Servicing/ServicingFingerprint.php`:
+
+```php
+    /**
+     * The value to persist after a successful pass: the comment components of
+     * the snapshot we actually SERVICED, with the state as it stands afterwards.
+     *
+     * Not `of($after)`. The post-servicing read may already contain a buyer
+     * comment that arrived DURING the pass — LLM latency is seconds — and
+     * stamping it would claim credit for input this pass never saw. That
+     * comment's own message would then compute an identical fingerprint and
+     * return, silently dropping a real ask. It is the same failure mode that
+     * disqualified a revision marker, arriving by a different route.
+     *
+     * The state must come from the fresh read because our own transition moves
+     * it (open → in_review → replied); stamping the serviced snapshot's state
+     * would leave the quote looking permanently unserviced.
+     */
+    public static function stamp(QuoteSnapshot $serviced, string $stateAfter): string
+    {
+        return self::compose($stateAfter, self::authored($serviced));
+    }
+```
+
+That needs `of()` refactored to share the composition rather than duplicating it — verbatim duplication of a logic block is a review defect, and two copies of the format string is exactly how the two functions drift apart:
+
+```php
+    public static function of(QuoteSnapshot $snapshot): string
+    {
+        return self::compose($snapshot->lifecycle->stateTechnicalName, self::authored($snapshot));
+    }
+
+    /** @return array<int, QuoteComment> */
+    private static function authored(QuoteSnapshot $snapshot): array
+    {
+        return array_filter(
+            $snapshot->content->comments,
+            static fn(QuoteComment $comment): bool => $comment->isAuthored(),
+        );
+    }
+
+    /** @param array<int, QuoteComment> $authored */
+    private static function compose(string $state, array $authored): string
+    {
+        return implode('|', [$state, (string) \count($authored), self::newestCreatedAt($authored)]);
+    }
+```
+
+Run `composer run test -- --filter ServicingFingerprintTest` after this refactor: all ten existing tests must still pass, unchanged. They are the proof the refactor preserved `of()`'s behaviour.
+
+Watch the method count — `ServicingFingerprint` now has `of`, `stamped`, `stamp`, `authored`, `compose`, `newestCreatedAt` = 6, plus a private constructor = 7. Under the threshold of 10.
 
 - [ ] **Step 2: Create the fake gateway the handler tests need**
 
@@ -1530,6 +1585,44 @@ final class ServiceQuoteHandlerTest extends TestCase
         }
     }
 
+    /**
+     * The test that pins the design's subtlest point. A handler that stamps
+     * `ServicingFingerprint::of($after)` instead of
+     * `ServicingFingerprint::stamp($snapshot, $stateAfter)` passes every other
+     * test in this file and fails only this one.
+     *
+     * The two served snapshots simulate a buyer comment landing mid-pass: the
+     * handler reads `[T1]`, the pipeline runs, and the post-servicing read is
+     * `[T1, T2]` with a changed state. The stamp must describe what was
+     * consumed — one authored comment at T1 — carrying only the state forward.
+     */
+    public function testTheStampCarriesTheServicedCommentsAndTheLaterState(): void
+    {
+        $servicedAt = new \DateTimeImmutable('2026-08-27 10:00:00.100');
+        $duringPass = new \DateTimeImmutable('2026-08-27 10:00:04.900');
+
+        $gateway = new FakeQuoteGateway([
+            QuoteSnapshotFixture::snapshot('open', [self::buyer($servicedAt)]),
+            QuoteSnapshotFixture::snapshot('replied', [self::buyer($servicedAt), self::buyer($duringPass)]),
+        ]);
+
+        self::handler($gateway, self::countingPipeline())(self::message());
+
+        $stamp = $gateway->customFieldWrites[array_key_last($gateway->customFieldWrites)];
+        self::assertSame(
+            'replied|1|' . $servicedAt->format('U.u'),
+            $stamp[ServicingFingerprint::MARKER_KEY],
+            'The stamp claimed credit for a buyer comment that arrived during the pass. That comment '
+            . 'will now compute a matching fingerprint and be dropped — the exact failure a revision '
+            . 'marker was rejected for. Stamp what was consumed, not what exists afterwards.',
+        );
+    }
+
+    private static function buyer(\DateTimeImmutable $createdAt): QuoteComment
+    {
+        return new QuoteComment('buyer ask', customerId: 'customer-1', createdAt: $createdAt);
+    }
+
     public function testAHeldLockIsRetriedRatherThanDropped(): void
     {
         $locks = new QuoteServicingLock(new LockFactory(new InMemoryStore()), 'redis://x');
@@ -1624,19 +1717,95 @@ final class ServiceQuoteHandlerTest extends TestCase
         };
     }
 
-    /** @param array<string, mixed> $customFields */
+    /**
+     * Reuses Task 5's fixture rather than a private helper of its own: one
+     * snapshot builder, and it keeps this class under the method threshold.
+     *
+     * @param array<string, mixed> $customFields
+     */
     private static function snapshot(array $customFields = []): QuoteSnapshot
     {
-        return new QuoteSnapshot(
-            identity: new QuoteIdentity('q1', '10001', 'EUR', 'sc1'),
-            revision: new QuoteRevision('v1', new \DateTimeImmutable('2026-08-27 10:00:00.000')),
-            totals: new QuoteTotals(totalNet: 100.0),
-            lifecycle: new QuoteLifecycle(stateTechnicalName: 'open', customFields: $customFields),
-            content: new QuoteContent(),
-        );
+        return QuoteSnapshotFixture::snapshot(customFields: $customFields);
     }
 }
 ```
+
+- [ ] **Step 3b: Extract the test class's builders into a fixture**
+
+`ServiceQuoteHandlerTest` has ten test methods. Mago's `too-many-methods` fails at eleven, so the six private helpers cannot stay in the class — move all of them to `tests/Unit/Servicing/ServicingHandlerFixture.php` as `public static` methods, following the same convention as `QuoteSnapshotFixture`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
+
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
+use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
+use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
+use Psr\Log\NullLogger;
+use Symfony\Component\Lock\LockFactory;
+use Symfony\Component\Lock\Store\InMemoryStore;
+
+/** Builders for the servicing handler's unit tests. */
+final class ServicingHandlerFixture
+{
+    private function __construct() {}
+
+    public static function locks(): QuoteServicingLock
+    {
+        return new QuoteServicingLock(new LockFactory(new InMemoryStore()), 'redis://x');
+    }
+
+    public static function handler(
+        FakeQuoteGateway $gateway,
+        QuoteServicingPipelineInterface $pipeline,
+        ?QuoteServicingLock $locks = null,
+    ): ServiceQuoteHandler {
+        return new ServiceQuoteHandler($locks ?? self::locks(), new NullLogger(), $gateway, $pipeline);
+    }
+
+    public static function message(): ServiceQuoteMessage
+    {
+        return ServiceQuoteMessage::because('q1', ServicingTriggerReason::CommentWritten);
+    }
+
+    /** @param array<string, mixed> $customFields */
+    public static function snapshot(array $customFields = []): QuoteSnapshot
+    {
+        return QuoteSnapshotFixture::snapshot(customFields: $customFields);
+    }
+
+    public static function buyer(\DateTimeImmutable $createdAt): QuoteComment
+    {
+        return new QuoteComment('buyer ask', customerId: 'customer-1', createdAt: $createdAt);
+    }
+
+    /** @return QuoteServicingPipelineInterface&object{passes: int} */
+    public static function countingPipeline(): object
+    {
+        return new class implements QuoteServicingPipelineInterface {
+            public int $passes = 0;
+
+            #[\Override]
+            public function service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void
+            {
+                ++$this->passes;
+            }
+        };
+    }
+}
+```
+
+In `ServiceQuoteHandlerTest`, delete all six private helpers and call `ServicingHandlerFixture::...` instead. `handler()` gains an optional third argument so `testAHeldLockIsRetriedRatherThanDropped` and `testTheLockIsReleasedSoASecondPassCanRun` can pass the specific lock instance they assert against, rather than each building a handler by hand.
+
+**`ServiceQuoteHandlerTest` is now at exactly ten methods, which is the limit.** An eleventh test requires splitting the class — do not add one and do not add a suppression. Verify with `vendor/bin/mago lint tests/Unit/Servicing/ServiceQuoteHandlerTest.php` before committing; `composer run lint` does not cover `tests/`.
 
 - [ ] **Step 4: Run the test to verify it fails**
 
