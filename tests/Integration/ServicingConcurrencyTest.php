@@ -22,6 +22,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Symfony\Component\Lock\LockFactory;
+use Symfony\Component\Messenger\Exception\RecoverableExceptionInterface;
 
 final class ServicingConcurrencyTest extends IntegrationTestCase
 {
@@ -38,6 +39,7 @@ final class ServicingConcurrencyTest extends IntegrationTestCase
             public int $offerCount = 0;
             public bool $busyDeliveryCaught = false;
             public ?int $retryDelay = null;
+            public ?\Throwable $busyException = null;
 
             public function __construct(
                 private readonly LockFactory $lockFactory,
@@ -71,6 +73,7 @@ final class ServicingConcurrencyTest extends IntegrationTestCase
                 } catch (QuoteServicingBusyException $exception) {
                     $this->busyDeliveryCaught = true;
                     $this->retryDelay = $exception->getRetryDelay();
+                    $this->busyException = $exception;
                 }
             }
         };
@@ -86,6 +89,7 @@ final class ServicingConcurrencyTest extends IntegrationTestCase
         $handler($message);
 
         self::assertTrue($pipeline->busyDeliveryCaught, 'The concurrent delivery was not asked to retry.');
+        self::assertInstanceOf(RecoverableExceptionInterface::class, $pipeline->busyException);
         self::assertSame(5000, $pipeline->retryDelay);
         self::assertSame(1, $pipeline->offerCount, 'The in-flight duplicate produced a second offer.');
     }
