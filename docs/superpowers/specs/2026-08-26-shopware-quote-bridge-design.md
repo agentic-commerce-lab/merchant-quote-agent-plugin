@@ -534,7 +534,7 @@ must provide:
   uses typed class constants, which are 8.3+).
 - Shopware 6.7 with **SwagCommercial ≥ 7.13** and the QuoteManagement licence
   toggle `QUOTE_MANAGEMENT-6302947` on.
-- **SwagAgenticCommerce ≥ 1.3.0**, which carries `ucp-php-sdk/core ≥ 0.0.5`.
+- **SwagAgenticCommerce ≥ 1.2.0** (released 2026-08-07), which requires `ucp-php-sdk/symfony-bundle >=0.0.5` and so satisfies our `ucp-php-sdk/core >=0.0.5`.
 - A clean `config/packages/` and `.env.test` — no `zz-ucp-sdk-test.yaml` loaded in
   every env, no `KERNEL_CLASS='App\Kernel'` — so `TestBootstrapper` boots without
   the workarounds in `tests/Integration/bootstrap.php`.
