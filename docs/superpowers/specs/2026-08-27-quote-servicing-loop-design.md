@@ -68,6 +68,28 @@ assumed.
   outside any scope survives `QuoteCommenter`'s
   `scope(Context::CRUD_API_SCOPE, …)`. The DAL passes the same `Context`
   instance into the written event, so `hasState()` is readable there.
+- **`Context::createWithVersionId()` silently drops states, and SwagCommercial
+  mirrors every comment into the snapshot lane.** Discovered while implementing
+  the context stamp, then verified in the vendor source:
+  `Context::createWithVersionId()` (`Framework/Context.php:173`) builds a
+  `new self(...)` and re-applies only `scope` and `extensions` — `states` is
+  never carried. SwagCommercial's `QuoteHistoryWriter::trackComment()` →
+  `createSnapshotQuoteComments()` re-versions the context that way to mirror the
+  comment into `SNAPSHOT_VERSION_ID`. So **one `addComment()` fires two
+  `quote_comment.written` events for the same comment id**: the live-lane insert,
+  which carries the stamp, and the snapshot mirror, which has lost it. Measured
+  on one call: `versionId=019cfaaf…(snapshot) hasState=false`,
+  `versionId=0fa91ce3…(live) hasState=true`. `writeQuoteChanges()` uses the same
+  pattern for sync-tracked quote fields, so this is a general property of
+  Shopware's snapshot mirroring rather than a comment-specific quirk.
+
+  Two consequences, and the second is the one the first draft of this design
+  missed entirely. The stamp alone cannot suppress the agent's own comment,
+  because the unstamped mirror still reaches the trigger. And a **buyer's**
+  comment fires the same two events, so a trigger keyed only on the event would
+  queue two messages for one ask — harmless in outcome, since the lock and
+  fingerprint collapse it to one pass, but half the queue traffic is waste.
+  Both are fixed by the same one-line filter: see "Own writes" below.
 - **Retry and a dead-letter path already exist.** `framework.messenger` routes
   `Shopware\Core\Framework\MessageQueue\AsyncMessageInterface` to the `async`
   transport, whose retry strategy is `max_retries: 3, delay: 1000,
@@ -150,8 +172,8 @@ two names, both of which carry core types only:
 
 | Event name | Event class | Filter |
 | --- | --- | --- |
-| `state_machine.quote.state_changed` | `Shopware\Core\System\StateMachine\Event\StateMachineStateChangeEvent` | `getTransitionSide() === STATE_MACHINE_TRANSITION_SIDE_ENTER` and `getNextState()->getTechnicalName()` in `{open, change_requested}`; quote id from `getTransition()->getEntityId()` |
-| `quote_comment.written` | `Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent` | write results with `getOperation() === OPERATION_INSERT` whose payload carries a `quoteId`; deduplicated within the event |
+| `state_machine.quote.state_changed` | `Shopware\Core\System\StateMachine\Event\StateMachineStateChangeEvent` | context version is `Defaults::LIVE_VERSION`; `getTransitionSide() === STATE_MACHINE_TRANSITION_SIDE_ENTER`; and `getStateName()` in `{open, change_requested}`; quote id from `getTransition()->getEntityId()` |
+| `quote_comment.written` | `Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent` | context version is `Defaults::LIVE_VERSION`; then write results with `getOperation() === OPERATION_INSERT` whose payload carries a `quoteId`; deduplicated within the event |
 
 Both produce `ServiceQuoteMessage(quoteId, reason)` on the default bus.
 
@@ -195,9 +217,32 @@ final class AgentContext
 }
 ```
 
-`SwagCommercialQuoteGateway` replaces its six inline
-`Context::createDefaultContext()` calls with `AgentContext::create()`. Both
-listeners return early on `$event->getContext()->hasState(AgentContext::STATE)`.
+`SwagCommercialQuoteGateway` replaces its seven inline
+`Context::createDefaultContext()` calls with `AgentContext::create()`.
+
+**Two filters, not one.** The stamp is the second of them, and on its own it is
+not enough — `Context::createWithVersionId()` drops states, so SwagCommercial's
+snapshot mirror of a comment arrives unstamped (see the finding above). Both
+listeners therefore open with:
+
+```php
+// A snapshot-lane write is a MIRROR of a live write, never an independent
+// buyer action, and the re-versioned context has lost every state — including
+// ours. Filtering to the live lane drops the mirror and, with it, the
+// duplicate message a single buyer comment would otherwise produce.
+if ($event->getContext()->getVersionId() !== Defaults::LIVE_VERSION) {
+    return;
+}
+
+if ($event->getContext()->hasState(AgentContext::STATE)) {
+    return;
+}
+```
+
+`Defaults::LIVE_VERSION` is a core constant, so this adds no SwagCommercial
+surface. The version filter is correct independently of the stamp: servicing
+decisions belong to the live quote. The stamp is what then suppresses the
+agent's own *live* write.
 
 This is one check covering comments, transitions *and* line-item writes, where
 the comment-level `customFields` stamp issue #4 names would cover only comments
@@ -460,7 +505,7 @@ automated — the crash *budget* is tested above, the crash itself is not.
 | Risk | Verified by |
 | --- | --- |
 | **Symfony may reject a null-returning factory.** `QuoteGatewayInterface` is registered with `factory([QuoteGatewayFactory, 'create'])`, which returns null on an unlicensed shop. Nothing consumes it today — the handler is the first consumer, so this path has never been exercised in a container. | First task in the plan, before anything is built on it: resolve the handler in the test shop with the license toggle both on and off. If Symfony rejects it, the fallback is a `QuoteGatewayLocator` the handler asks at call time, which changes `services.php` and the handler's constructor and nothing else. |
-| **The context stamp could be lost** if a future Shopware version clones `Context` on the write path, or if `scope()`'s state handling changes in 6.8 (the `$states` parameter is `NewOptionalParameter(version: 'v6.8.0')`). | `ServicingTriggerTest`'s own-write case fails loudly on the real write path rather than against a mock, which is the point of testing it there. |
+| **The context stamp is already known to be lost on one path** — `createWithVersionId()` drops states, so SwagCommercial's snapshot mirror arrives unstamped. It could also be lost if a future Shopware version clones `Context` elsewhere on the write path, or if `scope()`'s state handling changes in 6.8 (the `$states` parameter is `NewOptionalParameter(version: 'v6.8.0')`). | The known path is closed by the live-version filter, and `AgentContextTest` pins BOTH halves: the live event carries the stamp, the snapshot event does not. That second assertion is what fails if Shopware ever starts carrying states through `createWithVersionId()` — at which point the filter is still correct but no longer load-bearing. `ServicingTriggerTest`'s own-write case then proves the combination on the real write path. |
 | **A non-doctrine transport reopens an ordering hazard.** On `redis://` or `amqp://` the message is visible immediately, so a worker can read the quote before the triggering transaction commits and conclude "nothing new". The default `doctrine://default` makes this impossible because the message row commits with the write. | Documented, not mitigated. A `DelayStamp` would hedge it at the cost of delaying every pass; the fingerprint means the failure mode is a missed trigger, not a corrupted quote. Revisit if a merchant runs a non-doctrine transport. |
 | **Host-local locks.** `LOCK_DSN=flock` gives no cross-node exclusion, which is the same constraint gap #14 named, relocated from the process to the host. | The startup warning in `QuoteServicingLock`, plus a README note. |
 | **`AddCommentTest` is load-bearing for the fingerprint.** If SwagCommercial starts stamping an author on agent comments, our own reply becomes "authored" and the fingerprint starts moving on our own writes. | `AddCommentTest` already asserts the null authorship and fails on that change. `ServicingFingerprintTest` asserts the property that depends on it, so the failure is legible from two directions. |
