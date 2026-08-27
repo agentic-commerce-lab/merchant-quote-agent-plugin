@@ -118,12 +118,13 @@ assumed.
 
 ### Module shape
 
-Seven new files, seven edits. Trigger and handler both live in `src/Servicing/`,
+Eight new files, seven edits. Trigger and handler both live in `src/Servicing/`,
 which is where #18 lands the pipeline, so the seam does not move later.
 
 ```
 src/Servicing/QuoteServicingPipelineInterface.php  NEW  the #18 seam
 src/Servicing/Data/ServiceQuoteMessage.php         NEW  AsyncMessageInterface; quoteId + trigger reason
+src/Servicing/Data/ServicingTriggerReason.php      NEW  StateEntered | CommentWritten, for log triage
 src/Servicing/ServiceQuoteHandler.php     NEW  AsMessageHandler: lock → fingerprint → hand off → stamp
 src/Servicing/ServicingFingerprint.php    NEW  pure: of(QuoteSnapshot): string
 src/Servicing/QuoteServicingLock.php      NEW  LockFactory wrapper: key, TTL, local-store warning
