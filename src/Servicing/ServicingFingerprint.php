@@ -43,16 +43,27 @@ final class ServicingFingerprint
 
     public static function of(QuoteSnapshot $snapshot): string
     {
-        $authored = array_filter(
-            $snapshot->content->comments,
-            static fn(QuoteComment $comment): bool => $comment->isAuthored(),
-        );
+        return self::compose($snapshot->lifecycle->stateTechnicalName, self::authored($snapshot));
+    }
 
-        return implode('|', [
-            $snapshot->lifecycle->stateTechnicalName,
-            (string) \count($authored),
-            self::newestCreatedAt($authored),
-        ]);
+    /**
+     * The value to persist after a successful pass: the comment components of
+     * the snapshot we actually SERVICED, with the state as it stands afterwards.
+     *
+     * Not `of($after)`. The post-servicing read may already contain a buyer
+     * comment that arrived DURING the pass — LLM latency is seconds — and
+     * stamping it would claim credit for input this pass never saw. That
+     * comment's own message would then compute an identical fingerprint and
+     * return, silently dropping a real ask. It is the same failure mode that
+     * disqualified a revision marker, arriving by a different route.
+     *
+     * The state must come from the fresh read because our own transition moves
+     * it (open → in_review → replied); stamping the serviced snapshot's state
+     * would leave the quote looking permanently unserviced.
+     */
+    public static function stamp(QuoteSnapshot $serviced, string $stateAfter): string
+    {
+        return self::compose($stateAfter, self::authored($serviced));
     }
 
     /** @param array<string, mixed> $customFields */
@@ -61,6 +72,21 @@ final class ServicingFingerprint
         $stamped = $customFields[self::MARKER_KEY] ?? null;
 
         return \is_string($stamped) ? $stamped : null;
+    }
+
+    /** @return array<int, QuoteComment> */
+    private static function authored(QuoteSnapshot $snapshot): array
+    {
+        return array_filter(
+            $snapshot->content->comments,
+            static fn(QuoteComment $comment): bool => $comment->isAuthored(),
+        );
+    }
+
+    /** @param array<int, QuoteComment> $authored */
+    private static function compose(string $state, array $authored): string
+    {
+        return implode('|', [$state, (string) \count($authored), self::newestCreatedAt($authored)]);
     }
 
     /**
