@@ -57,9 +57,9 @@ final class ServicingFingerprintTest extends TestCase
     }
 
     /**
-     * A buyer comment that lands DURING a servicing pass is older than the
-     * agent's reply, so "newest comment" alone would hide it. The authored
-     * count is what catches it.
+     * A buyer comment that lands DURING a servicing pass, before the agent's
+     * own reply, still changes the fingerprint — an interleaved agent reply
+     * does not mask the buyer comment that preceded it.
      */
     public function testABuyerCommentOlderThanTheAgentReplyStillChangesTheFingerprint(): void
     {
@@ -70,6 +70,24 @@ final class ServicingFingerprintTest extends TestCase
             QuoteSnapshotFixture::buyerComment('2026-08-27 10:00:00.100'),
             QuoteSnapshotFixture::buyerComment('2026-08-27 10:00:03.000'),
             new QuoteComment('agent reply', createdAt: new \DateTimeImmutable('2026-08-27 10:00:07.000')),
+        ]);
+
+        self::assertNotSame(ServicingFingerprint::of($before), ServicingFingerprint::of($after));
+    }
+
+    /**
+     * Two buyer comments can land in the same millisecond (the column is
+     * datetime(3)), so the newest-authored-createdAt component alone cannot
+     * tell them apart — the authored count is what catches this one.
+     */
+    public function testASecondAuthoredCommentInTheSameMillisecondChangesTheFingerprint(): void
+    {
+        $before = QuoteSnapshotFixture::snapshot('open', [QuoteSnapshotFixture::buyerComment(
+            '2026-08-27 10:00:00.100',
+        )]);
+        $after = QuoteSnapshotFixture::snapshot('open', [
+            QuoteSnapshotFixture::buyerComment('2026-08-27 10:00:00.100'),
+            QuoteSnapshotFixture::buyerComment('2026-08-27 10:00:00.100'),
         ]);
 
         self::assertNotSame(ServicingFingerprint::of($before), ServicingFingerprint::of($after));
@@ -97,7 +115,7 @@ final class ServicingFingerprintTest extends TestCase
             QuoteSnapshotFixture::buyerComment('2026-08-27 10:00:00.100'),
         ]);
 
-        self::assertStringStartsWith('open|2|', ServicingFingerprint::of($snapshot));
+        self::assertSame('open|2|1787824800.100000', ServicingFingerprint::of($snapshot));
     }
 
     public function testStampedReadsTheMarkerKeyAndNothingElse(): void
