@@ -8,6 +8,10 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\System\StateMachine\StateMachineRegistry;
+use Shopware\Core\System\StateMachine\Transition;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 
@@ -42,7 +46,7 @@ final class ServicingTriggerTest extends IntegrationTestCase
      */
     public function testTheAgentsOwnProcessTransitionDoesNotQueueTheQuote(): void
     {
-        $quoteId = QuoteFixture::quoteInState(static::getContainer(), Context::createDefaultContext(), 'open');
+        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'open');
         $bus = self::collectingBus();
 
         $this->withTrigger($bus, static function () use ($quoteId): void {
@@ -50,6 +54,91 @@ final class ServicingTriggerTest extends IntegrationTestCase
         });
 
         self::assertSame([], $bus->messages);
+    }
+
+    /**
+     * The positive half of the trigger, against a real core event: a buyer
+     * (not the agent — Context::createDefaultContext(), never the gateway,
+     * which stamps AgentContext::STATE) driving a real transition through
+     * StateMachineRegistry produces exactly one message. Without this,
+     * "the core event name, the live-version filter and the state whitelist
+     * agree" was proven only by hand-built events, never end to end.
+     *
+     * Drives `customer_send` (draft -> open) with a raw core Transition
+     * rather than `request_change` (replied -> change_requested) through
+     * QuoteStateTransitioner: the seed has no `replied` quote with a line
+     * item, and `customer_send` is the more central case regardless — it is
+     * the buyer's actual quote-request action, the exact transition
+     * QuoteServicingTrigger's own docblock names as why `quote.requested`
+     * needs no separate subscription. It is deliberately not a
+     * QuoteTransition case (that enum is scoped to the agent's own actions),
+     * so this goes straight to the core registry rather than through our
+     * gateway. `change_requested` stays unproven end to end as a result —
+     * a known coverage gap, not one to close by seeding data.
+     */
+    public function testABuyerDrivenTransitionIntoATriggerStateQueuesTheQuoteOnce(): void
+    {
+        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'draft');
+        $registry = static::getContainer()->get(StateMachineRegistry::class);
+        self::assertInstanceOf(StateMachineRegistry::class, $registry);
+        $bus = self::collectingBus();
+
+        $this->withTrigger($bus, static function () use ($registry, $quoteId): void {
+            $registry->transition(
+                new Transition('quote', $quoteId, 'customer_send', 'stateId'),
+                Context::createDefaultContext(),
+            );
+        });
+
+        self::assertCount(
+            1,
+            $bus->messages,
+            'A real buyer transition into open queued nothing: '
+            . 'the core event name, the live-version filter and the state whitelist are unproven end to end.',
+        );
+        self::assertSame('state_entered', $bus->messages[0]->reason ?? null);
+    }
+
+    /**
+     * The comment counterpart of the transition test above: a real buyer
+     * comment, written through the repository under a plain default context
+     * (never the gateway's author-less addComment()), queues exactly one
+     * message.
+     */
+    public function testABuyerCommentQueuesTheQuoteOnce(): void
+    {
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
+        $comments = static::getContainer()->get('quote_comment.repository');
+        self::assertInstanceOf(EntityRepository::class, $comments);
+        $customerId = $this->anyCustomerId();
+        $bus = self::collectingBus();
+
+        $this->withTrigger($bus, static function () use ($comments, $quoteId, $customerId): void {
+            $comments->create([[
+                'quoteId' => $quoteId,
+                'comment' => 'ServicingTriggerTest buyer follow-up',
+                'customerId' => $customerId,
+            ]], Context::createDefaultContext());
+        });
+
+        self::assertCount(
+            1,
+            $bus->messages,
+            'A real buyer comment queued nothing: the core event name and '
+            . 'the version/state-stamp filters are unproven end to end.',
+        );
+        self::assertSame('comment_written', $bus->messages[0]->reason ?? null);
+    }
+
+    private function anyCustomerId(): string
+    {
+        $repository = static::getContainer()->get('customer.repository');
+        self::assertInstanceOf(EntityRepository::class, $repository);
+
+        $id = $repository->searchIds(new Criteria(), Context::createDefaultContext())->firstId();
+        self::assertIsString($id, 'The shop has no customer to attribute a buyer comment to.');
+
+        return $id;
     }
 
     private function withTrigger(object $bus, callable $write): void

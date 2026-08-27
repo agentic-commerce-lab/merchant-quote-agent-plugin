@@ -114,7 +114,7 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(QuoteServicingLock::class)->args([
         service('lock.factory'),
         '%env(LOCK_DSN)%',
-        service('logger')->ignoreOnInvalid(),
+        service('logger'),
     ]);
 
     // autoconfigure() picks up EventSubscriberInterface, so no explicit tag.
