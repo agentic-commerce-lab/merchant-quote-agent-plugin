@@ -23,7 +23,6 @@ final readonly class QuoteServicingHandler
 {
     private const LOCK_TTL_SECONDS = 300.0;
     private const MAX_PIPELINE_DELIVERIES = 4;
-    private const SERVICEABLE_STATES = ['open', 'in_review', 'change_requested'];
 
     public function __construct(
         private LockFactory $lockFactory,
@@ -51,7 +50,7 @@ final readonly class QuoteServicingHandler
 
         $lock = $this->lockFactory->createLock('quote_servicing_' . $message->quoteId, self::LOCK_TTL_SECONDS);
         if (!$lock->acquire(blocking: false)) {
-            $this->logger->info('Quote servicing already in flight, skipping duplicate execution.', [
+            $this->logger->info('Quote servicing already in flight; retrying this delivery.', [
                 'quoteId' => $message->quoteId,
             ]);
 
@@ -89,7 +88,7 @@ final readonly class QuoteServicingHandler
             }
 
             $state = $snapshot->lifecycle->stateTechnicalName;
-            if (!\in_array($state, self::SERVICEABLE_STATES, strict: true)) {
+            if (!QuoteServicingStates::isServiceable($state)) {
                 $this->logger->info('Quote state is not serviceable, skipping.', [
                     'quoteId' => $message->quoteId,
                     'state' => $state,

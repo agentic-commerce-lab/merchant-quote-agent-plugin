@@ -141,9 +141,12 @@ final class QuoteServicingHandlerTest extends TestCase
             ->willReturn($this->lock);
         $this->lock->expects(self::once())->method('acquire')->with(false)->willReturn(false);
         $this->lock->expects(self::never())->method('release');
-        $this->logger->expects(self::once())->method('info')->with(self::stringContains('already in flight'), [
-            'quoteId' => self::QUOTE_ID,
-        ]);
+        $this->logger
+            ->expects(self::once())
+            ->method('info')
+            ->with('Quote servicing already in flight; retrying this delivery.', [
+                'quoteId' => self::QUOTE_ID,
+            ]);
         $this->attemptStore->expects(self::never())->method('recordDelivery');
         $this->attemptStore->expects(self::never())->method('completeDelivery');
         $this->gateway->expects(self::never())->method('fetchSnapshot');

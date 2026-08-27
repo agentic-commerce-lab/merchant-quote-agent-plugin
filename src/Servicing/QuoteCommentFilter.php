@@ -9,8 +9,6 @@ use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 
 final class QuoteCommentFilter
 {
-    private const SERVICEABLE_STATES = ['open', 'in_review', 'change_requested'];
-
     private function __construct() {}
 
     /** @param array<string, mixed> $payload */
@@ -39,7 +37,7 @@ final class QuoteCommentFilter
 
     public static function isServiceableState(string $state): bool
     {
-        return \in_array($state, self::SERVICEABLE_STATES, strict: true);
+        return QuoteServicingStates::isServiceable($state);
     }
 
     private static function matchesPersistedAgentComment(mixed $persistedComment, string $comment): bool
