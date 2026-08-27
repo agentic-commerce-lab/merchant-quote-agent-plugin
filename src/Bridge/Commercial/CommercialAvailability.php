@@ -17,16 +17,37 @@ final class CommercialAvailability
      */
     public const LICENSE_TOGGLE = 'QUOTE_MANAGEMENT-6302947';
 
-    /** Class-name literals, not `::class`: these need not be loadable. */
-    private const MANIPULATION_CLASS = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\Admin\\QuoteManipulation';
-    private const COMMENTER_CLASS = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\Comment\\QuoteCommenter';
+    /**
+     * The four commercial services this bridge injects, and the DI ids they
+     * are registered under: SwagCommercial writes `$services->set(<FQCN>)`
+     * with no alias, so the id IS the class name. Public because
+     * `services.php` and the integration harness must name the same strings —
+     * a rename on SwagCommercial's side has to be a one-line fix here, not a
+     * hunt. Class-name literals, not `::class`: these need not be loadable.
+     *
+     * GatewayWiringTest resolves all four against the live shop, which is what
+     * catches a rename or a typo — static analysis cannot see these.
+     */
+    public const QUOTE_MANIPULATION = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\Admin\\QuoteManipulation';
+
+    public const QUOTE_COMMENTER = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\Comment\\QuoteCommenter';
+
+    public const CONTEXT_RESTORER = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\SalesChannelContextRestorer\\SalesChannelContextRestorer';
+
+    public const QUOTE_CALCULATOR = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\Recalculation\\QuoteCalculator';
+
     private const LICENSE_CLASS = 'Shopware\\Commercial\\Licensing\\License';
 
+    /**
+     * Checked on the two `@internal` classes plus License rather than on all
+     * four: those are the ones whose absence changes what this bridge can do,
+     * and they come from the same plugin as the other two.
+     */
     public static function isAvailableByClass(): bool
     {
         return (
-            class_exists(self::MANIPULATION_CLASS)
-            && class_exists(self::COMMENTER_CLASS)
+            class_exists(self::QUOTE_MANIPULATION)
+            && class_exists(self::QUOTE_COMMENTER)
             && class_exists(self::LICENSE_CLASS)
         );
     }

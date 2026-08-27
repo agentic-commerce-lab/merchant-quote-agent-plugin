@@ -1,8 +1,14 @@
 # Shopware bridge over SwagCommercial quote services — design spec
 
-*2026-08-26 — design spec. Status: proposed. Scope: issue #3 — the one module that
-touches SwagCommercial's B2B quote services, behind one interface, so nothing else
-in the plugin ever references a SwagCommercial class.*
+*2026-08-26 — design spec. Status: implemented (2026-08-27), with the spike
+results written back below. Scope: issue #3 — the one module that touches
+SwagCommercial's B2B quote services, behind one interface, so nothing else in
+the plugin ever references a SwagCommercial class.*
+
+*Two things the design got wrong and the spike corrected: the read model mixed
+gross line prices with a net quote total (see "Tax state", a money-path bug),
+and `customFields: []` replaces rather than merges. Both are fixed and pinned by
+tests. Everything else held.*
 
 Related: ADR 0001 (`docs/adr/0001-runtime-plugin-dependencies.md`) — the
 runtime-dependency convention this bridge follows; `docs/2026-08-25-quote-agent-shopware-plugin-design.md`
@@ -225,11 +231,23 @@ not an implementation nicety. `QuoteUpdate.customFields` must merge the given
 top-level keys and leave every other key untouched — the TS surface had a separate
 `appendCustomField` function for exactly this reason, and collapsing it into a
 general `updateQuote` (as an earlier draft of this spec did) risks a write that
-replaces the map and destroys the buyer's half of the act chain. Shopware's
-`CustomFields` field type is believed to merge rather than replace on
-`EntityRepository::update()`; since the failure mode is silent loss of the
-counterparty's signed acts, `tests/Integration/` verifies it explicitly rather than
-trusting it.
+replaces the map and destroys the buyer's half of the act chain.
+
+**Verified: it merges, with one exception that would have destroyed the chain.**
+`CustomFieldsSerializer::encode()` routes an update of an existing entity through
+a `JsonUpdateCommand`, which `EntityWriteGateway` executes as
+`JSON_SET(IFNULL(custom_fields, '{}'), …)` — one path expression per given key,
+so untouched keys survive. `UpdateQuoteTest` proves it against the live shop by
+writing two acts in sequence and asserting both remain, rather than trusting that
+reading of the code.
+
+The exception: **`[]` does not merge, it replaces.** An empty map
+short-circuits ahead of the `JsonUpdateCommand` path to a literal `'{}'` and
+clears the column — the exact silent-loss failure this section exists to prevent.
+`QuoteWriter` therefore drops an empty `customFields` before it reaches the DAL
+(merging an empty map means changing nothing anyway), and
+`testAnEmptyCustomFieldsMapDoesNotClearTheExistingOnes` fails loudly if that
+guard is removed.
 
 ## Implementation
 
@@ -245,6 +263,23 @@ class-level doc comment listing its `@internal` dependencies up front:
  * tests (tests/Integration/) are what catches it, not static analysis.
  */
 ```
+
+In the implementation that block sits on the two `Bridge\Commercial` adapters
+that hold those services rather than on the gateway — the gateway itself names
+no SwagCommercial type at all, and each adapter carries the note for the one
+call it makes. The list is still in one place per dependency, which is what the
+issue's done-when criterion asks for.
+
+`SwagCommercialQuoteGateway` also did not stay one file's worth of code. Each
+method delegates to a small collaborator (`QuoteSnapshotReader`, `QuoteWriter`,
+`QuoteLineItemWriter`, `QuoteRecalculator`, `QuoteStateTransitioner`), grouped
+into two objects so the gateway stays inside this repo's
+five-constructor-parameter limit. The grouping follows a real seam rather than
+arithmetic: `QuoteWriters` holds the four writes that change what the quote
+*costs* and therefore need `recalculate()` and the revision precondition around
+them; `QuoteLifecycleWriters` holds the two that carry no money and no
+precondition — appending a comment and driving the state machine — both of which
+are observable outside the shop.
 
 Two, not three. `QuoteState::transition()` is deliberately **not** used, even
 though it is the obvious call: reading it, the whole method is a `License::check`,
@@ -317,13 +352,56 @@ written verbatim; and `customFields` appears on two different surfaces —
 custom-price flag) versus `QuoteUpdate.customFields` (the quote, caller-supplied).
 The interface must not conflate them.
 
-The `taxRules` value is an open question for the spike, not a settled design: the
-TS implementation hardcoded 19% and noted that recalculation interprets `price` in
-the *cart's* tax mode, which may differ from the space the quote's stored prices
-read in — its workaround was to measure the saved result and rewrite once with the
-observed factor. Whether an in-process write needs that same two-pass correction is
-exactly the kind of thing `tests/Integration/` has to establish before Servicing
-can trust a single-pass write.
+### Tax state — the design's one money-path bug, and its fix
+
+The `taxRules` value was left open for the spike, with the TS implementation's
+hardcoded 19% and its measure-and-rewrite second pass as the fallback. What the
+spike found was worse than an open question: **every quote in the shop is
+`taxStatus = gross`, and a quote line's `price.unitPrice`/`price.totalPrice` are
+gross values, while `quote.amountNet` is genuinely net.** Reading both flat, as
+the first implementation did, produced a read model whose line prices and order
+total disagreed by the VAT rate — and `Policy\DiscountTotalViolation` compares a
+discount derived from lines against that total, so the failure mode was a money
+path that looked like it worked. A round-trip test could not catch it, because
+the write path was gross in the same direction.
+
+Proof, from quote `019F8ECA…`: `unitPrice` 450.00 with `calculatedTaxes.tax`
+71.85. A net reading gives 450 × 0.19 = 85.50; a gross reading gives
+450 − 450/1.19 = 71.85. Summed line `totalPrice` equals `amount_total` (450),
+never `amount_net` (378.15).
+
+The read model is NET throughout (`QuoteLineNet`), and two changes make it so:
+
+- **On write**, the price definition carries `isCalculated => false`. That is
+  what makes `unitPriceNet` a net number rather than a label:
+  `GrossPriceCalculator::getUnitPrice()` calls `calculateGross()` on a net input
+  only when `isCalculated` is false, and `NetPriceCalculator` uses the same input
+  as net directly. So nothing in the bridge branches on tax mode — Shopware
+  converts per the quote's own tax state. With `isCalculated => true` the number
+  is stored verbatim into the gross `price.unitPrice` field, silently.
+- **On read**, line net is derived as `totalPrice - sum(calculatedTaxes[].tax)`
+  when `taxStatus` is gross. Rate-agnostic, and it reproduces Shopware's own net
+  exactly: checked across all 36 live quotes, summed derived net against
+  `amount_net`, zero mismatches over a cent. `requestedPrice` is converted by the
+  same line's net ratio, because `Policy\QuoteAutoReplyPricer` compares it
+  against `unitPriceNet` and a gross ask there is the same bug one field over.
+
+`taxRules` is therefore read from each repriced line's real tax rules
+(`QuoteLineTaxRules`, falling back to 19% only for a line with no tax rules at
+all) rather than hardcoded. With `isCalculated => false` the rate drives the
+net→gross conversion, so a wrong rate is a wrong stored price — this is
+load-bearing, not cosmetic. No second pass is needed.
+
+**One value is deliberately not converted: `Discount` of type `Absolute`.**
+`DiscountType::Percentage` is tax-state invariant, but an absolute discount is
+denominated in the quote's own tax state — gross, on this shop — because
+`QuoteDiscountProcessor::calculateAbsoluteDiscount()` builds a
+`QuantityPriceDefinition` through `AbsolutePriceCalculator` with `isCalculated`
+defaulting to *true*. So an absolute 100.00 takes 100.00 off the **gross** total
+and only 100/1.19 off the net one. The bridge passes it through unscaled and says
+so on `Bridge\Data\Discount`; `testAnAbsoluteDiscountIsConsumedAsGrossNotNet`
+pins it, and breaks by exactly the VAT rate if anyone "fixes" it by scaling on
+our side.
 
 ## Runtime gate
 
@@ -343,12 +421,51 @@ pattern already used elsewhere in this codebase:
   route, gating on `8702512` would check a toggle unrelated to our code path: the
   factory would hand back a gateway that throws a license exception on the first
   write. Gate on `6302947`.
-- `services.php` registers `QuoteGatewayInterface` from the factory with
-  `autowire(false)` and a nullable/ignore-on-invalid reference, matching how
-  `QuoteCapabilityProfileContributor` is already wired in this repo.
+- `services.php` registers `QuoteGatewayInterface` from
+  `QuoteGatewayFactory::create()`, which returns `?QuoteGatewayInterface`, so
+  consumers take a nullable.
 - No SwagCommercial-absent fallback implementation is needed: per the existing
   design, capability absence is handled at the UCP capability layer (issue #1) —
   if the gateway can't be built, the quote capability simply isn't advertised.
+
+### Where each stage of the gate actually landed
+
+The design put both stages in the factory. Only the license stage can live
+there: the class-existence stage has to run at **container-build** time, because
+by the time the factory is constructible its collaborators have already been
+constructed, and three of them hold SwagCommercial services in non-nullable
+`object` parameters. So `services.php` opens with
+
+```php
+if (!CommercialAvailability::isAvailableByClass()) {
+    return;
+}
+```
+
+and everything below it — the whole bridge graph — is simply absent from a shop
+without SwagCommercial. Shopware registers only an *active* plugin's autoloader,
+so this is false both when SwagCommercial is missing and when it is installed but
+inactive, which covers the second case for free. Plugin activation clears the
+container cache, so a later activation takes effect.
+
+Inside that guard the four commercial services are referenced with
+`ignoreOnInvalid()`, which reads as belt-and-braces but is the deliberate choice:
+in Symfony an unresolvable reference is a **compile-time** failure, so a plain
+reference to a service SwagCommercial had renamed would take the entire shop's
+container down rather than just the quote capability. With `ignoreOnInvalid()` it
+degrades to a `TypeError` on the adapter's `object` parameter — a legible failure
+confined to this bridge.
+
+The four ids live once, as public constants on `CommercialAvailability`, because
+they are string literals by necessity (ADR 0001) and so invisible to static
+analysis. `GatewayWiringTest` resolves all four against the live shop, which is
+what catches an upstream rename.
+
+The narrow divergence from ADR 0001's "commercial services injected as
+`?object`" is the one the ADR itself already records: `?object` makes every call
+into SwagCommercial a `possible-method-access-on-null` error under `mago
+analyze`, so the adapters take non-nullable `object` and the nullability is
+handled by the registration guard above instead of per-parameter.
 
 ## Snapshot ownership
 
@@ -371,6 +488,38 @@ fixture-driven like the Policy module — it's real integration testing against
 licensed). `tests/Integration/`, a separate PHPUnit testsuite/config from
 `tests/Unit/`, runs live against the docker shop and is not wired into the GitHub
 Actions workflow.
+
+Three operational facts about that suite, none of them obvious from reading it:
+
+- **The plugin is not installed into the shop.** `tests/Integration/bootstrap.php`
+  registers PSR-4 for our namespace and boots the kernel; no `plugin:install`,
+  no `plugin:refresh`. That is not a shortcut — this plugin's own `composer.json`
+  is currently unsatisfiable in this shop (`php ^8.3` against a default PHP of
+  8.2, `ucp-php-sdk/core >=0.0.5` against the 0.0.2 that exists, and
+  `cuyz/valinor` absent), so installing is blocked on a packaging decision.
+  Nothing the bridge loads touches those packages, so the suite runs anyway.
+  The cost is that `src/Resources/config/services.php` is never loaded by
+  Shopware: the gateway is reached through `QuoteGatewayFactory` built by hand
+  from container services, and `GatewayWiringTest` covers what is checkable from
+  outside a compiled container (see "Where each stage of the gate actually
+  landed"). Container compilation of that file is the one thing still unverified.
+- **It runs against the shop's real database, not a fresh test one.** Shopware's
+  `TestBootstrapper` would otherwise append `_test` to the database name and
+  install into an empty schema — which has no quotes, and the fixtures read an
+  existing quote rather than constructing one (SwagCommercial's creation path
+  needs a customer, a sales-channel context and a cart). Every test therefore
+  runs inside `DatabaseTransactionBehaviour`'s rolled-back transaction, and that
+  trait asserts the nesting level before rolling back, so a mid-test commit
+  fails loudly rather than persisting.
+- **`QuoteFixture` selects deliberately, not arbitrarily.** An editable state
+  (SwagCommercial treats `accepted`/`expired`/`cancelled` as non-editable, and 9
+  of the 36 live quotes are in one of those), at least one live line item, and a
+  deterministic sort so reruns hit the same quote. Price tests additionally pick
+  a *product* line: all 75 product lines have a non-null `referenced_id` and all
+  12 quote-discount lines have it null, and repricing a Shopware-generated
+  discount line is meaningless because `recalculate()` regenerates it — a
+  failure there would look exactly like the custom-price flag being broken when
+  it is not.
 
 **This test suite is the spike.** The issue's open questions — does reprice-then-
 recalculate behave like the old Admin API sequence, how does quote versioning react
@@ -400,11 +549,42 @@ Specific things the suite must establish, beyond one test per method:
    discriminator (a line-item custom field, or the `customFields` surface
    `updateQuote` already exposes) and issue #4 needs to know that early.
 
-### Spike results
+### Spike results (verified 2026-08-27)
 
-Two of the four spikes above were settled by Task 8 against the live shop
-(36 quotes, `taxStatus = gross` throughout). Findings 1 and 2 were settled in
-Task 5.
+All four spikes above are settled, against the live shop (`shopware-trunk`,
+SwagCommercial 7.13.0, 36 quotes, `taxStatus = gross` throughout, 87 non-deleted
+live line items). The suite is 37 integration tests, none skipped. Summary first,
+then the two findings that needed more than a line:
+
+1. **Custom-price survival — the repriced line survives `recalculate()`, and
+   only because of the flag.** `customFields['quote_custom_offer_price'] => true`
+   plus a full `priceDefinition` is what SwagCommercial's
+   `QuoteLineItemTransformer` needs to attach `ProductCartProcessor::CUSTOM_PRICE`;
+   without it the line is repriced from the catalog. Not inferred: 22 line items
+   in this shop already carry that flag. `UpdateLineItemsTest` asserts the quote
+   total is *stale* after a line write before asserting `recalculate()` fixes it,
+   so the assertions are attributable to `recalculate()` rather than to a line
+   write that happened to update the aggregate.
+2. **Tax-mode fidelity — net in, net out, no factor and no second pass, but only
+   after a real bug was fixed.** See "Tax state" above; this is the one finding
+   that changed the design rather than confirming it.
+3. **Expiration ordering — the rule still holds, for a different reason than
+   assumed.** Detail below.
+4. **Comment authorship — all three author fields are null, which is worse than
+   uninformative.** Detail below.
+5. **`customFields` merges per top-level key — except `[]`, which replaces.** See
+   "The act chain constrains `updateQuote.customFields`".
+6. **The revision precondition detects a stale read; it is not a
+   compare-and-set.** See Risks.
+7. **The DI service ids for the four commercial services are their FQCNs**, with
+   no alias: `…\Domain\Admin\QuoteManipulation`,
+   `…\Domain\Comment\QuoteCommenter`,
+   `…\Domain\SalesChannelContextRestorer\SalesChannelContextRestorer`,
+   `…\Domain\Recalculation\QuoteCalculator`. SwagCommercial registers them as
+   `$services->set(<FQCN>::class)`. All four are *private* there, which does not
+   affect injection and is only why the test harness reaches them through
+   `test.service_container`. Runtime-confirmed; they live as constants on
+   `CommercialAvailability` so there is one copy.
 
 **3. Expiration ordering — the rule still holds, for a different reason than
 assumed.** It is not an Admin-API artefact, and it is not the `sent` transition:
@@ -434,6 +614,34 @@ discriminator this spec already names as the fallback. `AddCommentTest` asserts
 the null authorship rather than merely recording it, so it fails if
 SwagCommercial ever starts stamping an author — which is the signal that would
 reopen the cheaper design.
+
+**Exceptions are narrower than the first implementation claimed.**
+`QuoteNotFoundException` is scoped to `fetchSnapshot`, as this spec always said —
+but the interface docblocks initially claimed it for `addComment` and
+`transition` too, and neither raises it. Probe-verified: `addComment` on an
+unknown id yields Doctrine's `ForeignKeyConstraintViolationException`
+(`QuoteCommenter` inserts and lets MySQL reject on `fk.quote_comment.quote_id`),
+and `transition` yields Shopware's own `StateMachineException` ("Unable to read
+entity quote with id …"). The docblocks are fixed; the Doctrine one is an open
+decision, in Risks.
+
+**Mail safety, for anyone else running this suite against a live shop.** This is
+not incidental: the shop has *active* flows carrying `action.mail.send` on
+`state_enter.quote.state.in_review` and `state_enter.quote.state.replied` —
+precisely the two transitions `TransitionTest` drives, each of which would mail a
+real customer. Two independent layers make that harmless, and both were verified
+rather than assumed:
+
+- `mailcatcher` is listening on the configured `MAILER_DSN` port and never
+  relays. (An earlier note in the working ledger claimed *nothing* was listening
+  and a send would hit a dead socket — that was wrong; the conclusion survives
+  for a better reason.)
+- Shopware routes `SendEmailMessage` to the `async` transport
+  (`doctrine://default`), so a flow's send is an `INSERT` into
+  `messenger_messages` inside the test's transaction, discarded by the rollback
+  before SMTP is ever reached.
+
+Verified after the runs: mailcatcher holds 0 messages.
 
 ## Non-goals
 
@@ -469,21 +677,82 @@ is only as good as `shopware-trunk` staying up and matching a version we've
 verified against. No version matrix is proposed here (ADR 0001 flags this as a
 gap CI should eventually carry); this spec doesn't solve it, just inherits it.
 
-**`updateLineItems`/`updateQuote`'s "null means untouched" batching is unverified
-against real concurrent-write behavior.** The quote-versioning spike question
-(does Shopware's versioning throw or silently drop on two writes in one request)
-applies most directly to these two methods, since they're the ones batching
-multiple field writes in a single DAL call. First thing `tests/Integration/`
-should cover.
+**`updateLineItems`/`updateQuote`'s "null means untouched" batching holds.**
+Multiple field writes in one DAL call, and several sequential writes in one
+request, neither throw nor silently drop — `UpdateQuoteTest` and
+`UpdateLineItemsTest` write repeatedly to the same quote in one test. The
+versioning worry did not materialise, for a reason worth recording: these writes
+go to the live lane, and the snapshot lane is a separate row that the DAL does not
+touch on an ordinary update.
 
-**The write precondition is not free, and may not be a true compare-and-set.**
-Shopware's DAL has no native CAS. Enforcing `$expected` means re-reading the
-revision and comparing inside a `Connection::transactional()` around the write —
-which narrows the race but is not the same as a database-level conditional update,
-and the isolation level decides how much it actually buys. `tests/Integration/`
-has to establish what the guarantee really is (two concurrent writers, one stale
-precondition, does the stale one reliably lose?) before Servicing treats
-`QuoteRevisionMismatch` as authoritative. If it turns out weak, the honest position
-is that the precondition narrows a window rather than closing it, and the servicing
-lock (`symfony/lock`, one per quote id, per the parent design) is what actually
-serialises writes.
+**The write precondition narrows a window; it does not close it. Servicing must
+not treat it as a lock.** This is the honest version of what the design left open,
+and `RevisionPreconditionTest` establishes both halves.
+
+What it *does* guarantee, measured: a write carrying a revision the quote has
+since moved past is refused with `QuoteRevisionMismatch`, the refusal is total
+(nothing of the payload lands, `updatedAt` is not bumped), and the comparison is
+at millisecond fidelity — `quote.updated_at` is `datetime(3)`, so a revision one
+millisecond off is correctly rejected. That last point is not decoration:
+`QuoteRevision::matches()` originally compared `getTimestamp()`, which would have
+read a same-second concurrent write as unchanged, and same-second is the likeliest
+collision rather than the rarest. Both `updateQuote` and `updateLineItems` enforce
+it, and each test above fails if the guard is removed from the method it covers.
+
+Of the two fields on `QuoteRevision`, only `updatedAt` can move.
+`QuoteSnapshotReader` takes `versionId` from the requested context, so it
+identifies the *lane* (live/snapshot), not a per-quote version, and reading the
+same lane twice always yields the same value. That is fine — but it means the
+precondition rests entirely on one timestamp column.
+
+What it does **not** guarantee: `assertRevision()` re-reads and compares, then the
+write follows as a separate statement — no surrounding transaction, no
+`SELECT … FOR UPDATE`, no conditional `UPDATE`. A writer that commits inside that
+gap is not caught. Shopware's DAL has no native CAS, and the
+`Connection::transactional()` the design proposed would narrow the gap without
+closing it while putting a `doctrine/dbal` import into production code (see the
+open decision below for why that matters). No test can measure the residual
+window either: every integration test runs inside
+`DatabaseTransactionBehaviour`'s uncommitted transaction, so a second connection
+would see nothing. The window is established from the code's structure and stated
+rather than measured.
+
+**So: the servicing lock (`symfony/lock`, one per quote id, per the parent
+design) is what serialises writers.** The precondition's job is to stop a caller
+acting on a snapshot it read too long ago, which is a different and still
+worthwhile job. Issue #4 should not read `QuoteRevisionMismatch`'s absence as
+proof that no one else wrote.
+
+**`addProduct` crashes the PHP process on variant products.** Confirmed upstream
+defect, reproduced independently twice: `addProduct` with a variant (a product
+with `parent_id` set) exits **139 (SIGSEGV)** with no PHP error, no exception and
+no output. A standalone product (`child_count = 0`) is fine. Characterised as not
+xdebug (reproduces with `xdebug.mode=off`), not a PHP stack overflow (reproduces
+under `zend.max_allowed_stack_size=1M`, which would raise a catchable fatal), and
+not the memory limit (reproduces at `memory_limit=2G`); it happens inside
+`QuoteManipulation::addProducts` after `validateProducts`, i.e. in the
+cart-conversion / `Processor::process` path. This is a Shopware/SwagCommercial
+crash on this shop's demo data, not something the bridge causes.
+
+The consequence for callers is sharper than a normal error: a segfault gives PHP
+no chance to throw, so issue #4's servicing would see a dropped worker rather than
+a failed operation. **No guard is implemented.** Adding one is a permanent
+functional restriction (no variant products on quotes) resting on a crash that is
+not root-caused and may not exist on other shops — a product decision, open for
+the user. `AddProductAndRecalculateTest` picks a standalone product
+(`childCount = 0`, which excludes both variants and variant parents) so the suite
+does not trip over it.
+
+**Open decision: a Doctrine exception leaks through the isolation interface.**
+`addComment` on an unknown quote id surfaces
+`Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException` through
+`QuoteGatewayInterface`, whose entire purpose is isolating SwagCommercial
+internals from everything above the bridge. The obvious mapping — catch and
+rethrow `QuoteNotFoundException` — was implemented and then backed out, because it
+imports `doctrine/dbal` into production code and `doctrine/dbal` is not in our
+`composer.json`; `quality:depcheck` flags it as a shadow dependency. Three cheap
+closures, none of them the bridge's to choose: declare `doctrine/dbal` and restore
+the four-line mapping; have `addComment` read the quote first (no new dependency,
+one redundant read per comment); or leave it and have issue #4 catch `\Throwable`
+at the servicing boundary. `AddCommentTest` pins the current behaviour by
+class-name string, so the test is what changes either way.

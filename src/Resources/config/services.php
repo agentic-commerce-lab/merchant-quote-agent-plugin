@@ -2,9 +2,24 @@
 
 declare(strict_types=1);
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
+use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
+use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
+use MerchantQuoteAgentPlugin\Bridge\QuoteLineItemWriter;
+use MerchantQuoteAgentPlugin\Bridge\QuoteRecalculator;
+use MerchantQuoteAgentPlugin\Bridge\QuoteSnapshotReader;
+use MerchantQuoteAgentPlugin\Bridge\QuoteStateTransitioner;
+use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
+use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
+use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+
+use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
 return static function (ContainerConfigurator $configurator): void {
     $services = $configurator->services();
@@ -23,4 +38,51 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(QuoteCapabilityProfileContributor::class)->autoconfigure(false)->tag('ucp_sdk.profile_contributor', [
         'priority' => -256,
     ]);
+
+    // Stage one of ADR 0001's two-stage gate: class existence decides whether
+    // the bridge is REGISTERED at all. Shopware only registers an active
+    // plugin's autoloader, so this is false both when SwagCommercial is absent
+    // and when it is installed but inactive — in either case nothing below is
+    // in the container and the quote capability is simply not advertised
+    // (issue #1 owns that). Stage two, the license toggle, is runtime and
+    // lives in QuoteGatewayFactory.
+    if (!CommercialAvailability::isAvailableByClass()) {
+        return;
+    }
+
+    // Repositories are resolved by string id and typed with a covariant
+    // template in the consumer, so autowiring cannot supply them.
+    $services->set(QuoteVersionResolver::class);
+    $services->set(QuoteSnapshotReader::class)->args([
+        service('quote.repository'),
+        service(QuoteVersionResolver::class),
+    ]);
+    $services->set(QuoteLineItemWriter::class)->args([service('quote_line_item.repository')]);
+    $services->set(QuoteWriter::class)->args([service('quote.repository')]);
+    $services->set(QuoteStateTransitioner::class);
+
+    // The four commercial services, referenced by the string ids on
+    // CommercialAvailability because their classes are not ours to name with
+    // `::class`. ignoreOnInvalid() rather than a plain reference because an
+    // unresolvable reference is a COMPILE-time failure in Symfony — it would
+    // take the whole shop's container down, not just quotes. Inside this guard
+    // the classes provably exist, so a null here would mean SwagCommercial
+    // moved a service id; that surfaces as a TypeError on the adapter's
+    // non-nullable `object` parameter, a legible failure confined to the
+    // bridge. GatewayWiringTest resolves all four against the live shop.
+    $services->set(SwagCommercialProductAdder::class)->args([service(CommercialAvailability::QUOTE_MANIPULATION)->ignoreOnInvalid()]);
+    $services->set(SwagCommercialCommentWriter::class)->args([service(CommercialAvailability::QUOTE_COMMENTER)->ignoreOnInvalid()]);
+    $services->set(QuoteRecalculator::class)->args([
+        service(CommercialAvailability::CONTEXT_RESTORER)->ignoreOnInvalid(),
+        service(CommercialAvailability::QUOTE_CALCULATOR)->ignoreOnInvalid(),
+    ]);
+
+    $services->set(QuoteWriters::class);
+    $services->set(QuoteLifecycleWriters::class);
+    $services->set(QuoteGatewayFactory::class);
+
+    // Null when the license toggle is off, so consumers take
+    // `?QuoteGatewayInterface`. Per the spec's non-goals there is deliberately
+    // no null-object implementation: capability absence belongs one layer up.
+    $services->set(QuoteGatewayInterface::class)->factory([service(QuoteGatewayFactory::class), 'create']);
 };

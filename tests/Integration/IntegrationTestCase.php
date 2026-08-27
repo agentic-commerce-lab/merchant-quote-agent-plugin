@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
+use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLineItemWriter;
@@ -55,38 +57,59 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
-     * The bridge gateway under test, hand-constructed from container
-     * services: the plugin is deliberately not installed into this shop
-     * (composer constraints are unsatisfiable, see Task 1), so `services.php`
-     * never loads and `QuoteGatewayInterface` cannot be resolved from the
-     * container. Task 9 replaces this body with a DI lookup once it can be.
-     * Kept here so the six integration test classes share one override point
-     * instead of duplicating a helper.
+     * The bridge gateway under test. The collaborator graph is hand-built from
+     * container services because the plugin is deliberately not installed into
+     * this shop (its composer constraints are unsatisfiable here, see Task 1),
+     * so `src/Resources/config/services.php` never loads and
+     * `QuoteGatewayInterface` cannot be resolved from the container.
+     *
+     * The last step still goes through `QuoteGatewayFactory::create()` rather
+     * than `new SwagCommercialQuoteGateway(...)`, so the license gate every
+     * caller depends on is exercised by all of these tests instead of only by
+     * GatewayWiringTest. What remains unverified without an install is
+     * `services.php` itself; GatewayWiringTest covers as much of it as is
+     * reachable from outside the container.
+     *
+     * Kept on the base class so the integration test classes share one
+     * override point instead of duplicating a helper.
      */
     protected static function gateway(): QuoteGatewayInterface
+    {
+        $gateway = static::gatewayFactory()->create();
+        self::assertInstanceOf(
+            SwagCommercialQuoteGateway::class,
+            $gateway,
+            'QuoteGatewayFactory returned no gateway, so SwagCommercial is absent or the '
+            . CommercialAvailability::LICENSE_TOGGLE
+            . ' license toggle is off in this shop.',
+        );
+
+        return $gateway;
+    }
+
+    /** The factory with its collaborators wired the way `services.php` wires them. */
+    protected static function gatewayFactory(): QuoteGatewayFactory
     {
         /** @var \Shopware\Core\Framework\DataAbstractionLayer\EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $quoteRepository */
         $quoteRepository = static::getContainer()->get('quote.repository');
         /** @var \Shopware\Core\Framework\DataAbstractionLayer\EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $lineItemRepository */
         $lineItemRepository = static::getContainer()->get('quote_line_item.repository');
 
+        // Same constants `services.php` references, so this graph cannot drift
+        // from the wired one on the one thing static analysis cannot check.
         $recalculator = new QuoteRecalculator(
-            static::commercialService(
-                'Shopware\Commercial\B2B\QuoteManagement\Domain\SalesChannelContextRestorer\SalesChannelContextRestorer',
-            ),
-            static::commercialService('Shopware\Commercial\B2B\QuoteManagement\Domain\Recalculation\QuoteCalculator'),
+            static::commercialService(CommercialAvailability::CONTEXT_RESTORER),
+            static::commercialService(CommercialAvailability::QUOTE_CALCULATOR),
         );
-        $productAdder = new SwagCommercialProductAdder(static::commercialService(
-            'Shopware\Commercial\B2B\QuoteManagement\Domain\Admin\QuoteManipulation',
-        ));
-        $commentWriter = new SwagCommercialCommentWriter(static::commercialService(
-            'Shopware\Commercial\B2B\QuoteManagement\Domain\Comment\QuoteCommenter',
-        ));
+        $productAdder =
+            new SwagCommercialProductAdder(static::commercialService(CommercialAvailability::QUOTE_MANIPULATION));
+        $commentWriter =
+            new SwagCommercialCommentWriter(static::commercialService(CommercialAvailability::QUOTE_COMMENTER));
 
         $stateMachineRegistry = static::getContainer()->get(StateMachineRegistry::class);
         self::assertInstanceOf(StateMachineRegistry::class, $stateMachineRegistry);
 
-        return new SwagCommercialQuoteGateway(
+        return new QuoteGatewayFactory(
             new QuoteSnapshotReader($quoteRepository, new QuoteVersionResolver()),
             new QuoteWriters(
                 new QuoteLineItemWriter($lineItemRepository),

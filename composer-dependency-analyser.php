@@ -13,7 +13,13 @@ use ShipMonk\ComposerDependencyAnalyser\Config\Configuration;
 // the analyser reports unmatched ignores as errors, so do not pre-declare ignores that do
 // not yet apply.
 $config = (new Configuration())
-    ->addPathToScan(__DIR__ . '/src', isDev: false);
+    ->addPathToScan(__DIR__ . '/src', isDev: false)
+    // Symfony's PHP-DI DSL helper used by src/Resources/config/services.php. It
+    // ships in symfony/dependency-injection, which IS declared — but the
+    // analyser indexes classmap autoloading and this is a `files` autoload
+    // function, so it cannot attribute it to a package. A tool limitation, not
+    // an undeclared dependency.
+    ->ignoreUnknownFunctions(['Symfony\Component\DependencyInjection\Loader\Configurator\service']);
 
 // Scan tests as dev paths only when the directory exists (addPathToScan throws on a
 // missing path, which would break the gate on projects without a tests/ directory).
