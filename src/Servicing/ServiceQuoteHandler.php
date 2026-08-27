@@ -42,6 +42,11 @@ final readonly class ServiceQuoteHandler
         private ?QuoteServicingPipelineInterface $pipeline = null,
     ) {}
 
+    /**
+     * @throws \Throwable a pipeline failure, rethrown after clearing the
+     *                     crash-budget counter — the pipeline's exception
+     *                     surface is #18's, not ours
+     */
     public function __invoke(ServiceQuoteMessage $message): void
     {
         $gateway = $this->gateway;
@@ -85,7 +90,11 @@ final readonly class ServiceQuoteHandler
         }
     }
 
-    /** @throws QuoteNotFoundException */
+    /**
+     * @throws QuoteNotFoundException
+     * @throws \Throwable rethrown from the pipeline after clearing the crash-budget
+     *                     counter; the pipeline's exception surface is #18's, not ours
+     */
     private function servicePass(QuoteGatewayInterface $gateway, ServiceQuoteMessage $message): void
     {
         $snapshot = $gateway->fetchSnapshot($message->quoteId);
@@ -114,7 +123,20 @@ final readonly class ServiceQuoteHandler
 
         $this->claimAttempt($gateway, $message, $snapshot);
 
-        $pipeline->service($snapshot, $gateway);
+        try {
+            $pipeline->service($snapshot, $gateway);
+        } catch (\Throwable $e) {
+            // The process survived, so Messenger's RedeliveryStamp already
+            // bounds this failure via retry. The quote-side counter exists only
+            // for a delivery that vanishes WITHOUT one (a segfaulted worker) —
+            // clearing it here keeps that budget for its real purpose instead
+            // of letting four transient LLM failures permanently park the quote.
+            $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
+                self::ATTEMPTS_KEY => null,
+            ]));
+
+            throw $e;
+        }
 
         // The fresh read supplies the STATE only. The comment components come
         // from $snapshot — the buyer input this pass actually consumed.

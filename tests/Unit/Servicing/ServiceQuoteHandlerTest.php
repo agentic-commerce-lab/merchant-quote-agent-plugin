@@ -9,13 +9,13 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
+use PHPUnit\Framework\Attributes\DataProviderExternal;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
-use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
-use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
 final class ServiceQuoteHandlerTest extends TestCase
 {
+    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
     public function testANewFingerprintHandsOffOnceAndStampsTheMarker(): void
     {
         $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
@@ -30,6 +30,7 @@ final class ServiceQuoteHandlerTest extends TestCase
         self::assertNull($stamp[ServiceQuoteHandler::ATTEMPTS_KEY]);
     }
 
+    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
     public function testAMatchingFingerprintHandsOffZeroTimes(): void
     {
         $snapshot = ServicingHandlerFixture::snapshot();
@@ -45,6 +46,7 @@ final class ServiceQuoteHandlerTest extends TestCase
         self::assertSame([], $gateway->customFieldWrites);
     }
 
+    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
     public function testTheCounterIsIncrementedBeforeTheHandOff(): void
     {
         $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
@@ -70,17 +72,34 @@ final class ServiceQuoteHandlerTest extends TestCase
         );
     }
 
-    public function testAQuoteAtTheAttemptCeilingParksWithoutHandingOff(): void
+    /**
+     * Two distinct refusals — the attempt ceiling and a lock held by another
+     * worker — share one guarantee: the pipeline never runs. Merged into one
+     * parameterized test, rather than two, to stay under mago's
+     * too-many-methods threshold; the scenario builders live in
+     * ServicingHandlerFixture alongside this class's other collaborator
+     * builders.
+     *
+     * @param class-string<\Throwable> $expectedException
+     * @throws \Throwable the expected exception, via expectException()
+     */
+    #[DataProviderExternal(ServicingHandlerFixture::class, 'handoffRefusalScenarios')]
+    public function testAHandoffIsRefusedWithoutRunningThePipeline(string $scenario, string $expectedException): void
     {
-        $gateway = new FakeQuoteGateway([
-            ServicingHandlerFixture::snapshot([ServiceQuoteHandler::ATTEMPTS_KEY => ServiceQuoteHandler::MAX_ATTEMPTS]),
-        ]);
+        $locks = ServicingHandlerFixture::locks();
+        // Index 1 (the held lock, when present) must stay referenced by this
+        // local for the rest of the method: Symfony's Lock releases itself in
+        // __destruct() when autoRelease is true, so a temporary that nothing
+        // references would be garbage-collected — and its lock released —
+        // before the handler ever tries to acquire it.
+        $scenarioResult = ServicingHandlerFixture::refusalScenario($scenario, $locks);
+        $gateway = $scenarioResult[0];
         $pipeline = ServicingHandlerFixture::countingPipeline();
 
-        $this->expectException(UnrecoverableMessageHandlingException::class);
+        $this->expectException($expectedException);
 
         try {
-            ServicingHandlerFixture::handler($gateway, $pipeline)(ServicingHandlerFixture::message());
+            ServicingHandlerFixture::handler($gateway, $pipeline, $locks)(ServicingHandlerFixture::message());
         } finally {
             self::assertSame(0, $pipeline->passes);
         }
@@ -96,6 +115,8 @@ final class ServiceQuoteHandlerTest extends TestCase
      * handler reads `[T1]`, the pipeline runs, and the post-servicing read is
      * `[T1, T2]` with a changed state. The stamp must describe what was
      * consumed — one authored comment at T1 — carrying only the state forward.
+     *
+     * @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions
      */
     public function testTheStampCarriesTheServicedCommentsAndTheLaterState(): void
     {
@@ -124,29 +145,43 @@ final class ServiceQuoteHandlerTest extends TestCase
         );
     }
 
-    public function testAHeldLockIsRetriedRatherThanDropped(): void
+    /**
+     * The process survived a thrown pipeline failure, so Messenger's
+     * RedeliveryStamp already bounds it via retry — the quote-side counter
+     * exists only for a delivery that vanishes without one (a segfaulted
+     * worker, #3). A caught throw must therefore clear the counter rather
+     * than let four transient failures in a row permanently park the quote.
+     *
+     * @throws \Throwable anything other than the RuntimeException this test throws
+     */
+    public function testAThrownPipelineFailureClearsTheAttemptCounterAndRethrows(): void
     {
-        $locks = ServicingHandlerFixture::locks();
-        // Kept in a variable rather than discarded: Symfony's Lock releases
-        // itself in __destruct() when autoRelease is true (the default), so a
-        // temporary that is never assigned is garbage-collected — and its lock
-        // released — before the handler ever tries to acquire it.
-        $held = $locks->for('q1');
-        $held->acquire();
-
         $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
-        $pipeline = ServicingHandlerFixture::countingPipeline();
-        $handler = ServicingHandlerFixture::handler($gateway, $pipeline, $locks);
-
-        $this->expectException(RecoverableMessageHandlingException::class);
+        $pipeline = new class implements QuoteServicingPipelineInterface {
+            #[\Override]
+            public function service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void
+            {
+                throw new \RuntimeException('LLM provider unavailable.');
+            }
+        };
 
         try {
-            $handler(ServicingHandlerFixture::message());
-        } finally {
-            self::assertSame(0, $pipeline->passes);
+            ServicingHandlerFixture::handler($gateway, $pipeline)(ServicingHandlerFixture::message());
+            self::fail('The pipeline failure did not propagate.');
+        } catch (\RuntimeException $e) {
+            self::assertSame('LLM provider unavailable.', $e->getMessage());
         }
+
+        $stamp = ServicingHandlerFixture::lastCustomFieldWrite($gateway);
+        self::assertNull(
+            $stamp[ServiceQuoteHandler::ATTEMPTS_KEY],
+            'A thrown pipeline failure left the crash-budget counter standing, so four transient LLM '
+            . 'failures in a row would strand every future trigger for this quote — Messenger\'s retry '
+            . 'already bounds this failure; the counter must be cleared on a caught throw.',
+        );
     }
 
+    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
     public function testANullGatewayReturnsWithoutServicingOrLocking(): void
     {
         $locks = ServicingHandlerFixture::locks();
@@ -162,6 +197,7 @@ final class ServiceQuoteHandlerTest extends TestCase
         );
     }
 
+    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
     public function testANullPipelineReturnsWithoutStamping(): void
     {
         $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
@@ -173,6 +209,7 @@ final class ServiceQuoteHandlerTest extends TestCase
         self::assertSame([], $gateway->customFieldWrites, 'Nothing was serviced, so nothing may be stamped.');
     }
 
+    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
     public function testADeletedQuoteIsSwallowedRatherThanRetried(): void
     {
         $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()], quoteMissing: true);
@@ -183,6 +220,7 @@ final class ServiceQuoteHandlerTest extends TestCase
         self::assertSame(0, $pipeline->passes);
     }
 
+    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
     public function testTheLockIsReleasedSoASecondPassCanRun(): void
     {
         $locks = ServicingHandlerFixture::locks();

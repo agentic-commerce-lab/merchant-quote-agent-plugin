@@ -14,7 +14,10 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use Psr\Log\NullLogger;
 use Symfony\Component\Lock\LockFactory;
+use Symfony\Component\Lock\LockInterface;
 use Symfony\Component\Lock\Store\InMemoryStore;
+use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
+use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
 /** Builders for the servicing handler's unit tests. */
 final class ServicingHandlerFixture
@@ -64,6 +67,38 @@ final class ServicingHandlerFixture
         \assert($writes !== [], description: 'No customFields write was recorded on this gateway.');
 
         return array_pop($writes);
+    }
+
+    /** @return iterable<string, array{0: string, 1: class-string<\Throwable>}> */
+    public static function handoffRefusalScenarios(): iterable
+    {
+        yield 'attempt ceiling exceeded' => ['ceiling', UnrecoverableMessageHandlingException::class];
+        yield 'quote locked by another worker' => ['held-lock', RecoverableMessageHandlingException::class];
+    }
+
+    /**
+     * @return array{0: FakeQuoteGateway, 1: ?LockInterface}
+     */
+    public static function refusalScenario(string $scenario, QuoteServicingLock $locks): array
+    {
+        if ($scenario === 'held-lock') {
+            // Returned rather than discarded: Symfony's Lock releases itself in
+            // __destruct() when autoRelease is true, so a temporary that
+            // nothing references would be garbage-collected — and its lock
+            // released — before the handler ever tries to acquire it. The
+            // caller is responsible for keeping index 1 alive.
+            $held = $locks->for('q1');
+            $held->acquire();
+
+            return [new FakeQuoteGateway([self::snapshot()]), $held];
+        }
+
+        return [
+            new FakeQuoteGateway([self::snapshot([
+                ServiceQuoteHandler::ATTEMPTS_KEY => ServiceQuoteHandler::MAX_ATTEMPTS,
+            ])]),
+            null,
+        ];
     }
 
     /** @return QuoteServicingPipelineInterface&object{passes: int} */
