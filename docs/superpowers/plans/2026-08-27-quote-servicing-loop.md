@@ -1847,22 +1847,25 @@ the state component moves on our own writes."
 ```
 
 ---
-
 ### Task 9: The trigger
 
 **Files:**
 - Create: `src/Servicing/QuoteServicingTrigger.php`
-- Test: `tests/Unit/Servicing/QuoteServicingTriggerTest.php` (create)
+- Test: `tests/Unit/Servicing/QuoteTriggerEventFixture.php` (create — shared event builders)
+- Test: `tests/Unit/Servicing/QuoteServicingTriggerStateTest.php` (create)
+- Test: `tests/Unit/Servicing/QuoteServicingTriggerCommentTest.php` (create)
+
+The tests are split across two classes, and the event builders live in a fixture, because mago's `too-many-methods` fails at 11 methods per class. One combined class would be 14 tests plus 4 builders. The split is along the two listeners, which is also how the class reads.
 
 **Interfaces:**
-- Consumes: `ServiceQuoteMessage` (Task 6), `AgentContext::STATE` (Task 4).
-- Produces: `QuoteServicingTrigger::__construct(MessageBusInterface $bus)`, subscribed to `state_machine.quote.state_changed` and `quote_comment.written`.
+- Consumes: `ServiceQuoteMessage::because()` and `ServicingTriggerReason` (Task 6), `AgentContext::STATE` (Task 4).
+- Produces: `QuoteServicingTrigger::__construct(MessageBusInterface $bus)`, subscribed to `state_machine.quote.state_changed` and `quote_comment.written`. `QuoteTriggerEventFixture::stateEvent()`, `::commentEvent()`, `::commentInsert()`, `::collectingBus()`.
 
-- [ ] **Step 1: Write the failing test**
+**Two filters, in this order, in both listeners.** The version filter is not optional and not cosmetic — see Step 3's comment for the measured reason it exists.
 
-Note two facts the test relies on. `StateMachineStateChangeEvent`'s constructor reads `$nextState->getTechnicalName()`, so the next-state entity must have one set. And its `getSalesChannelId()` reads a declared-but-never-assigned property, so never call it.
+- [ ] **Step 1: Write the shared event fixture**
 
-Create `tests/Unit/Servicing/QuoteServicingTriggerTest.php`:
+Create `tests/Unit/Servicing/QuoteTriggerEventFixture.php`:
 
 ```php
 <?php
@@ -1871,10 +1874,9 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 
-use MerchantQuoteAgentPlugin\Bridge\AgentContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
-use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
-use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Assert;
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
@@ -1885,166 +1887,30 @@ use Shopware\Core\System\StateMachine\Transition;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 
-final class QuoteServicingTriggerTest extends TestCase
+/**
+ * Builders for the two Shopware events the servicing trigger listens to, plus a
+ * collecting bus. Shared by both trigger test classes; follows the repo's
+ * tests/Unit/Policy/*Fixture.php convention.
+ */
+final class QuoteTriggerEventFixture
 {
-    public function testItSubscribesToTwoCoreEventNames(): void
-    {
-        self::assertSame(
-            ['state_machine.quote.state_changed', 'quote_comment.written'],
-            array_keys(QuoteServicingTrigger::getSubscribedEvents()),
-        );
-    }
+    private function __construct() {}
 
-    public function testEnteringOpenQueuesTheQuote(): void
-    {
-        $bus = self::collectingBus();
-        (new QuoteServicingTrigger($bus))->onQuoteStateChanged(self::stateEvent('open'));
-
-        self::assertCount(1, $bus->messages);
-        self::assertSame('q1', $bus->messages[0]->quoteId);
-        self::assertSame('state_entered', $bus->messages[0]->reason);
-    }
-
-    public function testEnteringChangeRequestedQueuesTheQuote(): void
-    {
-        $bus = self::collectingBus();
-        (new QuoteServicingTrigger($bus))->onQuoteStateChanged(self::stateEvent('change_requested'));
-
-        self::assertCount(1, $bus->messages);
-    }
-
-    /**
-     * `in_review` and `replied` are the states the agent's OWN servicing drives.
-     * Keeping them out of the trigger set means a self-trigger cannot happen
-     * even if the context stamp were ever lost.
-     */
-    public function testEnteringAStateTheAgentItselfDrivesQueuesNothing(): void
-    {
-        $bus = self::collectingBus();
-        $trigger = new QuoteServicingTrigger($bus);
-
-        $trigger->onQuoteStateChanged(self::stateEvent('in_review'));
-        $trigger->onQuoteStateChanged(self::stateEvent('replied'));
-        $trigger->onQuoteStateChanged(self::stateEvent('accepted'));
-        $trigger->onQuoteStateChanged(self::stateEvent('draft'));
-
-        self::assertSame([], $bus->messages);
-    }
-
-    public function testTheLeaveSideOfATransitionQueuesNothing(): void
-    {
-        $bus = self::collectingBus();
-        $event = self::stateEvent('open', StateMachineStateChangeEvent::STATE_MACHINE_TRANSITION_SIDE_LEAVE);
-
-        (new QuoteServicingTrigger($bus))->onQuoteStateChanged($event);
-
-        self::assertSame([], $bus->messages);
-    }
-
-    public function testAnAgentDrivenTransitionQueuesNothing(): void
-    {
-        $bus = self::collectingBus();
-        $event = self::stateEvent('open', context: AgentContext::create());
-
-        (new QuoteServicingTrigger($bus))->onQuoteStateChanged($event);
-
-        self::assertSame([], $bus->messages);
-    }
-
-    public function testAnInsertedCommentQueuesItsQuote(): void
-    {
-        $bus = self::collectingBus();
-        $event = self::commentEvent([self::insert('q1')]);
-
-        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten($event);
-
-        self::assertCount(1, $bus->messages);
-        self::assertSame('comment_written', $bus->messages[0]->reason);
-    }
-
-    public function testTwoCommentsOnOneQuoteQueueItOnce(): void
-    {
-        $bus = self::collectingBus();
-        $event = self::commentEvent([self::insert('q1'), self::insert('q1')]);
-
-        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten($event);
-
-        self::assertCount(1, $bus->messages);
-    }
-
-    public function testCommentsOnTwoQuotesQueueBoth(): void
-    {
-        $bus = self::collectingBus();
-        $event = self::commentEvent([self::insert('q1'), self::insert('q2')]);
-
-        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten($event);
-
-        self::assertCount(2, $bus->messages);
-    }
-
-    public function testAnEditedCommentQueuesNothing(): void
-    {
-        $bus = self::collectingBus();
-        $update = new EntityWriteResult(
-            'c1',
-            ['quoteId' => 'q1', 'comment' => 'edited'],
-            'quote_comment',
-            EntityWriteResult::OPERATION_UPDATE,
-        );
-
-        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten(self::commentEvent([$update]));
-
-        self::assertSame([], $bus->messages);
-    }
-
-    public function testACommentInsertWithNoQuoteIdQueuesNothing(): void
-    {
-        $bus = self::collectingBus();
-        $orphan = new EntityWriteResult('c1', ['comment' => 'x'], 'quote_comment', EntityWriteResult::OPERATION_INSERT);
-
-        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten(self::commentEvent([$orphan]));
-
-        self::assertSame([], $bus->messages);
-    }
-
-    public function testAnAgentAuthoredCommentQueuesNothing(): void
-    {
-        $bus = self::collectingBus();
-        $event = self::commentEvent([self::insert('q1')], AgentContext::create());
-
-        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten($event);
-
-        self::assertSame([], $bus->messages);
-    }
-
-    private static function insert(string $quoteId): EntityWriteResult
-    {
-        return new EntityWriteResult(
-            'c-' . $quoteId,
-            ['quoteId' => $quoteId, 'comment' => 'buyer ask'],
-            'quote_comment',
-            EntityWriteResult::OPERATION_INSERT,
-        );
-    }
-
-    /** @param list<EntityWriteResult> $results */
-    private static function commentEvent(array $results, ?Context $context = null): EntityWrittenEvent
-    {
-        return new EntityWrittenEvent('quote_comment', $results, $context ?? Context::createDefaultContext());
-    }
-
-    private static function stateEvent(
+    public static function stateEvent(
         string $nextState,
         string $side = StateMachineStateChangeEvent::STATE_MACHINE_TRANSITION_SIDE_ENTER,
         ?Context $context = null,
     ): StateMachineStateChangeEvent {
         $machine = new StateMachineEntity();
+        $machine->setId('0191bd7f7a5e7c9e8a3f4b2c1d0e9f88');
         $machine->setTechnicalName('quote.state');
 
         $from = new StateMachineStateEntity();
+        $from->setId('0191bd7f7a5e7c9e8a3f4b2c1d0e9f01');
         $from->setTechnicalName('draft');
 
         $to = new StateMachineStateEntity();
+        $to->setId('0191bd7f7a5e7c9e8a3f4b2c1d0e9f02');
         $to->setTechnicalName($nextState);
 
         return new StateMachineStateChangeEvent(
@@ -2057,8 +1923,35 @@ final class QuoteServicingTriggerTest extends TestCase
         );
     }
 
+    public static function commentInsert(string $quoteId): EntityWriteResult
+    {
+        return new EntityWriteResult(
+            'c-' . $quoteId,
+            ['quoteId' => $quoteId, 'comment' => 'buyer ask'],
+            'quote_comment',
+            EntityWriteResult::OPERATION_INSERT,
+        );
+    }
+
+    /** @param list<EntityWriteResult> $results */
+    public static function commentEvent(array $results, ?Context $context = null): EntityWrittenEvent
+    {
+        return new EntityWrittenEvent('quote_comment', $results, $context ?? Context::createDefaultContext());
+    }
+
+    /**
+     * A Context on the snapshot version lane. SwagCommercial mirrors comments
+     * there via Context::createWithVersionId(), which drops every state — so a
+     * mirrored event looks unstamped even for an agent write.
+     */
+    public static function snapshotContext(?Context $context = null): Context
+    {
+        return ($context ?? Context::createDefaultContext())
+            ->createWithVersionId('019cfaaf020219939ba2eea26ba651ae');
+    }
+
     /** @return MessageBusInterface&object{messages: list<ServiceQuoteMessage>} */
-    private static function collectingBus(): object
+    public static function collectingBus(): object
     {
         return new class implements MessageBusInterface {
             /** @var list<ServiceQuoteMessage> */
@@ -2073,7 +1966,7 @@ final class QuoteServicingTriggerTest extends TestCase
             {
                 // Assert::, not self:: — inside an anonymous class self:: is the
                 // anonymous class, which has no assertion methods.
-                \PHPUnit\Framework\Assert::assertInstanceOf(ServiceQuoteMessage::class, $message);
+                Assert::assertInstanceOf(ServiceQuoteMessage::class, $message);
                 $this->messages[] = $message;
 
                 return new Envelope($message);
@@ -2083,15 +1976,244 @@ final class QuoteServicingTriggerTest extends TestCase
 }
 ```
 
-`StateMachineStateEntity` and `StateMachineEntity` may require an `id` before other setters work; if a test errors with "must not be accessed before initialization", call `->setId(Uuid::randomHex())` on each. `Transition`'s constructor is `(string $entityName, string $entityId, string $transitionName, string $stateFieldName)` — confirm against `vendor/shopware/core/System/StateMachine/Transition.php` and adjust if it differs.
+`Defaults` is imported for use by the test classes via this file's own builders; if your static analyser flags it as unused here, drop the import from this file only.
 
-- [ ] **Step 2: Run the test to verify it fails**
+Two facts about `StateMachineStateChangeEvent` this builder depends on: its constructor reads `$nextState->getTechnicalName()`, so the next-state entity must have one set, and its `getSalesChannelId()` reads a declared-but-never-assigned property — never call it. Confirm `Transition`'s constructor is `(string $entityName, string $entityId, string $transitionName, string $stateFieldName)` against `vendor/shopware/core/System/StateMachine/Transition.php` and adjust if it differs. If the entities need an `id` before other setters work, the `setId()` calls above cover it.
 
-Run: `composer run test -- --filter QuoteServicingTriggerTest`
+- [ ] **Step 2: Write the two failing test classes**
+
+Create `tests/Unit/Servicing/QuoteServicingTriggerStateTest.php` (7 methods):
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
+
+use MerchantQuoteAgentPlugin\Bridge\AgentContext;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
+use PHPUnit\Framework\TestCase;
+use Shopware\Core\System\StateMachine\Event\StateMachineStateChangeEvent;
+
+final class QuoteServicingTriggerStateTest extends TestCase
+{
+    public function testItSubscribesToTwoCoreEventNames(): void
+    {
+        self::assertSame(
+            ['state_machine.quote.state_changed', 'quote_comment.written'],
+            array_keys(QuoteServicingTrigger::getSubscribedEvents()),
+        );
+    }
+
+    public function testEnteringOpenQueuesTheQuote(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        (new QuoteServicingTrigger($bus))->onQuoteStateChanged(QuoteTriggerEventFixture::stateEvent('open'));
+
+        self::assertCount(1, $bus->messages);
+        self::assertSame('q1', $bus->messages[0]->quoteId);
+        self::assertSame('state_entered', $bus->messages[0]->reason);
+    }
+
+    public function testEnteringChangeRequestedQueuesTheQuote(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        (new QuoteServicingTrigger($bus))
+            ->onQuoteStateChanged(QuoteTriggerEventFixture::stateEvent('change_requested'));
+
+        self::assertCount(1, $bus->messages);
+    }
+
+    /**
+     * `in_review` and `replied` are the states the agent's OWN servicing drives.
+     * Keeping them out of the trigger set means a self-trigger cannot happen
+     * even if the context stamp were ever lost.
+     */
+    public function testEnteringAStateTheAgentItselfDrivesQueuesNothing(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $trigger = new QuoteServicingTrigger($bus);
+
+        foreach (['in_review', 'replied', 'accepted', 'draft'] as $state) {
+            $trigger->onQuoteStateChanged(QuoteTriggerEventFixture::stateEvent($state));
+        }
+
+        self::assertSame([], $bus->messages);
+    }
+
+    public function testTheLeaveSideOfATransitionQueuesNothing(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $event = QuoteTriggerEventFixture::stateEvent(
+            'open',
+            StateMachineStateChangeEvent::STATE_MACHINE_TRANSITION_SIDE_LEAVE,
+        );
+
+        (new QuoteServicingTrigger($bus))->onQuoteStateChanged($event);
+
+        self::assertSame([], $bus->messages);
+    }
+
+    public function testAnAgentDrivenTransitionQueuesNothing(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $event = QuoteTriggerEventFixture::stateEvent('open', context: AgentContext::create());
+
+        (new QuoteServicingTrigger($bus))->onQuoteStateChanged($event);
+
+        self::assertSame([], $bus->messages);
+    }
+
+    /**
+     * A snapshot-lane transition is a mirror, never an independent buyer action,
+     * and its re-versioned Context has lost every state — including ours. Without
+     * the version filter this would queue the quote.
+     */
+    public function testATransitionOnTheSnapshotVersionQueuesNothing(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $event = QuoteTriggerEventFixture::stateEvent(
+            'open',
+            context: QuoteTriggerEventFixture::snapshotContext(),
+        );
+
+        (new QuoteServicingTrigger($bus))->onQuoteStateChanged($event);
+
+        self::assertSame([], $bus->messages);
+    }
+}
+```
+
+Create `tests/Unit/Servicing/QuoteServicingTriggerCommentTest.php` (7 methods):
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
+
+use MerchantQuoteAgentPlugin\Bridge\AgentContext;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
+use PHPUnit\Framework\TestCase;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
+
+final class QuoteServicingTriggerCommentTest extends TestCase
+{
+    public function testAnInsertedCommentQueuesItsQuote(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $event = QuoteTriggerEventFixture::commentEvent([QuoteTriggerEventFixture::commentInsert('q1')]);
+
+        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten($event);
+
+        self::assertCount(1, $bus->messages);
+        self::assertSame('comment_written', $bus->messages[0]->reason);
+    }
+
+    public function testTwoCommentsOnOneQuoteQueueItOnce(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $event = QuoteTriggerEventFixture::commentEvent([
+            QuoteTriggerEventFixture::commentInsert('q1'),
+            QuoteTriggerEventFixture::commentInsert('q1'),
+        ]);
+
+        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten($event);
+
+        self::assertCount(1, $bus->messages);
+    }
+
+    public function testCommentsOnTwoQuotesQueueBoth(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $event = QuoteTriggerEventFixture::commentEvent([
+            QuoteTriggerEventFixture::commentInsert('q1'),
+            QuoteTriggerEventFixture::commentInsert('q2'),
+        ]);
+
+        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten($event);
+
+        self::assertCount(2, $bus->messages);
+    }
+
+    public function testAnEditedCommentQueuesNothing(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $update = new EntityWriteResult(
+            'c1',
+            ['quoteId' => 'q1', 'comment' => 'edited'],
+            'quote_comment',
+            EntityWriteResult::OPERATION_UPDATE,
+        );
+
+        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten(
+            QuoteTriggerEventFixture::commentEvent([$update]),
+        );
+
+        self::assertSame([], $bus->messages);
+    }
+
+    public function testACommentInsertWithNoQuoteIdQueuesNothing(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $orphan = new EntityWriteResult(
+            'c1',
+            ['comment' => 'x'],
+            'quote_comment',
+            EntityWriteResult::OPERATION_INSERT,
+        );
+
+        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten(
+            QuoteTriggerEventFixture::commentEvent([$orphan]),
+        );
+
+        self::assertSame([], $bus->messages);
+    }
+
+    public function testAnAgentAuthoredCommentQueuesNothing(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $event = QuoteTriggerEventFixture::commentEvent(
+            [QuoteTriggerEventFixture::commentInsert('q1')],
+            AgentContext::create(),
+        );
+
+        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten($event);
+
+        self::assertSame([], $bus->messages);
+    }
+
+    /**
+     * The measured case the version filter exists for. One addComment() fires
+     * TWO quote_comment.written events — the live insert and SwagCommercial's
+     * snapshot mirror — and the mirror's Context has lost AgentContext::STATE
+     * because Context::createWithVersionId() does not carry states. Without this
+     * filter the agent re-triggers itself, and a buyer comment queues twice.
+     */
+    public function testACommentWrittenOnTheSnapshotVersionQueuesNothing(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $event = QuoteTriggerEventFixture::commentEvent(
+            [QuoteTriggerEventFixture::commentInsert('q1')],
+            QuoteTriggerEventFixture::snapshotContext(),
+        );
+
+        (new QuoteServicingTrigger($bus))->onQuoteCommentWritten($event);
+
+        self::assertSame([], $bus->messages);
+    }
+}
+```
+
+- [ ] **Step 3: Run both test classes to verify they fail**
+
+Run: `composer run test -- --filter 'QuoteServicingTrigger(State|Comment)Test'`
 
 Expected: FAIL — `Class "MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger" not found`.
 
-- [ ] **Step 3: Implement the trigger**
+- [ ] **Step 4: Implement the trigger**
 
 Create `src/Servicing/QuoteServicingTrigger.php`:
 
@@ -2105,6 +2227,7 @@ namespace MerchantQuoteAgentPlugin\Servicing;
 use MerchantQuoteAgentPlugin\Bridge\AgentContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
@@ -2157,7 +2280,7 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
 
     public function onQuoteStateChanged(StateMachineStateChangeEvent $event): void
     {
-        if (self::isAgentWrite($event->getContext())) {
+        if (self::isNotOurBusiness($event->getContext())) {
             return;
         }
 
@@ -2176,7 +2299,7 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
 
     public function onQuoteCommentWritten(EntityWrittenEvent $event): void
     {
-        if (self::isAgentWrite($event->getContext())) {
+        if (self::isNotOurBusiness($event->getContext())) {
             return;
         }
 
@@ -2200,9 +2323,28 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
         }
     }
 
-    private static function isAgentWrite(Context $context): bool
+    /**
+     * Two filters, and the order does not matter but both are load-bearing.
+     *
+     * The VERSION filter is not an optimisation. `Context::createWithVersionId()`
+     * builds a fresh Context re-applying only `scope` and `extensions`
+     * (Framework/Context.php:173) — `states` is not among them. SwagCommercial's
+     * QuoteHistoryWriter uses exactly that call to mirror every comment into the
+     * quote's snapshot lane, so ONE addComment() fires TWO
+     * `quote_comment.written` events: the live insert, which carries our stamp,
+     * and the mirror, which has lost it. Measured, not inferred. Without this
+     * filter the agent re-triggers on its own writes, and a buyer's single
+     * comment queues two messages. A snapshot-lane write is by construction a
+     * mirror of a live write, never an independent buyer action, so filtering to
+     * the live lane is correct on its own merits.
+     *
+     * The STATE filter is what then suppresses the agent's own LIVE write, which
+     * the version filter cannot see.
+     */
+    private static function isNotOurBusiness(Context $context): bool
     {
-        return $context->hasState(AgentContext::STATE);
+        return $context->getVersionId() !== Defaults::LIVE_VERSION
+            || $context->hasState(AgentContext::STATE);
     }
 
     private function queue(string $quoteId, ServicingTriggerReason $reason): void
@@ -2213,13 +2355,19 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 5: Run both test classes to verify they pass**
 
-Run: `composer run test -- --filter QuoteServicingTriggerTest`
+Run: `composer run test -- --filter 'QuoteServicingTrigger(State|Comment)Test'`
 
-Expected: PASS, 12 tests.
+Expected: PASS, 14 tests total (7 + 7).
 
-- [ ] **Step 5: Run the whole unit suite and the quality gate**
+- [ ] **Step 6: Confirm the method-count gate**
+
+Run: `vendor/bin/mago lint tests/Unit/Servicing/QuoteTriggerEventFixture.php tests/Unit/Servicing/QuoteServicingTriggerStateTest.php tests/Unit/Servicing/QuoteServicingTriggerCommentTest.php src/Servicing/QuoteServicingTrigger.php`
+
+Expected: `No issues found.` This is the check the pre-commit hook runs, and `composer run lint` does not cover `tests/` — so run it explicitly. Each test class is 7 methods and the fixture is 5, all under the threshold of 10.
+
+- [ ] **Step 7: Run the whole unit suite and the quality gate**
 
 Run: `composer run test`
 Expected: PASS, all suites.
@@ -2227,16 +2375,26 @@ Expected: PASS, all suites.
 Run: `composer run format:check && composer run lint && composer run typecheck`
 Expected: clean.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/Servicing/QuoteServicingTrigger.php tests/Unit/Servicing/QuoteServicingTriggerTest.php
-git commit -m "feat: trigger servicing from two core events
+git add src/Servicing/QuoteServicingTrigger.php \
+        tests/Unit/Servicing/QuoteTriggerEventFixture.php \
+        tests/Unit/Servicing/QuoteServicingTriggerStateTest.php \
+        tests/Unit/Servicing/QuoteServicingTriggerCommentTest.php
+git commit -m "feat: trigger servicing from two core events, live lane only
 
 state_machine.quote.state_changed filtered to entering open or
 change_requested, plus quote_comment.written filtered to inserts. Both are core
 classes and core event names, so ADR 0001's untyped SwagCommercial surface stays
 confined to the bridge.
+
+Two filters, both load-bearing. The version filter drops snapshot-lane writes:
+Context::createWithVersionId() re-applies only scope and extensions, so
+SwagCommercial's comment mirror arrives with our stamp gone, and one addComment()
+fires two written events. Without it the agent re-triggers on its own comment and
+a buyer's single comment queues twice. The state filter then suppresses the
+agent's own live write, which the version filter cannot see.
 
 quote.requested needs no subscription of its own: a buyer request runs through
 the customer_send transition (draft to open), verified against the shop's
@@ -2244,9 +2402,11 @@ state_machine_transition table.
 
 in_review and replied are deliberately outside the trigger set. They are the
 states the agent's own servicing drives, so a self-trigger is impossible by
-construction rather than only by the context stamp."
-```
+construction rather than only by the context stamp.
 
+Tests split across two classes with the event builders in a fixture: 14 tests
+plus 4 builders in one class would exceed mago's too-many-methods threshold."
+```
 ---
 
 ### Task 10: Wire it into the container
