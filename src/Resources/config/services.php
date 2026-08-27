@@ -18,6 +18,10 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteStateTransitioner;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
+use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
@@ -100,4 +104,30 @@ return static function (ContainerConfigurator $configurator): void {
     // `?QuoteGatewayInterface`. Per the spec's non-goals there is deliberately
     // no null-object implementation: capability absence belongs one layer up.
     $services->set(QuoteGatewayInterface::class)->factory([service(QuoteGatewayFactory::class), 'create']);
+
+    // Servicing (issue #4): trigger, queue and lock. Inside the guard because
+    // a shop without SwagCommercial has no quotes to service.
+    //
+    // LOCK_DSN is read as an injected parameter rather than through getenv():
+    // shopware/core defines `env(LOCK_DSN): 'flock'` in its own framework.yaml,
+    // so this resolves on every shop whether or not the merchant set it.
+    $services->set(QuoteServicingLock::class)->args([
+        service('lock.factory'),
+        '%env(LOCK_DSN)%',
+        service('logger')->ignoreOnInvalid(),
+    ]);
+
+    // autoconfigure() picks up EventSubscriberInterface, so no explicit tag.
+    $services->set(QuoteServicingTrigger::class)->args([service('messenger.default_bus')]);
+
+    // The gateway argument is the null-returning factory registered above and
+    // the pipeline is #18's, registered nowhere yet — both ignoreOnInvalid()
+    // so an absent or unlicensed backend degrades to a log line rather than a
+    // container error. autoconfigure() picks up #[AsMessageHandler].
+    $services->set(ServiceQuoteHandler::class)->args([
+        service(QuoteServicingLock::class),
+        service('logger'),
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+        service(QuoteServicingPipelineInterface::class)->ignoreOnInvalid(),
+    ]);
 };
