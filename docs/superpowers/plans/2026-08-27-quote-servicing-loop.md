@@ -426,7 +426,7 @@ Every write the agent makes must be recognisable in-process, so the listeners in
 
 **Files:**
 - Create: `src/Bridge/AgentContext.php`
-- Modify: `src/Bridge/SwagCommercialQuoteGateway.php` (six `Context::createDefaultContext()` call sites)
+- Modify: `src/Bridge/SwagCommercialQuoteGateway.php` (seven `Context::createDefaultContext()` call sites: lines 31, 38, 47, 53, 74, 94, 120)
 - Test: `tests/Integration/AgentContextTest.php` (create)
 
 **Interfaces:**
@@ -556,9 +556,9 @@ final class AgentContext
 
 - [ ] **Step 4: Route every gateway write through it**
 
-In `src/Bridge/SwagCommercialQuoteGateway.php`, replace all six `Context::createDefaultContext()` calls with `AgentContext::create()`, and drop the now-unused `use Shopware\Core\Framework\Context;` **only if** no signature still needs it — `assertRevision(string $quoteId, ?QuoteRevision $expected, Context $context)` does, so keep the import.
+In `src/Bridge/SwagCommercialQuoteGateway.php`, replace all seven `Context::createDefaultContext()` calls with `AgentContext::create()`, and drop the now-unused `use Shopware\Core\Framework\Context;` **only if** no signature still needs it — `assertRevision(string $quoteId, ?QuoteRevision $expected, Context $context)` does, so keep the import.
 
-The six sites, by method: `fetchSnapshot`, `updateLineItems`, `addProduct`, `recalculate`, `updateQuote`, `addComment`, `transition` — that is seven call sites across seven methods; replace every one. `fetchSnapshot` is included deliberately: a read stamps nothing in the database, but stamping it uniformly means no future writer has to remember which contexts are stamped.
+The seven sites, one per method: `fetchSnapshot`, `updateLineItems`, `addProduct`, `recalculate`, `updateQuote`, `addComment`, `transition`. Replace every one. Verify with `grep -c 'Context::createDefaultContext()' src/Bridge/SwagCommercialQuoteGateway.php` — it must print 0 when you are done. `fetchSnapshot` is included deliberately: a read stamps nothing in the database, but stamping it uniformly means no future writer has to remember which contexts are stamped.
 
 Example, `addComment`:
 
@@ -1546,13 +1546,19 @@ final class ServiceQuoteHandlerTest extends TestCase
         }
     }
 
-    public function testANullGatewayReturnsWithoutStamping(): void
+    public function testANullGatewayReturnsWithoutServicingOrLocking(): void
     {
-        $handler = new ServiceQuoteHandler(self::locks(), new NullLogger(), null, self::countingPipeline());
+        $locks = self::locks();
+        $pipeline = self::countingPipeline();
 
-        $handler(self::message());
+        (new ServiceQuoteHandler($locks, new NullLogger(), null, $pipeline))(self::message());
 
-        self::assertTrue(true, 'Handled without throwing; nothing to stamp.');
+        self::assertSame(0, $pipeline->passes, 'A quote was serviced without a gateway.');
+        self::assertTrue(
+            $locks->for('q1')->acquire(),
+            'The handler took a lock before checking the gateway, so an unlicensed shop still '
+            . 'serialises on a lock it can never use.',
+        );
     }
 
     public function testANullPipelineReturnsWithoutStamping(): void
@@ -2204,7 +2210,7 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
 
 Run: `composer run test -- --filter QuoteServicingTriggerTest`
 
-Expected: PASS, 13 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Run the whole unit suite and the quality gate**
 

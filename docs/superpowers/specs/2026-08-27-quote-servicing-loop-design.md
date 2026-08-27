@@ -131,7 +131,7 @@ src/Servicing/QuoteServicingLock.php      NEW  LockFactory wrapper: key, TTL, lo
 src/Servicing/QuoteServicingTrigger.php   NEW  one subscriber, two listener methods
 
 src/Bridge/AgentContext.php               NEW  stamped Context factory + the state constant
-src/Bridge/SwagCommercialQuoteGateway.php EDIT six inline createDefaultContext() → AgentContext::create()
+src/Bridge/SwagCommercialQuoteGateway.php EDIT seven inline createDefaultContext() → AgentContext::create()
 src/Bridge/Data/QuoteIdentity.php         EDIT + salesChannelId
 src/Bridge/Data/QuoteComment.php          EDIT + employeeId, + isAuthored()
 src/Bridge/QuoteCommentMapper.php         EDIT map employeeId
