@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
@@ -13,11 +14,84 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\Uuid\Uuid;
+use Symfony\Component\DependencyInjection\ServiceLocator;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Retry\RetryStrategyInterface;
+use Symfony\Component\Messenger\Stamp\RedeliveryStamp;
+use Symfony\Component\Messenger\Transport\TransportInterface;
 
 final class ServicingSubscriberTest extends IntegrationTestCase
 {
+    public function testShopwareMessengerParksAfterThreeTransportRetries(): void
+    {
+        $failedTransport = static::getContainer()->get('messenger.transport.failed');
+        self::assertInstanceOf(TransportInterface::class, $failedTransport);
+        self::assertSame(
+            $failedTransport,
+            static::getContainer()->get('messenger.failure_transports.default'),
+            'Shopware does not use the failed transport as its default failure transport.',
+        );
+
+        $retryStrategies = static::getContainer()->get('messenger.retry_strategy_locator');
+        self::assertInstanceOf(ServiceLocator::class, $retryStrategies);
+        $asyncRetryStrategy = $retryStrategies->get('async');
+        self::assertInstanceOf(RetryStrategyInterface::class, $asyncRetryStrategy);
+
+        self::assertTrue($asyncRetryStrategy->isRetryable(new Envelope(new \stdClass(), [new RedeliveryStamp(2)])));
+        self::assertFalse($asyncRetryStrategy->isRetryable(new Envelope(new \stdClass(), [new RedeliveryStamp(3)])));
+    }
+
+    public function testInstalledQuoteRequestedSubscriberRoutesToTheAsyncTransport(): void
+    {
+        $gateway = static::gateway();
+        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'open');
+        $snapshot = $gateway->fetchSnapshot($quoteId);
+
+        $connection = static::getContainer()->get(Connection::class);
+        self::assertInstanceOf(Connection::class, $connection);
+        $highestMessageId = (int) $connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM messenger_messages');
+
+        $dispatcher = static::getContainer()->get('event_dispatcher');
+        self::assertInstanceOf(EventDispatcherInterface::class, $dispatcher);
+        $event = new class($quoteId, Context::createDefaultContext()) {
+            public function __construct(
+                private readonly string $quoteId,
+                private readonly Context $context,
+            ) {}
+
+            public function getQuoteId(): string
+            {
+                return $this->quoteId;
+            }
+
+            public function getContext(): Context
+            {
+                return $this->context;
+            }
+        };
+
+        $dispatcher->dispatch($event, 'quote.requested');
+
+        /** @var list<array{queue_name: string, body: string, headers: string}> $messages */
+        $messages = $connection->fetchAllAssociative('SELECT queue_name, body, headers FROM messenger_messages WHERE id > :id AND body LIKE :quoteId', [
+            'id' => $highestMessageId,
+            'quoteId' => '%' . $quoteId . '%',
+        ]);
+
+        self::assertCount(1, $messages, 'quote.requested did not produce exactly one asynchronous service message.');
+        // Shopware names the transport `async`; its default Doctrine DSN stores
+        // that transport in the `default` queue (low-priority/failed use their
+        // own explicit queue_name query parameters).
+        self::assertSame('default', $messages[0]['queue_name']);
+        self::assertStringContainsString(
+            str_replace(search: '\\', replace: '\\\\', subject: ServiceQuoteMessage::class),
+            $messages[0]['headers'],
+        );
+        self::assertStringContainsString($snapshot->identity->salesChannelId, $messages[0]['body']);
+    }
+
     public function testStateTransitionDispatchesServiceQuoteMessage(): void
     {
         $gateway = static::gateway();
@@ -141,5 +215,56 @@ final class ServicingSubscriberTest extends IntegrationTestCase
         );
 
         $subscriber->onQuoteCommentWritten($writeEvent);
+    }
+
+    public function testDuplicateEligibleCommentRowsDispatchOneMessageForTheQuote(): void
+    {
+        $gateway = static::gateway();
+        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'in_review');
+        $snapshot = $gateway->fetchSnapshot($quoteId);
+
+        $dispatched = [];
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus
+            ->expects(self::once())
+            ->method('dispatch')
+            ->willReturnCallback(static function (ServiceQuoteMessage $message) use (&$dispatched): Envelope {
+                $dispatched[] = $message;
+
+                return new Envelope($message);
+            });
+        $subscriber = new QuoteServicingSubscriber($bus, $gateway);
+        $event = new EntityWrittenEvent(
+            'quote_comment',
+            [
+                self::buyerCommentResult($quoteId, 'Can you sharpen the price?'),
+                self::buyerCommentResult($quoteId, 'What is the delivery window?'),
+            ],
+            Context::createDefaultContext(),
+        );
+
+        $subscriber->onQuoteCommentWritten($event);
+
+        self::assertCount(1, $dispatched);
+        self::assertTrue(Uuid::isValid($dispatched[0]->messageId));
+        self::assertSame($quoteId, $dispatched[0]->quoteId);
+        self::assertSame($snapshot->identity->salesChannelId, $dispatched[0]->salesChannelId);
+        self::assertTrue($snapshot->revision->matches($dispatched[0]->revision));
+    }
+
+    private static function buyerCommentResult(string $quoteId, string $comment): EntityWriteResult
+    {
+        return new EntityWriteResult(
+            Uuid::randomHex(),
+            [
+                'quoteId' => $quoteId,
+                'comment' => $comment,
+                'customerId' => Uuid::randomHex(),
+                'employeeId' => null,
+                'createdById' => null,
+            ],
+            'quote_comment',
+            EntityWriteResult::OPERATION_INSERT,
+        );
     }
 }
