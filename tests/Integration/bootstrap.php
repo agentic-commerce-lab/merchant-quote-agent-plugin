@@ -33,12 +33,24 @@ $_ENV['KERNEL_CLASS'] = \Shopware\Core\Kernel::class;
 // active — this plugin is never installed into Shopware for these tests, it
 // only needs to autoload and reach the container (see PSR-4 registration
 // above and ADR 0001 / Task 1 report for why plugin:install is skipped).
-(new \Symfony\Component\Dotenv\Dotenv())
-    ->usePutenv()
-    ->loadEnv($shopRoot . '/.env');
-$databaseUrl = $_SERVER['DATABASE_URL'] ?? getenv('DATABASE_URL');
+// Read straight out of `.env` rather than through symfony/dotenv: that would be
+// a shadow dependency (quality:depcheck) for one line of parsing. It also keeps
+// `.env.test` out of this: that file DOES exist here and sets KERNEL_CLASS to
+// App\Kernel, which is not this shop's kernel, so loadEnv() pulling it in is a
+// hazard rather than a help. DATABASE_URL is defined in `.env` alone — neither
+// `.env.local` nor `.env.test` carries it — so one file is the whole story.
+$envFile = $shopRoot . '/.env';
+$envContents = is_readable($envFile) ? (string) file_get_contents($envFile) : '';
+preg_match('/^DATABASE_URL=[\'"]?(?<url>[^\'"\r\n]+)/m', $envContents, $matches);
+$databaseUrl = $matches['url'] ?? null;
+
 if (!is_string($databaseUrl) || $databaseUrl === '') {
-    throw new \RuntimeException('DATABASE_URL could not be read from ' . $shopRoot . '/.env');
+    throw new \RuntimeException(
+        'DATABASE_URL could not be read from '
+        . $envFile
+        . ' — refusing to fall through to '
+        . "TestBootstrapper's _test default, which cannot boot this container.",
+    );
 }
 
 (new TestBootstrapper())
