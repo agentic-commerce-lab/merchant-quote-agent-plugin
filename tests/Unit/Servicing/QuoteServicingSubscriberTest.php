@@ -17,7 +17,6 @@ use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingSubscriber;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
@@ -33,14 +32,12 @@ final class QuoteServicingSubscriberTest extends TestCase
 {
     private MessageBusInterface&MockObject $bus;
     private QuoteGatewayInterface&MockObject $gateway;
-    private LoggerInterface&MockObject $logger;
 
     #[\Override]
     protected function setUp(): void
     {
         $this->bus = $this->createMock(MessageBusInterface::class);
         $this->gateway = $this->createMock(QuoteGatewayInterface::class);
-        $this->logger = $this->createMock(LoggerInterface::class);
     }
 
     /** @param array<string, mixed> $customFields */
@@ -98,61 +95,91 @@ final class QuoteServicingSubscriberTest extends TestCase
         return new EntityWrittenEvent('quote_comment', $writeResults, $context);
     }
 
-    public function testOnQuoteStateEnterDispatchesServiceMessage(): void
+    private static function isExpectedMessage(
+        ServiceQuoteMessage $message,
+        string $quoteId,
+        QuoteRevision $revision,
+    ): bool {
+        self::assertTrue(Uuid::isValid($message->messageId));
+        self::assertSame($quoteId, $message->quoteId);
+        self::assertSame('sales-channel-456', $message->salesChannelId);
+        self::assertSame($revision, $message->revision);
+
+        return true;
+    }
+
+    public function testStateAndRequestedEventsSubscribeAndDispatchServiceMessages(): void
     {
-        $events = QuoteServicingSubscriber::getSubscribedEvents();
-        self::assertArrayHasKey('state_enter.quote.state.open', $events);
-        self::assertArrayHasKey('state_enter.quote.state.in_review', $events);
-        self::assertArrayHasKey('state_enter.quote.state.change_requested', $events);
-        self::assertArrayHasKey('quote_comment.written', $events);
+        self::assertSame(
+            [
+                'quote.requested' => 'onQuoteStateEnter',
+                'state_enter.quote.state.open' => 'onQuoteStateEnter',
+                'state_enter.quote.state.in_review' => 'onQuoteStateEnter',
+                'state_enter.quote.state.change_requested' => 'onQuoteStateEnter',
+                'quote_comment.written' => 'onQuoteCommentWritten',
+            ],
+            QuoteServicingSubscriber::getSubscribedEvents(),
+        );
 
         $revision = new QuoteRevision(
             '018b449b2ba170a4a589cf8cb59a35e4',
             new \DateTimeImmutable('2026-08-27 12:00:00.123456'),
         );
-        $snapshot = $this->createSnapshot('quote-123', 'open', $revision);
+        $stateSnapshot = $this->createSnapshot('quote-123', 'open', $revision);
+        $requestedSnapshot = $this->createSnapshot('quote-requested', 'open', $revision);
 
-        $this->gateway->expects(self::once())->method('fetchSnapshot')->with('quote-123')->willReturn($snapshot);
+        $this->gateway
+            ->expects(self::exactly(2))
+            ->method('fetchSnapshot')
+            ->willReturnCallback(static fn(string $quoteId): QuoteSnapshot => match ($quoteId) {
+                'quote-123' => $stateSnapshot,
+                'quote-requested' => $requestedSnapshot,
+            });
+
+        $dispatchedQuoteIds = [];
         $this->bus
-            ->expects(self::once())
+            ->expects(self::exactly(2))
             ->method('dispatch')
-            ->with(self::callback(
-                static fn(ServiceQuoteMessage $msg): bool => (
-                    $msg->quoteId === 'quote-123'
-                    && Uuid::isValid($msg->messageId)
-                    && $msg->salesChannelId === 'sales-channel-456'
-                    && $msg->revision->versionId === '018b449b2ba170a4a589cf8cb59a35e4'
-                ),
-            ))
-            ->willReturn(new Envelope(new \stdClass()));
+            ->willReturnCallback(static function (ServiceQuoteMessage $message) use (
+                &$dispatchedQuoteIds,
+                $revision,
+            ): Envelope {
+                self::isExpectedMessage($message, $message->quoteId, $revision);
+                $dispatchedQuoteIds[] = $message->quoteId;
 
-        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway, $this->logger);
+                return new Envelope($message);
+            });
 
-        $event = $this->createStateChangeEvent('quote-123', Context::createDefaultContext());
-        $subscriber->onQuoteStateEnter($event);
+        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway);
+
+        $context = Context::createDefaultContext();
+        $requestedEvent = new class('quote-requested', $context) {
+            public function __construct(
+                private readonly string $quoteId,
+                private readonly Context $context,
+            ) {}
+
+            public function getQuoteId(): string
+            {
+                return $this->quoteId;
+            }
+
+            public function getContext(): Context
+            {
+                return $this->context;
+            }
+        };
+
+        $subscriber->onQuoteStateEnter($this->createStateChangeEvent('quote-123', $context));
+        $subscriber->onQuoteStateEnter($requestedEvent);
+
+        self::assertSame(['quote-123', 'quote-requested'], $dispatchedQuoteIds);
     }
 
-    public function testOnQuoteStateEnterSkipsWhenContextHasAgentState(): void
+    public function testOnQuoteStateEnterSkipsAgentContextNullGatewayAndMissingQuote(): void
     {
         $context = Context::createDefaultContext();
         $context->addState(MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING);
-
-        $this->gateway->expects(self::never())->method('fetchSnapshot');
-        $this->bus->expects(self::never())->method('dispatch');
-
-        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway, $this->logger);
-
-        $event = $this->createStateChangeEvent('quote-123', $context);
-        $subscriber->onQuoteStateEnter($event);
-    }
-
-    public function testOnQuoteStateEnterSkipsWhenGatewayIsNullOrQuoteIsMissing(): void
-    {
-        $this->bus->expects(self::never())->method('dispatch');
-
-        $subscriber = new QuoteServicingSubscriber($this->bus, null, $this->logger);
-        $event = $this->createStateChangeEvent('quote-123', Context::createDefaultContext());
-        $subscriber->onQuoteStateEnter($event);
 
         $this->gateway
             ->expects(self::once())
@@ -161,10 +188,14 @@ final class QuoteServicingSubscriberTest extends TestCase
             ->willThrowException(QuoteNotFoundException::forId('quote-123'));
         $this->bus->expects(self::never())->method('dispatch');
 
-        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway, $this->logger);
+        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway);
+        $subscriber->onQuoteStateEnter($this->createStateChangeEvent('quote-123', $context));
 
-        $event = $this->createStateChangeEvent('quote-123', Context::createDefaultContext());
-        $subscriber->onQuoteStateEnter($event);
+        $subscriber = new QuoteServicingSubscriber($this->bus, null);
+        $subscriber->onQuoteStateEnter($this->createStateChangeEvent('quote-123', Context::createDefaultContext()));
+
+        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway);
+        $subscriber->onQuoteStateEnter($this->createStateChangeEvent('quote-123', Context::createDefaultContext()));
     }
 
     public function testOnQuoteCommentWrittenDispatchesForBuyerStaffAndUnmatchedAuthorlessComments(): void
@@ -192,13 +223,17 @@ final class QuoteServicingSubscriberTest extends TestCase
         $this->bus
             ->expects(self::exactly(3))
             ->method('dispatch')
-            ->willReturnCallback(static function (ServiceQuoteMessage $message) use (&$dispatchedQuoteIds): Envelope {
+            ->willReturnCallback(static function (ServiceQuoteMessage $message) use (
+                &$dispatchedQuoteIds,
+                $revision,
+            ): Envelope {
+                self::isExpectedMessage($message, $message->quoteId, $revision);
                 $dispatchedQuoteIds[] = $message->quoteId;
 
                 return new Envelope($message);
             });
 
-        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway, $this->logger);
+        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway);
 
         $event = $this->createCommentWrittenEvent([
             [
@@ -240,9 +275,16 @@ final class QuoteServicingSubscriberTest extends TestCase
         $this->bus
             ->expects(self::once())
             ->method('dispatch')
+            ->with(self::callback(
+                static fn(ServiceQuoteMessage $message): bool => self::isExpectedMessage(
+                    $message,
+                    'quote-staff',
+                    $revision,
+                ),
+            ))
             ->willReturn(new Envelope(new \stdClass()));
 
-        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway, $this->logger);
+        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway);
         $event = $this->createCommentWrittenEvent([
             [
                 'quoteId' => 'quote-staff',
@@ -272,7 +314,7 @@ final class QuoteServicingSubscriberTest extends TestCase
         $this->gateway->expects(self::once())->method('fetchSnapshot')->with('quote-agent')->willReturn($snapshot);
         $this->bus->expects(self::never())->method('dispatch');
 
-        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway, $this->logger);
+        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway);
 
         $event = $this->createCommentWrittenEvent([
             [

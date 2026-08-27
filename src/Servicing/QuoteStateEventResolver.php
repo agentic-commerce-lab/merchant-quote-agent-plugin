@@ -16,28 +16,38 @@ final class QuoteStateEventResolver
             return null;
         }
 
-        $context = $event->getContext();
-
-        return $context instanceof Context ? $context : null;
+        return self::contextOrNull($event->getContext());
     }
 
     public static function extractQuoteId(object $event): ?string
     {
         if (method_exists($event, 'getQuoteId')) {
-            $quoteId = $event->getQuoteId();
-
-            return \is_string($quoteId) && $quoteId !== '' ? $quoteId : null;
+            return self::nonEmptyStringOrNull($event->getQuoteId());
         }
 
         if (method_exists($event, 'getTransition')) {
-            $transition = $event->getTransition();
-            if (\is_object($transition) && method_exists($transition, 'getEntityId')) {
-                $quoteId = $transition->getEntityId();
-
-                return \is_string($quoteId) && $quoteId !== '' ? $quoteId : null;
-            }
+            return self::extractTransitionQuoteId($event->getTransition());
         }
 
         return null;
+    }
+
+    private static function contextOrNull(mixed $context): ?Context
+    {
+        return $context instanceof Context ? $context : null;
+    }
+
+    private static function extractTransitionQuoteId(mixed $transition): ?string
+    {
+        if (!\is_object($transition) || !method_exists($transition, 'getEntityId')) {
+            return null;
+        }
+
+        return self::nonEmptyStringOrNull($transition->getEntityId());
+    }
+
+    private static function nonEmptyStringOrNull(mixed $value): ?string
+    {
+        return \is_string($value) && $value !== '' ? $value : null;
     }
 }

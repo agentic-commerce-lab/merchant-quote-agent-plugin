@@ -24,23 +24,26 @@ final class QuoteCommentFilter
             return false;
         }
 
-        if (!\array_key_exists('comment', $payload) || !\is_string($payload['comment'])) {
+        if (!\is_string($payload['comment'] ?? null)) {
             return false;
         }
 
+        $comment = $payload['comment'];
         $customFields = $snapshot->lifecycle->customFields;
-        if (!\array_key_exists(MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT, $customFields)) {
-            return false;
-        }
 
-        return (
-            \is_string($customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT])
-            && $customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT] === $payload['comment']
+        return self::matchesPersistedAgentComment(
+            $customFields[MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_TEXT] ?? null,
+            $comment,
         );
     }
 
     public static function isServiceableState(string $state): bool
     {
         return \in_array($state, self::SERVICEABLE_STATES, strict: true);
+    }
+
+    private static function matchesPersistedAgentComment(mixed $persistedComment, string $comment): bool
+    {
+        return \is_string($persistedComment) && $persistedComment === $comment;
     }
 }

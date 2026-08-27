@@ -8,7 +8,6 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
-use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -24,13 +23,13 @@ final readonly class QuoteServicingSubscriber implements EventSubscriberInterfac
     public function __construct(
         private MessageBusInterface $bus,
         private ?QuoteGatewayInterface $gateway = null,
-        private ?LoggerInterface $logger = null,
     ) {}
 
     #[\Override]
     public static function getSubscribedEvents(): array
     {
         return [
+            'quote.requested' => 'onQuoteStateEnter',
             'state_enter.quote.state.open' => 'onQuoteStateEnter',
             'state_enter.quote.state.in_review' => 'onQuoteStateEnter',
             'state_enter.quote.state.change_requested' => 'onQuoteStateEnter',

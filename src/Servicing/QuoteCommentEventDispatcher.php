@@ -32,9 +32,12 @@ final class QuoteCommentEventDispatcher
 
         foreach ($event->getWriteResults() as $result) {
             $payload = $result->getPayload();
-            $quoteId = $payload['quoteId'] ?? null;
+            if (!\is_string($payload['quoteId'] ?? null)) {
+                continue;
+            }
 
-            if (!\is_string($quoteId) || ($dispatchedQuotes[$quoteId] ?? false)) {
+            $quoteId = $payload['quoteId'];
+            if ($quoteId === '' || ($dispatchedQuotes[$quoteId] ?? false)) {
                 continue;
             }
 
