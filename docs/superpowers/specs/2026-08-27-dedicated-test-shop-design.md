@@ -55,10 +55,19 @@ workarounds unnecessary.
 - **Quotes have no demo-data generator** in SwagCommercial (only
   `EmployeeGenerator` under B2B). The borrowed shop's database is 37 MB and
   contains everything the fixture needs. A dump is cheap and exact.
-- **The dump is a trunk schema.** The image is `6.7.x-dev`. Importing it into a
-  pinned `6.7.2.2` release image risks migrations from the future. Pinning the
-  *current* image by digest keeps the dump importable and is the exact
-  environment the 39 tests are known to pass on.
+- **The dump is a trunk schema.** A fresh volume from the pinned image bakes
+  `shopware/core v6.7.10.0` (root `composer.json` pins it), not `6.7.x-dev` —
+  the old borrowed shop showed `dev-trunk` only because someone had upgraded
+  that container's volume in place. The seed's `migration` table reaches
+  timestamp `1784518893`, ahead of what v6.7.10.0 ships (`1777362745`), and
+  SwagCommercial 7.13.x requires `shopware/core >=6.7.13.0`, which v6.7.10.0
+  doesn't satisfy either. So `scripts/shop-setup.sh`'s `step_core` moves
+  `shopware/core`, `shopware/administration`, `shopware/storefront` and
+  `shopware/elasticsearch` to `dev-trunk` after boot, which both makes
+  SwagCommercial resolvable and lets `console database:migrate --all` catch
+  the schema up to the seed. Pinning the *image* by digest keeps this
+  reproducible; moving *core* to dev-trunk is a step the script runs, not a
+  property of the image.
 - **Image facts:** `dockware/shopware@sha256:458696e775b08d0bc9fa38874a6f9a706e16047ba7109934104b271b618f4e3d`,
   arm64, created 2026-05-14, Ubuntu 24.04, PHP 8.2/8.3/8.4 installed with
   `PHP_VERSION` honoured by `/entrypoint.sh`. Host: arm64, Compose v5.1.2. The
@@ -153,27 +162,39 @@ safe to rerun after a partial failure.
    `shop-export-seed.sh`. The seed is imported *before* plugins are installed
    because it carries the `plugin` table in the borrowed shop's state
    (SwagCommercial 7.13.0, SwagAgenticCommerce 1.1.1 installed and active).
-5. **Plugin files.** Unzip both into `custom/plugins/` inside the container;
+5. **URLs.** The seed points at the old shop's `localhost:8090` domains, which
+   breaks admin and storefront access from the host. `step_urls` rewrites
+   `APP_URL` and every `sales_channel_domain` row that starts
+   `http://localhost:` to `SHOP_URL`, and separately rewrites the
+   `host.docker.internal` row to `SHOP_PORT` (the host's published port) —
+   that row is how the shop reaches *itself* from inside the container, which
+   is not derivable from `SHOP_URL` once that URL is https, path-suffixed, or
+   reached over a VM/tunnel.
+6. **Plugin files.** Unzip both into `custom/plugins/` inside the container;
    `sync-to-shop.sh` puts ours next to them.
-6. **Composer.** In the container: `composer require shopware/commercial:7.13.1
+7. **Core.** Move `shopware/core` (and its three first-party dependents:
+   administration, storefront, elasticsearch) from the image's baked
+   `v6.7.10.0` to `dev-trunk`, then `console database:migrate --all`. See
+   "What we verified before designing" above for why.
+8. **Composer.** In the container: `composer require shopware/commercial:7.13.1
    shopware/agentic-commerce:1.2.0 shopware/merchant-quote-agent-plugin:@dev`.
    dockware's `custom/plugins/*` path repositories resolve all three; the sdk
    (≥ 0.0.5) and `cuyz/valinor` come from Packagist. This is the step that
    proves our `composer.json` is installable — the packaging blocker from #3.
-7. **Plugins.** `plugin:refresh`; `plugin:update SwagCommercial SwagAgenticCommerce`
+9. **Plugins.** `plugin:refresh`; `plugin:update SwagCommercial SwagAgenticCommerce`
    (runs the 7.13.0→7.13.1 and 1.1.1→1.2.0 migrations the seed predates);
    `plugin:install --activate MerchantQuoteAgentPlugin`; `cache:clear`.
-8. **Licence.** `system:config:set core.store.licenseHost` and
-   `core.store.licenseKey` from `.env`. Skipped when the seed already carries
-   them and they match.
-9. **Admin.** `user:create` `SHOP_ADMIN_USER` with `SHOP_ADMIN_PASSWORD` if absent
-   — the credentials #8 wants shared with the PM, known rather than inherited.
-10. **Buyer gate.** For every customer in the seed's test buyer set, ensure
+10. **Licence.** `system:config:set core.store.licenseHost` and
+    `core.store.licenseKey` from `.env`. Skipped when the seed already carries
+    them and they match.
+11. **Admin.** `user:create` `SHOP_ADMIN_USER` with `SHOP_ADMIN_PASSWORD` if absent
+    — the credentials #8 wants shared with the PM, known rather than inherited.
+12. **Buyer gate.** For every customer in the seed's test buyer set, ensure
     `customer_specific_features` is the map `{"QUOTE_MANAGEMENT": true}` (an
     array is silently ignored — #9). Implemented as one SQL `UPDATE` guarded by
     a `SELECT`, listed in the script by customer number. Scripted because a
     newly registered buyer cannot request a quote until this is set.
-11. **Accept.** Run `composer run test:integration`. The setup is done when the
+13. **Accept.** Run `composer run test:integration`. The setup is done when the
     39 tests pass against the new container. This is the script's own test.
 
 Everything the script does inside the container goes through `docker exec`;
@@ -201,7 +222,7 @@ export is checkable at a glance.
 
 | Component | Version | Source |
 |---|---|---|
-| dockware image | digest `458696e7…` (6.7.x-dev, arm64) | Docker Hub |
+| dockware image | digest `458696e7…` (bakes `shopware/core v6.7.10.0`, moved to `dev-trunk` by `step_core`, arm64) | Docker Hub |
 | PHP default CLI | 8.3 | `PHP_VERSION` |
 | SwagCommercial | 7.13.1 | GitHub release zip |
 | Agentic Commerce | 1.2.0 | GitHub release zip |
@@ -217,16 +238,16 @@ shop.
 
 | #8 asks | This spec |
 |---|---|
-| PHP 8.3 default CLI, Shopware 6.7 | `PHP_VERSION=8.3`, 6.7.x-dev image |
+| PHP 8.3 default CLI, Shopware 6.7 | `PHP_VERSION=8.3`, image bakes v6.7.10.0, `step_core` moves it to dev-trunk |
 | SwagCommercial ≥ 7.13, licence toggle active | 7.13.1; licence rows from `.env`; `HarnessSmokeTest` asserts the toggle |
 | SwagAgenticCommerce "≥ 1.3.0" | **1.2.0** — the version that actually exists and satisfies our constraint; #8's text needs correcting |
 | clean `config/packages` and `.env.test` | fresh dockware image; the stray files were the other project's |
 | demo quotes in editable states | the seed: 36 quotes, 29 editable with lines |
 | catching mailer | mailcatcher in the image; UI on container port 1080 |
 | `SHOP_CONTAINER` / `SHOPWARE_ROOT` documented | README section |
-| buyer `QUOTE_MANAGEMENT` gate, scripted | setup step 10 |
-| shared with the PM incl. admin credentials | setup step 9 creates known credentials. **Where** the PM reaches the shop is not decided here — see Open questions |
-| must actually charge shipping | **measured €0** — see Risks |
+| buyer `QUOTE_MANAGEMENT` gate, scripted | setup step 12 |
+| shared with the PM incl. admin credentials | setup step 11 creates known credentials. **Where** the PM reaches the shop is not decided here — see Open questions |
+| must actually charge shipping | **calculator works; seeded shipping price is €0** — see Risks |
 
 ## Testing
 
@@ -234,7 +255,7 @@ shop.
   green (39 tests, 0 skipped) against `merchant-quote-shop`. Nothing in the
   suite changes; only the container it targets does.
 - `HarnessSmokeTest` already proves SwagCommercial's services resolve and the
-  licence toggle is on — i.e. steps 5–8 worked.
+  licence toggle is on — i.e. steps 7–10 worked.
 - Idempotency: running `shop-setup.sh` twice must be a no-op the second time,
   checked by hand once and stated in the script header.
 - A fresh-worktree check: `git worktree add`, run `composer run test:integration`
@@ -247,18 +268,24 @@ shop.
 
 ## Risks and what verifies them
 
-- **Shipping is €0 on trunk.** #8 says the current demo's trunk delivery
-  calculator returns €0, which blocks the free-shipping path and the
-  non-price-terms decision (#11). The pinned image is trunk too, so it may share
-  the defect. Verify in the plan: price a cart against the seed's shipping
-  method and record the figure. If it is €0, that is a reason to move to a
-  release image sooner, not to hide the finding.
-  Measured 2026-08-27 with scripts/shop-check-shipping.sh: "shipping: 0 via
-  Standard | cart total: 495.95 | product Main product". This shop shares the
-  defect, so the parity shop (#8's first half) must run a release image.
+- **Shipping reads €0 — this was a misdiagnosis, not a calculator defect.**
+  #8 and the earlier draft of this spec assumed the trunk delivery calculator
+  returns €0. Measured 2026-08-27 with `scripts/shop-check-shipping.sh`:
+  "shipping: 0 via Standard | cart total: 495.95 | product Main product".
+  Both active shipping methods do have price rows, and they read literally
+  `{"net": "0", "gross": "0"}`. A decisive experiment (run and fully
+  reverted) settles it: setting both rows to 4.99 produced "shipping: 4.99
+  via Standard | cart total: 500.94"; restoring them to 0 reproduced the
+  original "shipping: 0 … cart total: 495.95". So the delivery calculator
+  works correctly; only the seeded price is zero. Consequence: **#11
+  (non-price terms / free-shipping path) unblocks with a config change — a
+  non-zero `shipping_method_price.currency_price` — not with a new shop.** A
+  release image would carry the same demo data with the same zero prices and
+  fix nothing; the parity shop (#8's first half) does not need to run one for
+  this reason.
 - **`plugin:update` across the seed's versions.** The seed says 7.13.0/1.1.1
   installed; the files are 7.13.1/1.2.0. `plugin:update` is the documented path
-  and runs the migrations. Verify by checking `plugin.version` after step 7 and
+  and runs the migrations. Verify by checking `plugin.version` after step 9 and
   running the suite.
 - **Packagist availability of the sdk.** The borrowed shop resolved
   `ucp-php-sdk/core` from a GitHub source dist, which is how Packagist serves
@@ -292,3 +319,41 @@ shop.
    spec's to make.
 2. **Retire the old shop when?** Once the new shop is green, the bootstrap
    workarounds can go. Proposed: after this PR merges and #17 is rebased onto it.
+
+## Execution notes (2026-08-27)
+
+- **Runtimes.** `cp docker/.env.example …`: instant. `scripts/shop-setup.sh`
+  first run (fetch both zips, boot, seed ~1.7 MB, move `shopware/core` to
+  `dev-trunk`, `database:migrate --all`, composer require, plugin install,
+  licence, admin, buyer gate, then the 39-test suite as its own acceptance
+  check): about 10 minutes, dominated by `step_core`'s composer resolve and
+  the migration run. A rerun after everything already holds (every step a
+  no-op except the acceptance test): ~18s. `composer run test:integration`
+  alone: ~1.1s test time plus the sync step.
+- **Composer resolution.** `composer require shopware/merchant-quote-agent-plugin`
+  resolved cleanly in the shop with no constraint relaxed:
+  `ucp-php-sdk/core` and `ucp-php-sdk/symfony-bundle` at 0.0.5,
+  `cuyz/valinor` 2.6.0, `shopware/commercial` 7.13.1,
+  `shopware/agentic-commerce` 1.2.0 — confirming the packaging blocker from
+  #3 is closed for real, not just plausible.
+- **`debug:container` confirms `services.php` compiles.** This was the one
+  thing the previous plan listed as unverifiable; it's now checked directly
+  against the running container:
+  `bin/console debug:container QuoteGatewayInterface` shows
+  `MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface` resolving with
+  `Factory Service: MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory` and
+  `Public: no` — so consumers must type against `?QuoteGatewayInterface` and
+  get it autowired, never fetch it from the container directly.
+  `bin/console debug:container --tag=ucp_sdk.capability` lists
+  `MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability` alongside
+  SwagAgenticCommerce's own capabilities, confirming the tag registration
+  works end to end.
+- **A shell idempotency bug, fixed, worth avoiding elsewhere.** `step_core`
+  originally checked `composer show shopware/core | grep -q dev-trunk` under
+  `set -o pipefail`. `grep -q` exits as soon as it sees a match and closes
+  its end of the pipe; the still-writing `composer show` process gets
+  SIGPIPE, and `pipefail` turns that into a failing pipeline status even
+  though the match happened. The fix (also in the script as committed):
+  capture the output into a variable first, then `grep` the variable — no
+  pipe, no false failure. Any `set -o pipefail` script piping into
+  `grep -q` (or another consumer that exits early) has the same trap.

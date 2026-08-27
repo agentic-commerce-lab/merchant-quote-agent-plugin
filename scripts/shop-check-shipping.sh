@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
-# Does this shop charge shipping? Issue #8 says the old demo shop's trunk
-# delivery calculator returned €0, which blocks the free-shipping path and the
+# Does this shop charge shipping? Issue #8 said the old demo shop's trunk
+# delivery calculator returned €0, blocking the free-shipping path and the
 # non-price-terms decision (#11). This puts one standalone product in a
 # store-api cart and prints what the shop charges for delivery.
+#
+# Measured 2026-08-27: the calculator is not broken. Both active shipping
+# methods have price rows that read {"net": "0", "gross": "0"} — the €0 is the
+# seeded price, not a calculator defect (verified by setting the rows to 4.99,
+# seeing shipping charged, then reverting). #11 unblocks with a config change
+# (a non-zero shipping_method_price.currency_price) measured by this script,
+# not a new shop.
 set -euo pipefail
 
 CONTAINER="${SHOP_CONTAINER:-merchant-quote-shop}"
