@@ -23,8 +23,20 @@ abstract class IntegrationTestCase extends TestCase
      */
     protected static function commercialService(string $id): object
     {
-        $service = static::getContainer()->get($id);
-        self::assertIsObject($service, sprintf('Service "%s" is not available.', $id));
+        try {
+            $service = static::getContainer()->get($id);
+        } catch (\Throwable $e) {
+            self::fail(sprintf(
+                'Commercial service "%s" could not be resolved: %s. This normally means the '
+                . 'kernel booted without SwagCommercial active, not a wrong id — the ids are '
+                . 'FQCNs registered in SwagCommercial\'s own services.php and are resolvable '
+                . 'through test.service_container even though they are private.',
+                $id,
+                $e->getMessage(),
+            ));
+        }
+
+        self::assertIsObject($service, sprintf('Service "%s" resolved to a non-object.', $id));
 
         return $service;
     }

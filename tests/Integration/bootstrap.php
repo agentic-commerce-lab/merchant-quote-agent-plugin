@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Shopware\Core\TestBootstrapper;
 
-$shopRoot = getenv('SHOPWARE_ROOT') ?: '/var/www/html';
+$shopRoot = getenv('SHOPWARE_ROOT') !== false ? getenv('SHOPWARE_ROOT') : '/var/www/html';
 
 /** @var \Composer\Autoload\ClassLoader $loader */
 $loader = require $shopRoot . '/vendor/autoload.php';
@@ -16,12 +16,14 @@ $loader->addPsr4('MerchantQuoteAgentPlugin\\Tests\\', __DIR__ . '/../');
 // provides `test.service_container`, the private-services-visible container
 // KernelTestBehaviour requires). Set before loadEnv() so it isn't overwritten
 // — Dotenv never overrides an already-set var.
-$_SERVER['APP_ENV'] = $_ENV['APP_ENV'] = 'test';
+$_SERVER['APP_ENV'] = 'test';
+$_ENV['APP_ENV'] = 'test';
 
 // The shop's .env.test carries an unedited Symfony-skeleton default,
 // KERNEL_CLASS='App\Kernel' — there is no App\Kernel in a Shopware project.
 // Override it the same way, before loadEnv() reads that file.
-$_SERVER['KERNEL_CLASS'] = $_ENV['KERNEL_CLASS'] = \Shopware\Core\Kernel::class;
+$_SERVER['KERNEL_CLASS'] = \Shopware\Core\Kernel::class;
+$_ENV['KERNEL_CLASS'] = \Shopware\Core\Kernel::class;
 
 // The shop's own DATABASE_URL, NOT suffixed with _test: TestBootstrapper would
 // otherwise target a fresh shopware_test DB, and a zero-plugin DB cannot boot
