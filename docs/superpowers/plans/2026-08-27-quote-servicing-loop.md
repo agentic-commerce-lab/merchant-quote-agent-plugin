@@ -2077,6 +2077,7 @@ final class QuoteTriggerEventFixture
         string $nextState,
         string $side = StateMachineStateChangeEvent::STATE_MACHINE_TRANSITION_SIDE_ENTER,
         ?Context $context = null,
+        string $fromState = 'draft',
     ): StateMachineStateChangeEvent {
         $machine = new StateMachineEntity();
         $machine->setId('0191bd7f7a5e7c9e8a3f4b2c1d0e9f88');
@@ -2084,7 +2085,7 @@ final class QuoteTriggerEventFixture
 
         $from = new StateMachineStateEntity();
         $from->setId('0191bd7f7a5e7c9e8a3f4b2c1d0e9f01');
-        $from->setTechnicalName('draft');
+        $from->setTechnicalName($fromState);
 
         $to = new StateMachineStateEntity();
         $to->setId('0191bd7f7a5e7c9e8a3f4b2c1d0e9f02');
@@ -2219,17 +2220,25 @@ final class QuoteServicingTriggerStateTest extends TestCase
         self::assertSame([], $bus->messages);
     }
 
+    /**
+     * Must LEAVE a trigger state, not enter one. `getStateName()` reports the
+     * PREVIOUS state on the leave side, so leaving `draft` yields 'draft' —
+     * never a trigger state, so the assertion would hold with the enter-only
+     * filter deleted and the test would prove nothing. Leaving `open` yields
+     * 'open', which IS a trigger state, so only the side filter stops it.
+     */
     public function testTheLeaveSideOfATransitionQueuesNothing(): void
     {
         $bus = QuoteTriggerEventFixture::collectingBus();
         $event = QuoteTriggerEventFixture::stateEvent(
-            'open',
+            'in_review',
             StateMachineStateChangeEvent::STATE_MACHINE_TRANSITION_SIDE_LEAVE,
+            fromState: 'open',
         );
 
         (new QuoteServicingTrigger($bus))->onQuoteStateChanged($event);
 
-        self::assertSame([], $bus->messages);
+        self::assertSame([], $bus->messages, 'A leave-side event queued the quote.');
     }
 
     public function testAnAgentDrivenTransitionQueuesNothing(): void
