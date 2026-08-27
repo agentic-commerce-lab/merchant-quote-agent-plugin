@@ -101,14 +101,29 @@ step_seed() {
 # The seed points at the old shop (localhost:8090). Admin and storefront only
 # work from the host when APP_URL and the sales-channel domains match the URL
 # you actually open, so both follow SHOP_URL.
+# Extracted so Finding 1's coverage can call it in a subshell for arbitrary
+# SHOP_URL values without touching the real shop.
+url_port() {
+  local url="$1" port scheme
+  port="$(printf '%s' "$url" | sed -nE 's#^https?://[^/:]+:([0-9]+)(/.*)?$#\1#p')"
+  if [ -n "$port" ]; then printf '%s' "$port"; return; fi
+  scheme="$(printf '%s' "$url" | sed -nE 's#^(https?)://.*#\1#p')"
+  case "$scheme" in
+    http) printf '80' ;;
+    https) printf '443' ;;
+  esac
+}
+
 step_urls() {
   local port
-  port="$(printf '%s' "$SHOP_URL" | sed -nE 's#^https?://[^/:]+:([0-9]+)/?$#\1#p')"
+  port="$(url_port "$SHOP_URL")"
   log "pointing the shop at $SHOP_URL"
   in_shop sed -i "s#^APP_URL=.*#APP_URL=${SHOP_URL}#" .env
   sql "UPDATE sales_channel_domain SET url='${SHOP_URL}' WHERE url LIKE 'http://localhost:%' OR url='${SHOP_URL}'"
   if [ -n "$port" ]; then
     sql "UPDATE sales_channel_domain SET url='http://host.docker.internal:${port}' WHERE url LIKE 'http://host.docker.internal:%'"
+  else
+    log "SHOP_URL has no derivable port ($SHOP_URL) — leaving the host.docker.internal domain untouched"
   fi
   console cache:clear -n >/dev/null
 }
@@ -119,11 +134,21 @@ step_urls() {
 step_plugin_files() {
   local name
   for name in SwagCommercial SwagAgenticCommerce; do
-    if in_shop test -f "custom/plugins/$name/composer.json"; then log "have plugin files: $name"; continue; fi
-    log "unpacking $name"
-    docker cp "$HOME_DIR/plugins/$name.zip" "$CONTAINER:/tmp/$name.zip"
-    docker exec -u root -w /var/www/html/custom/plugins "$CONTAINER" sh -c \
-      "rm -rf '$name' && unzip -q '/tmp/$name.zip' && rm '/tmp/$name.zip' && chown -R www-data:www-data '$name'"
+    if in_shop test -f "custom/plugins/$name/composer.json"; then
+      log "have plugin files: $name"
+    else
+      log "unpacking $name"
+      docker cp "$HOME_DIR/plugins/$name.zip" "$CONTAINER:/tmp/$name.zip"
+      docker exec -u root -w /var/www/html/custom/plugins "$CONTAINER" sh -c \
+        "rm -rf '$name' && unzip -q '/tmp/$name.zip' && rm '/tmp/$name.zip'"
+    fi
+    # Unconditional and outside the skip branch: an exec that dies between
+    # unzip and chown (container restart, host kill, exec timeout) leaves a
+    # root-owned tree the presence-only skip check above can't see. chown -R
+    # is idempotent and near-free, so always running it is simpler than
+    # teaching the skip check about ownership.
+    docker exec -u root -w /var/www/html/custom/plugins "$CONTAINER" \
+      chown -R www-data:www-data "$name"
   done
   SHOP_CONTAINER="$CONTAINER" "$REPO/scripts/sync-to-shop.sh"
 }
@@ -190,6 +215,8 @@ step_plugins() {
 
 # SwagCommercial reads the licence from system_config at runtime; the seed
 # carries the old shop's values, this makes them the ones from .env.
+# Safe to run after step_plugins installs SwagCommercial: the licence is read
+# at runtime (from system_config), not validated during plugin install.
 step_license() {
   log "writing the licence"
   console system:config:set core.store.licenseHost "$SHOP_LICENSE_HOST" -n >/dev/null
@@ -197,7 +224,7 @@ step_license() {
 }
 
 step_admin() {
-  if [ "$(sql "SELECT COUNT(*) FROM user WHERE username='${SHOP_ADMIN_USER}'")" = "1" ]; then log "admin ${SHOP_ADMIN_USER} exists"; return; fi
+  if [ "$(sql "SELECT COUNT(*) FROM user WHERE username='${SHOP_ADMIN_USER}' AND admin=1")" = "1" ]; then log "admin ${SHOP_ADMIN_USER} exists"; return; fi
   log "creating admin ${SHOP_ADMIN_USER}"
   console user:create "$SHOP_ADMIN_USER" --admin --password="$SHOP_ADMIN_PASSWORD" \
     --email="$SHOP_ADMIN_EMAIL" --firstName=Merchant --lastName=Quote -n >/dev/null
