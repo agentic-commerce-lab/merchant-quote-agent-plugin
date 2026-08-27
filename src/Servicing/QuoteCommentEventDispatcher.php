@@ -26,7 +26,7 @@ final class QuoteCommentEventDispatcher
         $dispatchedQuotes = [];
 
         foreach ($event->getWriteResults() as $result) {
-            if (!QuoteCommentWriteResultInspector::isLive($result)) {
+            if (!QuoteCommentWriteResultInspector::isLiveInsert($result)) {
                 continue;
             }
 

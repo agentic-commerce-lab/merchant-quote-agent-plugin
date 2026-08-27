@@ -302,7 +302,7 @@ Use it for every write-side gateway operation: `updateLineItems`, `addProduct`, 
 
 - [ ] **Step 5: Promote the generated live comment id**
 
-Inside `addComment()`, retain the existence read and call `QuoteCommentWriterInterface::comment()` with the agent context. Do not pre-stamp text. In `QuoteCommentEventDispatcher`, ignore non-live snapshot projection results; Shopware emits one before the live event for the same comment id. For each live agent-context result with non-empty string quote and comment ids, persist the generated id and never dispatch:
+Inside `addComment()`, retain the existence read and call `QuoteCommentWriterInterface::comment()` with the agent context. Do not pre-stamp text. In `QuoteCommentEventDispatcher`, ignore update/delete results and non-live snapshot projection results; Shopware emits a projection before the live insert for the same comment id. For each live agent-context insert with non-empty string quote and comment ids, persist the generated id and never dispatch:
 
 ```php
 $gateway->updateQuote(
@@ -322,7 +322,7 @@ composer run test:integration -- --filter 'AddCommentTest|ServicingSubscriberTes
 vendor/bin/phpunit tests/Unit/Servicing/QuoteServicingSubscriberTest.php
 ```
 
-Expected: the live agent event persists its exact row id without dispatch; replay of that id is suppressed; buyer, staff, and different-id author-less comments still dispatch. Duplicate eligible rows for one quote still produce one message.
+Expected: the live agent insert persists its exact row id without dispatch; update/delete results are inert; replay of that id is suppressed; buyer, staff, and different-id author-less inserts still dispatch. Duplicate eligible rows for one quote still produce one message.
 
 - [ ] **Step 7: Commit the provenance slice**
 

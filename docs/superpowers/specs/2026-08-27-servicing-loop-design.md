@@ -86,7 +86,7 @@ The subscriber listens to state machine transitions and quote comments, translat
 5. `quote_comment.written` — A comment was inserted on a quote
 
 #### Event Filtering Rules
-- **Version filter:** Ignore non-live quote-comment projection writes. Shopware promotes the same comment row through a snapshot version before emitting the live write, and only the live row is an actionable trigger.
+- **Operation/version filter:** Ignore quote-comment updates, deletes, and non-live projection writes. Shopware promotes the same inserted comment row through a snapshot version before emitting the live insert, and only that live insert is an actionable trigger or provenance source.
 - **Context state promotion:** If a live event's `Context` carries `MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING`, the write originated in the agent's own servicing loop. Persist the valid string `EntityWriteResult` primary key under `quote_agent_last_comment_id` on that quote, then return without dispatching. The nested quote update cannot recurse because the subscriber does not listen to `quote.written`.
 - **State transition filter:** Ignore transitions into terminal or inactive states (`replied`, `accepted`, `declined`, `cancelled`, `expired`, `draft`).
 - **Comment discriminator filter:**
@@ -206,7 +206,7 @@ When `QuoteCommenter` runs via default context, `createdById`, `customerId`, and
    Any write or comment issued by the agent gateway runs in a context containing this state.
 2. **Exact Comment-Row Discriminator:**
    Define `MerchantQuoteAgentPlugin::LAST_AGENT_COMMENT_ID = 'quote_agent_last_comment_id'`.
-   The gateway writes the comment with the agent-state context but does not guess or pre-stamp its id. On the synchronous live `quote_comment.written` event, the subscriber reads the valid, non-empty string primary key from `EntityWriteResult`, persists that exact id through `updateQuote()`, and never dispatches. Shopware also emits an earlier non-live projection event for the same row; the subscriber ignores that projection so it cannot race the live provenance promotion.
+   The gateway writes the comment with the agent-state context but does not guess or pre-stamp its id. On the synchronous live insert in `quote_comment.written`, the subscriber reads the valid, non-empty string primary key from `EntityWriteResult`, persists that exact id through `updateQuote()`, and never dispatches. Shopware also emits an earlier non-live projection event for the same row; the subscriber ignores that projection, as well as update/delete results, so they cannot race or overwrite live-insert provenance.
    A later ordinary/replayed author-less event is ignored only when its primary-key id exactly matches the persisted id. Authored comments remain eligible, and a distinct author-less row with identical text dispatches normally.
 
 ---

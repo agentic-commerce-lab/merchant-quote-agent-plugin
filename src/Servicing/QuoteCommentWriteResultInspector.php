@@ -21,9 +21,10 @@ final class QuoteCommentWriteResultInspector
         return self::nonEmptyString($result->getPayload()['quoteId'] ?? null);
     }
 
-    public static function isLive(EntityWriteResult $result): bool
+    public static function isLiveInsert(EntityWriteResult $result): bool
     {
-        return self::isLiveVersion($result->getPayload()['quoteVersionId'] ?? null);
+        return $result->getOperation() === EntityWriteResult::OPERATION_INSERT
+        && self::isLiveVersion($result->getPayload()['quoteVersionId'] ?? null);
     }
 
     private static function nonEmptyString(mixed $value): ?string

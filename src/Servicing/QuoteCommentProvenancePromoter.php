@@ -16,7 +16,7 @@ final class QuoteCommentProvenancePromoter
     public static function promote(EntityWrittenEvent $event, QuoteGatewayInterface $gateway): void
     {
         foreach ($event->getWriteResults() as $result) {
-            if (!QuoteCommentWriteResultInspector::isLive($result)) {
+            if (!QuoteCommentWriteResultInspector::isLiveInsert($result)) {
                 continue;
             }
 

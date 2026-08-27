@@ -14,6 +14,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingSubscriber;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Defaults;
@@ -53,11 +54,12 @@ final class QuoteCommentProvenanceTest extends TestCase
         array|string $commentId,
         array $payload,
         Context $context,
+        string $operation = EntityWriteResult::OPERATION_INSERT,
     ): EntityWrittenEvent {
         return new EntityWrittenEvent(
             'quote_comment',
             [
-                new EntityWriteResult($commentId, $payload, 'quote_comment', EntityWriteResult::OPERATION_INSERT),
+                new EntityWriteResult($commentId, $payload, 'quote_comment', $operation),
             ],
             $context,
         );
@@ -128,6 +130,46 @@ final class QuoteCommentProvenanceTest extends TestCase
                 'comment' => 'Agent offer details here.',
             ],
             Context::createDefaultContext(),
+        );
+
+        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway);
+        $subscriber->onQuoteCommentWritten($event);
+    }
+
+    #[TestWith([EntityWriteResult::OPERATION_UPDATE], 'update')]
+    #[TestWith([EntityWriteResult::OPERATION_DELETE], 'delete')]
+    public function testDoesNotDispatchNonInsertCommentResults(string $operation): void
+    {
+        $this->gateway->expects(self::never())->method('fetchSnapshot');
+        $this->gateway->expects(self::never())->method('updateQuote');
+        $this->bus->expects(self::never())->method('dispatch');
+
+        $event = $this->createCommentWrittenEvent(
+            'comment-0',
+            ['quoteId' => 'quote-agent', 'comment' => 'Changed comment text.'],
+            Context::createDefaultContext(),
+            $operation,
+        );
+
+        $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway);
+        $subscriber->onQuoteCommentWritten($event);
+    }
+
+    #[TestWith([EntityWriteResult::OPERATION_UPDATE], 'update')]
+    #[TestWith([EntityWriteResult::OPERATION_DELETE], 'delete')]
+    public function testDoesNotOverwriteProvenanceFromNonInsertAgentResults(string $operation): void
+    {
+        $this->gateway->expects(self::never())->method('fetchSnapshot');
+        $this->gateway->expects(self::never())->method('updateQuote');
+        $this->bus->expects(self::never())->method('dispatch');
+
+        $context = Context::createDefaultContext();
+        $context->addState(MerchantQuoteAgentPlugin::CONTEXT_STATE_AGENT_SERVICING);
+        $event = $this->createCommentWrittenEvent(
+            'comment-0',
+            ['quoteId' => 'quote-agent', 'comment' => 'Changed comment text.'],
+            $context,
+            $operation,
         );
 
         $subscriber = new QuoteServicingSubscriber($this->bus, $this->gateway);
