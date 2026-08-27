@@ -76,11 +76,13 @@ final readonly class QuoteSnapshotReader
     {
         $currency = $quote->get('currency');
         $iso = $currency instanceof Entity ? (string) $currency->get('isoCode') : '';
+        $salesChannelId = $quote->get('salesChannelId');
 
         return new QuoteIdentity(
             quoteId: $quoteId,
             quoteNumber: (string) $quote->get('quoteNumber'),
             currencyIso: $iso,
+            salesChannelId: \is_string($salesChannelId) ? $salesChannelId : '',
         );
     }
 

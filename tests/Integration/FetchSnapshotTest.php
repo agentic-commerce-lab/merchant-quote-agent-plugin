@@ -119,4 +119,18 @@ final class FetchSnapshotTest extends IntegrationTestCase
         self::assertSame($rawDiscount['type'], $snapshot->totals->discount->type->value);
         self::assertSame((float) $rawDiscount['value'], $snapshot->totals->discount->value);
     }
+
+    /**
+     * #18 selects a per-sales-channel policy from the snapshot rather than from
+     * the servicing message, so the snapshot has to actually carry it.
+     */
+    public function testTheSnapshotCarriesTheSalesChannelId(): void
+    {
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
+
+        $snapshot = static::gateway()->fetchSnapshot($quoteId);
+
+        self::assertNotSame('', $snapshot->identity->salesChannelId, 'The quote has no sales channel.');
+        self::assertTrue(Uuid::isValid($snapshot->identity->salesChannelId));
+    }
 }
