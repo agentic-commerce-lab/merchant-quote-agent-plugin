@@ -42,10 +42,11 @@ interface QuoteGatewayInterface
     public function updateQuote(string $quoteId, QuoteUpdate $update, ?QuoteRevision $expected = null): void;
 
     /**
-     * An unknown id is rejected by the `quote_comment` foreign key, not by a
-     * bridge-level check, so it surfaces as Doctrine's
-     * ForeignKeyConstraintViolationException — NOT QuoteNotFoundException,
-     * which the spec scopes to `fetchSnapshot`. See the gateway.
+     * The quote is read before the comment is written, so an unknown id fails
+     * as QuoteNotFoundException rather than as the quote_comment foreign key's
+     * Doctrine exception leaking through this interface.
+     *
+     * @throws QuoteNotFoundException
      */
     public function addComment(string $quoteId, string $comment): void;
 

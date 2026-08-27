@@ -496,7 +496,9 @@ Three operational facts about that suite, none of them obvious from reading it:
   no `plugin:refresh`. That is not a shortcut — this plugin's own `composer.json`
   is currently unsatisfiable in this shop (`php ^8.3` against a default PHP of
   8.2, `ucp-php-sdk/core >=0.0.5` against the 0.0.2 that exists, and
-  `cuyz/valinor` absent), so installing is blocked on a packaging decision.
+  `cuyz/valinor` absent). Decision (2026-08-27): the constraints stay as they
+  are — that shop is a borrowed dev container owned by another project, and this
+  plugin gets a dedicated shop that satisfies them (see "Target shop" below).
   Nothing the bridge loads touches those packages, so the suite runs anyway.
   The cost is that `src/Resources/config/services.php` is never loaded by
   Shopware: the gateway is reached through `QuoteGatewayFactory` built by hand
@@ -520,6 +522,30 @@ Three operational facts about that suite, none of them obvious from reading it:
   discount line is meaningless because `recalculate()` regenerates it — a
   failure there would look exactly like the custom-price flag being broken when
   it is not.
+
+### Target shop
+
+The suite currently runs against `shopware-trunk`, a dockware `dev-main`
+container owned by the `agentic-supplier-gateway` compose project — borrowed, and
+the source of every environmental wart above. The dedicated shop for this plugin
+must provide:
+
+- PHP **8.3** as the default CLI (our `composer.json` declares `^8.3`; `src/Policy`
+  uses typed class constants, which are 8.3+).
+- Shopware 6.7 with **SwagCommercial ≥ 7.13** and the QuoteManagement licence
+  toggle `QUOTE_MANAGEMENT-6302947` on.
+- **SwagAgenticCommerce ≥ 1.3.0**, which carries `ucp-php-sdk/core ≥ 0.0.5`.
+- A clean `config/packages/` and `.env.test` — no `zz-ucp-sdk-test.yaml` loaded in
+  every env, no `KERNEL_CLASS='App\Kernel'` — so `TestBootstrapper` boots without
+  the workarounds in `tests/Integration/bootstrap.php`.
+- Demo quotes in editable states with product lines (`QuoteFixture` needs them),
+  and a catching mailer such as mailcatcher, because the transition tests fire
+  real `action.mail.send` flows.
+
+Point the harness at it with `SHOP_CONTAINER=<name>` (see `scripts/sync-to-shop.sh`)
+and `SHOPWARE_ROOT` if the docroot differs from `/var/www/html`. Once it exists,
+`plugin:install` becomes possible and the one unverified item — Shopware compiling
+`src/Resources/config/services.php` — can be closed.
 
 **This test suite is the spike.** The issue's open questions — does reprice-then-
 recalculate behave like the old Admin API sequence, how does quote versioning react
@@ -622,8 +648,9 @@ but the interface docblocks initially claimed it for `addComment` and
 unknown id yields Doctrine's `ForeignKeyConstraintViolationException`
 (`QuoteCommenter` inserts and lets MySQL reject on `fk.quote_comment.quote_id`),
 and `transition` yields Shopware's own `StateMachineException` ("Unable to read
-entity quote with id …"). The docblocks are fixed; the Doctrine one is an open
-decision, in Risks.
+entity quote with id …"). Resolved 2026-08-27: `addComment` now reads the quote
+first and raises `QuoteNotFoundException`, at the cost of one redundant read per
+comment and no new dependency; `transition` keeps Shopware's typed error. See Risks.
 
 **Mail safety, for anyone else running this suite against a live shop.** This is
 not incidental: the shop has *active* flows carrying `action.mail.send` on
@@ -736,14 +763,19 @@ crash on this shop's demo data, not something the bridge causes.
 
 The consequence for callers is sharper than a normal error: a segfault gives PHP
 no chance to throw, so issue #4's servicing would see a dropped worker rather than
-a failed operation. **No guard is implemented.** Adding one is a permanent
-functional restriction (no variant products on quotes) resting on a crash that is
-not root-caused and may not exist on other shops — a product decision, open for
-the user. `AddProductAndRecalculateTest` picks a standalone product
-(`childCount = 0`, which excludes both variants and variant parents) so the suite
-does not trip over it.
+a failed operation. **Decision (2026-08-27): guarded.**
+`Bridge\Commercial\VariantRejectingProductAdder` decorates the commercial adder
+and refuses any product with a parent or with children by throwing
+`UnsupportedProductException` before SwagCommercial is reached; unknown ids still
+pass through to `validateProducts()`. This is a deliberate functional restriction
+(no variant products on quotes) resting on a crash that is not root-caused and may
+not exist on other shops — one class to delete once it is understood.
+`AddVariantProductTest` covers a variant and a variant parent; those tests are
+load-bearing by construction, since an un-fired guard would exit the process
+with 139 rather than pass. `AddProductAndRecalculateTest` keeps picking standalone
+products (`childCount = 0`).
 
-**Open decision: a Doctrine exception leaks through the isolation interface.**
+**Resolved 2026-08-27 — a Doctrine exception leaked through the isolation interface.**
 `addComment` on an unknown quote id surfaces
 `Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException` through
 `QuoteGatewayInterface`, whose entire purpose is isolating SwagCommercial
@@ -754,5 +786,7 @@ imports `doctrine/dbal` into production code and `doctrine/dbal` is not in our
 closures, none of them the bridge's to choose: declare `doctrine/dbal` and restore
 the four-line mapping; have `addComment` read the quote first (no new dependency,
 one redundant read per comment); or leave it and have issue #4 catch `\Throwable`
-at the servicing boundary. `AddCommentTest` pins the current behaviour by
-class-name string, so the test is what changes either way.
+at the servicing boundary. Taken: the redundant read. `addComment` calls the
+snapshot reader before `QuoteCommenter`, so an unknown id raises
+`QuoteNotFoundException` and `doctrine/dbal` stays undeclared.
+`AddCommentTest::testCommentingOnAnUnknownQuoteIsRefusedAsNotFound` pins it.

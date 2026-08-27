@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
+use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\Uuid\Uuid;
 
@@ -72,32 +73,11 @@ final class AddCommentTest extends IntegrationTestCase
         self::assertNotNull($ours->createdAt, 'createdAt is null, so comments cannot even be ordered by time.');
     }
 
-    /**
-     * Observed, not assumed: QuoteCommenter does not check that the quote
-     * exists — it inserts and lets MySQL reject the row on
-     * `fk.quote_comment.quote_id`. So an unknown id fails loudly (the point of
-     * the test) but as a Doctrine exception rather than a bridge one, which the
-     * gateway deliberately leaves alone. Named as a class-name string rather
-     * than an import so production and test code stay free of a doctrine/dbal
-     * dependency this plugin does not declare.
-     */
-    public function testCommentingOnAnUnknownQuoteFailsAtTheForeignKey(): void
+    public function testCommentingOnAnUnknownQuoteIsRefusedAsNotFound(): void
     {
-        $caught = null;
-        try {
-            static::gateway()->addComment(Uuid::randomHex(), 'Comment on a quote that does not exist');
-        } catch (\Throwable $e) {
-            $caught = $e;
-        }
+        $this->expectException(QuoteNotFoundException::class);
 
-        self::assertNotNull($caught, 'Commenting on a quote that does not exist was silently accepted.');
-        self::assertSame(
-            'Doctrine\\DBAL\\Exception\\ForeignKeyConstraintViolationException',
-            $caught::class,
-            'addComment now fails differently for an unknown quote; the interface docblock says what '
-                . 'it used to do: '
-                . $caught->getMessage(),
-        );
+        static::gateway()->addComment(Uuid::randomHex(), 'Comment on a quote that does not exist');
     }
 
     /** @param list<QuoteComment> $comments */

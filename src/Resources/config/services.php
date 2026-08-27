@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteCommentWriterInterface;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteProductAdderInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\VariantRejectingProductAdder;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -76,6 +79,18 @@ return static function (ContainerConfigurator $configurator): void {
         service(CommercialAvailability::CONTEXT_RESTORER)->ignoreOnInvalid(),
         service(CommercialAvailability::QUOTE_CALCULATOR)->ignoreOnInvalid(),
     ]);
+
+    // The guard sits in front of the commercial adder: QuoteManipulation
+    // segfaults on variant products (see VariantRejectingProductAdder). The
+    // aliases are what autowiring needs to fill QuoteWriters/QuoteLifecycleWriters
+    // — Symfony does not auto-alias an interface for services registered with
+    // set(), and the adder interface now has two implementations anyway.
+    $services->set(VariantRejectingProductAdder::class)->args([
+        service(SwagCommercialProductAdder::class),
+        service('product.repository'),
+    ]);
+    $services->alias(QuoteProductAdderInterface::class, VariantRejectingProductAdder::class);
+    $services->alias(QuoteCommentWriterInterface::class, SwagCommercialCommentWriter::class);
 
     $services->set(QuoteWriters::class);
     $services->set(QuoteLifecycleWriters::class);

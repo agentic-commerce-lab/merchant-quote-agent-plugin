@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\VariantRejectingProductAdder;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -101,8 +102,12 @@ abstract class IntegrationTestCase extends TestCase
             static::commercialService(CommercialAvailability::CONTEXT_RESTORER),
             static::commercialService(CommercialAvailability::QUOTE_CALCULATOR),
         );
-        $productAdder =
-            new SwagCommercialProductAdder(static::commercialService(CommercialAvailability::QUOTE_MANIPULATION));
+        /** @var \Shopware\Core\Framework\DataAbstractionLayer\EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $productRepository */
+        $productRepository = static::getContainer()->get('product.repository');
+        $productAdder = new VariantRejectingProductAdder(
+            new SwagCommercialProductAdder(static::commercialService(CommercialAvailability::QUOTE_MANIPULATION)),
+            $productRepository,
+        );
         $commentWriter =
             new SwagCommercialCommentWriter(static::commercialService(CommercialAvailability::QUOTE_COMMENTER));
 

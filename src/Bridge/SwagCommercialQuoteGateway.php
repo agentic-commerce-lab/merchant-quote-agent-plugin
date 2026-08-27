@@ -40,6 +40,7 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
         $this->writers->lineItems->write($changes, $context);
     }
 
+    /** @throws UnsupportedProductException */
     #[\Override]
     public function addProduct(string $quoteId, string $productId, int $quantity): void
     {
@@ -86,10 +87,17 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
      * on every comment. AddCommentTest pins the behaviour so the choice is
      * visible rather than accidental.
      */
+    /** @throws QuoteNotFoundException */
     #[\Override]
     public function addComment(string $quoteId, string $comment): void
     {
-        $this->lifecycle->comments->comment($quoteId, $comment, Context::createDefaultContext());
+        $context = Context::createDefaultContext();
+        // QuoteCommenter inserts blindly and lets the quote_comment foreign key
+        // reject an unknown id, which would leak a Doctrine exception through this
+        // interface. One redundant read keeps the isolation the interface promises
+        // without declaring doctrine/dbal.
+        $this->reader->read($quoteId, QuoteVersion::Live, $context);
+        $this->lifecycle->comments->comment($quoteId, $comment, $context);
     }
 
     /**
