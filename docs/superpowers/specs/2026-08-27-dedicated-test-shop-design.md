@@ -226,7 +226,7 @@ shop.
 | `SHOP_CONTAINER` / `SHOPWARE_ROOT` documented | README section |
 | buyer `QUOTE_MANAGEMENT` gate, scripted | setup step 10 |
 | shared with the PM incl. admin credentials | setup step 9 creates known credentials. **Where** the PM reaches the shop is not decided here — see Open questions |
-| must actually charge shipping | **verify, do not assume** — see Risks |
+| must actually charge shipping | **measured €0** — see Risks |
 
 ## Testing
 
@@ -240,6 +240,8 @@ shop.
 - A fresh-worktree check: `git worktree add`, run `composer run test:integration`
   from it with no other setup, expect green. This is the requirement that shaped
   the design; it gets exercised once before the PR.
+  Done 2026-08-27: a worktree at /tmp with no vendor ran composer run test:integration
+  green against merchant-quote-shop.
 - Shop safety carries over unchanged: `DatabaseTransactionBehaviour` rolls every
   test back; mailcatcher holds any mail the flows send.
 
@@ -251,6 +253,9 @@ shop.
   the defect. Verify in the plan: price a cart against the seed's shipping
   method and record the figure. If it is €0, that is a reason to move to a
   release image sooner, not to hide the finding.
+  Measured 2026-08-27 with scripts/shop-check-shipping.sh: "shipping: 0 via
+  Standard | cart total: 495.95 | product Main product". This shop shares the
+  defect, so the parity shop (#8's first half) must run a release image.
 - **`plugin:update` across the seed's versions.** The seed says 7.13.0/1.1.1
   installed; the files are 7.13.1/1.2.0. `plugin:update` is the documented path
   and runs the migrations. Verify by checking `plugin.version` after step 7 and
