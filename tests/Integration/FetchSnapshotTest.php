@@ -50,6 +50,39 @@ final class FetchSnapshotTest extends IntegrationTestCase
         self::assertNotSame($live->revision->versionId, $snapshot->revision->versionId);
     }
 
+    /**
+     * The read model is net throughout, so the lines and the quote total must
+     * be in the same tax space. `amountNet` is the independent yardstick: a
+     * WriteProtected field Shopware fills from the calculated cart, not
+     * something this bridge derives. Reconciling the summed line `totalNet`
+     * against it is what pins the lines' tax state down.
+     *
+     * Before the tax-mode fix this failed by the VAT rate, because the lines
+     * carried Shopware's gross `unitPrice`/`totalPrice` in fields named net.
+     * Verified against all 36 live quotes in SQL: summed
+     * `totalPrice - sum(calculatedTaxes[].tax)` equals `amount_net` exactly,
+     * discounted quotes included.
+     */
+    public function testSummedLineNetsReconcileWithTheQuoteTotal(): void
+    {
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
+
+        $snapshot = static::gateway()->fetchSnapshot($quoteId);
+        self::assertNotSame([], $snapshot->content->lines, 'The fixture quote needs at least one line item.');
+
+        $summed = 0.0;
+        foreach ($snapshot->content->lines as $line) {
+            $summed += $line->totalNet;
+        }
+
+        self::assertEqualsWithDelta(
+            $snapshot->totals->totalNet,
+            $summed,
+            0.01,
+            'Summed line totalNet disagrees with the quote amountNet — the line prices are not net.',
+        );
+    }
+
     public function testQuoteLevelDiscountRoundTripsWhenPresent(): void
     {
         $context = Context::createDefaultContext();

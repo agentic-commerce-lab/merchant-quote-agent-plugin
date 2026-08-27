@@ -16,28 +16,34 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
  * ProductCartProcessor::CUSTOM_PRICE extension when that flag is present, and
  * without the extension the next recalculate() re-prices the line from the
  * catalog and silently discards the priceDefinition below.
+ *
+ * `QuoteLineItemChange::unitPriceNet` is a NET price, and `isCalculated =>
+ * false` is what makes it one. With it true, GrossPriceCalculator::getUnitPrice()
+ * short-circuits and stores the number verbatim into `price.unitPrice` — a
+ * gross field. False makes the calculator convert: calculateGross() in a gross
+ * quote, straight through in a net one, so nothing here branches on tax mode.
  */
 final readonly class QuoteLineItemWriter
 {
     private const CUSTOM_PRICE_FLAG = 'quote_custom_offer_price';
 
-    /** ponytail: 19% assumed, as the TS implementation did. Affects displayed
-     * VAT only, not the net price the policy layer verifies. Echo the line's
-     * real rate here if non-19% products matter. */
-    private const ASSUMED_TAX_RATE = 19.0;
+    private QuoteLineTaxRules $taxRules;
 
     /** @param EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $lineItemRepository */
     public function __construct(
         private EntityRepository $lineItemRepository,
-    ) {}
+    ) {
+        $this->taxRules = new QuoteLineTaxRules($lineItemRepository);
+    }
 
     /** @param list<QuoteLineItemChange> $changes */
     public function write(array $changes, Context $context): void
     {
+        $taxRules = $this->taxRules->forLines($this->repricedIds($changes), $context);
         $payload = [];
 
         foreach ($changes as $change) {
-            $row = $this->rowFor($change);
+            $row = $this->rowFor($change, $taxRules);
             if ($row !== []) {
                 $payload[] = ['id' => $change->lineItemId, ...$row];
             }
@@ -48,8 +54,25 @@ final readonly class QuoteLineItemWriter
         }
     }
 
-    /** @return array<string, mixed> */
-    private function rowFor(QuoteLineItemChange $change): array
+    /**
+     * @param list<QuoteLineItemChange> $changes
+     *
+     * @return list<string>
+     */
+    private function repricedIds(array $changes): array
+    {
+        return array_values(array_map(
+            static fn(QuoteLineItemChange $change): string => $change->lineItemId,
+            array_filter($changes, static fn(QuoteLineItemChange $change): bool => $change->touchesPrice()),
+        ));
+    }
+
+    /**
+     * @param array<string, list<array{taxRate: float, percentage: float}>> $taxRules
+     *
+     * @return array<string, mixed>
+     */
+    private function rowFor(QuoteLineItemChange $change, array $taxRules): array
     {
         if ($change->isRemoval()) {
             // Soft delete, matching SwagCommercial's own model: the
@@ -64,22 +87,28 @@ final readonly class QuoteLineItemWriter
         }
 
         if ($change->touchesPrice()) {
-            $row += $this->priceRow($change);
+            $row += $this->priceRow($change, $taxRules[$change->lineItemId] ?? QuoteLineTaxRules::FALLBACK);
         }
 
         return $row;
     }
 
-    /** @return array<string, mixed> */
-    private function priceRow(QuoteLineItemChange $change): array
+    /**
+     * @param list<array{taxRate: float, percentage: float}> $taxRules
+     *
+     * @return array<string, mixed>
+     */
+    private function priceRow(QuoteLineItemChange $change, array $taxRules): array
     {
         return [
             'priceDefinition' => [
                 'type' => 'quantity',
                 'price' => $change->unitPriceNet,
+                // Overwritten from the line item's own quantity by
+                // ProductCartProcessor::process() before calculation.
                 'quantity' => $change->quantity ?? 1,
-                'isCalculated' => true,
-                'taxRules' => [['taxRate' => self::ASSUMED_TAX_RATE, 'percentage' => 100]],
+                'isCalculated' => false,
+                'taxRules' => $taxRules,
             ],
             'customFields' => [self::CUSTOM_PRICE_FLAG => true],
         ];
