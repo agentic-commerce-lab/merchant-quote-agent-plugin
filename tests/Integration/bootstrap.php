@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use Shopware\Core\TestBootstrapper;
 
-$shopRoot = getenv('SHOPWARE_ROOT') !== false ? getenv('SHOPWARE_ROOT') : '/var/www/html';
+// `?:` not `!== false`: a set-but-empty SHOPWARE_ROOT (common in CI env blocks) must fall
+// back to the default, not send us to require '/vendor/autoload.php'.
+$shopRoot = getenv('SHOPWARE_ROOT') ?: '/var/www/html';
 
 /** @var \Composer\Autoload\ClassLoader $loader */
 $loader = require $shopRoot . '/vendor/autoload.php';
