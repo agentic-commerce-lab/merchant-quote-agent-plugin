@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLineItemWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteRecalculator;
 use MerchantQuoteAgentPlugin\Bridge\QuoteSnapshotReader;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
+use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\Test\TestCaseBase\DatabaseTransactionBehaviour;
@@ -64,20 +66,24 @@ abstract class IntegrationTestCase extends TestCase
         /** @var \Shopware\Core\Framework\DataAbstractionLayer\EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $lineItemRepository */
         $lineItemRepository = static::getContainer()->get('quote_line_item.repository');
 
-        $reader = new QuoteSnapshotReader($quoteRepository, new QuoteVersionResolver());
-        $lineItemWriter = new QuoteLineItemWriter($lineItemRepository);
         $recalculator = new QuoteRecalculator(
             static::commercialService(
                 'Shopware\Commercial\B2B\QuoteManagement\Domain\SalesChannelContextRestorer\SalesChannelContextRestorer',
             ),
             static::commercialService('Shopware\Commercial\B2B\QuoteManagement\Domain\Recalculation\QuoteCalculator'),
         );
+        $productAdder = new SwagCommercialProductAdder(static::commercialService(
+            'Shopware\Commercial\B2B\QuoteManagement\Domain\Admin\QuoteManipulation',
+        ));
 
         return new SwagCommercialQuoteGateway(
-            $reader,
-            $lineItemWriter,
-            new QuoteWriter($quoteRepository),
-            $recalculator,
+            new QuoteSnapshotReader($quoteRepository, new QuoteVersionResolver()),
+            new QuoteWriters(
+                new QuoteLineItemWriter($lineItemRepository),
+                new QuoteWriter($quoteRepository),
+                $recalculator,
+                $productAdder,
+            ),
         );
     }
 }

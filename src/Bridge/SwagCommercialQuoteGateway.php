@@ -20,9 +20,7 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
 {
     public function __construct(
         private QuoteSnapshotReader $reader,
-        private QuoteLineItemWriter $lineItemWriter,
-        private QuoteWriter $quoteWriter,
-        private QuoteRecalculator $recalculator,
+        private QuoteWriters $writers,
     ) {}
 
     #[\Override]
@@ -37,19 +35,19 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
     {
         $context = Context::createDefaultContext();
         $this->assertRevision($quoteId, $expected, $context);
-        $this->lineItemWriter->write($changes, $context);
+        $this->writers->lineItems->write($changes, $context);
     }
 
     #[\Override]
     public function addProduct(string $quoteId, string $productId, int $quantity): void
     {
-        throw new \LogicException('Not implemented until plan Task 7.');
+        $this->writers->productAdder->addProduct($quoteId, $productId, $quantity, Context::createDefaultContext());
     }
 
     #[\Override]
     public function recalculate(string $quoteId): void
     {
-        $this->recalculator->recalculate($quoteId, Context::createDefaultContext());
+        $this->writers->recalculator->recalculate($quoteId, Context::createDefaultContext());
     }
 
     /** @throws QuoteNotFoundException|QuoteRevisionMismatch */
@@ -72,7 +70,7 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
     {
         $context = Context::createDefaultContext();
         $this->assertRevision($quoteId, $expected, $context);
-        $this->quoteWriter->write($quoteId, $update, $context);
+        $this->writers->quote->write($quoteId, $update, $context);
     }
 
     #[\Override]
