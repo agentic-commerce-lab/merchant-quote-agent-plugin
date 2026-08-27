@@ -16,9 +16,19 @@ use Shopware\Core\Framework\Context;
  * does not mean "ours". A Context state does, and it covers comments, state
  * transitions and line-item writes with one check instead of one per surface.
  *
- * Its ceiling is that it only works in-process. That is where our own writes
- * happen: the message handler and the trigger run in the same worker. A write
- * arriving from outside this process is a buyer write by definition.
+ * Its ceiling is not the process boundary — it is the Context instance. STATE
+ * survives `Context::scope()` (QuoteCommenter wraps its write in one and the
+ * state comes through unchanged), but it does not survive
+ * `Context::createWithVersionId()`, which re-versions to a fresh `Context` and
+ * copies over only `scope` and `extensions` (Framework/Context.php:173),
+ * `states` included. SwagCommercial calls exactly that, in the same process,
+ * milliseconds after our write: QuoteHistoryWriter mirrors every Live-version
+ * quote_comment into the quote's snapshot version, and the mirrored write's
+ * `quote_comment.written` event carries a Context that has lost STATE.
+ * `hasState(STATE)` is therefore only reliable on the Context the write itself
+ * used — a caller reading it off a later-derived Context (as any re-versioned
+ * copy is) sees it missing even for an agent write. AgentContextTest proves
+ * both halves against the real write path.
  *
  * Lives in Bridge rather than Servicing because the layer order is policy,
  * bridge, servicing: the bridge stamps, servicing reads.
