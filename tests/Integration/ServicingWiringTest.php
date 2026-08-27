@@ -10,10 +10,9 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use Shopware\Core\Framework\MessageQueue\AsyncMessageInterface;
-use Symfony\Component\EventDispatcher\EventDispatcherInterface as ComponentDispatcher;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Sender\SendersLocator;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * The trigger and handler are wired by services.php, which no unit test can
@@ -26,7 +25,6 @@ final class ServicingWiringTest extends IntegrationTestCase
     {
         $dispatcher = static::getContainer()->get('event_dispatcher');
         self::assertInstanceOf(EventDispatcherInterface::class, $dispatcher);
-        self::assertInstanceOf(ComponentDispatcher::class, $dispatcher);
 
         foreach (array_keys(QuoteServicingTrigger::getSubscribedEvents()) as $eventName) {
             self::assertTrue(

@@ -9,7 +9,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Pins two measured facts about the real write path, not the one the brief
