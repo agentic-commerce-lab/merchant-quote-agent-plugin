@@ -24,7 +24,7 @@ use Shopware\Core\Framework\MessageQueue\AsyncMessageInterface;
  */
 final readonly class ServiceQuoteMessage implements AsyncMessageInterface
 {
-    private function __construct(
+    public function __construct(
         public string $quoteId,
         public string $reason,
     ) {}

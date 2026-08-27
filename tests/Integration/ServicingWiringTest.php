@@ -13,6 +13,7 @@ use Shopware\Core\Framework\MessageQueue\AsyncMessageInterface;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Sender\SendersLocator;
+use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 /**
  * The trigger and handler are wired by services.php, which no unit test can
@@ -83,5 +84,29 @@ final class ServicingWiringTest extends IntegrationTestCase
             'ServiceQuoteMessage no longer routes to the async transport, so servicing would run '
             . 'in the triggering request — where LLM latency of seconds is not acceptable.',
         );
+    }
+
+    /**
+     * The segment nothing else on this branch exercises: encode, cross the
+     * transport, decode. `messenger.default_serializer` is the container's real
+     * serializer rather than one of our own choosing, so this test tracks
+     * whatever Shopware configures for the `async` transport.
+     */
+    public function testTheMessageSurvivesTheTransportSerializer(): void
+    {
+        $serializer = static::getContainer()->get('messenger.default_serializer');
+        self::assertInstanceOf(SerializerInterface::class, $serializer);
+
+        $message = ServiceQuoteMessage::because('probe', ServicingTriggerReason::StateEntered);
+        $decoded = $serializer->decode($serializer->encode(new Envelope($message)))->getMessage();
+
+        self::assertInstanceOf(ServiceQuoteMessage::class, $decoded);
+        self::assertSame(
+            'probe',
+            $decoded->quoteId,
+            'The message did not survive encode/decode, so '
+            . 'every servicing message dies in the worker and dead-letters.',
+        );
+        self::assertSame('state_entered', $decoded->reason);
     }
 }
