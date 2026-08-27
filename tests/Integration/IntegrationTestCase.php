@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Bridge\QuoteLineItemWriter;
+use MerchantQuoteAgentPlugin\Bridge\QuoteRecalculator;
 use MerchantQuoteAgentPlugin\Bridge\QuoteSnapshotReader;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
@@ -58,9 +60,18 @@ abstract class IntegrationTestCase extends TestCase
     {
         /** @var \Shopware\Core\Framework\DataAbstractionLayer\EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $quoteRepository */
         $quoteRepository = static::getContainer()->get('quote.repository');
+        /** @var \Shopware\Core\Framework\DataAbstractionLayer\EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $lineItemRepository */
+        $lineItemRepository = static::getContainer()->get('quote_line_item.repository');
 
         $reader = new QuoteSnapshotReader($quoteRepository, new QuoteVersionResolver());
+        $lineItemWriter = new QuoteLineItemWriter($lineItemRepository);
+        $recalculator = new QuoteRecalculator(
+            static::commercialService(
+                'Shopware\Commercial\B2B\QuoteManagement\Domain\SalesChannelContextRestorer\SalesChannelContextRestorer',
+            ),
+            static::commercialService('Shopware\Commercial\B2B\QuoteManagement\Domain\Recalculation\QuoteCalculator'),
+        );
 
-        return new SwagCommercialQuoteGateway($reader);
+        return new SwagCommercialQuoteGateway($reader, $lineItemWriter, $recalculator);
     }
 }
