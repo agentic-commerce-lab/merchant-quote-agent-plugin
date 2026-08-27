@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteLineItemWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteRecalculator;
 use MerchantQuoteAgentPlugin\Bridge\QuoteSnapshotReader;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
+use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\Test\TestCaseBase\DatabaseTransactionBehaviour;
@@ -72,6 +73,11 @@ abstract class IntegrationTestCase extends TestCase
             static::commercialService('Shopware\Commercial\B2B\QuoteManagement\Domain\Recalculation\QuoteCalculator'),
         );
 
-        return new SwagCommercialQuoteGateway($reader, $lineItemWriter, $recalculator);
+        return new SwagCommercialQuoteGateway(
+            $reader,
+            $lineItemWriter,
+            new QuoteWriter($quoteRepository),
+            $recalculator,
+        );
     }
 }

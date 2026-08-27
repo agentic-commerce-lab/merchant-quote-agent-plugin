@@ -21,6 +21,7 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
     public function __construct(
         private QuoteSnapshotReader $reader,
         private QuoteLineItemWriter $lineItemWriter,
+        private QuoteWriter $quoteWriter,
         private QuoteRecalculator $recalculator,
     ) {}
 
@@ -65,10 +66,13 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
         }
     }
 
+    /** @throws QuoteNotFoundException|QuoteRevisionMismatch */
     #[\Override]
     public function updateQuote(string $quoteId, QuoteUpdate $update, ?QuoteRevision $expected = null): void
     {
-        throw new \LogicException('Not implemented until plan Task 6.');
+        $context = Context::createDefaultContext();
+        $this->assertRevision($quoteId, $expected, $context);
+        $this->quoteWriter->write($quoteId, $update, $context);
     }
 
     #[\Override]
