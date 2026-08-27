@@ -2674,22 +2674,35 @@ final class ServicingWiringTest extends IntegrationTestCase
      * Implementing AsyncMessageInterface is the entire routing configuration.
      * If Shopware ever stops routing that interface to `async`, servicing
      * silently becomes synchronous — worth an assertion rather than a comment.
+     *
+     * Asked of Messenger's own SendersLocator rather than of a container
+     * parameter: there is no `messenger.routing` parameter in this Shopware
+     * build (checked), and the locator is what actually decides where a message
+     * goes, so this asserts the real routing decision rather than a config shape
+     * that might not drive it.
      */
-    public function testTheMessageIsRoutedAsynchronously(): void
+    public function testTheMessageIsRoutedToTheAsyncTransport(): void
     {
-        self::assertInstanceOf(
-            AsyncMessageInterface::class,
-            ServiceQuoteMessage::because('probe', ServicingTriggerReason::StateEntered),
-        );
+        $message = ServiceQuoteMessage::because('probe', ServicingTriggerReason::StateEntered);
+        self::assertInstanceOf(AsyncMessageInterface::class, $message);
 
-        $routing = static::getContainer()->getParameter('messenger.routing');
-        self::assertIsArray($routing);
-        self::assertArrayHasKey(AsyncMessageInterface::class, $routing);
+        $locator = static::getContainer()->get('messenger.senders_locator');
+        self::assertInstanceOf(SendersLocator::class, $locator);
+
+        // getSenders() yields $transportAlias => $sender.
+        $aliases = array_keys(iterator_to_array($locator->getSenders(new Envelope($message))));
+
+        self::assertSame(
+            ['async'],
+            $aliases,
+            'ServiceQuoteMessage no longer routes to the async transport, so servicing would run '
+            . 'in the triggering request — where LLM latency of seconds is not acceptable.',
+        );
     }
 }
 ```
 
-If `messenger.routing` is not a readable container parameter in this Shopware build, replace that last assertion by dispatching the message on the real bus and asserting a row lands in `messenger_messages` with `queue_name = 'async'` — but check the parameter first, it is cheaper.
+Add `use Symfony\Component\Messenger\Envelope;` and `use Symfony\Component\Messenger\Transport\Sender\SendersLocator;` to the imports. I verified `messenger.senders_locator` resolves in this shop and that `getSenders(Envelope): iterable` yields senders keyed by transport alias, so no fallback is needed.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
