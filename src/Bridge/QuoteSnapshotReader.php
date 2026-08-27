@@ -28,6 +28,7 @@ final readonly class QuoteSnapshotReader
 {
     private QuoteLineMapper $lineMapper;
     private QuoteCommentMapper $commentMapper;
+    private QuoteDiscountMapper $discountMapper;
 
     /** @param EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $quoteRepository */
     public function __construct(
@@ -36,6 +37,7 @@ final readonly class QuoteSnapshotReader
     ) {
         $this->lineMapper = new QuoteLineMapper();
         $this->commentMapper = new QuoteCommentMapper();
+        $this->discountMapper = new QuoteDiscountMapper();
     }
 
     /** @throws QuoteNotFoundException */
@@ -58,7 +60,10 @@ final readonly class QuoteSnapshotReader
         return new QuoteSnapshot(
             identity: $this->readIdentity($quote, $quoteId),
             revision: $this->readRevision($quote, $versionedContext),
-            totals: new QuoteTotals(totalNet: (float) $quote->get('amountNet')),
+            totals: new QuoteTotals(
+                totalNet: (float) $quote->get('amountNet'),
+                discount: $this->discountMapper->map($quote->get('discount')),
+            ),
             lifecycle: $this->readLifecycle($quote),
             content: new QuoteContent(
                 lines: $this->lineMapper->map($quote),
