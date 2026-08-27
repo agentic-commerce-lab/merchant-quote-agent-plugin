@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Servicing\Attempt\ServicingAttemptStoreInterface;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Exception\QuoteServicingAttemptsExhaustedException;
+use MerchantQuoteAgentPlugin\Servicing\Exception\QuoteServicingBusyException;
 use MerchantQuoteAgentPlugin\Servicing\Exception\QuoteServicingUnavailableException;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Lock\LockFactory;
@@ -34,6 +35,7 @@ final readonly class QuoteServicingHandler
 
     /**
      * @throws QuoteServicingUnavailableException when SwagCommercial cannot provide the quote gateway
+     * @throws QuoteServicingBusyException when another worker currently services the quote
      * @throws QuoteServicingAttemptsExhaustedException when the message exceeds its delivery bound
      * @throws \MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException when the quote no longer exists
      */
@@ -53,7 +55,7 @@ final readonly class QuoteServicingHandler
                 'quoteId' => $message->quoteId,
             ]);
 
-            return;
+            throw QuoteServicingBusyException::quoteAlreadyActive($message->quoteId);
         }
 
         try {

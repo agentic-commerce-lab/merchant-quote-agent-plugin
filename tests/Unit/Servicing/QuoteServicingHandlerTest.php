@@ -14,15 +14,17 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Servicing\Attempt\ServicingAttemptStoreInterface;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Exception\QuoteServicingAttemptsExhaustedException;
+use MerchantQuoteAgentPlugin\Servicing\Exception\QuoteServicingBusyException;
 use MerchantQuoteAgentPlugin\Servicing\Exception\QuoteServicingUnavailableException;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingHandler;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
-use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\SharedLockInterface;
+use Symfony\Component\Messenger\Exception\RecoverableExceptionInterface;
 use Symfony\Component\Messenger\Exception\UnrecoverableExceptionInterface;
 
 final class QuoteServicingHandlerTest extends TestCase
@@ -49,7 +51,9 @@ final class QuoteServicingHandlerTest extends TestCase
         $this->attemptStore = $this->createMock(ServicingAttemptStoreInterface::class);
     }
 
-    public function testHandlesServiceMessageSuccessfully(): void
+    #[TestWith([1], 'first delivery')]
+    #[TestWith([4], 'maximum delivery boundary')]
+    public function testHandlesServiceMessageSuccessfully(int $deliveryCount): void
     {
         $revision = new QuoteRevision(self::REVISION_ID, new \DateTimeImmutable('2026-08-27 12:00:00.123456'));
         $message = new ServiceQuoteMessage(
@@ -72,10 +76,10 @@ final class QuoteServicingHandlerTest extends TestCase
             ->expects(self::once())
             ->method('recordDelivery')
             ->with(self::MESSAGE_ID)
-            ->willReturnCallback(static function (string $messageId) use (&$calls): int {
+            ->willReturnCallback(static function (string $messageId) use (&$calls, $deliveryCount): int {
                 $calls[] = 'record:' . $messageId;
 
-                return 1;
+                return $deliveryCount;
             });
         $this->gateway
             ->expects(self::once())
@@ -121,7 +125,7 @@ final class QuoteServicingHandlerTest extends TestCase
         );
     }
 
-    public function testSkipsExecutionWhenLockIsAlreadyHeld(): void
+    public function testThrowsRecoverableBusyExceptionWhenLockIsAlreadyHeld(): void
     {
         $message = new ServiceQuoteMessage(
             messageId: self::MESSAGE_ID,
@@ -152,7 +156,18 @@ final class QuoteServicingHandlerTest extends TestCase
             gateway: $this->gateway,
             attemptStore: $this->attemptStore,
         );
-        $handler($message);
+
+        try {
+            $handler($message);
+            self::fail('Expected busy quote servicing to be retried.');
+        } catch (QuoteServicingBusyException $exception) {
+            self::assertInstanceOf(RecoverableExceptionInterface::class, $exception);
+            self::assertSame(5000, $exception->getRetryDelay());
+            self::assertSame(
+                'Quote servicing is already active for quote "' . self::QUOTE_ID . '".',
+                $exception->getMessage(),
+            );
+        }
     }
 
     public function testCompletesDeliveryWhenRevisionMismatches(): void
@@ -313,7 +328,9 @@ final class QuoteServicingHandlerTest extends TestCase
         }
     }
 
-    #[DataProvider('processingFailureStages')]
+    #[TestWith(['record'], 'attempt recording')]
+    #[TestWith(['fetch'], 'snapshot fetch')]
+    #[TestWith(['pipeline'], 'pipeline service')]
     public function testDoesNotCompleteDeliveryWhenProcessingThrows(string $failureStage): void
     {
         $revision = new QuoteRevision(self::REVISION_ID, new \DateTimeImmutable('2026-08-27 12:00:00.123456'));
@@ -369,14 +386,6 @@ final class QuoteServicingHandlerTest extends TestCase
         } catch (\RuntimeException $exception) {
             self::assertSame($failure, $exception);
         }
-    }
-
-    /** @return iterable<string, array{string}> */
-    public static function processingFailureStages(): iterable
-    {
-        yield 'attempt recording' => ['record'];
-        yield 'snapshot fetch' => ['fetch'];
-        yield 'pipeline service' => ['pipeline'];
     }
 
     private function createSnapshot(string $state, QuoteRevision $revision): QuoteSnapshot
