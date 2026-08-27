@@ -15,11 +15,16 @@ final readonly class QuoteRevision
         public \DateTimeImmutable $updatedAt,
     ) {}
 
+    /**
+     * Compared at microsecond fidelity, not getTimestamp(): the quote table
+     * stores updated_at as datetime(3), so a same-second concurrent write
+     * would otherwise read as unchanged.
+     */
     public function matches(self $other): bool
     {
         return (
             $this->versionId === $other->versionId
-            && $this->updatedAt->getTimestamp() === $other->updatedAt->getTimestamp()
+            && $this->updatedAt->format('U.u') === $other->updatedAt->format('U.u')
         );
     }
 }
