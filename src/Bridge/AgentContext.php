@@ -20,8 +20,8 @@ use Shopware\Core\Framework\Context;
  * survives `Context::scope()` (QuoteCommenter wraps its write in one and the
  * state comes through unchanged), but it does not survive
  * `Context::createWithVersionId()`, which re-versions to a fresh `Context` and
- * copies over only `scope` and `extensions` (Framework/Context.php:173),
- * `states` included. SwagCommercial calls exactly that, in the same process,
+ * copies over only `scope` and `extensions` (Framework/Context.php:173) —
+ * `states` is not among them. SwagCommercial calls exactly that, in the same process,
  * milliseconds after our write: QuoteHistoryWriter mirrors every Live-version
  * quote_comment into the quote's snapshot version, and the mirrored write's
  * `quote_comment.written` event carries a Context that has lost STATE.
