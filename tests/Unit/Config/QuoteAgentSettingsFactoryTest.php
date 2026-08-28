@@ -132,6 +132,7 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         yield 'tier percent over 100' => [['bundleVolumeTiers' => '10:150'], 'bundle.volumeTiers[0].discountPercent'];
         yield 'malformed tier line' => [['bundleVolumeTiers' => "10:5\nbroken"], 'line 2'];
         yield 'unknown payment term' => [['paymentAllowedTerms' => ['net_45']], 'PaymentPolicy'];
+        yield 'ceiling wrong type' => [['maxQuoteValueNet' => '50000'], 'maxQuoteValueNet'];
     }
 
     /** @param array<string, mixed> $overrides */
@@ -154,6 +155,15 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         } catch (InvalidQuoteAgentConfiguration $e) {
             self::assertCount(2, $e->problems);
         }
+
+        // Cross-mechanism: the volume-tier parser and the validator collect
+        // independently, and neither short-circuits the other.
+        try {
+            self::build(['bundleVolumeTiers' => 'broken', 'maxDiscountPercent' => 150.0]);
+            self::fail('Invalid configuration was accepted.');
+        } catch (InvalidQuoteAgentConfiguration $e) {
+            self::assertCount(2, $e->problems);
+        }
     }
 
     /** @mago-expect lint:no-literal-password */
@@ -167,9 +177,12 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         }
     }
 
+    /** @mago-expect lint:no-literal-password */
     public function testRulesOnlyModeIsTheOneStateThatNeedsNoKey(): void
     {
-        $settings = self::build(['llmApiKey' => '', 'rulesOnlyMode' => true]);
+        // The key is deliberately left set: rules-only must win even when a
+        // merchant forgets to clear it, not just when the key is also blank.
+        $settings = self::build(['llmApiKey' => 'sk-test', 'rulesOnlyMode' => true]);
 
         self::assertNotNull($settings);
         self::assertTrue($settings->rulesOnly);

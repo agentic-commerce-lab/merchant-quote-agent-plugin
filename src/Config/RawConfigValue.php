@@ -20,9 +20,20 @@ final class RawConfigValue
     /** @param array<string, mixed> $raw */
     public static function baseUrl(array $raw): string
     {
-        $url = trim(self::stringOrEmpty($raw, 'llmBaseUrl'));
+        $url = self::stringOrEmpty($raw, 'llmBaseUrl');
 
         return $url === '' ? self::DEFAULT_BASE_URL : $url;
+    }
+
+    /**
+     * Null whenever no model may be called: rules-only mode carries no
+     * credentials, so nothing downstream can reach a model by accident.
+     *
+     * @param array<string, mixed> $raw
+     */
+    public static function llm(array $raw, bool $rulesOnly, #[\SensitiveParameter] string $apiKey): ?ModelAccess
+    {
+        return $rulesOnly || $apiKey === '' ? null : new ModelAccess($apiKey, self::baseUrl($raw));
     }
 
     /** @param array<string, mixed> $raw */
@@ -33,12 +44,14 @@ final class RawConfigValue
         return \is_bool($value) ? $value : null;
     }
 
-    /** @param array<string, mixed> $raw */
+    /**
+     * @param array<string, mixed> $raw
+     *
+     * @throws \TypeError see RawValueGuard
+     */
     public static function int(array $raw, string $key): ?int
     {
-        $value = RawValue::at($raw, $key);
-
-        return \is_int($value) ? $value : null;
+        return RawValueGuard::int(RawValue::at($raw, $key), $key);
     }
 
     /** @param array<string, mixed> $raw */
@@ -46,7 +59,7 @@ final class RawConfigValue
     {
         $value = RawValue::at($raw, $key);
 
-        return \is_string($value) && trim($value) !== '' ? $value : null;
+        return \is_string($value) && trim($value) !== '' ? trim($value) : null;
     }
 
     /**
@@ -60,12 +73,14 @@ final class RawConfigValue
         return self::string($raw, $key) ?? '';
     }
 
-    /** @param array<string, mixed> $raw */
+    /**
+     * @param array<string, mixed> $raw
+     *
+     * @throws \TypeError see RawValueGuard
+     */
     public static function float(array $raw, string $key): ?float
     {
-        $value = RawValue::at($raw, $key);
-
-        return \is_int($value) || \is_float($value) ? (float) $value : null;
+        return RawValueGuard::float(RawValue::at($raw, $key), $key);
     }
 
     /**

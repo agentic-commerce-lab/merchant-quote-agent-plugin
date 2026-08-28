@@ -18,6 +18,8 @@ final class NegotiationPolicyArray
      * @param list<array{minQty: int, discountPercent: float}> $tiers
      *
      * @return array<string, mixed>
+     *
+     * @throws \TypeError see RawValueGuard
      */
     public static function build(array $raw, array $tiers): array
     {
@@ -45,6 +47,8 @@ final class NegotiationPolicyArray
      * @param array<string, mixed> $raw
      *
      * @return array<string, mixed>
+     *
+     * @throws \TypeError see RawValueGuard
      */
     private static function price(array $raw): array
     {
