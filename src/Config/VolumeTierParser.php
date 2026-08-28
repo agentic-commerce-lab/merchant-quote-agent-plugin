@@ -26,8 +26,12 @@ final class VolumeTierParser
     public static function parse(string $text): array
     {
         $tiers = [];
+        // preg_split returns array|false, never null — `?? []` was no guard at
+        // all. false only on a broken pattern, but an unguarded false here is
+        // an iterator crash rather than an empty tier list.
+        $lines = preg_split('/\R/', $text);
 
-        foreach (preg_split('/\R/', $text) ?? [] as $index => $line) {
+        foreach ($lines === false ? [] : $lines as $index => $line) {
             $trimmed = trim($line);
 
             if ($trimmed === '') {

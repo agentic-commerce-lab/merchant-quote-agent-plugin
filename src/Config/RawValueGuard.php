@@ -14,6 +14,12 @@ namespace MerchantQuoteAgentPlugin\Config;
  *
  * Split out of RawConfigValue so its own decision points don't add to that
  * class's complexity budget.
+ *
+ * Not Policy\Data\OptionalShape::int/float, which behaves identically: the
+ * \TypeError message here names the type the merchant actually supplied
+ * (`maxQuoteValueNet: expected a number, got string.`) and travels verbatim
+ * into the merchant's error log, where OptionalShape's `Expected
+ * "maxQuoteValueNet" to be numeric.` would not say what they typed.
  */
 final class RawValueGuard
 {
@@ -45,5 +51,26 @@ final class RawValueGuard
         }
 
         return (float) $value;
+    }
+
+    /**
+     * Blank still means unset — a merchant clearing the field is not the same
+     * mistake as typing `978` where `EUR` belongs.
+     *
+     * @throws \TypeError
+     */
+    public static function string(mixed $value, string $key): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (!\is_string($value)) {
+            throw new \TypeError(\sprintf('%s: expected a string, got %s.', $key, get_debug_type($value)));
+        }
+
+        $trimmed = trim($value);
+
+        return $trimmed === '' ? null : $trimmed;
     }
 }

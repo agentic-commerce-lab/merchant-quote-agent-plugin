@@ -28,6 +28,23 @@ final class QuoteEscalatorTest extends TestCase
         );
     }
 
+    public function testTheCommentLeaksNoDiagnosticToTheBuyer(): void
+    {
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+
+        (new QuoteEscalator())->escalate(
+            $gateway,
+            QuoteSnapshotFixture::snapshot(),
+            QuoteEscalationReason::NotConfigured,
+            'price.maxDiscountPercent: This value should be between 0 and 100.',
+        );
+
+        // The storefront shows quote comments to the CUSTOMER, unfiltered.
+        $comment = implode("\n", $gateway->comments);
+        self::assertStringNotContainsString(QuoteEscalationReason::NotConfigured->value, $comment);
+        self::assertStringNotContainsString('maxDiscountPercent', $comment);
+    }
+
     public function testItSkipsAQuoteAlreadyMarkedWithTheSameReason(): void
     {
         $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);

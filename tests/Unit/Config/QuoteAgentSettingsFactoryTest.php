@@ -133,6 +133,7 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         yield 'malformed tier line' => [['bundleVolumeTiers' => "10:5\nbroken"], 'line 2'];
         yield 'unknown payment term' => [['paymentAllowedTerms' => ['net_45']], 'PaymentPolicy'];
         yield 'ceiling wrong type' => [['maxQuoteValueNet' => '50000'], 'maxQuoteValueNet'];
+        yield 'wrong-typed ceiling currency' => [['maxQuoteValueCurrency' => 978], 'maxQuoteValueCurrency'];
     }
 
     /** @param array<string, mixed> $overrides */

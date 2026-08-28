@@ -65,7 +65,14 @@ final class NegotiationPolicyArray
 
         if ($ceilingNet !== null) {
             $price['maxQuoteValueNet'] = $ceilingNet;
-            $price['maxQuoteValueCurrency'] = RawConfigValue::string($raw, 'maxQuoteValueCurrency');
+            // Guarded rather than read through RawConfigValue::string(): a
+            // numeric ISO 4217 code (978) would coerce to null, and a null
+            // currency makes both CurrencyMismatch checks return early — a
+            // EUR ceiling would then be compared against a JPY total.
+            $price['maxQuoteValueCurrency'] = RawValueGuard::string(
+                RawValue::at($raw, 'maxQuoteValueCurrency'),
+                'maxQuoteValueCurrency',
+            );
         }
 
         return $price;
