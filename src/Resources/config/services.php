@@ -18,10 +18,15 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteStateTransitioner;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
+use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
+use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
@@ -105,6 +110,17 @@ return static function (ContainerConfigurator $configurator): void {
     // no null-object implementation: capability absence belongs one layer up.
     $services->set(QuoteGatewayInterface::class)->factory([service(QuoteGatewayFactory::class), 'create']);
 
+    // Configuration (issue #5). Autowired: the factory takes ValidatorInterface,
+    // which Shopware aliases to HappyPathValidator — harmless, because a
+    // validate() call with no explicit constraints delegates straight to the
+    // real Symfony validator.
+    //
+    // The reader stays private: the alias below is what references it, so
+    // RemoveUnusedDefinitionsPass no longer prunes it as dead.
+    $services->set(QuoteAgentSettingsFactory::class);
+    $services->set(QuoteAgentSettingsReader::class);
+    $services->alias(QuoteAgentSettingsSource::class, QuoteAgentSettingsReader::class);
+
     // Servicing (issue #4): trigger, queue and lock. Inside the guard because
     // a shop without SwagCommercial has no quotes to service.
     //
@@ -120,6 +136,14 @@ return static function (ContainerConfigurator $configurator): void {
     // autoconfigure() picks up EventSubscriberInterface, so no explicit tag.
     $services->set(QuoteServicingTrigger::class)->args([service('messenger.default_bus')]);
 
+    // Whether a quote may be serviced at all, and with which settings (#5).
+    $services->set(QuoteEscalator::class);
+    $services->set(ServicingPreflight::class)->args([
+        service(QuoteAgentSettingsSource::class),
+        service(QuoteEscalator::class),
+        service('logger'),
+    ]);
+
     // The gateway argument is the null-returning factory registered above and
     // the pipeline is #18's, registered nowhere yet — both ignoreOnInvalid()
     // so an absent or unlicensed backend degrades to a log line rather than a
@@ -127,6 +151,7 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(ServiceQuoteHandler::class)->args([
         service(QuoteServicingLock::class),
         service('logger'),
+        service(ServicingPreflight::class),
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
         service(QuoteServicingPipelineInterface::class)->ignoreOnInvalid(),
     ]);

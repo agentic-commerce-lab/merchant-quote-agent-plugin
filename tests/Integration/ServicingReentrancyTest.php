@@ -6,6 +6,8 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
@@ -16,6 +18,7 @@ use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\Store\InMemoryStore;
 
@@ -26,6 +29,23 @@ use Symfony\Component\Lock\Store\InMemoryStore;
  */
 final class ServicingReentrancyTest extends IntegrationTestCase
 {
+    /**
+     * The pass only runs for an enabled, validly configured sales channel, so
+     * the preflight has something to hand the pipeline. Written rather than
+     * read: DatabaseTransactionBehaviour rolls these back, and a write-then-read
+     * inside one test is what makes the config caches agree with the database.
+     */
+    #[\Override]
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $config = static::getContainer()->get(SystemConfigService::class);
+        self::assertInstanceOf(SystemConfigService::class, $config);
+        $config->set(QuoteAgentSettingsReader::DOMAIN . 'enabled', true);
+        $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmApiKey', 'sk-integration');
+    }
+
     public function testASecondDeliveryDuringAPassHandsOffOnlyOnce(): void
     {
         $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
@@ -47,8 +67,11 @@ final class ServicingReentrancyTest extends IntegrationTestCase
             ) {}
 
             #[\Override]
-            public function service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void
-            {
+            public function service(
+                QuoteSnapshot $snapshot,
+                QuoteGatewayInterface $gateway,
+                QuoteAgentSettings $settings,
+            ): void {
                 ++$this->passes;
                 $gateway->addComment($snapshot->identity->quoteId, 'ServicingReentrancyTest agent reply');
 
@@ -65,7 +88,7 @@ final class ServicingReentrancyTest extends IntegrationTestCase
             }
         };
 
-        $handler = new ServiceQuoteHandler($locks, new NullLogger(), $gateway, $pipeline);
+        $handler = new ServiceQuoteHandler($locks, new NullLogger(), static::preflight(), $gateway, $pipeline);
         $pipeline->handler = $handler;
         $pipeline->replay = $message;
 
@@ -90,14 +113,17 @@ final class ServicingReentrancyTest extends IntegrationTestCase
             public int $passes = 0;
 
             #[\Override]
-            public function service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void
-            {
+            public function service(
+                QuoteSnapshot $snapshot,
+                QuoteGatewayInterface $gateway,
+                QuoteAgentSettings $settings,
+            ): void {
                 ++$this->passes;
                 $gateway->addComment($snapshot->identity->quoteId, 'ServicingReentrancyTest agent reply');
             }
         };
 
-        $handler = new ServiceQuoteHandler($locks, new NullLogger(), $gateway, $pipeline);
+        $handler = new ServiceQuoteHandler($locks, new NullLogger(), static::preflight(), $gateway, $pipeline);
 
         $handler($message);
         $handler($message);
@@ -144,8 +170,11 @@ final class ServicingReentrancyTest extends IntegrationTestCase
             ) {}
 
             #[\Override]
-            public function service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void
-            {
+            public function service(
+                QuoteSnapshot $snapshot,
+                QuoteGatewayInterface $gateway,
+                QuoteAgentSettings $settings,
+            ): void {
                 ++$this->passes;
 
                 // A BUYER comment arriving mid-pass. Written through the
@@ -164,7 +193,7 @@ final class ServicingReentrancyTest extends IntegrationTestCase
             }
         };
 
-        $handler = new ServiceQuoteHandler($locks, new NullLogger(), $gateway, $pipeline);
+        $handler = new ServiceQuoteHandler($locks, new NullLogger(), static::preflight(), $gateway, $pipeline);
 
         $handler($message);
         $handler($message);

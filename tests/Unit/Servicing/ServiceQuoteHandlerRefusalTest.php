@@ -28,7 +28,13 @@ final class ServiceQuoteHandlerRefusalTest extends TestCase
     {
         $locks = ServicingHandlerFixture::locks();
         $pipeline = ServicingHandlerFixture::countingPipeline();
-        $handler = new ServiceQuoteHandler($locks, new NullLogger(), null, $pipeline);
+        $handler = new ServiceQuoteHandler(
+            $locks,
+            new NullLogger(),
+            ServicingSettingsFixture::preflightReturning(ServicingSettingsFixture::settings()),
+            null,
+            $pipeline,
+        );
 
         $this->expectException(UnrecoverableMessageHandlingException::class);
 
@@ -99,7 +105,7 @@ final class ServiceQuoteHandlerRefusalTest extends TestCase
 
     /**
      * SwagCommercial's own NON_EDITABLE_STATES (QuoteSnapshotVersionResolver),
-     * mirrored on ServiceQuoteHandler.
+     * mirrored on ServicingPreflight.
      *
      * @return iterable<string, array{0: string}>
      */

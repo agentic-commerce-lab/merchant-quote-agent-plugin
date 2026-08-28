@@ -36,21 +36,6 @@ final readonly class ServiceQuoteHandler
     public const ATTEMPTS_KEY = 'merchant_quote_agent_attempts';
 
     /**
-     * The states SwagCommercial itself refuses to edit
-     * (QuoteSnapshotVersionResolver::NON_EDITABLE_STATES). A comment can still
-     * be written against a quote in one of them — an accepted quote is a
-     * conversation, not a closed file — and the trigger has no state filter on
-     * the comment path, so without this the pipeline would be handed a quote
-     * whose every write is going to be refused.
-     *
-     * Mirrored rather than read from SwagCommercial: ADR 0001 keeps untyped
-     * commercial access in the bridge, and these four are a stable part of the
-     * quote state machine. Sourced, not guessed — if it ever diverges, the
-     * writes fail loudly rather than silently doing the wrong thing.
-     */
-    private const TERMINAL_STATES = ['accepted', 'declined', 'expired', 'cancelled'];
-
-    /**
      * Flat, not Messenger's default backoff. The default multiplies by 2 with
      * `max_delay: 0` (unbounded — verified against this shop's
      * `debug:config framework messenger`), so a quote that stays busy backs off
@@ -62,6 +47,7 @@ final readonly class ServiceQuoteHandler
     public function __construct(
         private QuoteServicingLock $locks,
         private LoggerInterface $logger,
+        private ServicingPreflight $preflight,
         private ?QuoteGatewayInterface $gateway = null,
         private ?QuoteServicingPipelineInterface $pipeline = null,
     ) {}
@@ -128,17 +114,13 @@ final readonly class ServiceQuoteHandler
     private function servicePass(QuoteGatewayInterface $gateway, ServiceQuoteMessage $message): void
     {
         $snapshot = $gateway->fetchSnapshot($message->quoteId);
-        $state = $snapshot->lifecycle->stateTechnicalName;
+        $settings = $this->preflight->check($gateway, $snapshot);
 
-        if (\in_array($state, self::TERMINAL_STATES, strict: true)) {
-            // Returns BEFORE stamping, like the null-pipeline branch: the quote
-            // was not serviced, and a stamp would suppress the real trigger if
-            // it is ever reopened.
-            $this->logger->info('Quote is in a state SwagCommercial will not edit, so there is nothing to service.', [
-                'quoteId' => $message->quoteId,
-                'state' => $state,
-            ]);
-
+        if ($settings === null) {
+            // Returns BEFORE stamping, like every other refusal: the quote was
+            // not serviced — the agent is paused, its configuration is broken,
+            // or the quote is in a state SwagCommercial will not edit — and a
+            // stamp would suppress the next real trigger once that changes.
             return;
         }
 
@@ -168,7 +150,7 @@ final readonly class ServiceQuoteHandler
         $this->claimAttempt($gateway, $message, $snapshot);
 
         try {
-            $pipeline->service($snapshot, $gateway);
+            $pipeline->service($snapshot, $gateway, $settings);
         } catch (\Throwable $e) {
             // The process survived, so Messenger's RedeliveryStamp already
             // bounds this failure via retry. The quote-side counter exists only
@@ -195,6 +177,19 @@ final readonly class ServiceQuoteHandler
                 $after->lifecycle->stateTechnicalName,
             ),
             self::ATTEMPTS_KEY => null,
+            // A quote the agent once escalated is fair game again: a fixed
+            // configuration must be able to escalate afresh if it breaks
+            // afresh, and the marker is what would otherwise silence it.
+            //
+            // #18 MUST REVISIT THIS. The rule "a successful pass means the
+            // agent handled it" is only true while every escalation happens in
+            // the preflight, before service() runs. Once the pipeline can
+            // itself escalate — which QuoteEscalator and
+            // QuoteServicingPipelineInterface both ask it to do, through this
+            // same service — the marker it writes inside service() is erased
+            // two statements later, and the quote re-escalates on every
+            // following buyer comment.
+            QuoteEscalator::MARKER_KEY => null,
         ]));
     }
 

@@ -7,11 +7,13 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
+use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use Psr\Log\NullLogger;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\LockInterface;
@@ -33,8 +35,15 @@ final class ServicingHandlerFixture
         FakeQuoteGateway $gateway,
         QuoteServicingPipelineInterface $pipeline,
         ?QuoteServicingLock $locks = null,
+        ?ServicingPreflight $preflight = null,
     ): ServiceQuoteHandler {
-        return new ServiceQuoteHandler($locks ?? self::locks(), new NullLogger(), $gateway, $pipeline);
+        return new ServiceQuoteHandler(
+            $locks ?? self::locks(),
+            new NullLogger(),
+            $preflight ?? ServicingSettingsFixture::preflightReturning(ServicingSettingsFixture::settings()),
+            $gateway,
+            $pipeline,
+        );
     }
 
     public static function message(): ServiceQuoteMessage
@@ -108,8 +117,11 @@ final class ServicingHandlerFixture
             public int $passes = 0;
 
             #[\Override]
-            public function service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void
-            {
+            public function service(
+                QuoteSnapshot $snapshot,
+                QuoteGatewayInterface $gateway,
+                QuoteAgentSettings $settings,
+            ): void {
                 ++$this->passes;
             }
         };

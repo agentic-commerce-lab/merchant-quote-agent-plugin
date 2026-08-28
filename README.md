@@ -78,3 +78,43 @@ forever or acked away:
 A quote already claimed by another worker is *not* parked: the delivery is
 refused with a flat 5-second retry until the lock frees, so a buyer comment
 that lands mid-pass is serviced rather than dropped.
+
+## Configuring the agent
+
+Everything is in the plugin's own settings, per sales channel:
+**Settings → Extensions → Merchant Quote Agent**. A sales channel inherits the
+global value until you override it, so you can configure once and raise the
+ceiling on a pilot channel first.
+
+**The agent ships switched off, and a fresh install answers nothing.** That is
+deliberate on two counts: `enabled` defaults to false, and `maxDiscountPercent`
+defaults to `0` with every non-price dimension blank, so even once enabled the
+agent escalates every ask until you set bands. A silent agent is far more often
+"not configured yet" than "broken".
+
+**You supply the model credentials.** The API key is yours, so per-tenant model
+cost is not the plugin's, and the base URL lets you point at Azure, your own
+gateway or a self-hosted model. To state plainly rather than imply: the key is
+stored in Shopware's `system_config` table, obscured behind a password field in
+the admin but **not encrypted at rest** — the same posture as every other
+secret a Shopware plugin holds.
+
+**An empty API key is never a quiet fall back to deterministic decisions.** An
+enabled channel with no key is a misconfiguration: the agent escalates the
+quote with a comment and logs which fields are wrong. If you want deterministic
+decisions without a model, switch on **rules-only mode** — that is the one
+state in which no key is needed.
+
+**Configuring from the CLI needs `--json`.** `bin/console system:config:set <key>
+<value>` stores the raw *string* unless you pass `--json`, and a string is not
+what the plugin expects for any non-text field. `system:config:set
+...validityDays 30` stores `"30"`, which is refused as a wrong-typed value and
+takes the whole sales channel out of service; `system:config:set ...enabled
+true` stores `"true"`, which is not the boolean `true` and so reads as switched
+off — silently. Always write `bin/console system:config:set --json <key>
+<value>`, e.g. `--json ...validityDays 30`.
+
+**Invalid configuration is refused whole.** A discount cap above 100, a bad
+ceiling currency or a volume-tier line that does not parse makes the whole
+sales channel unusable and escalates, rather than applying the half of the
+policy that happened to be valid.

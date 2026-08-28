@@ -13,6 +13,7 @@ final readonly class QuoteLimits
         public float $maxDiscountPercent,
         #[Assert\Range(min: 0, max: 100)]
         public ?float $counterOfferMaxPercent = null,
+        #[Assert\Valid]
         public ?QuoteValueCeiling $valueCeiling = null,
         #[Assert\PositiveOrZero]
         public int $validityDays = 0,

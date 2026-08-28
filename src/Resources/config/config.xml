@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/shopware/platform/master/src/Core/System/SystemConfig/Schema/config.xsd">
+
+    <card>
+        <title>Quote agent</title>
+        <input-field type="bool">
+            <name>enabled</name>
+            <label>Enable the quote agent</label>
+            <defaultValue>false</defaultValue>
+            <helpText>Off by default. While off the agent is completely silent: it queues nothing and writes nothing.</helpText>
+        </input-field>
+        <input-field type="bool">
+            <name>rulesOnlyMode</name>
+            <label>Rules-only mode (no model call)</label>
+            <defaultValue>false</defaultValue>
+            <helpText>Decide grant / counter / escalate deterministically without calling a model. An explicit choice, never a fallback on error.</helpText>
+        </input-field>
+    </card>
+
+    <card>
+        <title>Model access</title>
+        <input-field type="password">
+            <name>llmApiKey</name>
+            <label>LLM API key</label>
+            <helpText>Your own key. Stored in system_config, obscured here but NOT encrypted at rest. Required unless rules-only mode is on.</helpText>
+        </input-field>
+        <input-field type="text">
+            <name>llmBaseUrl</name>
+            <label>LLM base URL</label>
+            <defaultValue>https://api.openai.com/v1</defaultValue>
+            <helpText>Point at Azure, your own gateway or a self-hosted model.</helpText>
+        </input-field>
+        <input-field type="textarea">
+            <name>negotiationStrategy</name>
+            <label>Negotiation strategy</label>
+            <helpText>Tone and commercial posture, e.g. "open at 2%, concede in 1% steps, never lead with the maximum". Appended to the base prompt. It can never move a cap — the bands below are the guardrail.</helpText>
+        </input-field>
+    </card>
+
+    <card>
+        <title>Price bands</title>
+        <input-field type="float">
+            <name>maxDiscountPercent</name>
+            <label>Maximum discount (%)</label>
+            <defaultValue>0</defaultValue>
+            <helpText>0 means every price ask escalates to a human.</helpText>
+        </input-field>
+        <input-field type="float">
+            <name>counterOfferMaxPercent</name>
+            <label>Counter-offer ceiling (%)</label>
+            <helpText>An ask above the maximum but at or below this gets a deterministic counter at the maximum. Blank means no counter band.</helpText>
+        </input-field>
+        <input-field type="float">
+            <name>maxQuoteValueNet</name>
+            <label>Maximum quote value for auto-reply (net)</label>
+            <helpText>Above this the quote always escalates. Blank means no ceiling.</helpText>
+        </input-field>
+        <input-field type="text">
+            <name>maxQuoteValueCurrency</name>
+            <label>Currency of that ceiling (ISO 4217, e.g. EUR)</label>
+            <helpText>Blank means the ceiling is compared without a currency check.</helpText>
+        </input-field>
+        <input-field type="int">
+            <name>validityDays</name>
+            <label>Offer validity (days)</label>
+            <defaultValue>0</defaultValue>
+        </input-field>
+        <input-field type="text">
+            <name>replyTone</name>
+            <label>Reply tone</label>
+        </input-field>
+    </card>
+
+    <card>
+        <title>Delivery — blank escalates</title>
+        <input-field type="float">
+            <name>deliveryFreeShippingAboveNet</name>
+            <label>Grant free shipping above (net)</label>
+        </input-field>
+        <input-field type="float">
+            <name>deliveryMaxShippingWaiverNet</name>
+            <label>Maximum shipping waiver (net)</label>
+        </input-field>
+        <input-field type="bool">
+            <name>deliveryExpeditedAllowed</name>
+            <label>Expedited shipping may be granted</label>
+            <defaultValue>false</defaultValue>
+        </input-field>
+        <input-field type="int">
+            <name>deliveryCommittedLeadTimeDaysMin</name>
+            <label>Shortest lead time the agent may commit to (days)</label>
+        </input-field>
+    </card>
+
+    <card>
+        <title>Payment — blank escalates</title>
+        <input-field type="multi-select">
+            <name>paymentAllowedTerms</name>
+            <label>Payment terms the agent may grant</label>
+            <options>
+                <option><id>prepaid</id><name>Prepaid</name></option>
+                <option><id>net_15</id><name>Net 15</name></option>
+                <option><id>net_30</id><name>Net 30</name></option>
+                <option><id>net_60</id><name>Net 60</name></option>
+                <option><id>net_90</id><name>Net 90</name></option>
+            </options>
+        </input-field>
+        <input-field type="int">
+            <name>paymentMaxNetDays</name>
+            <label>Maximum net days</label>
+        </input-field>
+        <input-field type="float">
+            <name>paymentMinDepositPercent</name>
+            <label>Minimum deposit (%)</label>
+        </input-field>
+    </card>
+
+    <card>
+        <title>Volume tiers — blank escalates</title>
+        <input-field type="textarea">
+            <name>bundleVolumeTiers</name>
+            <label>Volume tiers, one per line</label>
+            <helpText>Format minQty:discountPercent, e.g. "10:5" then "50:7.5" on the next line. A line that does not parse makes the whole configuration invalid — the agent escalates rather than applying half a ladder.</helpText>
+        </input-field>
+    </card>
+
+</config>

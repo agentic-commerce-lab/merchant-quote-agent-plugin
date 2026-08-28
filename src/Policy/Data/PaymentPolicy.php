@@ -10,6 +10,7 @@ final readonly class PaymentPolicy
 {
     /** @param list<PaymentTerm> $allowedTerms */
     public function __construct(
+        #[Assert\Valid]
         public array $allowedTerms = [],
         #[Assert\PositiveOrZero]
         public ?int $maxNetDays = null,

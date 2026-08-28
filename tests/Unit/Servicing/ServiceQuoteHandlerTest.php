@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
@@ -54,8 +55,11 @@ final class ServiceQuoteHandlerTest extends TestCase
             public ?int $writesSeenBeforeMe = null;
 
             #[\Override]
-            public function service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void
-            {
+            public function service(
+                QuoteSnapshot $snapshot,
+                QuoteGatewayInterface $gateway,
+                QuoteAgentSettings $settings,
+            ): void {
                 \PHPUnit\Framework\Assert::assertInstanceOf(FakeQuoteGateway::class, $gateway);
                 $this->writesSeenBeforeMe = \count($gateway->customFieldWrites);
             }
@@ -159,8 +163,11 @@ final class ServiceQuoteHandlerTest extends TestCase
         $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
         $pipeline = new class implements QuoteServicingPipelineInterface {
             #[\Override]
-            public function service(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): void
-            {
+            public function service(
+                QuoteSnapshot $snapshot,
+                QuoteGatewayInterface $gateway,
+                QuoteAgentSettings $settings,
+            ): void {
                 throw new \RuntimeException('LLM provider unavailable.');
             }
         };
@@ -186,9 +193,13 @@ final class ServiceQuoteHandlerTest extends TestCase
     {
         $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
 
-        (new ServiceQuoteHandler(ServicingHandlerFixture::locks(), new NullLogger(), $gateway, null))(
-            ServicingHandlerFixture::message(),
-        );
+        (new ServiceQuoteHandler(
+            ServicingHandlerFixture::locks(),
+            new NullLogger(),
+            ServicingSettingsFixture::preflightReturning(ServicingSettingsFixture::settings()),
+            $gateway,
+            null,
+        ))(ServicingHandlerFixture::message());
 
         self::assertSame([], $gateway->customFieldWrites, 'Nothing was serviced, so nothing may be stamped.');
     }

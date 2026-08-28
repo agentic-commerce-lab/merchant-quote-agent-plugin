@@ -5,6 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "ext-filter": "*",
         "cuyz/valinor": "^2.6",
         "psr/log": "^3.0",
         "shopware/core": "~6.7.0",
