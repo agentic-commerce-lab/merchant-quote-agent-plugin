@@ -26,6 +26,9 @@ final class FakeQuoteGateway implements QuoteGatewayInterface
     /** @var list<string> */
     public array $calls = [];
 
+    /** @var list<string> */
+    public array $comments = [];
+
     /** @param list<QuoteSnapshot> $snapshots served in order; the last one repeats */
     public function __construct(
         private array $snapshots,
@@ -71,7 +74,11 @@ final class FakeQuoteGateway implements QuoteGatewayInterface
     public function recalculate(string $quoteId): void {}
 
     #[\Override]
-    public function addComment(string $quoteId, string $comment): void {}
+    public function addComment(string $quoteId, string $comment): void
+    {
+        $this->calls[] = 'addComment';
+        $this->comments[] = $comment;
+    }
 
     #[\Override]
     public function transition(string $quoteId, QuoteTransition $action): void {}
