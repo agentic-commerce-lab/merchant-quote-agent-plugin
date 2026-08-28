@@ -996,7 +996,7 @@ final readonly class QuoteAgentSettingsFactory
 
 Run: `php vendor/bin/phpunit --filter QuoteAgentSettingsFactoryTest`
 
-Expected: PASS, 14 tests.
+Expected: PASS, 13 tests.
 
 If `unknown payment term` fails because Valinor's message does not contain the string `payment`, adjust the expectation in the data provider to a substring the real message does contain — run the single case with `--filter 'unknown payment term'` and read the message. Do not weaken the assertion to something that would pass on any message.
 
