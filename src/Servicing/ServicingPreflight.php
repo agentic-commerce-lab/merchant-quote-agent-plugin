@@ -18,8 +18,9 @@ use Psr\Log\LoggerInterface;
  * Two off states, deliberately different. A kill switch the merchant threw is
  * silent — they paused the agent and do not want it talking. A missing API key
  * or config that fails its own constraints is a misconfiguration, and silence
- * there is the exact bug issue #5 exists to remove, so it escalates where the
- * merchant is already looking.
+ * there is the exact bug issue #5 exists to remove, so it escalates: an error
+ * log line for the merchant, carrying the problems, and a neutral comment for
+ * the buyer. The two are deliberately not the same text — see QuoteEscalator.
  *
  * A quote in a state SwagCommercial refuses to edit is a third off state, and
  * the quietest of the three: nothing is wrong, there is simply nothing to do.
@@ -76,11 +77,15 @@ final readonly class ServicingPreflight
                 'problems' => $e->problems,
             ]);
 
+            // NOT $e->problems: escalate() writes into the conversation the
+            // CUSTOMER reads, and several constraint messages echo the
+            // offending value, not just the field name. The diagnostic is in
+            // the error log above, which is the merchant's channel.
             $this->escalator->escalate(
                 $gateway,
                 $snapshot,
                 QuoteEscalationReason::NotConfigured,
-                implode(' ', $e->problems),
+                'The quote agent is not configured for this sales channel.',
             );
 
             return null;

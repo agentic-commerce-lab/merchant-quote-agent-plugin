@@ -52,5 +52,8 @@ final class ServicingPreflightTest extends TestCase
             [QuoteEscalator::MARKER_KEY => 'not_configured'],
             ServicingHandlerFixture::lastCustomFieldWrite($gateway),
         );
+        // The other end of the leak: the escalator refuses to print $detail,
+        // and the preflight must not hand it the problems in the first place.
+        self::assertStringNotContainsString('API key', implode("\n", $gateway->comments));
     }
 }
