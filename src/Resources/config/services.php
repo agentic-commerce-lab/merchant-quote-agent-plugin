@@ -136,10 +136,6 @@ return static function (ContainerConfigurator $configurator): void {
     // autoconfigure() picks up EventSubscriberInterface, so no explicit tag.
     $services->set(QuoteServicingTrigger::class)->args([service('messenger.default_bus')]);
 
-    // The gateway argument is the null-returning factory registered above and
-    // the pipeline is #18's, registered nowhere yet — both ignoreOnInvalid()
-    // so an absent or unlicensed backend degrades to a log line rather than a
-    // container error. autoconfigure() picks up #[AsMessageHandler].
     // Whether a quote may be serviced at all, and with which settings (#5).
     $services->set(QuoteEscalator::class);
     $services->set(ServicingPreflight::class)->args([
@@ -148,6 +144,10 @@ return static function (ContainerConfigurator $configurator): void {
         service('logger'),
     ]);
 
+    // The gateway argument is the null-returning factory registered above and
+    // the pipeline is #18's, registered nowhere yet — both ignoreOnInvalid()
+    // so an absent or unlicensed backend degrades to a log line rather than a
+    // container error. autoconfigure() picks up #[AsMessageHandler].
     $services->set(ServiceQuoteHandler::class)->args([
         service(QuoteServicingLock::class),
         service('logger'),

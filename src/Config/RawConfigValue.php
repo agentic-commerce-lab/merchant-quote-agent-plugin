@@ -6,10 +6,12 @@ namespace MerchantQuoteAgentPlugin\Config;
 
 /**
  * Type-narrows one value out of a flat `array<string, mixed>` of raw config.
- * A wrong-shaped value coerces to null rather than throwing: the raw array
- * comes from Task 5's reader, which cannot itself be validated, so this is
- * the layer that turns "not what we expected" into "not set" rather than a
- * hard crash.
+ *
+ * Two behaviours, by key. Where a wrong-shaped value would silently drop a
+ * merchant guard — the numbers, via RawValueGuard — present-but-wrong-shaped
+ * throws. Everywhere else (bool, string, stringList) a wrong-shaped value
+ * still coerces to null, because there the worst outcome is a field reading
+ * as unset. Absent is always null in both.
  */
 final class RawConfigValue
 {

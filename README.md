@@ -105,6 +105,15 @@ quote with a comment and logs which fields are wrong. If you want deterministic
 decisions without a model, switch on **rules-only mode** — that is the one
 state in which no key is needed.
 
+**Configuring from the CLI needs `--json`.** `bin/console system:config:set <key>
+<value>` stores the raw *string* unless you pass `--json`, and a string is not
+what the plugin expects for any non-text field. `system:config:set
+...validityDays 30` stores `"30"`, which is refused as a wrong-typed value and
+takes the whole sales channel out of service; `system:config:set ...enabled
+true` stores `"true"`, which is not the boolean `true` and so reads as switched
+off — silently. Always write `bin/console system:config:set --json <key>
+<value>`, e.g. `--json ...validityDays 30`.
+
 **Invalid configuration is refused whole.** A discount cap above 100, a bad
 ceiling currency or a volume-tier line that does not parse makes the whole
 sales channel unusable and escalates, rather than applying the half of the

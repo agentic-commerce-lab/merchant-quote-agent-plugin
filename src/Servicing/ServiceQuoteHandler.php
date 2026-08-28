@@ -180,6 +180,15 @@ final readonly class ServiceQuoteHandler
             // A quote the agent once escalated is fair game again: a fixed
             // configuration must be able to escalate afresh if it breaks
             // afresh, and the marker is what would otherwise silence it.
+            //
+            // #18 MUST REVISIT THIS. The rule "a successful pass means the
+            // agent handled it" is only true while every escalation happens in
+            // the preflight, before service() runs. Once the pipeline can
+            // itself escalate — which QuoteEscalator and
+            // QuoteServicingPipelineInterface both ask it to do, through this
+            // same service — the marker it writes inside service() is erased
+            // two statements later, and the quote re-escalates on every
+            // following buyer comment.
             QuoteEscalator::MARKER_KEY => null,
         ]));
     }
