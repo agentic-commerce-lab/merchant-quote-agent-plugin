@@ -18,6 +18,8 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteStateTransitioner;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
@@ -104,6 +106,19 @@ return static function (ContainerConfigurator $configurator): void {
     // `?QuoteGatewayInterface`. Per the spec's non-goals there is deliberately
     // no null-object implementation: capability absence belongs one layer up.
     $services->set(QuoteGatewayInterface::class)->factory([service(QuoteGatewayFactory::class), 'create']);
+
+    // Configuration (issue #5). Autowired: the factory takes ValidatorInterface,
+    // which Shopware aliases to HappyPathValidator — harmless, because a
+    // validate() call with no explicit constraints delegates straight to the
+    // real Symfony validator.
+    //
+    // The reader is public(): Task 7 is its only planned consumer and does
+    // not exist yet, so nothing autowires a reference to it. Without
+    // public() the compiler's RemoveUnusedDefinitionsPass prunes it as dead —
+    // PluginConfigTest caught this by resolving it straight from the
+    // container, the same way Task 7 eventually will.
+    $services->set(QuoteAgentSettingsFactory::class);
+    $services->set(QuoteAgentSettingsReader::class)->public();
 
     // Servicing (issue #4): trigger, queue and lock. Inside the guard because
     // a shop without SwagCommercial has no quotes to service.
