@@ -45,6 +45,9 @@ final class VolumeTierParserTest extends TestCase
         yield 'fractional quantity' => ["10.5:5\n", 1];
         yield 'too many parts' => ["10:5:7\n", 1];
         yield 'reported on the offending line, not the first' => ["10:5\n50:7.5\nbroken\n", 3];
+        yield 'doubled minus sign' => ["--5:5\n", 1];
+        yield 'quantity beyond PHP_INT_MAX' => ["99999999999999999999:5\n", 1];
+        yield 'leading zeros' => ["010:5\n", 1];
     }
 
     #[DataProvider('malformed')]

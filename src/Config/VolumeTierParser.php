@@ -49,7 +49,7 @@ final class VolumeTierParser
     {
         $parts = array_map(trim(...), explode(':', $line));
 
-        if (\count($parts) !== 2 || !self::isInteger($parts[0]) || !is_numeric($parts[1])) {
+        if (\count($parts) !== 2) {
             throw new \UnexpectedValueException(sprintf(
                 'Volume tiers, line %d: expected "minQty:discountPercent" such as "10:5", got "%s".',
                 $lineNumber,
@@ -57,11 +57,15 @@ final class VolumeTierParser
             ));
         }
 
-        return ['minQty' => (int) $parts[0], 'discountPercent' => (float) $parts[1]];
-    }
+        $minQty = filter_var($parts[0], FILTER_VALIDATE_INT);
+        if ($minQty === false || !is_numeric($parts[1])) {
+            throw new \UnexpectedValueException(sprintf(
+                'Volume tiers, line %d: expected "minQty:discountPercent" such as "10:5", got "%s".',
+                $lineNumber,
+                $line,
+            ));
+        }
 
-    private static function isInteger(string $value): bool
-    {
-        return $value !== '' && ctype_digit(ltrim(string: $value, characters: '-'));
+        return ['minQty' => $minQty, 'discountPercent' => (float) $parts[1]];
     }
 }
