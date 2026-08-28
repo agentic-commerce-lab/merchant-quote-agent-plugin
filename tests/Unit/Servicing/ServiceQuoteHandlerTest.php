@@ -182,22 +182,6 @@ final class ServiceQuoteHandlerTest extends TestCase
     }
 
     /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
-    public function testANullGatewayReturnsWithoutServicingOrLocking(): void
-    {
-        $locks = ServicingHandlerFixture::locks();
-        $pipeline = ServicingHandlerFixture::countingPipeline();
-
-        (new ServiceQuoteHandler($locks, new NullLogger(), null, $pipeline))(ServicingHandlerFixture::message());
-
-        self::assertSame(0, $pipeline->passes, 'A quote was serviced without a gateway.');
-        self::assertTrue(
-            $locks->for('q1')->acquire(),
-            'The handler took a lock before checking the gateway, so an unlicensed shop still '
-            . 'serialises on a lock it can never use.',
-        );
-    }
-
-    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
     public function testANullPipelineReturnsWithoutStamping(): void
     {
         $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);

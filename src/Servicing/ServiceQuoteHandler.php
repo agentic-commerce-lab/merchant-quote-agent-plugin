@@ -35,6 +35,30 @@ final readonly class ServiceQuoteHandler
 
     public const ATTEMPTS_KEY = 'merchant_quote_agent_attempts';
 
+    /**
+     * The states SwagCommercial itself refuses to edit
+     * (QuoteSnapshotVersionResolver::NON_EDITABLE_STATES). A comment can still
+     * be written against a quote in one of them — an accepted quote is a
+     * conversation, not a closed file — and the trigger has no state filter on
+     * the comment path, so without this the pipeline would be handed a quote
+     * whose every write is going to be refused.
+     *
+     * Mirrored rather than read from SwagCommercial: ADR 0001 keeps untyped
+     * commercial access in the bridge, and these four are a stable part of the
+     * quote state machine. Sourced, not guessed — if it ever diverges, the
+     * writes fail loudly rather than silently doing the wrong thing.
+     */
+    private const TERMINAL_STATES = ['accepted', 'declined', 'expired', 'cancelled'];
+
+    /**
+     * Flat, not Messenger's default backoff. The default multiplies by 2 with
+     * `max_delay: 0` (unbounded — verified against this shop's
+     * `debug:config framework messenger`), so a quote that stays busy backs off
+     * to hours. Lock contention resolves on the scale of one servicing pass, so
+     * a fixed delay just above it is the honest wait.
+     */
+    private const BUSY_RETRY_DELAY_MS = 5000;
+
     public function __construct(
         private QuoteServicingLock $locks,
         private LoggerInterface $logger,
@@ -52,15 +76,21 @@ final readonly class ServiceQuoteHandler
         $gateway = $this->gateway;
 
         if ($gateway === null) {
-            // Not a silent no-op: QuoteGatewayFactory returns null when
-            // SwagCommercial is absent or unlicensed (#3), and a quote that
-            // was queued and then not serviced is worth a line in the log.
+            // Not a silent no-op, and not a silent ack either: QuoteGatewayFactory
+            // returns null when SwagCommercial is absent or unlicensed (#3), so
+            // the quote WAS asked for and never got an answer. #4 asks for a loud
+            // log line AND a parked message — Unrecoverable sends it straight to
+            // the `failed` transport instead of burning three retries first, and
+            // re-licensing the shop is what makes replaying it worthwhile.
             $this->logger->warning('Quote queued for servicing but the SwagCommercial gateway is unavailable.', [
                 'quoteId' => $message->quoteId,
                 'reason' => $message->reason,
             ]);
 
-            return;
+            throw new UnrecoverableMessageHandlingException(sprintf(
+                'Quote %s cannot be serviced: the SwagCommercial gateway is unavailable.',
+                $message->quoteId,
+            ));
         }
 
         $lock = $this->locks->for($message->quoteId);
@@ -69,11 +99,11 @@ final readonly class ServiceQuoteHandler
             // Deliberately not a silent return: another worker holds this
             // quote, and after it finishes the fingerprint may STILL differ —
             // a buyer comment that landed mid-pass. Dropping the message here
-            // would drop that ask. Messenger's backoff does the waiting.
-            throw new RecoverableMessageHandlingException(sprintf(
-                'Quote %s is being serviced by another worker.',
-                $message->quoteId,
-            ));
+            // would drop that ask.
+            throw new RecoverableMessageHandlingException(
+                sprintf('Quote %s is being serviced by another worker.', $message->quoteId),
+                retryDelay: self::BUSY_RETRY_DELAY_MS,
+            );
         }
 
         try {
@@ -98,6 +128,20 @@ final readonly class ServiceQuoteHandler
     private function servicePass(QuoteGatewayInterface $gateway, ServiceQuoteMessage $message): void
     {
         $snapshot = $gateway->fetchSnapshot($message->quoteId);
+        $state = $snapshot->lifecycle->stateTechnicalName;
+
+        if (\in_array($state, self::TERMINAL_STATES, strict: true)) {
+            // Returns BEFORE stamping, like the null-pipeline branch: the quote
+            // was not serviced, and a stamp would suppress the real trigger if
+            // it is ever reopened.
+            $this->logger->info('Quote is in a state SwagCommercial will not edit, so there is nothing to service.', [
+                'quoteId' => $message->quoteId,
+                'state' => $state,
+            ]);
+
+            return;
+        }
+
         $fingerprint = ServicingFingerprint::of($snapshot);
 
         if ($fingerprint === ServicingFingerprint::stamped($snapshot->lifecycle->customFields)) {

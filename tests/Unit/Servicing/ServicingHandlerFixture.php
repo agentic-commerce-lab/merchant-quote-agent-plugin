@@ -43,9 +43,9 @@ final class ServicingHandlerFixture
     }
 
     /** @param array<string, mixed> $customFields */
-    public static function snapshot(array $customFields = []): QuoteSnapshot
+    public static function snapshot(array $customFields = [], string $state = 'open'): QuoteSnapshot
     {
-        return QuoteSnapshotFixture::snapshot(customFields: $customFields);
+        return QuoteSnapshotFixture::snapshot(state: $state, customFields: $customFields);
     }
 
     public static function buyer(\DateTimeImmutable $createdAt): QuoteComment
