@@ -19,12 +19,17 @@ final class Json
     public static function object(string $json): array
     {
         try {
+            // Decoded twice: PHP's associative array has no object/list
+            // distinction left once `{}` and `[]` both become `[]`, so a
+            // second, non-associative decode is what tells them apart. The
+            // associative one still does the real, recursive decoding.
+            $shape = json_decode($json, associative: false, flags: JSON_THROW_ON_ERROR);
             $decoded = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             throw new ModelUnavailable('The model did not return JSON.', previous: $e);
         }
 
-        if (!\is_array($decoded) || array_is_list($decoded)) {
+        if (!$shape instanceof \stdClass) {
             throw new ModelUnavailable('The model returned JSON that is not an object.');
         }
 
