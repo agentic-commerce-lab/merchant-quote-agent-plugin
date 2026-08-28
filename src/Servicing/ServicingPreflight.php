@@ -77,16 +77,10 @@ final readonly class ServicingPreflight
                 'problems' => $e->problems,
             ]);
 
-            // NOT $e->problems: escalate() writes into the conversation the
-            // CUSTOMER reads, and several constraint messages echo the
-            // offending value, not just the field name. The diagnostic is in
-            // the error log above, which is the merchant's channel.
-            $this->escalator->escalate(
-                $gateway,
-                $snapshot,
-                QuoteEscalationReason::NotConfigured,
-                'The quote agent is not configured for this sales channel.',
-            );
+            // The problems stay in the log line above. escalate() writes into
+            // the conversation the CUSTOMER reads and deliberately accepts no
+            // text, so there is nowhere to pass them even by accident.
+            $this->escalator->escalate($gateway, $snapshot, QuoteEscalationReason::NotConfigured);
 
             return null;
         }

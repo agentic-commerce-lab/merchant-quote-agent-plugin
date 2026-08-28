@@ -23,14 +23,20 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
  * SO EVERYTHING WRITTEN HERE IS CUSTOMER-FACING COPY. No reason value, no
  * problem list, no field names, no mention of an agent — and no constraint or
  * mapping message, several of which echo the offending value rather than just
- * the field. Internal detail belongs in the log, and callers must pass copy
- * that is safe to publish, not diagnostics.
+ * the field. Internal detail belongs in the log.
+ *
+ * Which is why the comment is a fixed constant and escalate() takes no text
+ * from its caller, by design. A caller-supplied detail string was the leak:
+ * a parameter every caller fills and nothing reads is one "unused" warning
+ * away from being printed. There is no channel for it now. $reason stays
+ * because it drives the marker, not the copy.
  *
  * This is a permanent property of the seam, not a #5 detail. Issue #18 owns
  * the full "reply or escalate" surface and should route its escalations
  * through here rather than growing a second path — which means #18's copy
  * ("we cannot grant a 40% discount", a currency mismatch, a verification
  * failure) is customer-facing too, with the internal reason kept in the log.
+ * If #18 needs the sentence to vary, it varies by $reason, in here.
  *
  * The comment goes through the gateway, so it carries AgentContext::STATE and
  * cannot re-trigger servicing.
@@ -47,17 +53,10 @@ final class QuoteEscalator
 
     private const BUYER_MESSAGE = 'A member of our team will review this quote personally and get back to you.';
 
-    /**
-     * @param string $detail buyer-safe context, reserved for #18 to vary the
-     *                       copy by reason. Nothing writes it today, and it is
-     *                       never the place for a diagnostic — see the class
-     *                       docblock.
-     */
     public function escalate(
         QuoteGatewayInterface $gateway,
         QuoteSnapshot $snapshot,
         QuoteEscalationReason $reason,
-        string $detail,
     ): void {
         $quoteId = $snapshot->identity->quoteId;
 

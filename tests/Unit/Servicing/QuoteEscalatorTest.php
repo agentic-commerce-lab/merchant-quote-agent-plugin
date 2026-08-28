@@ -18,7 +18,6 @@ final class QuoteEscalatorTest extends TestCase
             $gateway,
             QuoteSnapshotFixture::snapshot(),
             QuoteEscalationReason::NotConfigured,
-            'No LLM API key is set.',
         );
 
         self::assertSame(['addComment', 'updateQuote'], $gateway->calls);
@@ -36,13 +35,15 @@ final class QuoteEscalatorTest extends TestCase
             $gateway,
             QuoteSnapshotFixture::snapshot(),
             QuoteEscalationReason::NotConfigured,
-            'price.maxDiscountPercent: This value should be between 0 and 100.',
         );
 
         // The storefront shows quote comments to the CUSTOMER, unfiltered.
-        $comment = implode("\n", $gateway->comments);
-        self::assertStringNotContainsString(QuoteEscalationReason::NotConfigured->value, $comment);
-        self::assertStringNotContainsString('maxDiscountPercent', $comment);
+        // escalate() takes no caller text, so $reason is the only thing left
+        // that could reach the buyer. It must not.
+        self::assertStringNotContainsString(
+            QuoteEscalationReason::NotConfigured->value,
+            implode("\n", $gateway->comments),
+        );
     }
 
     public function testItSkipsAQuoteAlreadyMarkedWithTheSameReason(): void
@@ -52,7 +53,7 @@ final class QuoteEscalatorTest extends TestCase
             QuoteEscalator::MARKER_KEY => QuoteEscalationReason::NotConfigured->value,
         ]);
 
-        (new QuoteEscalator())->escalate($gateway, $marked, QuoteEscalationReason::NotConfigured, 'again');
+        (new QuoteEscalator())->escalate($gateway, $marked, QuoteEscalationReason::NotConfigured);
 
         self::assertSame([], $gateway->calls, 'A misconfigured shop must not add one comment per buyer comment.');
     }
@@ -64,7 +65,7 @@ final class QuoteEscalatorTest extends TestCase
             QuoteEscalator::MARKER_KEY => QuoteEscalationReason::NeedsHumanReview->value,
         ]);
 
-        (new QuoteEscalator())->escalate($gateway, $marked, QuoteEscalationReason::NotConfigured, 'different');
+        (new QuoteEscalator())->escalate($gateway, $marked, QuoteEscalationReason::NotConfigured);
 
         self::assertContains('addComment', $gateway->calls);
     }
