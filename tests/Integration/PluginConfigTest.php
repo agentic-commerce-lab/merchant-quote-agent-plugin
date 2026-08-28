@@ -13,6 +13,33 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
 final class PluginConfigTest extends IntegrationTestCase
 {
     /**
+     * The factory throws on a present-but-wrong-typed value, so the type
+     * Shopware persists each config.xml default with is load-bearing: a
+     * string "0" for maxDiscountPercent would hard-refuse a freshly
+     * installed, just-enabled shop. These reads deliberately happen with no
+     * set() beforehand — they are the install-time values.
+     *
+     * Must stay the FIRST test declared in this class. DatabaseTransactionBehaviour
+     * rolls back the DB row after every test, but Shopware's
+     * MemoizedSystemConfigStore is not reset between test methods — the first
+     * set() anywhere in this class (below) re-primes that in-process cache
+     * with post-write values that then leak into any later test that reads
+     * without writing. Declaration order is PHPUnit's default execution
+     * order here (no <orderBy> is configured), so running first is what
+     * keeps this test seeing the real install-time defaults.
+     */
+    public function testInstallTimeDefaultsArePersistedWithNativeTypes(): void
+    {
+        $config = self::systemConfig();
+
+        self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'enabled'));
+        self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'rulesOnlyMode'));
+        self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'deliveryExpeditedAllowed'));
+        self::assertSame(0.0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'maxDiscountPercent'));
+        self::assertSame(0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'validityDays'));
+    }
+
+    /**
      * @mago-expect lint:no-literal-password
      *
      * `sk-probe` is a fixture credential round-tripped through system_config
