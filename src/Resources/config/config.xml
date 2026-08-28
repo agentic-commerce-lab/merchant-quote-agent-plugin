@@ -23,13 +23,18 @@
         <input-field type="password">
             <name>llmApiKey</name>
             <label>LLM API key</label>
-            <helpText>Your own key. Stored in system_config, obscured here but NOT encrypted at rest. Required unless rules-only mode is on.</helpText>
+            <helpText>Your own key. Stored in system_config, obscured here but NOT encrypted at rest. Required in every mode, including rules-only: interpreting a buyer's free-text ask is itself a model call.</helpText>
         </input-field>
         <input-field type="text">
             <name>llmBaseUrl</name>
             <label>LLM base URL</label>
             <defaultValue>https://api.openai.com/v1</defaultValue>
             <helpText>Point at Azure, your own gateway or a self-hosted model.</helpText>
+        </input-field>
+        <input-field type="text">
+            <name>llmModel</name>
+            <label>Model name</label>
+            <helpText>The model to send each request to, e.g. gpt-4o-mini. Required: there is deliberately no default, because guessing one would pick a price and quality point for you.</helpText>
         </input-field>
         <input-field type="textarea">
             <name>negotiationStrategy</name>

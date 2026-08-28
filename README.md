@@ -100,10 +100,13 @@ the admin but **not encrypted at rest** — the same posture as every other
 secret a Shopware plugin holds.
 
 **An empty API key is never a quiet fall back to deterministic decisions.** An
-enabled channel with no key is a misconfiguration: the agent escalates the
-quote with a comment and logs which fields are wrong. If you want deterministic
-decisions without a model, switch on **rules-only mode** — that is the one
-state in which no key is needed.
+enabled channel with no key, or no model name, is a misconfiguration: the agent
+escalates the quote with a comment and logs which fields are wrong.
+
+**Rules-only mode still needs a key.** It means *no model decides or writes* —
+the band picks the number and a template writes the reply — but reading a
+buyer's free-text ask is itself a model call, and nothing else can do it. There
+is no mode in which the agent negotiates without an API key.
 
 **Configuring from the CLI needs `--json`.** `bin/console system:config:set <key>
 <value>` stores the raw *string* unless you pass `--json`, and a string is not

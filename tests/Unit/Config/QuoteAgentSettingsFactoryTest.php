@@ -27,6 +27,7 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
             'rulesOnlyMode' => false,
             'llmApiKey' => 'sk-test',
             'llmBaseUrl' => 'https://api.openai.com/v1',
+            'llmModel' => 'gpt-4o-mini',
             'negotiationStrategy' => 'open at 2%',
             'maxDiscountPercent' => 12.0,
             'counterOfferMaxPercent' => 18.0,
@@ -123,7 +124,14 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         self::assertSame(0, $settings->policy->price->validityDays);
     }
 
-    /** @return iterable<string, array{0: array<string, mixed>, 1: string}> */
+    /**
+     * @mago-expect lint:no-literal-password
+     *
+     * The blank/whitespace `llmApiKey` values below are fixture non-secrets,
+     * not real credentials.
+     *
+     * @return iterable<string, array{0: array<string, mixed>, 1: string}>
+     */
     public static function invalidConfigurations(): iterable
     {
         yield 'discount cap over 100' => [['maxDiscountPercent' => 150.0], 'price.maxDiscountPercent'];
@@ -134,6 +142,11 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         yield 'unknown payment term' => [['paymentAllowedTerms' => ['net_45']], 'PaymentPolicy'];
         yield 'ceiling wrong type' => [['maxQuoteValueNet' => '50000'], 'maxQuoteValueNet'];
         yield 'wrong-typed ceiling currency' => [['maxQuoteValueCurrency' => 978], 'maxQuoteValueCurrency'];
+        // The silent fallback #5 removes: a blank key is never a quiet switch
+        // to deterministic decisions, even in rules-only mode.
+        yield 'blank API key' => [['llmApiKey' => '   '], 'API key'];
+        yield 'rules-only mode still needs a key' => [['rulesOnlyMode' => true, 'llmApiKey' => ''], 'API key'];
+        yield 'blank model name' => [['llmModel' => ''], 'model'];
     }
 
     /** @param array<string, mixed> $overrides */
@@ -167,29 +180,11 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         }
     }
 
-    /** @mago-expect lint:no-literal-password */
-    public function testAnEnabledChannelWithoutAKeyIsAMisconfiguration(): void
+    public function testTheModelNameReachesModelAccess(): void
     {
-        try {
-            self::build(['llmApiKey' => '   ']);
-            self::fail('An empty API key was accepted, which is the silent fallback #5 removes.');
-        } catch (InvalidQuoteAgentConfiguration $e) {
-            self::assertStringContainsString('API key', $e->getMessage());
-        }
-    }
-
-    /** @mago-expect lint:no-literal-password */
-    public function testRulesOnlyModeIsTheOneStateThatNeedsNoKey(): void
-    {
-        // The key is deliberately left set: rules-only must win even when a
-        // merchant forgets to clear it, not just when the key is also blank.
-        $settings = self::build(['llmApiKey' => 'sk-test', 'rulesOnlyMode' => true]);
+        $settings = self::build();
 
         self::assertNotNull($settings);
-        self::assertTrue($settings->rulesOnly);
-        self::assertNull(
-            $settings->llm,
-            'Rules-only carries no model access, so nothing downstream can call a model by accident.',
-        );
+        self::assertSame('gpt-4o-mini', $settings->llm?->model);
     }
 }

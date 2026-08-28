@@ -44,6 +44,7 @@ final class ServicingReentrancyTest extends IntegrationTestCase
         self::assertInstanceOf(SystemConfigService::class, $config);
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'enabled', true);
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmApiKey', 'sk-integration');
+        $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmModel', 'gpt-4o-mini');
     }
 
     public function testASecondDeliveryDuringAPassHandsOffOnlyOnce(): void

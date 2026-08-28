@@ -28,14 +28,43 @@ final class RawConfigValue
     }
 
     /**
-     * Null whenever no model may be called: rules-only mode carries no
-     * credentials, so nothing downstream can reach a model by accident.
+     * Null only when no key is configured at all. Rules-only mode still
+     * reads a buyer's free-text ask through a model, so it needs access too
+     * — only the decision and the reply stay deterministic.
      *
      * @param array<string, mixed> $raw
      */
-    public static function llm(array $raw, bool $rulesOnly, #[\SensitiveParameter] string $apiKey): ?ModelAccess
+    public static function llm(array $raw, #[\SensitiveParameter] string $apiKey): ?ModelAccess
     {
-        return $rulesOnly || $apiKey === '' ? null : new ModelAccess($apiKey, self::baseUrl($raw));
+        return $apiKey === ''
+            ? null
+            : new ModelAccess($apiKey, self::baseUrl($raw), self::stringOrEmpty($raw, 'llmModel'));
+    }
+
+    /**
+     * The two checks a model call needs regardless of rules-only mode:
+     * a key to authenticate with, and a model name to send the request to.
+     * Split out of the factory to keep its cyclomatic complexity down.
+     *
+     * @param array<string, mixed> $raw
+     *
+     * @return list<string>
+     */
+    public static function credentialProblems(array $raw, #[\SensitiveParameter] string $apiKey): array
+    {
+        $problems = [];
+
+        if ($apiKey === '') {
+            $problems[] =
+                'No LLM API key is set. The agent needs one even in rules-only mode: '
+                . 'interpreting a buyer\'s free-text ask is a model call, only the decision is deterministic.';
+        }
+
+        if (self::string($raw, 'llmModel') === null) {
+            $problems[] = 'No model name is set. Name the model to send requests to, for example gpt-4o-mini.';
+        }
+
+        return $problems;
     }
 
     /** @param array<string, mixed> $raw */

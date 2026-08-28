@@ -62,11 +62,7 @@ final readonly class QuoteAgentSettingsFactory
         $rulesOnly = RawConfigValue::bool($raw, 'rulesOnlyMode') === true;
         $apiKey = RawConfigValue::stringOrEmpty($raw, 'llmApiKey');
 
-        if (!$rulesOnly && $apiKey === '') {
-            $problems[] =
-                'No LLM API key is set. Supply one, or switch on rules-only mode to '
-                . 'decide deterministically without a model.';
-        }
+        array_push($problems, ...RawConfigValue::credentialProblems($raw, $apiKey));
 
         if ($policy === null || $problems !== []) {
             throw new InvalidQuoteAgentConfiguration(array_values($problems));
@@ -75,7 +71,7 @@ final readonly class QuoteAgentSettingsFactory
         return new QuoteAgentSettings(
             policy: $policy,
             rulesOnly: $rulesOnly,
-            llm: RawConfigValue::llm($raw, $rulesOnly, $apiKey),
+            llm: RawConfigValue::llm($raw, $apiKey),
             strategyPrompt: RawConfigValue::string($raw, 'negotiationStrategy'),
         );
     }
