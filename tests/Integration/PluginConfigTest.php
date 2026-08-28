@@ -5,38 +5,36 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
+use Shopware\Core\Framework\Adapter\Cache\CacheInvalidator;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\System\SystemConfig\CachedSystemConfigLoader;
+use Shopware\Core\System\SystemConfig\Store\MemoizedSystemConfigStore;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 
 final class PluginConfigTest extends IntegrationTestCase
 {
-    /**
-     * The factory throws on a present-but-wrong-typed value, so the type
-     * Shopware persists each config.xml default with is load-bearing: a
-     * string "0" for maxDiscountPercent would hard-refuse a freshly
-     * installed, just-enabled shop. These reads deliberately happen with no
-     * set() beforehand — they are the install-time values.
-     *
-     * Must stay the FIRST test declared in this class. DatabaseTransactionBehaviour
-     * rolls back the DB row after every test, but Shopware's
-     * MemoizedSystemConfigStore is not reset between test methods — the first
-     * set() anywhere in this class (below) re-primes that in-process cache
-     * with post-write values that then leak into any later test that reads
-     * without writing. Declaration order is PHPUnit's default execution
-     * order here (no <orderBy> is configured), so running first is what
-     * keeps this test seeing the real install-time defaults.
-     */
-    public function testInstallTimeDefaultsArePersistedWithNativeTypes(): void
+    #[\Override]
+    protected function setUp(): void
     {
-        $config = self::systemConfig();
+        parent::setUp();
 
-        self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'enabled'));
-        self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'rulesOnlyMode'));
-        self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'deliveryExpeditedAllowed'));
-        self::assertSame(0.0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'maxDiscountPercent'));
-        self::assertSame(0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'validityDays'));
+        // DatabaseTransactionBehaviour rolls the database back between
+        // tests, but config reads go through two caches neither of which
+        // knows that happened: MemoizedSystemConfigStore (an in-process
+        // array) and, behind it, CachedSystemConfigLoader (a persisted pool).
+        // A set() in one test primes both with post-write values that
+        // survive the rollback and leak into a later test that only reads.
+        // Clearing both is what makes every test see what is actually
+        // persisted, regardless of what ran before it.
+        $store = static::getContainer()->get(MemoizedSystemConfigStore::class);
+        self::assertInstanceOf(MemoizedSystemConfigStore::class, $store);
+        $store->reset();
+
+        $cacheInvalidator = static::getContainer()->get(CacheInvalidator::class);
+        self::assertInstanceOf(CacheInvalidator::class, $cacheInvalidator);
+        $cacheInvalidator->invalidate([CachedSystemConfigLoader::CACHE_TAG], true);
     }
 
     /**
@@ -56,6 +54,24 @@ final class PluginConfigTest extends IntegrationTestCase
             $config->set(QuoteAgentSettingsReader::DOMAIN . $key, $value);
             self::assertSame($value, $config->get(QuoteAgentSettingsReader::DOMAIN . $key));
         }
+    }
+
+    /**
+     * The factory throws on a present-but-wrong-typed value, so the type
+     * Shopware persists each config.xml default with is load-bearing: a
+     * string "0" for maxDiscountPercent would hard-refuse a freshly
+     * installed, just-enabled shop. These reads deliberately happen with no
+     * set() beforehand — they are the install-time values.
+     */
+    public function testInstallTimeDefaultsArePersistedWithNativeTypes(): void
+    {
+        $config = self::systemConfig();
+
+        self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'enabled'));
+        self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'rulesOnlyMode'));
+        self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'deliveryExpeditedAllowed'));
+        self::assertSame(0.0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'maxDiscountPercent'));
+        self::assertSame(0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'validityDays'));
     }
 
     public function testTheDefaultBaseUrlIsShippedByConfigXmlRatherThanOnlyByTheFactory(): void
