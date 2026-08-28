@@ -31,9 +31,21 @@ final class ServiceQuoteHandlerSettingsTest extends TestCase
             }
         };
 
-        ServicingHandlerFixture::handler($gateway, $pipeline)(ServicingHandlerFixture::message());
+        $settings = ServicingSettingsFixture::settings();
 
-        self::assertNotNull($pipeline->seen, '#18 cannot read config itself; the handler must hand the settings over.');
+        ServicingHandlerFixture::handler(
+            $gateway,
+            $pipeline,
+            preflight: ServicingSettingsFixture::preflightReturning($settings),
+        )(ServicingHandlerFixture::message());
+
+        // assertSame, not assertNotNull: the interface promises #18 the very
+        // settings the preflight validated, not an equivalent rebuild.
+        self::assertSame(
+            $settings,
+            $pipeline->seen,
+            '#18 cannot read config itself; the handler must hand the settings over.',
+        );
     }
 
     /** @throws \Throwable the handler's own declared surface */
@@ -68,6 +80,7 @@ final class ServiceQuoteHandlerSettingsTest extends TestCase
 
         $stamp = ServicingHandlerFixture::lastCustomFieldWrite($gateway);
         self::assertArrayHasKey(ServicingFingerprint::MARKER_KEY, $stamp);
+        self::assertArrayHasKey(QuoteEscalator::MARKER_KEY, $stamp);
         self::assertNull(
             $stamp[QuoteEscalator::MARKER_KEY],
             'A fixed configuration must be able to escalate again if it breaks again.',
