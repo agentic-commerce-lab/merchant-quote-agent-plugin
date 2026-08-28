@@ -18,7 +18,7 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
  * back to it. That is Shopware's own semantics and the reason a merchant can
  * configure once and override for a pilot channel.
  */
-final readonly class QuoteAgentSettingsReader
+final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSource
 {
     public const DOMAIN = 'MerchantQuoteAgentPlugin.config.';
 
@@ -50,6 +50,7 @@ final readonly class QuoteAgentSettingsReader
     ) {}
 
     /** @throws InvalidQuoteAgentConfiguration */
+    #[\Override]
     public function forSalesChannel(?string $salesChannelId): ?QuoteAgentSettings
     {
         $raw = [];
