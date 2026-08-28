@@ -1,0 +1,82 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Config;
+
+use CuyZ\Valinor\Mapper\MappingError;
+use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+
+/**
+ * Raw config values to validated settings. Pure — no Shopware — so the whole
+ * of the mapping and every refusal is unit-testable without a kernel.
+ *
+ * Returns null for a disabled channel and throws for a misconfigured one, so
+ * a QuoteAgentSettings instance always means "enabled and valid".
+ */
+final readonly class QuoteAgentSettingsFactory
+{
+    public function __construct(
+        private ValidatorInterface $validator,
+    ) {}
+
+    /**
+     * @param array<string, mixed> $raw
+     *
+     * @throws InvalidQuoteAgentConfiguration
+     */
+    public function fromValues(array $raw): ?QuoteAgentSettings
+    {
+        // Read first, validate never: a paused agent is silent about
+        // everything, including its own bad configuration.
+        if (RawConfigValue::bool($raw, 'enabled') !== true) {
+            return null;
+        }
+
+        $problems = [];
+        $tiers = [];
+
+        try {
+            $tiers = VolumeTierParser::parse(RawConfigValue::stringOrEmpty($raw, 'bundleVolumeTiers'));
+        } catch (\UnexpectedValueException $e) {
+            $problems[] = $e->getMessage();
+        }
+
+        $policy = null;
+
+        try {
+            $policy = NegotiationPolicy::fromArray(NegotiationPolicyArray::build($raw, $tiers));
+        } catch (MappingError|\TypeError|\ValueError $e) {
+            // Valinor maps the sub-policies; an unknown PaymentTerm lands here
+            // rather than as a constraint violation.
+            $problems[] = $e->getMessage();
+        }
+
+        if ($policy !== null) {
+            foreach ($this->validator->validate($policy) as $violation) {
+                $problems[] = $violation->getPropertyPath() . ': ' . (string) $violation->getMessage();
+            }
+        }
+
+        $rulesOnly = RawConfigValue::bool($raw, 'rulesOnlyMode') === true;
+        $apiKey = trim(RawConfigValue::stringOrEmpty($raw, 'llmApiKey'));
+
+        if (!$rulesOnly && $apiKey === '') {
+            $problems[] =
+                'No LLM API key is set. Supply one, or switch on rules-only mode to '
+                . 'decide deterministically without a model.';
+        }
+
+        if ($policy === null || $problems !== []) {
+            throw new InvalidQuoteAgentConfiguration(array_values($problems));
+        }
+
+        return new QuoteAgentSettings(
+            policy: $policy,
+            rulesOnly: $rulesOnly,
+            llm: $apiKey === '' ? null : new ModelAccess($apiKey, RawConfigValue::baseUrl($raw)),
+            strategyPrompt: RawConfigValue::string($raw, 'negotiationStrategy'),
+        );
+    }
+}
