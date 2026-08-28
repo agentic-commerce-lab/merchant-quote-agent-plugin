@@ -63,3 +63,18 @@ a PATCH against the Admin API:
     { "customFields": { "merchant_quote_agent_attempts": null } }
 
 or the SQL equivalent against the `quote.custom_fields` JSON column.
+
+Two other messages end up in the `failed` transport rather than being retried
+forever or acked away:
+
+- **The SwagCommercial licence is off.** The quote was queued while the plugin
+  was licensed, and the handler now has no gateway. The message parks
+  immediately; re-license the shop and replay it with
+  `messenger:failed:retry`.
+- **The quote reached `accepted`, `declined`, `expired` or `cancelled`.** These
+  are the states SwagCommercial itself will not edit, so a comment on one is
+  logged and acked — nothing to service, nothing to park.
+
+A quote already claimed by another worker is *not* parked: the delivery is
+refused with a flat 5-second retry until the lock frees, so a buyer comment
+that lands mid-pass is serviced rather than dropped.
