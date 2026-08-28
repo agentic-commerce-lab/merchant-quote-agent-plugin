@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Policy\Data;
 
+use Symfony\Component\Validator\Constraints as Assert;
+
 /**
  * The shop's single source of truth for negotiation. Every optional
  * sub-policy is escalate-by-default: undefined means an ask in that
@@ -12,9 +14,13 @@ namespace MerchantQuoteAgentPlugin\Policy\Data;
 final readonly class NegotiationPolicy
 {
     public function __construct(
+        #[Assert\Valid]
         public QuoteLimits $price,
+        #[Assert\Valid]
         public ?DeliveryPolicy $delivery = null,
+        #[Assert\Valid]
         public ?PaymentPolicy $payment = null,
+        #[Assert\Valid]
         public ?BundlePolicy $bundle = null,
     ) {}
 
