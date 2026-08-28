@@ -34,6 +34,7 @@ final class QuoteCommentMapper
                 createdAt: $createdAt instanceof \DateTimeInterface
                     ? \DateTimeImmutable::createFromInterface($createdAt)
                     : null,
+                employeeId: $this->nullableString($comment->get('employeeId')),
             );
         }
 

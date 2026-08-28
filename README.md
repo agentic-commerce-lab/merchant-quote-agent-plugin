@@ -34,3 +34,32 @@ The database is seeded from a dump of the previous shop
 
 Every integration test runs inside a rolled-back transaction, so the seed
 stays as it was. Design: `docs/superpowers/specs/2026-08-27-dedicated-test-shop-design.md`.
+
+## Operating the servicing loop
+
+The servicing loop (issue #4) only queues messages when a buyer comments or a
+quote enters `open`/`change_requested` — nothing is serviced until a worker
+consumes them:
+
+    php bin/console messenger:consume async -vv
+
+Without that running, quotes queue silently and forever; there is no other
+symptom.
+
+Locks default to `flock` (Shopware's own default), which only coordinates
+processes on one host. `QuoteServicingLock` logs a startup warning if so, but
+two workers on different hosts will still race the same quote. Point
+`LOCK_DSN` at a shared store (e.g. Redis) before running workers on more than
+one node.
+
+A quote that fails servicing four times *without a thrown exception* (a
+segfaulted worker, not a caught error — see `ServiceQuoteHandler::MAX_ATTEMPTS`)
+parks permanently: every future trigger, including a genuine buyer comment, is
+skipped until the `merchant_quote_agent_attempts` custom field is cleared. It
+is deliberately unregistered, so it will not show in the admin. Clear it with
+a PATCH against the Admin API:
+
+    PATCH /api/quote/{id}
+    { "customFields": { "merchant_quote_agent_attempts": null } }
+
+or the SQL equivalent against the `quote.custom_fields` JSON column.

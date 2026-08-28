@@ -28,14 +28,14 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
     #[\Override]
     public function fetchSnapshot(string $quoteId, QuoteVersion $version = QuoteVersion::Live): QuoteSnapshot
     {
-        return $this->reader->read($quoteId, $version, Context::createDefaultContext());
+        return $this->reader->read($quoteId, $version, AgentContext::create());
     }
 
     /** @param list<QuoteLineItemChange> $changes */
     #[\Override]
     public function updateLineItems(string $quoteId, array $changes, ?QuoteRevision $expected = null): void
     {
-        $context = Context::createDefaultContext();
+        $context = AgentContext::create();
         $this->assertRevision($quoteId, $expected, $context);
         $this->writers->lineItems->write($changes, $context);
     }
@@ -44,13 +44,13 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
     #[\Override]
     public function addProduct(string $quoteId, string $productId, int $quantity): void
     {
-        $this->writers->productAdder->addProduct($quoteId, $productId, $quantity, Context::createDefaultContext());
+        $this->writers->productAdder->addProduct($quoteId, $productId, $quantity, AgentContext::create());
     }
 
     #[\Override]
     public function recalculate(string $quoteId): void
     {
-        $this->writers->recalculator->recalculate($quoteId, Context::createDefaultContext());
+        $this->writers->recalculator->recalculate($quoteId, AgentContext::create());
     }
 
     /** @throws QuoteNotFoundException|QuoteRevisionMismatch */
@@ -71,7 +71,7 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
     #[\Override]
     public function updateQuote(string $quoteId, QuoteUpdate $update, ?QuoteRevision $expected = null): void
     {
-        $context = Context::createDefaultContext();
+        $context = AgentContext::create();
         $this->assertRevision($quoteId, $expected, $context);
         $this->writers->quote->write($quoteId, $update, $context);
     }
@@ -91,7 +91,7 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
     #[\Override]
     public function addComment(string $quoteId, string $comment): void
     {
-        $context = Context::createDefaultContext();
+        $context = AgentContext::create();
         // QuoteCommenter inserts blindly and lets the quote_comment foreign key
         // reject an unknown id, which would leak a Doctrine exception through this
         // interface. One redundant read keeps the isolation the interface promises
@@ -117,6 +117,6 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
     #[\Override]
     public function transition(string $quoteId, QuoteTransition $action): void
     {
-        $this->lifecycle->state->transition($quoteId, $action, Context::createDefaultContext());
+        $this->lifecycle->state->transition($quoteId, $action, AgentContext::create());
     }
 }
