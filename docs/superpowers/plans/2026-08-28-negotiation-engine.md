@@ -2729,7 +2729,8 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
-use MerchantQuoteAgentPlugin\Policy\Data\Discount;
+use MerchantQuoteAgentPlugin\Bridge\Data\Discount;
+use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
 use MerchantQuoteAgentPlugin\Policy\Data\VerifyOfferInput;
@@ -2819,7 +2820,7 @@ final readonly class OfferApplier
 }
 ```
 
-Check `Bridge\Data\Discount`'s real constructor and its `DiscountType` cases before writing — use the actual namespace and case names, and import `DiscountType` accordingly.
+`Discount` and `DiscountType` are **`Bridge\Data`**, not `Policy\Data` — there is no `Policy\Data\Discount`, and importing one is a fatal error. Verified: `Discount(DiscountType $type, float $value)` and `DiscountType::{Percentage,Absolute}`.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -3506,7 +3507,11 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         }
 
         $policySnapshot = SnapshotAdapter::toPolicy($snapshot);
-        $decision = $this->decider->decide($policySnapshot, $settings->policy, null)->price;
+        $decision = $this->decider->decide(
+            $policySnapshot,
+            $settings->policy,
+            new NegotiationProposal(price: $ask->interpretation),
+        )->price;
         $band = $this->classifier->classify($decision);
 
         if ($band === Band::Escalate) {
@@ -3567,7 +3572,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
 }
 ```
 
-The interpretation is deliberately not passed into `decide()` in this first cut: `NegotiationDecider::decide()` takes a `NegotiationProposal`, and `InterpretedAsk` carries a `CommentInterpretation`. Wrap it as `new NegotiationProposal(price: $ask->interpretation)` — check that constructor before writing, and pass it rather than `null`, or the buyer's ask never reaches the bands and every test above fails for the same reason.
+**The interpretation must reach the decider.** `NegotiationDecider::decide()` takes a `NegotiationProposal` (the BUYER's ask) while `InterpretedAsk` carries a `CommentInterpretation`, so it is wrapped as `new NegotiationProposal(price: $ask->interpretation)` — verified: that constructor is `(?CommentInterpretation $price = null, ?NegotiationAsks $nonPrice = null)`. Passing `null` instead would mean the buyer's ask never reaches the bands, every quote would classify as a 0% request, and every test in this task would fail for that one reason. Add `use MerchantQuoteAgentPlugin\Policy\Data\NegotiationProposal;`.
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
