@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class PromptComposerTest extends TestCase
@@ -49,9 +50,7 @@ final class PromptComposerTest extends TestCase
         self::assertSame('NEGOTIATE BASE', self::composer()->negotiate(self::settings())->text);
     }
 
-    /**
-     * @dataProvider replyToneTestCases
-     */
+    #[DataProvider('replyToneTestCases')]
     public function testToneHandling(?string $tone, string $expected, bool $shouldContainTone): void
     {
         $composed = self::composer()->reply(self::settings(tone: $tone))->text;
