@@ -1,0 +1,67 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Config;
+
+/**
+ * `minQty:discountPercent`, one per line. A textarea because `config.xml`
+ * cannot express a repeatable field.
+ *
+ * A line that does not parse is a failure, never a skipped line: a silently
+ * dropped tier changes the discount ladder while looking like it applied,
+ * which is the class of silent behaviour change issue #5 exists to remove.
+ * The message carries the 1-based line number because "invalid volume tiers"
+ * is not something a merchant can act on.
+ */
+final class VolumeTierParser
+{
+    private function __construct() {}
+
+    /**
+     * @return list<array{minQty: int, discountPercent: float}>
+     *
+     * @throws \UnexpectedValueException when any non-blank line is not `<int>:<number>`
+     */
+    public static function parse(string $text): array
+    {
+        $tiers = [];
+
+        foreach (preg_split('/\R/', $text) ?? [] as $index => $line) {
+            $trimmed = trim($line);
+
+            if ($trimmed === '') {
+                continue;
+            }
+
+            $tiers[] = self::tier($trimmed, $index + 1);
+        }
+
+        return $tiers;
+    }
+
+    /**
+     * @return array{minQty: int, discountPercent: float}
+     *
+     * @throws \UnexpectedValueException
+     */
+    private static function tier(string $line, int $lineNumber): array
+    {
+        $parts = array_map(trim(...), explode(':', $line));
+
+        if (\count($parts) !== 2 || !self::isInteger($parts[0]) || !is_numeric($parts[1])) {
+            throw new \UnexpectedValueException(sprintf(
+                'Volume tiers, line %d: expected "minQty:discountPercent" such as "10:5", got "%s".',
+                $lineNumber,
+                $line,
+            ));
+        }
+
+        return ['minQty' => (int) $parts[0], 'discountPercent' => (float) $parts[1]];
+    }
+
+    private static function isInteger(string $value): bool
+    {
+        return $value !== '' && ctype_digit(ltrim(string: $value, characters: '-'));
+    }
+}
