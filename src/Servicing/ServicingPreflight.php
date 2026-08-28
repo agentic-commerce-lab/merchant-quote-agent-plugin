@@ -21,11 +21,29 @@ use Psr\Log\LoggerInterface;
  * there is the exact bug issue #5 exists to remove, so it escalates where the
  * merchant is already looking.
  *
+ * A quote in a state SwagCommercial refuses to edit is a third off state, and
+ * the quietest of the three: nothing is wrong, there is simply nothing to do.
+ *
  * Exists as one collaborator rather than two so ServiceQuoteHandler stays at
  * five constructor parameters.
  */
 final readonly class ServicingPreflight
 {
+    /**
+     * The states SwagCommercial itself refuses to edit
+     * (QuoteSnapshotVersionResolver::NON_EDITABLE_STATES). A comment can still
+     * be written against a quote in one of them — an accepted quote is a
+     * conversation, not a closed file — and the trigger has no state filter on
+     * the comment path, so without this the pipeline would be handed a quote
+     * whose every write is going to be refused.
+     *
+     * Mirrored rather than read from SwagCommercial: ADR 0001 keeps untyped
+     * commercial access in the bridge, and these four are a stable part of the
+     * quote state machine. Sourced, not guessed — if it ever diverges, the
+     * writes fail loudly rather than silently doing the wrong thing.
+     */
+    private const TERMINAL_STATES = ['accepted', 'declined', 'expired', 'cancelled'];
+
     public function __construct(
         private QuoteAgentSettingsSource $reader,
         private QuoteEscalator $escalator,
@@ -35,6 +53,19 @@ final readonly class ServicingPreflight
     /** Null means "do not service this quote"; the reason has already been handled. */
     public function check(QuoteGatewayInterface $gateway, QuoteSnapshot $snapshot): ?QuoteAgentSettings
     {
+        $state = $snapshot->lifecycle->stateTechnicalName;
+
+        // First, so a terminal quote in a misconfigured shop is not escalated:
+        // there is nothing to service there whatever the configuration says.
+        if (\in_array($state, self::TERMINAL_STATES, strict: true)) {
+            $this->logger->info('Quote is in a state SwagCommercial will not edit, so there is nothing to service.', [
+                'quoteId' => $snapshot->identity->quoteId,
+                'state' => $state,
+            ]);
+
+            return null;
+        }
+
         try {
             $settings = $this->reader->forSalesChannel($snapshot->identity->salesChannelId);
         } catch (InvalidQuoteAgentConfiguration $e) {

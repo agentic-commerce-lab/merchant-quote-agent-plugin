@@ -19,6 +19,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
+use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\Test\TestCaseBase\DatabaseTransactionBehaviour;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelTestBehaviour;
@@ -86,6 +87,20 @@ abstract class IntegrationTestCase extends TestCase
         );
 
         return $gateway;
+    }
+
+    /**
+     * The preflight as `services.php` wires it, reading the live shop's
+     * configuration. Resolved from the container rather than hand-built so the
+     * servicing tests exercise the real reader — a handler built by hand still
+     * gets the wired gate.
+     */
+    protected static function preflight(): ServicingPreflight
+    {
+        $preflight = static::getContainer()->get(ServicingPreflight::class);
+        self::assertInstanceOf(ServicingPreflight::class, $preflight);
+
+        return $preflight;
     }
 
     /** The factory with its collaborators wired the way `services.php` wires them. */
