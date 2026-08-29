@@ -140,11 +140,16 @@ what the merchant's strategy prompt asked for.
 (word it). A re-trigger with nothing new since the agent's last reply makes
 none of them.
 
-**Every failure escalates.** A model that cannot be reached, a proposal outside
+**No decision ever falls back to a guess.** A model that cannot be reached
+while reading the buyer's ask or choosing the offer, a proposal outside
 authority, or a verifier that disagrees with what actually landed in the
-database all send the quote to a human. The agent never falls back to deciding
-deterministically when the model fails — that would quietly change how your
-shop negotiates.
+database all send the quote to a human — the discount, the validity, every
+number the shop commits to, is unaffected. The third call only words the
+reply: if it fails there, the offer is already applied and verified, so the
+agent sends the plain template rather than leaving the buyer with a changed
+quote and no message at all. The agent never falls back to *deciding*
+deterministically when a model fails — that guarantee is about decisions, and
+it holds even here.
 
 **A verification failure leaves the applied changes in place.** Rolling back is
 a write that can itself fail, and a failed rollback leaves the quote in a third
