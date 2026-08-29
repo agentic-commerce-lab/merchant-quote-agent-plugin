@@ -60,8 +60,12 @@ final class DecisionRecordTest extends IntegrationTestCase
     /**
      * Every property is set to a non-null value of the right type: a null
      * would paper over a draft property whose name does not match its entity
-     * field, and that mismatch would otherwise stay invisible until a much
-     * later task's write fails at runtime (see Task 3 review discussion).
+     * field. That mismatch would NOT throw — the DAL silently drops an
+     * unknown payload key rather than rejecting the write (see
+     * DecisionRecordWriter's docblock and DraftMirrorsEntityTest, which is
+     * the actual structural guard against it) — so a null field here would
+     * stay silently null in the DB with nothing to say why. Every populated
+     * property is asserted on the round trip below, not just a handful.
      *
      * Built around the container-resolved repository rather than resolved as
      * `DecisionRecordWriter::class` directly: the compiled container inlines
@@ -129,10 +133,17 @@ final class DecisionRecordTest extends IntegrationTestCase
             ->first();
 
         self::assertNotNull($written, 'The fully populated draft was not written.');
-        self::assertSame('offered', $written->outcome);
-        self::assertSame(12.5, $written->discountPercentGranted);
-        self::assertTrue($written->verified);
-        self::assertEquals($draft->revisionUpdatedAt, $written->revisionUpdatedAt);
-        self::assertSame(['discount_over_cap'], $written->violations);
+
+        // Every populated property, not a hand-picked few: a hand-written
+        // list of assertions drifts the same way the mapping it is meant to
+        // catch drifts. assertEquals rather than assertSame because it
+        // compares DateTimeImmutable and arrays (the JSON columns) by value,
+        // which is exactly the round trip being proven for those fields.
+        $payload = get_object_vars($draft);
+        unset($payload['startedAt']);
+
+        foreach ($payload as $field => $value) {
+            self::assertEquals($value, $written->$field, sprintf('Field "%s" did not round-trip.', $field));
+        }
     }
 }

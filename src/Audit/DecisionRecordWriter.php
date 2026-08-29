@@ -14,7 +14,11 @@ use Shopware\Core\Framework\Uuid\Uuid;
  * without a kernel.
  *
  * `startedAt` is the draft's own stopwatch, not a column: it is excluded
- * explicitly, because handing the DAL an unknown field fails the whole write.
+ * explicitly. The DAL does NOT reject an unknown payload key — it silently
+ * drops it (`WriteCommandExtractor` iterates the entity definition's fields,
+ * not the payload's keys) — so leaving it in would not fail loudly, it would
+ * just never reach a column. DraftMirrorsEntityTest is what actually protects
+ * against that class of mistake for every other field.
  */
 final readonly class DecisionRecordWriter implements DecisionRecordWriterInterface
 {
