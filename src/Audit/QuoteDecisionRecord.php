@@ -117,7 +117,7 @@ class QuoteDecisionRecord extends EntityStruct
     #[Field(type: FieldType::STRING, api: true)]
     public ?string $errorClass = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
     public ?string $terminalState = null;
 
     #[Field(type: FieldType::DATETIME, api: true)]
