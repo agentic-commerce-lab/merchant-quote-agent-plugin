@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
@@ -213,6 +214,9 @@ final class NegotiationPipelineTest extends IntegrationTestCase
         $escalator = static::getContainer()->get(QuoteEscalator::class);
         self::assertInstanceOf(QuoteEscalator::class, $escalator);
 
+        $recorder = static::getContainer()->get(DecisionRecorder::class);
+        self::assertInstanceOf(DecisionRecorder::class, $recorder);
+
         $round = new OfferRound(
             new OfferProposer($client, $prompts, $authorizer),
             new OfferApplier($verifier, $logger),
@@ -221,6 +225,6 @@ final class NegotiationPipelineTest extends IntegrationTestCase
             $logger,
         );
 
-        return new NegotiationPipeline(new AskInterpreter($client, $prompts), $decider, $round, $logger);
+        return new NegotiationPipeline(new AskInterpreter($client, $prompts), $decider, $round, $recorder, $logger);
     }
 }

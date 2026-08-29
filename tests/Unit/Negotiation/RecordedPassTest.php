@@ -1,0 +1,171 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
+
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
+use PHPUnit\Framework\TestCase;
+
+/**
+ * One record per pass, on every path. The paths are the point: a record that
+ * only appears when the agent succeeds tells #21 nothing about why the other
+ * 3,000 quotes did not get an offer.
+ */
+final class RecordedPassTest extends TestCase
+{
+    /** The extract prompt is a fixed literal in every harness; its hash is deterministic. */
+    private const EXTRACT_HASH = '4080383490419ffce52d9a66c5fac20b0ef345d963019d3ce63bff32b76a5e6b';
+
+    public function testAnOfferedPassWritesOneRecordCarryingWhatTheBuyerWasTold(): void
+    {
+        $harness = PipelineHarness::with([
+            '{"additional_discount_percent":5}',
+            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            'We can offer 5% off.',
+        ]);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Offered, $outcome);
+        self::assertCount(1, $harness->writer->drafts);
+
+        $draft = $harness->writer->drafts[0];
+        self::assertSame('offered', $draft->outcome);
+        self::assertSame('grant', $draft->band);
+        self::assertSame('q1', $draft->quoteId);
+        self::assertSame(1000.0, $draft->totalNetBefore);
+        self::assertIsInt($draft->durationMs);
+    }
+
+    public function testAStructuralAskEscalationRecordsTheExtractHashOnly(): void
+    {
+        // The transposition #22 needs to depend on: the structural-ask path
+        // never calls negotiate, so a swapped hash assignment would put the
+        // extract hash on negotiatePromptHash instead of leaving it null.
+        $harness = PipelineHarness::with([
+            '{"line_changes":[{"line_item_id":"line-1","quantity":20,"target_unit_price":null,"remove":false}]}',
+        ]);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('make it 20 units', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertCount(1, $harness->writer->drafts);
+        $draft = $harness->writer->drafts[0];
+        self::assertSame('escalated', $draft->outcome);
+        self::assertSame(self::EXTRACT_HASH, $draft->extractPromptHash);
+        self::assertNull($draft->negotiatePromptHash);
+    }
+
+    public function testABandEscalationAlsoRecordsTheExtractHashOnly(): void
+    {
+        // Same transposition risk on the other gate that escalates before
+        // negotiate is ever called: the price band, not the ask's shape.
+        $harness = PipelineHarness::with(['{"additional_discount_percent": 40}']);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('40% off or no deal', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertCount(1, $harness->writer->drafts);
+        $draft = $harness->writer->drafts[0];
+        self::assertSame('escalated', $draft->outcome);
+        self::assertSame(self::EXTRACT_HASH, $draft->extractPromptHash);
+        self::assertNull($draft->negotiatePromptHash);
+    }
+
+    public function testANothingToDoPassStillWritesARecord(): void
+    {
+        // #21 needs to distinguish "the agent decided not to act" from "the
+        // agent never ran". Without a record for this path they look the same.
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% please', '2026-08-28 09:00:00'),
+            NegotiationFixture::agentComment('here is 5%', '2026-08-28 09:30:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertCount(1, $harness->writer->drafts);
+        self::assertSame('nothing_to_do', $harness->writer->drafts[0]->outcome);
+    }
+
+    public function testAModelFailureWritesARecordWithTheEscalatedOutcome(): void
+    {
+        // No model access configured is the deterministic way to reach
+        // ModelUnavailable: it fails before any HTTP call is made, unlike an
+        // empty ScriptedClient queue, which throws OutOfBoundsException
+        // (uncaught by the pipeline) rather than ModelUnavailable.
+        $harness = PipelineHarness::with([]);
+        $settings = new QuoteAgentSettings(
+            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 10.0)),
+            rulesOnly: false,
+            llm: null,
+            strategyPrompt: null,
+        );
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
+        ]);
+
+        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, $settings, NegotiationFixture::context());
+
+        self::assertSame(NegotiationOutcome::Escalated, $outcome);
+        self::assertCount(1, $harness->writer->drafts);
+        self::assertSame('escalated', $harness->writer->drafts[0]->outcome);
+    }
+
+    public function testAnAuditWriteFailureDoesNotFailThePass(): void
+    {
+        // A thrown audit write would roll the message back into Messenger's
+        // retry and re-answer the buyer. A missing record beats a duplicated
+        // buyer message.
+        $harness = PipelineHarness::with([
+            '{"additional_discount_percent":5}',
+            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            'We can offer 5% off.',
+        ]);
+        $harness->writer->throws = new \RuntimeException('the database is on fire');
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Offered, $outcome);
+        self::assertNotNull($harness->logger->contextOf('could not be recorded'));
+    }
+}
