@@ -168,4 +168,60 @@ final class RecordedPassTest extends TestCase
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertNotNull($harness->logger->contextOf('could not be recorded'));
     }
+
+    public function testALoggerFailureDoesNotFailASuccessfulPass(): void
+    {
+        // record() runs inside a finally; a throw there would replace a
+        // successful return with a failure, and a broken logger must not be
+        // able to do that.
+        $harness = PipelineHarness::with([
+            '{"additional_discount_percent":5}',
+            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            'We can bring this quote down by 5% to 950.00 EUR, valid until 2026-09-11.',
+        ]);
+        $harness->logger->throws = new \RuntimeException('the logger is broken');
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Offered, $outcome);
+    }
+
+    public function testALoggerFailureDoesNotReplaceTheOriginalExceptionOnAFailedPass(): void
+    {
+        // The direction that actually matters: PHP replaces an in-flight
+        // exception with whatever a finally throws. Without the inner
+        // try/catch in record(), the caller -- and Messenger's retry --
+        // would see the logger's failure instead of the real one.
+        $harness = PipelineHarness::with([
+            '{"additional_discount_percent":5}',
+            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            'We can bring this quote down by 5% to 950.00 EUR, valid until 2026-09-11.',
+        ]);
+        $harness->logger->throws = new \RuntimeException('the logger is broken');
+        $gatewayFailure = new \RuntimeException('the gateway is down');
+        $harness->gateway->transitionThrows = $gatewayFailure;
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
+        ]);
+
+        try {
+            $harness->pipeline->service(
+                $snapshot,
+                $harness->gateway,
+                NegotiationFixture::settings(),
+                NegotiationFixture::context(),
+            );
+            self::fail('The gateway failure should have propagated.');
+        } catch (\Throwable $e) {
+            self::assertSame($gatewayFailure, $e);
+        }
+    }
 }

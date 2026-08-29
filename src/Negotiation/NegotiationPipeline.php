@@ -89,6 +89,11 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
      * message back into Messenger's retry and re-answer the buyer, which is
      * the one failure #18 spends the most effort preventing. The structured
      * log event below stays as the backstop when the write is lost.
+     *
+     * This method runs inside a `finally`, so NOTHING here may throw: a throw
+     * from a `finally` replaces whatever was in flight, silently swapping a
+     * successful outcome for a failure, or the real error for a logging one.
+     * The outer try/catch is the backstop for a logger that itself misbehaves.
      */
     private function record(
         ?NegotiationPass $pass,
@@ -97,27 +102,34 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         PassContext $context,
     ): void {
         try {
-            $this->recorder->finish($pass, $error);
-        } catch (\Throwable $e) {
-            $this->logger->error('The negotiation pass could not be recorded; the pass itself stands.', [
-                'quoteId' => $snapshot->identity->quoteId,
-                'exception' => $e,
-            ]);
-        }
+            try {
+                $this->recorder->finish($pass, $error);
+            } catch (\Throwable $e) {
+                $this->logger->error('The negotiation pass could not be recorded; the pass itself stands.', [
+                    'quoteId' => $snapshot->identity->quoteId,
+                    'exception' => $e,
+                ]);
+            }
 
-        // One structured event per pass, every pass, in scope for this issue:
-        // #19 reads these, and #22 needs the hashes to attribute an outcome to
-        // the prompt versions that produced it.
-        $this->logger->info('A quote negotiation pass finished.', [
-            'outcome' => $pass?->outcome->value,
-            'trigger' => $context->reason->value,
-            'attempt' => $context->attempt,
-            'quoteId' => $snapshot->identity->quoteId,
-            'salesChannelId' => $snapshot->identity->salesChannelId,
-            'extractPromptHash' => $pass?->extractHash,
-            'negotiatePromptHash' => $pass?->negotiateHash,
-            'replyPromptHash' => $pass?->replyHash,
-        ]);
+            // One structured event per pass, every pass, in scope for this
+            // issue: #19 reads these, and #22 needs the hashes to attribute
+            // an outcome to the prompt versions that produced it.
+            $this->logger->info('A quote negotiation pass finished.', [
+                'outcome' => $pass?->outcome->value,
+                'trigger' => $context->reason->value,
+                'attempt' => $context->attempt,
+                'quoteId' => $snapshot->identity->quoteId,
+                'salesChannelId' => $snapshot->identity->salesChannelId,
+                'extractPromptHash' => $pass?->extractHash,
+                'negotiatePromptHash' => $pass?->negotiateHash,
+                'replyPromptHash' => $pass?->replyHash,
+            ]);
+        } catch (\Throwable) {
+            // @mago-expect lint:no-empty-catch-clause
+            // Deliberately empty: a logger that throws must not take the
+            // pass with it, and this method runs in a `finally`, so there is
+            // nowhere left to report the failure.
+        }
     }
 
     /** @throws ModelUnavailable */

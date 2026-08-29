@@ -12,6 +12,8 @@ final class RecordingLogger extends AbstractLogger
     /** @var list<array{level: string, message: string, context: array<array-key, mixed>}> */
     public array $records = [];
 
+    public ?\Throwable $throws = null;
+
     /**
      * @param mixed $level
      * @param string|\Stringable $message
@@ -21,6 +23,10 @@ final class RecordingLogger extends AbstractLogger
     public function log($level, $message, array $context = []): void
     {
         $this->records[] = ['level' => (string) $level, 'message' => (string) $message, 'context' => $context];
+
+        if ($this->throws !== null) {
+            throw $this->throws;
+        }
     }
 
     /** @return array<array-key, mixed>|null the context of the first record whose message contains $needle */
