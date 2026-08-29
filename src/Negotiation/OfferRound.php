@@ -8,7 +8,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Policy\Data\Band;
-use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
+use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use Psr\Log\LoggerInterface;
@@ -37,11 +37,16 @@ final readonly class OfferRound
         QuoteGatewayInterface $gateway,
         QuoteSnapshot $snapshot,
         QuoteAgentSettings $settings,
-        QuoteDecision $decision,
-        Band $band,
-    ): NegotiationOutcome {
+        NegotiationDecision $decision,
+        ?string $extractHash,
+    ): NegotiationPass {
         $conversation = SnapshotAdapter::conversation($snapshot);
-        $answer = $this->proposer->propose($settings, SnapshotAdapter::toPolicy($snapshot), $decision, $conversation);
+        $answer = $this->proposer->propose(
+            $settings,
+            SnapshotAdapter::toPolicy($snapshot),
+            $decision->price,
+            $conversation,
+        );
 
         if ($answer->offer === null) {
             // The detail stays here, in the log: QuoteEscalator writes to the
@@ -51,7 +56,21 @@ final readonly class OfferRound
                 'detail' => $answer->escalationDetail,
             ]);
 
-            return $this->escalate($gateway, $snapshot, $answer->escalation ?? QuoteEscalationReason::NeedsHumanReview);
+            return $this->escalated($gateway, $snapshot, $answer->escalation, $extractHash, $answer->promptHash);
+        }
+
+        if ($answer->offer->price->linePricesNet !== null && $conversation->agent !== []) {
+            // #2(a), the half still open: the reference lines a per-line offer
+            // is bounded against are re-captured every round, so round two is
+            // measured against round one's already-reduced prices and
+            // compounds straight past the cap — with the authorizer and the
+            // verifier both clean. Persisting that reference across passes
+            // needs a customField; until then round two is a human's.
+            $this->logger->info('A per-line ask reached a second round; a human takes it until #2(a) lands.', [
+                'quoteId' => $snapshot->identity->quoteId,
+            ]);
+
+            return $this->escalated($gateway, $snapshot, null, $extractHash, $answer->promptHash);
         }
 
         $applied = $this->applier->apply($gateway, $snapshot, $settings, $answer->offer);
@@ -64,21 +83,39 @@ final readonly class OfferRound
 
             // Deliberately no rollback: see OfferApplier. We escalate against
             // the post-write snapshot, which is what the buyer now has.
-            return $this->escalate($gateway, $applied->after, QuoteEscalationReason::VerificationFailed);
+            $reason = QuoteEscalationReason::VerificationFailed;
+
+            return $this->escalated($gateway, $applied->after, $reason, $extractHash, $answer->promptHash);
         }
 
-        $this->reply->reply($gateway, $applied->after, $settings, $answer->offer, $conversation);
+        // What the buyer is told is what the DATABASE says the quote came down
+        // by — the offer's own `discountPercent` is null for a per-line
+        // concession, and announcing that as a percentage tells the buyer zero.
+        $replyHash = $this->reply->reply(
+            $gateway,
+            $applied->after,
+            $settings,
+            ReplyTemplate::reduction($snapshot->totals->totalNet, $applied->after->totals->totalNet),
+            $conversation,
+        );
 
-        return $band === Band::Counter ? NegotiationOutcome::Countered : NegotiationOutcome::Offered;
+        return new NegotiationPass(
+            $decision->overall === Band::Counter ? NegotiationOutcome::Countered : NegotiationOutcome::Offered,
+            $extractHash,
+            $answer->promptHash,
+            $replyHash,
+        );
     }
 
-    private function escalate(
+    private function escalated(
         QuoteGatewayInterface $gateway,
         QuoteSnapshot $snapshot,
-        QuoteEscalationReason $reason,
-    ): NegotiationOutcome {
-        $this->escalator->escalate($gateway, $snapshot, $reason);
+        ?QuoteEscalationReason $reason,
+        ?string $extractHash,
+        ?string $negotiateHash,
+    ): NegotiationPass {
+        $this->escalator->escalate($gateway, $snapshot, $reason ?? QuoteEscalationReason::NeedsHumanReview);
 
-        return NegotiationOutcome::Escalated;
+        return new NegotiationPass(NegotiationOutcome::Escalated, $extractHash, $negotiateHash);
     }
 }

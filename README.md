@@ -151,6 +151,13 @@ quote and no message at all. The agent never falls back to *deciding*
 deterministically when a model fails — that guarantee is about decisions, and
 it holds even here.
 
+**A second round of per-line negotiation goes to a human.** The reference
+prices a per-line offer is bounded against are captured fresh each pass, so a
+second per-line concession would be measured against the first one's already
+reduced prices and compound past the merchant's cap. Persisting that reference
+across passes is issue #2(a); until it lands, an agent comment already on the
+quote sends the next per-line ask to a human. Quote-wide rounds are unaffected.
+
 **A verification failure leaves the applied changes in place.** Rolling back is
 a write that can itself fail, and a failed rollback leaves the quote in a third
 state nobody intended. The escalation tells a human what the database actually

@@ -43,15 +43,29 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         QuoteAgentSettings $settings,
     ): NegotiationOutcome {
         try {
-            return $this->negotiate($snapshot, $gateway, $settings);
+            $pass = $this->negotiate($snapshot, $gateway, $settings);
         } catch (ModelUnavailable $e) {
             $this->logger->error('The model was unavailable, so this quote goes to a human.', [
                 'quoteId' => $snapshot->identity->quoteId,
                 'exception' => $e,
             ]);
 
-            return $this->escalate($gateway, $snapshot, QuoteEscalationReason::ModelUnavailable);
+            $pass = $this->escalate($gateway, $snapshot, QuoteEscalationReason::ModelUnavailable);
         }
+
+        // One structured event per pass, every pass, in scope for this issue:
+        // #19 reads these, and #22 needs the hashes to attribute an outcome to
+        // the prompt versions that produced it.
+        $this->logger->info('A quote negotiation pass finished.', [
+            'outcome' => $pass->outcome->value,
+            'quoteId' => $snapshot->identity->quoteId,
+            'salesChannelId' => $snapshot->identity->salesChannelId,
+            'extractPromptHash' => $pass->extractHash,
+            'negotiatePromptHash' => $pass->negotiateHash,
+            'replyPromptHash' => $pass->replyHash,
+        ]);
+
+        return $pass->outcome;
     }
 
     /** @throws ModelUnavailable */
@@ -59,11 +73,11 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         QuoteSnapshot $snapshot,
         QuoteGatewayInterface $gateway,
         QuoteAgentSettings $settings,
-    ): NegotiationOutcome {
+    ): NegotiationPass {
         $ask = $this->interpreter->interpret($settings, $snapshot, SnapshotAdapter::conversation($snapshot));
 
         if ($ask === null) {
-            return NegotiationOutcome::NothingToDo;
+            return new NegotiationPass(NegotiationOutcome::NothingToDo);
         }
 
         if ($ask->isStructural()) {
@@ -75,7 +89,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
                 'quoteId' => $snapshot->identity->quoteId,
             ]);
 
-            return $this->escalate($gateway, $snapshot, QuoteEscalationReason::NeedsHumanReview);
+            return $this->escalate($gateway, $snapshot, QuoteEscalationReason::NeedsHumanReview, $ask->promptHash);
         }
 
         // `overall` IS the price band here: nothing composes a non-price ask
@@ -93,19 +107,20 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         if ($decision->overall === Band::Escalate) {
             $reason = $decision->price->escalation->reason ?? QuoteEscalationReason::NeedsHumanReview;
 
-            return $this->escalate($gateway, $snapshot, $reason);
+            return $this->escalate($gateway, $snapshot, $reason, $ask->promptHash);
         }
 
-        return $this->round->play($gateway, $snapshot, $settings, $decision->price, $decision->overall);
+        return $this->round->play($gateway, $snapshot, $settings, $decision, $ask->promptHash);
     }
 
     private function escalate(
         QuoteGatewayInterface $gateway,
         QuoteSnapshot $snapshot,
         QuoteEscalationReason $reason,
-    ): NegotiationOutcome {
+        ?string $extractHash = null,
+    ): NegotiationPass {
         $this->escalator->escalate($gateway, $snapshot, $reason);
 
-        return NegotiationOutcome::Escalated;
+        return new NegotiationPass(NegotiationOutcome::Escalated, $extractHash);
     }
 }

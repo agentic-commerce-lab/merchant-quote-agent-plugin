@@ -21,6 +21,13 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 /** Shared fixtures for the negotiation stages. */
 final class NegotiationFixture
 {
+    /**
+     * The expiry every fixture quote carries, so the reply the template writes
+     * is a fixed string rather than today + 14 days. A date in the past is
+     * fine: the verifier only bounds how FAR OUT an offer may be valid.
+     */
+    public const EXPIRES = '2026-09-11';
+
     private function __construct() {}
 
     /** @param list<QuoteComment> $comments */
@@ -35,7 +42,7 @@ final class NegotiationFixture
             identity: new QuoteIdentity('q1', '10001', 'EUR', 'sc1'),
             revision: $revision ?? new QuoteRevision('v1', new \DateTimeImmutable('2026-08-28 10:00:00.000')),
             totals: new QuoteTotals(totalNet: $totalNet),
-            lifecycle: new QuoteLifecycle(stateTechnicalName: $state),
+            lifecycle: new QuoteLifecycle(stateTechnicalName: $state, expiresAt: new \DateTimeImmutable(self::EXPIRES)),
             content: new QuoteContent(lines: [new QuoteLineSnapshot(
                 identity: new QuoteLineIdentity('line-1', 'Widget', 'prod-1'),
                 quantity: 10,

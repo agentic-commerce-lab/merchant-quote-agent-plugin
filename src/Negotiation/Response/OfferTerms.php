@@ -46,6 +46,16 @@ final readonly class OfferTerms
         );
     }
 
+    /**
+     * Both a quote-wide discount and per-line prices. OfferApplier writes the
+     * lines and silently drops the discount, so the offer the buyer is told
+     * about would not be the offer the database holds. Unusable, not a choice.
+     */
+    public function contradictory(): bool
+    {
+        return $this->discountPercent !== null && $this->linePrices !== null;
+    }
+
     public function toOffer(float $orderTotalNet): ProposedOffer
     {
         return new ProposedOffer(

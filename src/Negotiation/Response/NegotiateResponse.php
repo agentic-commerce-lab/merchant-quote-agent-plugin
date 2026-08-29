@@ -36,11 +36,17 @@ final readonly class NegotiateResponse
             throw new ModelUnavailable('The negotiate response carried no usable action.');
         }
 
+        $terms = OfferTerms::read($raw);
+
+        if ($action === 'offer' && $terms->contradictory()) {
+            throw new ModelUnavailable('The negotiate response mixed a quote-wide discount with line prices.');
+        }
+
         return new self(
             escalate: $action === 'escalate',
             escalationReason: Scalar::string($raw, 'escalation_reason'),
             message: Scalar::string($raw, 'message') ?? '',
-            terms: OfferTerms::read($raw),
+            terms: $terms,
         );
     }
 

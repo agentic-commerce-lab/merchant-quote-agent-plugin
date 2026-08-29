@@ -68,6 +68,18 @@ final class NegotiateResponseTest extends TestCase
         NegotiateResponse::read('{"action":"maybe","message":"hmm"}');
     }
 
+    public function testAnOfferCarryingBothADiscountAndLinePricesIsUnusable(): void
+    {
+        // OfferApplier writes the lines and drops the discount, so the offer
+        // the buyer is told about would not be the one the database holds.
+        $this->expectException(ModelUnavailable::class);
+
+        NegotiateResponse::read(
+            '{"action":"offer","discount_percent":5,'
+            . '"line_prices":[{"line_item_id":"line-1","unit_price_net":95}],"message":"both"}',
+        );
+    }
+
     public function testUnparseableJsonIsUnusable(): void
     {
         $this->expectException(ModelUnavailable::class);

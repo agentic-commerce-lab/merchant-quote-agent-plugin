@@ -6,9 +6,8 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
+use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
 use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
-use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
-use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -20,33 +19,34 @@ final class ReplyComposerTest extends TestCase
         return new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
     }
 
-    private static function offer(): ProposedOffer
-    {
-        return new ProposedOffer(orderTotalNet: 1000.0, price: new OfferedPrice(discountPercent: 5.0));
-    }
-
     private static function composer(\MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient $client): ReplyComposer
     {
         return new ReplyComposer($client, self::prompts(), new NullLogger());
     }
 
+    private static function after(float $totalNet = 950.0): \MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot
+    {
+        return NegotiationFixture::snapshot(state: 'in_review', totalNet: $totalNet);
+    }
+
     public function testItWritesTheModelsRewordingAndTransitions(): void
     {
-        [$client] = ScriptedClient::spy(['We can offer 5% off, valid until 2026-09-11.']);
+        $reworded = 'We can bring this quote down by 5% to 950.00 EUR, valid until 2026-09-11.';
+        [$client] = ScriptedClient::spy([$reworded]);
         $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
-        $after = NegotiationFixture::snapshot(state: 'in_review');
+        $after = self::after();
 
         self::composer($client)
             ->reply(
                 $gateway,
                 $after,
                 NegotiationFixture::settings(tone: 'formal'),
-                self::offer(),
+                5.0,
                 SnapshotAdapter::conversation($after),
             );
 
         self::assertContains('addComment', $gateway->calls);
-        self::assertStringContainsString('5%', $gateway->comments[0]);
+        self::assertSame($reworded, $gateway->comments[0]);
         self::assertContains('transition', $gateway->calls);
     }
 
@@ -57,33 +57,67 @@ final class ReplyComposerTest extends TestCase
         // a buyer, so the template wins.
         [$client] = ScriptedClient::spy(['Thanks for your interest! We will be in touch soon.']);
         $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
-        $after = NegotiationFixture::snapshot(state: 'in_review');
+        $after = self::after();
 
         $hash = self::composer($client)
-            ->reply(
-                $gateway,
-                $after,
-                NegotiationFixture::settings(),
-                self::offer(),
-                SnapshotAdapter::conversation($after),
-            );
+            ->reply($gateway, $after, NegotiationFixture::settings(), 5.0, SnapshotAdapter::conversation($after));
 
         self::assertNull($hash, 'A rejected rewording must be reported as template-authored.');
-        self::assertStringContainsString('5', $gateway->comments[0]);
+        self::assertStringContainsString('down by 5% to 950.00 EUR', $gateway->comments[0]);
     }
 
-    public function testRulesOnlyUsesTheTemplateWithNoModelCall(): void
+    public function testARewordingThatDropsTheNewTotalFallsBackToTheTemplate(): void
     {
+        // The total is a fact the buyer acts on, so the guard covers it too —
+        // otherwise the sentence could keep the percentage and invent a total.
+        [$client] = ScriptedClient::spy(['We can bring this quote down by 5%, valid until 2026-09-11.']);
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $after = self::after();
+
+        $hash = self::composer($client)
+            ->reply($gateway, $after, NegotiationFixture::settings(), 5.0, SnapshotAdapter::conversation($after));
+
+        self::assertNull($hash);
+        self::assertStringContainsString('950.00 EUR', $gateway->comments[0]);
+    }
+
+    public function testAPerLineConcessionIsAnnouncedAsTheReductionTheDatabaseShows(): void
+    {
+        // The bug this replaces: a per-line offer carries no `discountPercent`
+        // at all, so the reply used to tell the buyer "0% off this quote" on a
+        // quote whose line prices had just been cut by 15%.
         [$client, $spy] = ScriptedClient::spy([]);
         $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
-        $after = NegotiationFixture::snapshot(state: 'in_review');
+        $after = self::after(totalNet: 850.0);
 
         self::composer($client)
             ->reply(
                 $gateway,
                 $after,
                 NegotiationFixture::settings(rulesOnly: true),
-                self::offer(),
+                ReplyTemplate::reduction(1000.0, 850.0),
+                SnapshotAdapter::conversation($after),
+            );
+
+        self::assertSame(0, $spy->calls);
+        self::assertSame(
+            'We can bring this quote down by 15% to 850.00 EUR. The offer is valid until 2026-09-11.',
+            $gateway->comments[0],
+        );
+    }
+
+    public function testRulesOnlyUsesTheTemplateWithNoModelCall(): void
+    {
+        [$client, $spy] = ScriptedClient::spy([]);
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $after = self::after();
+
+        self::composer($client)
+            ->reply(
+                $gateway,
+                $after,
+                NegotiationFixture::settings(rulesOnly: true),
+                5.0,
                 SnapshotAdapter::conversation($after),
             );
 
@@ -103,13 +137,7 @@ final class ReplyComposerTest extends TestCase
         ]);
 
         self::composer($client)
-            ->reply(
-                $gateway,
-                $after,
-                NegotiationFixture::settings(),
-                self::offer(),
-                SnapshotAdapter::conversation($after),
-            );
+            ->reply($gateway, $after, NegotiationFixture::settings(), 5.0, SnapshotAdapter::conversation($after));
 
         self::assertSame(0, $spy->calls);
         self::assertNotContains('addComment', $gateway->calls);

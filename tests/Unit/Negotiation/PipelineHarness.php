@@ -16,7 +16,6 @@ use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
-use Psr\Log\NullLogger;
 
 /** A fully wired pipeline over a scripted model and a fake gateway. */
 final class PipelineHarness
@@ -25,6 +24,7 @@ final class PipelineHarness
         public NegotiationPipeline $pipeline,
         public FakeQuoteGateway $gateway,
         public ScriptedClient $spy,
+        public RecordingLogger $logger,
     ) {}
 
     /** @param list<string> $replies in call order: extract, negotiate, reply */
@@ -32,7 +32,7 @@ final class PipelineHarness
     {
         [$client, $spy] = ScriptedClient::spy($replies);
         $prompts = new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
-        $logger = new NullLogger();
+        $logger = new RecordingLogger();
         $escalator = new QuoteEscalator();
 
         // Two snapshots: the pre-apply read, which still carries the quote as
@@ -58,6 +58,6 @@ final class PipelineHarness
             $logger,
         );
 
-        return new self($pipeline, $gateway, $spy);
+        return new self($pipeline, $gateway, $spy, $logger);
     }
 }

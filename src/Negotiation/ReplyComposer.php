@@ -8,7 +8,6 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
-use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
 
@@ -29,12 +28,18 @@ final readonly class ReplyComposer
         private LoggerInterface $logger,
     ) {}
 
-    /** @return string|null the reply prompt's hash, or null when the template wrote it */
+    /**
+     * @param float $reductionPercent how much the quote came down, measured on
+     *                                the totals the database reports — the offer's own
+     *                                `discountPercent` is null for a per-line concession
+     *
+     * @return string|null the reply prompt's hash, or null when the template wrote it
+     */
     public function reply(
         QuoteGatewayInterface $gateway,
         QuoteSnapshot $after,
         QuoteAgentSettings $settings,
-        ProposedOffer $offer,
+        float $reductionPercent,
         BuyerConversation $conversation,
     ): ?string {
         if (!$conversation->hasNewBuyerAsk() && $conversation->agent !== []) {
@@ -45,11 +50,11 @@ final readonly class ReplyComposer
             return null;
         }
 
-        $discountPercent = $offer->price->discountPercent ?? 0.0;
+        $totalNet = $after->totals->totalNet;
         $validUntil = $after->lifecycle->expiresAt ?? new \DateTimeImmutable('+14 days');
-        $template = ReplyTemplate::compose($discountPercent, $validUntil);
+        $template = ReplyTemplate::compose($reductionPercent, $totalNet, $after->identity->currencyIso, $validUntil);
 
-        [$text, $hash] = $this->reword($settings, $template, $discountPercent, $validUntil);
+        [$text, $hash] = $this->reword($settings, $template, $reductionPercent, $totalNet, $validUntil);
 
         $gateway->addComment($after->identity->quoteId, $text);
         $this->send($gateway, $after->identity->quoteId);
@@ -61,7 +66,8 @@ final readonly class ReplyComposer
     private function reword(
         QuoteAgentSettings $settings,
         string $template,
-        float $discountPercent,
+        float $reductionPercent,
+        float $totalNet,
         \DateTimeImmutable $validUntil,
     ): array {
         $access = $settings->llm;
@@ -84,7 +90,7 @@ final readonly class ReplyComposer
             return [$template, null];
         }
 
-        if (!ReplyTemplate::keepsTheFacts($reworded, $discountPercent, $validUntil)) {
+        if (!ReplyTemplate::keepsTheFacts($reworded, $reductionPercent, $totalNet, $validUntil)) {
             $this->logger->warning('The reworded reply dropped a fact; sending the template instead.', [
                 'reworded' => $reworded,
             ]);
