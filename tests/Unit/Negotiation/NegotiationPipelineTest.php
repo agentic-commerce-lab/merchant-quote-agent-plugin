@@ -222,5 +222,7 @@ final class NegotiationPipelineTest extends TestCase
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertContains('updateQuote', $harness->gateway->calls, 'The applied changes must not be rolled back.');
+        self::assertCount(1, $harness->writer->drafts);
+        self::assertSame('escalated', $harness->writer->drafts[0]->outcome);
     }
 }

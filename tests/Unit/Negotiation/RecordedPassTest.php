@@ -162,6 +162,11 @@ final class RecordedPassTest extends TestCase
         self::assertSame('escalated', $draft->outcome);
         self::assertSame(self::EXTRACT_HASH, $draft->extractPromptHash);
         self::assertNull($draft->negotiatePromptHash);
+        // Also the only coverage of the band/maxDiscountPercent fields
+        // recordDecision() writes -- the band that refused the ask, and the
+        // authority it was measured against.
+        self::assertSame('escalate', $draft->band);
+        self::assertSame(10.0, $draft->maxDiscountPercent);
     }
 
     public function testANothingToDoPassStillWritesARecord(): void
@@ -233,6 +238,10 @@ final class RecordedPassTest extends TestCase
 
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertNotNull($harness->logger->contextOf('could not be recorded'));
+        // FakeDecisionWriter appends before it throws, so this pins that the
+        // writer was invoked with a draft on this path -- it does not prove
+        // the writer would still append if it threw before appending.
+        self::assertCount(1, $harness->writer->drafts);
     }
 
     public function testALoggerFailureDoesNotFailASuccessfulPass(): void
@@ -258,6 +267,9 @@ final class RecordedPassTest extends TestCase
         );
 
         self::assertSame(NegotiationOutcome::Offered, $outcome);
+        // Pins that the writer was invoked with a draft on this path; not
+        // proof it would survive a writer that throws before appending.
+        self::assertCount(1, $harness->writer->drafts);
     }
 
     public function testALoggerFailureDoesNotReplaceTheOriginalExceptionOnAFailedPass(): void
@@ -289,5 +301,9 @@ final class RecordedPassTest extends TestCase
         } catch (\Throwable $e) {
             self::assertSame($gatewayFailure, $e);
         }
+
+        // Pins that the writer was invoked with a draft on this path; not
+        // proof it would survive a writer that throws before appending.
+        self::assertCount(1, $harness->writer->drafts);
     }
 }

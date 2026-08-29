@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -59,14 +60,21 @@ final class RecordedOutcomePathsTest extends TestCase
         self::assertNotNull($harness->writer->drafts[0]->interpretedAsks);
     }
 
-    public function testAnOutOfAuthorityAskRecordsTheBandThatRefusedIt(): void
+    public function testANoOfferProposedPassRecordsOneEscalatedRecord(): void
     {
-        // Same escalate-on-band branch RecordedPassTest already exercises at
-        // 40%; kept at 80% because the point here is the band/maxDiscountPercent
-        // fields recordDecision() writes, which no existing test asserts.
-        $harness = PipelineHarness::with(['{"additional_discount_percent":80}']);
+        // OfferRound::play()'s $answer->offer === null branch: the model
+        // itself declines via {"action":"escalate"} rather than proposing
+        // something OfferAuthorizer then rejects. Distinguished from that
+        // other null-offer branch (authorization rejected) by the
+        // escalationReason recorded: NeedsHumanReview here, ProposalRejected
+        // there -- and by the call count: exactly extract + negotiate, since
+        // a null offer never reaches apply() or reply().
+        $harness = PipelineHarness::with([
+            '{"additional_discount_percent":5}',
+            '{"action":"escalate","escalation_reason":"Cannot serve this buyer."}',
+        ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
-            NegotiationFixture::buyerComment('80% off?', '2026-08-28 09:00:00'),
+            NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
         ]);
 
         $harness->pipeline->service(
@@ -76,9 +84,14 @@ final class RecordedOutcomePathsTest extends TestCase
             NegotiationFixture::context(),
         );
 
+        self::assertSame(2, $harness->spy->calls, 'A null offer must not reach apply() or reply().');
         self::assertCount(1, $harness->writer->drafts);
-        self::assertSame('escalate', $harness->writer->drafts[0]->band);
-        self::assertSame(10.0, $harness->writer->drafts[0]->maxDiscountPercent);
+        self::assertSame('escalated', $harness->writer->drafts[0]->outcome);
+        self::assertSame(
+            QuoteEscalationReason::NeedsHumanReview->value,
+            $harness->writer->drafts[0]->escalationReason,
+            'Confirms the model-declined branch, not the authorization-rejected one.',
+        );
     }
 
     public function testASecondRoundPerLineAskRecordsOneRecord(): void
