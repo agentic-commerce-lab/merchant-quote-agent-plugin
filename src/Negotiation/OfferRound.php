@@ -132,7 +132,13 @@ final readonly class OfferRound
         $this->reply->send($gateway, $snapshot->identity->quoteId);
     }
 
-    private function escalated(
+    /**
+     * Public because NegotiationPipeline's gate escalates through it too: its
+     * own escalate() was a duplicate of this, and routing both through one
+     * method is what keeps the pipeline inside the five-parameter cap once it
+     * takes the audit recorder.
+     */
+    public function escalated(
         QuoteGatewayInterface $gateway,
         QuoteSnapshot $snapshot,
         ?QuoteEscalationReason $reason,

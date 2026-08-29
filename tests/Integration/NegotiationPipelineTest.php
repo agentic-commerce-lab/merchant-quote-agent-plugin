@@ -221,6 +221,6 @@ final class NegotiationPipelineTest extends IntegrationTestCase
             $logger,
         );
 
-        return new NegotiationPipeline(new AskInterpreter($client, $prompts), $decider, $round, $escalator, $logger);
+        return new NegotiationPipeline(new AskInterpreter($client, $prompts), $decider, $round, $logger);
     }
 }

@@ -54,7 +54,6 @@ final class PipelineHarness
                 $escalator,
                 $logger,
             ),
-            $escalator,
             $logger,
         );
 

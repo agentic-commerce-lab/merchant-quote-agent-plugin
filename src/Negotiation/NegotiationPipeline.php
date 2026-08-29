@@ -12,7 +12,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\NegotiationProposal;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
-use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use Psr\Log\LoggerInterface;
 
@@ -33,7 +32,6 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         private AskInterpreter $interpreter,
         private NegotiationDecider $decider,
         private OfferRound $round,
-        private QuoteEscalator $escalator,
         private LoggerInterface $logger,
     ) {}
 
@@ -52,7 +50,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
                 'exception' => $e,
             ]);
 
-            $pass = $this->escalate($gateway, $snapshot, QuoteEscalationReason::ModelUnavailable);
+            $pass = $this->round->escalated($gateway, $snapshot, QuoteEscalationReason::ModelUnavailable, null, null);
         }
 
         // One structured event per pass, every pass, in scope for this issue:
@@ -95,7 +93,13 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
                 'quoteId' => $snapshot->identity->quoteId,
             ]);
 
-            return $this->escalate($gateway, $snapshot, QuoteEscalationReason::NeedsHumanReview, $ask->promptHash);
+            return $this->round->escalated(
+                $gateway,
+                $snapshot,
+                QuoteEscalationReason::NeedsHumanReview,
+                $ask->promptHash,
+                null,
+            );
         }
 
         if ($ask->hasNonPriceAsk()) {
@@ -110,7 +114,13 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
                 'quoteId' => $snapshot->identity->quoteId,
             ]);
 
-            return $this->escalate($gateway, $snapshot, QuoteEscalationReason::NeedsHumanReview, $ask->promptHash);
+            return $this->round->escalated(
+                $gateway,
+                $snapshot,
+                QuoteEscalationReason::NeedsHumanReview,
+                $ask->promptHash,
+                null,
+            );
         }
 
         // `overall` IS the price band here: nothing composes a non-price ask
@@ -128,20 +138,9 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         if ($decision->overall === Band::Escalate) {
             $reason = $decision->price->escalation->reason ?? QuoteEscalationReason::NeedsHumanReview;
 
-            return $this->escalate($gateway, $snapshot, $reason, $ask->promptHash);
+            return $this->round->escalated($gateway, $snapshot, $reason, $ask->promptHash, null);
         }
 
         return $this->round->play($gateway, $snapshot, $settings, $decision, $ask->promptHash);
-    }
-
-    private function escalate(
-        QuoteGatewayInterface $gateway,
-        QuoteSnapshot $snapshot,
-        QuoteEscalationReason $reason,
-        ?string $extractHash = null,
-    ): NegotiationPass {
-        $this->escalator->escalate($gateway, $snapshot, $reason);
-
-        return new NegotiationPass(NegotiationOutcome::Escalated, $extractHash);
     }
 }
