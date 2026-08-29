@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\GuzzleException;
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use Psr\Log\LoggerInterface;
 
@@ -28,6 +29,7 @@ final readonly class ChatCompletionClient
     public function __construct(
         private ClientInterface $http,
         private LoggerInterface $logger,
+        private DecisionRecorder $recorder,
     ) {}
 
     /** @throws ModelUnavailable */
@@ -65,28 +67,62 @@ final readonly class ChatCompletionClient
             $payload['response_format'] = ['type' => 'json_object'];
         }
 
+        $startedAt = microtime(true);
+
         $response = $this->http->request('POST', rtrim($access->baseUrl, '/') . '/chat/completions', [
             'headers' => ['Authorization' => 'Bearer ' . $access->apiKey],
             'json' => $payload,
             'timeout' => self::TIMEOUT_SECONDS,
         ]);
 
-        return self::content((string) $response->getBody());
+        // Decoded once and shared by usage() and content(), so a malformed
+        // body costs one try/catch instead of two — every branch here adds to
+        // the class-wide complexity budget.
+        try {
+            $decoded = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            $decoded = null;
+        }
+
+        // Only the attempt that reaches here gets recorded: a failed transport
+        // call throws out of $this->http->request() above, so it never has a
+        // body to read tokens from. Its wall-clock cost isn't lost though — it
+        // still shows up in the pass's own durationMs. So when complete()
+        // retries, modelLatencyMs is the successful call's time only, not the
+        // total time spent waiting on the model.
+        $this->recorder->recordModelCall(
+            $access->model,
+            parse_url($access->baseUrl, PHP_URL_HOST) ?: $access->baseUrl,
+            self::usage($decoded, 'prompt_tokens'),
+            self::usage($decoded, 'completion_tokens'),
+            (int) round((microtime(true) - $startedAt) * 1000),
+        );
+
+        return self::content($decoded);
+    }
+
+    /**
+     * The `usage` block is OpenAI's shape and not every provider sends it, so
+     * a missing count is null rather than an error — a model call that
+     * happened is worth recording even when its cost is unknown.
+     */
+    private static function usage(mixed $decoded, string $key): ?int
+    {
+        // `??` treats a non-array $decoded the same as a missing key: both
+        // fall through to null without a warning, so no is_array() branch is
+        // needed here.
+        $value = $decoded['usage'][$key] ?? null;
+
+        return \is_int($value) ? $value : null;
     }
 
     /** @throws ModelUnavailable */
-    private static function content(string $body): string
+    private static function content(mixed $decoded): string
     {
-        try {
-            $decoded = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
-        } catch (\JsonException $e) {
-            throw new ModelUnavailable('The model returned a body that is not JSON.', previous: $e);
-        }
-
-        $content = \is_array($decoded) ? $decoded['choices'][0]['message']['content'] ?? null : null;
+        $content = $decoded['choices'][0]['message']['content'] ?? null;
 
         if (!\is_string($content) || $content === '') {
-            throw new ModelUnavailable('The model response carried no message content.');
+            throw new ModelUnavailable('The model returned no usable message content.');
         }
 
         return $content;

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use GuzzleHttp\Client;
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
 use MerchantQuoteAgentPlugin\Negotiation\Response\ExtractResponse;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
@@ -30,7 +32,11 @@ final class LiveModelSmokeTest extends TestCase
             self::markTestSkipped('Set QUOTE_AGENT_LIVE_KEY and QUOTE_AGENT_LIVE_MODEL to run this.');
         }
 
-        $client = new ChatCompletionClient(new Client(), new NullLogger());
+        $client = new ChatCompletionClient(
+            new Client(),
+            new NullLogger(),
+            new DecisionRecorder(new FakeDecisionWriter()),
+        );
         $prompt = (string) file_get_contents(__DIR__ . '/../../config/agents/quote-extract-agent.prompt.md');
 
         $answer = $client->complete(

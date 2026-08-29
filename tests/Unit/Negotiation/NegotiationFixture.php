@@ -60,6 +60,12 @@ final class NegotiationFixture
         return new PassContext(ServicingTriggerReason::CommentWritten, 0);
     }
 
+    /** The merchant's LLM credentials, shared so every test points at the same fake host. */
+    public static function modelAccess(): ModelAccess
+    {
+        return new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini');
+    }
+
     public static function buyerComment(string $text, string $at): QuoteComment
     {
         return new QuoteComment($text, customerId: 'cust-1', createdAt: new \DateTimeImmutable($at));
@@ -85,7 +91,7 @@ final class NegotiationFixture
                 replyTone: $tone,
             )),
             rulesOnly: $rulesOnly,
-            llm: new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini'),
+            llm: self::modelAccess(),
             strategyPrompt: $strategy,
         );
     }

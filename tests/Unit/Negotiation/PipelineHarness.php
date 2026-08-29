@@ -35,7 +35,7 @@ final class PipelineHarness
     {
         $writer = new FakeDecisionWriter();
         $recorder = new DecisionRecorder($writer);
-        [$client, $spy] = ScriptedClient::spy($replies);
+        [$client, $spy] = ScriptedClient::spy($replies, $recorder);
         $prompts = new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
         $logger = new RecordingLogger();
         $escalator = new QuoteEscalator();
