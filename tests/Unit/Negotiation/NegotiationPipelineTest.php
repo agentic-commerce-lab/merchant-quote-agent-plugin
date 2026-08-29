@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
@@ -83,6 +84,28 @@ final class NegotiationPipelineTest extends TestCase
         self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
         self::assertSame(0, $harness->spy->calls);
         self::assertSame([], $harness->gateway->calls);
+    }
+
+    public function testAReplyPostedByADeadPassStillReachesReplied(): void
+    {
+        // #31: the reply is two writes — the comment, then the `sent`
+        // transition. A worker dying between them left the quote in
+        // `in_review` for good: the retry reads the agent's own comment as the
+        // newest, AskInterpreter returns null, and the pipeline used to stop
+        // before anything could finish the transition. The buyer held a
+        // correct, verified offer against a quote that still said "in review".
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::snapshot(state: 'in_review', comments: [
+            NegotiationFixture::buyerComment('5% please', '2026-08-28 09:00:00'),
+            NegotiationFixture::agentComment('here is 5%', '2026-08-28 09:30:00'),
+        ]);
+
+        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+
+        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame([QuoteTransition::Sent], $harness->gateway->transitions);
+        self::assertSame([], $harness->gateway->comments, 'The buyer must not be answered a second time.');
+        self::assertSame(0, $harness->spy->calls, 'Finishing a transition must not cost a model call.');
     }
 
     public function testAStructuralAskEscalatesRatherThanBeingSilentlyDropped(): void
