@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
+use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use PHPUnit\Framework\TestCase;
 
 final class NegotiationPipelineTest extends TestCase
@@ -40,6 +42,16 @@ final class NegotiationPipelineTest extends TestCase
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertSame(1, $harness->spy->calls, 'An out-of-authority ask must not reach the model twice.');
         self::assertContains('addComment', $harness->gateway->calls, 'The escalation must still reach a human.');
+        // What the gate actually buys. Without it the proposer's own
+        // "no priced band decision" guard still keeps the call count at one,
+        // but the reason degrades to needs_human_review — and QuoteEscalator
+        // keys its once-per-quote marker on the reason, so the buyer's
+        // de-duplication and the merchant's log both change.
+        self::assertSame(
+            [[QuoteEscalator::MARKER_KEY => QuoteEscalationReason::DiscountLimitExceeded->value]],
+            $harness->gateway->customFieldWrites,
+            'The band gate must escalate with the price reason, not a generic one.',
+        );
     }
 
     public function testAnAskInTheCounterBandIsCountered(): void
