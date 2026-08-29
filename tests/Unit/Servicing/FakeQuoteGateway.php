@@ -29,6 +29,16 @@ final class FakeQuoteGateway implements QuoteGatewayInterface
     /** @var list<string> */
     public array $comments = [];
 
+    /** @var list<QuoteLineItemChange> */
+    public array $lineItemChanges = [];
+
+    public ?QuoteRevision $firstExpectedRevision = null;
+
+    public ?\Throwable $transitionThrows = null;
+
+    /** @var list<QuoteTransition> */
+    public array $transitions = [];
+
     /** @param list<QuoteSnapshot> $snapshots served in order; the last one repeats */
     public function __construct(
         private array $snapshots,
@@ -57,6 +67,7 @@ final class FakeQuoteGateway implements QuoteGatewayInterface
     public function updateQuote(string $quoteId, QuoteUpdate $update, ?QuoteRevision $expected = null): void
     {
         $this->calls[] = 'updateQuote';
+        $this->firstExpectedRevision ??= $expected;
 
         if ($update->customFields !== null) {
             $this->customFieldWrites[] = $update->customFields;
@@ -65,13 +76,24 @@ final class FakeQuoteGateway implements QuoteGatewayInterface
 
     /** @param list<QuoteLineItemChange> $changes */
     #[\Override]
-    public function updateLineItems(string $quoteId, array $changes, ?QuoteRevision $expected = null): void {}
+    public function updateLineItems(string $quoteId, array $changes, ?QuoteRevision $expected = null): void
+    {
+        $this->calls[] = 'updateLineItems';
+        $this->firstExpectedRevision ??= $expected;
+
+        foreach ($changes as $change) {
+            $this->lineItemChanges[] = $change;
+        }
+    }
 
     #[\Override]
     public function addProduct(string $quoteId, string $productId, int $quantity): void {}
 
     #[\Override]
-    public function recalculate(string $quoteId): void {}
+    public function recalculate(string $quoteId): void
+    {
+        $this->calls[] = 'recalculate';
+    }
 
     #[\Override]
     public function addComment(string $quoteId, string $comment): void
@@ -81,5 +103,17 @@ final class FakeQuoteGateway implements QuoteGatewayInterface
     }
 
     #[\Override]
-    public function transition(string $quoteId, QuoteTransition $action): void {}
+    public function transition(string $quoteId, QuoteTransition $action): void
+    {
+        $this->calls[] = 'transition';
+        $this->transitions[] = $action;
+
+        if ($this->transitionThrows !== null) {
+            $exception = $this->transitionThrows;
+            $this->transitionThrows = null;
+
+            /** @var \Throwable $exception */
+            throw $exception;
+        }
+    }
 }
