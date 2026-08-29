@@ -21,6 +21,7 @@ use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\ScriptedClient;
 use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Context;
@@ -49,7 +50,12 @@ final class NegotiationPipelineTest extends IntegrationTestCase
             'We can offer 5% off.',
         ]);
 
-        $outcome = $pipeline->service($gateway->fetchSnapshot($quoteId), $gateway, self::enabledSettings());
+        $outcome = $pipeline->service(
+            $gateway->fetchSnapshot($quoteId),
+            $gateway,
+            self::enabledSettings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Offered, $outcome);
 
@@ -67,7 +73,12 @@ final class NegotiationPipelineTest extends IntegrationTestCase
 
         $pipeline = self::pipelineWith(['{"additional_discount_percent": 40}']);
 
-        $outcome = $pipeline->service($gateway->fetchSnapshot($quoteId), $gateway, self::enabledSettings());
+        $outcome = $pipeline->service(
+            $gateway->fetchSnapshot($quoteId),
+            $gateway,
+            self::enabledSettings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertSame(
@@ -89,10 +100,22 @@ final class NegotiationPipelineTest extends IntegrationTestCase
             'We can offer 5% off.',
         ];
 
-        self::pipelineWith($replies)->service($gateway->fetchSnapshot($quoteId), $gateway, self::enabledSettings());
+        self::pipelineWith($replies)
+            ->service(
+                $gateway->fetchSnapshot($quoteId),
+                $gateway,
+                self::enabledSettings(),
+                NegotiationFixture::context(),
+            );
         $afterFirst = \count($gateway->fetchSnapshot($quoteId)->content->comments);
 
-        self::pipelineWith($replies)->service($gateway->fetchSnapshot($quoteId), $gateway, self::enabledSettings());
+        self::pipelineWith($replies)
+            ->service(
+                $gateway->fetchSnapshot($quoteId),
+                $gateway,
+                self::enabledSettings(),
+                NegotiationFixture::context(),
+            );
 
         self::assertSame(
             $afterFirst,
@@ -120,7 +143,7 @@ final class NegotiationPipelineTest extends IntegrationTestCase
         $stranded = $gateway->fetchSnapshot($quoteId);
         self::assertSame('in_review', $stranded->lifecycle->stateTechnicalName);
 
-        self::pipelineWith([])->service($stranded, $gateway, self::enabledSettings());
+        self::pipelineWith([])->service($stranded, $gateway, self::enabledSettings(), NegotiationFixture::context());
 
         $after = $gateway->fetchSnapshot($quoteId);
         self::assertSame('replied', $after->lifecycle->stateTechnicalName);

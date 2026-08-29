@@ -8,7 +8,9 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
+use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
@@ -147,10 +149,11 @@ final readonly class ServiceQuoteHandler
             return;
         }
 
-        $this->claimAttempt($gateway, $message, $snapshot);
+        $attempt = $this->claimAttempt($gateway, $message, $snapshot);
+        $context = new PassContext(ServicingTriggerReason::from($message->reason), $attempt);
 
         try {
-            $outcome = $pipeline->service($snapshot, $gateway, $settings);
+            $outcome = $pipeline->service($snapshot, $gateway, $settings, $context);
         } catch (\Throwable $e) {
             // The process survived, so Messenger's RedeliveryStamp already
             // bounds this failure via retry. The quote-side counter exists only
@@ -185,11 +188,12 @@ final readonly class ServiceQuoteHandler
         ]));
     }
 
+    /** @return int the attempt number just claimed, for #19's audit context */
     private function claimAttempt(
         QuoteGatewayInterface $gateway,
         ServiceQuoteMessage $message,
         QuoteSnapshot $snapshot,
-    ): void {
+    ): int {
         $attempts = $snapshot->lifecycle->customFields[self::ATTEMPTS_KEY] ?? 0;
         $attempts = \is_int($attempts) ? $attempts : 0;
 
@@ -213,5 +217,7 @@ final readonly class ServiceQuoteHandler
         $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
             self::ATTEMPTS_KEY => $attempts + 1,
         ]));
+
+        return $attempts;
     }
 }

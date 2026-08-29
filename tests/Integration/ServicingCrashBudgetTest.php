@@ -10,6 +10,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
@@ -112,6 +113,7 @@ final class ServicingCrashBudgetTest extends IntegrationTestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
+                PassContext $context,
             ): NegotiationOutcome {
                 $customFields = $gateway->fetchSnapshot($snapshot->identity->quoteId)->lifecycle->customFields;
                 $counter = $customFields[ServiceQuoteHandler::ATTEMPTS_KEY] ?? null;
@@ -149,6 +151,7 @@ final class ServicingCrashBudgetTest extends IntegrationTestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
+                PassContext $context,
             ): NegotiationOutcome {
                 ++$this->passes;
 

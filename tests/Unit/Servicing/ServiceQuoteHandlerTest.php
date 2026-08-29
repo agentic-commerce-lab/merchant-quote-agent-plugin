@@ -8,6 +8,8 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
+use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
@@ -30,6 +32,23 @@ final class ServiceQuoteHandlerTest extends TestCase
         $stamp = ServicingHandlerFixture::lastCustomFieldWrite($gateway);
         self::assertArrayHasKey(ServicingFingerprint::MARKER_KEY, $stamp);
         self::assertNull($stamp[ServiceQuoteHandler::ATTEMPTS_KEY]);
+    }
+
+    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
+    public function testThePipelineIsToldWhyTheQuoteWasQueuedAndWhichAttemptThisIs(): void
+    {
+        // Without the attempt number every redelivery reads as a separate
+        // negotiation, which would inflate #21's counts by exactly the number
+        // of retries the crash budget allows.
+        $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
+        $pipeline = new RecordingPipeline();
+        $handler = ServicingHandlerFixture::handler($gateway, $pipeline);
+
+        $handler(ServicingHandlerFixture::message());
+
+        self::assertNotNull($pipeline->context);
+        self::assertSame(ServicingTriggerReason::CommentWritten, $pipeline->context->reason);
+        self::assertSame(0, $pipeline->context->attempt);
     }
 
     /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
@@ -60,6 +79,7 @@ final class ServiceQuoteHandlerTest extends TestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
+                PassContext $context,
             ): NegotiationOutcome {
                 \PHPUnit\Framework\Assert::assertInstanceOf(FakeQuoteGateway::class, $gateway);
                 $this->writesSeenBeforeMe = \count($gateway->customFieldWrites);
@@ -170,6 +190,7 @@ final class ServiceQuoteHandlerTest extends TestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
+                PassContext $context,
             ): NegotiationOutcome {
                 throw new \RuntimeException('LLM provider unavailable.');
             }

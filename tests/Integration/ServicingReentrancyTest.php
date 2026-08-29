@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
@@ -73,6 +74,7 @@ final class ServicingReentrancyTest extends IntegrationTestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
+                PassContext $context,
             ): NegotiationOutcome {
                 ++$this->passes;
                 $gateway->addComment($snapshot->identity->quoteId, 'ServicingReentrancyTest agent reply');
@@ -121,6 +123,7 @@ final class ServicingReentrancyTest extends IntegrationTestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
+                PassContext $context,
             ): NegotiationOutcome {
                 ++$this->passes;
                 $gateway->addComment($snapshot->identity->quoteId, 'ServicingReentrancyTest agent reply');
@@ -180,6 +183,7 @@ final class ServicingReentrancyTest extends IntegrationTestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
+                PassContext $context,
             ): NegotiationOutcome {
                 ++$this->passes;
 

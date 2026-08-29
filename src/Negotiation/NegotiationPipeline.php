@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationProposal;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use Psr\Log\LoggerInterface;
@@ -41,6 +42,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         QuoteSnapshot $snapshot,
         QuoteGatewayInterface $gateway,
         QuoteAgentSettings $settings,
+        PassContext $context,
     ): NegotiationOutcome {
         try {
             $pass = $this->negotiate($snapshot, $gateway, $settings);
@@ -58,6 +60,8 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         // the prompt versions that produced it.
         $this->logger->info('A quote negotiation pass finished.', [
             'outcome' => $pass->outcome->value,
+            'trigger' => $context->reason->value,
+            'attempt' => $context->attempt,
             'quoteId' => $snapshot->identity->quoteId,
             'salesChannelId' => $snapshot->identity->salesChannelId,
             'extractPromptHash' => $pass->extractHash,

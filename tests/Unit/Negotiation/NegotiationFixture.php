@@ -17,6 +17,8 @@ use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
+use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 
 /** Shared fixtures for the negotiation stages. */
 final class NegotiationFixture
@@ -51,6 +53,11 @@ final class NegotiationFixture
                 requestedUnitPrice: $requestedUnitPrice,
             )], comments: $comments),
         );
+    }
+
+    public static function context(): PassContext
+    {
+        return new PassContext(ServicingTriggerReason::CommentWritten, 0);
     }
 
     public static function buyerComment(string $text, string $at): QuoteComment
