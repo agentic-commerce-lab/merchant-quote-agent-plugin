@@ -39,34 +39,34 @@ class QuoteDecisionRecord extends EntityStruct
     #[Field(type: FieldType::UUID, api: true)]
     public string $quoteId = '';
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
     public ?string $quoteNumber = null;
 
     #[Field(type: FieldType::UUID, api: true)]
     public ?string $salesChannelId = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 3)]
     public ?string $currencyIso = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
     public ?string $triggerReason = null;
 
     #[Field(type: FieldType::INT, api: true)]
     public ?int $attempt = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
     public ?string $revisionVersionId = null;
 
     #[Field(type: FieldType::DATETIME, api: true)]
     public ?\DateTimeImmutable $revisionUpdatedAt = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 32)]
     public ?string $band = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 32)]
     public ?string $outcome = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
     public ?string $escalationReason = null;
 
     #[Field(type: FieldType::FLOAT, api: true)]
@@ -81,19 +81,19 @@ class QuoteDecisionRecord extends EntityStruct
     #[Field(type: FieldType::FLOAT, api: true)]
     public ?float $totalNetAfter = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 128)]
     public ?string $model = null;
 
     #[Field(type: FieldType::STRING, api: true)]
     public ?string $modelHost = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
     public ?string $extractPromptHash = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
     public ?string $negotiatePromptHash = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
     public ?string $replyPromptHash = null;
 
     #[Field(type: FieldType::INT, api: true)]

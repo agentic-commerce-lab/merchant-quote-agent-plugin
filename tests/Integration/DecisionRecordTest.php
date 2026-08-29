@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Write\WriteException;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 final class DecisionRecordTest extends IntegrationTestCase
@@ -36,5 +37,20 @@ final class DecisionRecordTest extends IntegrationTestCase
         self::assertNotNull($written, 'The record was not written.');
         self::assertSame('offered', $written->outcome);
         self::assertSame(1234, $written->durationMs);
+    }
+
+    public function testAStringLongerThanItsColumnIsRejectedAtWriteTime(): void
+    {
+        $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
+
+        self::assertInstanceOf(EntityRepository::class, $repository);
+
+        $this->expectException(WriteException::class);
+
+        $repository->create([[
+            'id' => Uuid::randomHex(),
+            'quoteId' => Uuid::randomHex(),
+            'band' => str_repeat('x', times: 33),
+        ]], Context::createDefaultContext());
     }
 }
