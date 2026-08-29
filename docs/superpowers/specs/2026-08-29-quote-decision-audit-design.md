@@ -78,6 +78,12 @@ Two notes on specific columns. `durationMs` is the pass's own wall-clock and is 
 
 `terminalState` and `terminalAt` are reserved and never written by this work. They exist so the follow-up subscriber is a subscriber and nothing else.
 
+### The property-count gate
+
+Measured, not assumed: `too-many-properties` is a mago default (absent from `mago.toml`, like `too-many-methods`) and **fires above 10 properties**. A 37-property entity is therefore impossible by default — and the rule's own suggested fix, grouping related properties into an object, is exactly what a DAL entity cannot do, because its properties *are* the table's columns.
+
+`QuoteDecisionRecord` and `DecisionDraft` each carry one documented `@mago-expect lint:too-many-properties`, verified to work. The suppression is confined to the two classes that are row shapes; no behavioural class gets one. Pushing columns into JSON to duck the rule would trade away exactly the queryability the record exists for — DAL cannot aggregate inside a JSON column.
+
 ### Migration
 
 `MerchantQuoteAgentPlugin\Migration\Migration1787998662CreateQuoteAgentDecision extends MigrationStep`. `update()` creates the table; `updateDestructive()` is empty. The plugin's first migration.
