@@ -11,6 +11,7 @@ use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
 use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
 use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
@@ -19,19 +20,11 @@ use Psr\Log\NullLogger;
 
 final class ChatCompletionClientTest extends TestCase
 {
-    private static function ok(string $content): Response
-    {
-        return new Response(200, [], json_encode([
-            'choices' => [['message' => ['content' => $content]]],
-        ], JSON_THROW_ON_ERROR));
-    }
-
     /**
      * @param list<mixed> $queue
      *
-     * A throwaway recorder is used when the caller doesn't need one, so the
-     * seven tests below that only care about complete()'s return value or its
-     * HTTP calls don't have to know DecisionRecorder exists.
+     * A throwaway recorder is used when the caller doesn't need one, so most
+     * tests below don't have to know DecisionRecorder exists.
      */
     private static function client(
         array $queue,
@@ -57,7 +50,7 @@ final class ChatCompletionClientTest extends TestCase
 
     public function testItReturnsTheAssistantMessageContent(): void
     {
-        $client = self::client([self::ok('{"ok":true}')]);
+        $client = self::client([NegotiationFixture::modelReply('{"ok":true}')]);
 
         self::assertSame('{"ok":true}', $client->complete(NegotiationFixture::modelAccess(), 'sys', 'usr', json: true));
     }
@@ -65,7 +58,8 @@ final class ChatCompletionClientTest extends TestCase
     public function testItPostsToTheMerchantsBaseUrlWithTheirKeyAndModel(): void
     {
         $sent = [];
-        self::client([self::ok('x')], $sent)->complete(NegotiationFixture::modelAccess(), 'sys', 'usr', json: true);
+        self::client([NegotiationFixture::modelReply('x')], $sent)
+            ->complete(NegotiationFixture::modelAccess(), 'sys', 'usr', json: true);
 
         self::assertCount(1, $sent);
         self::assertSame('POST', $sent[0]->getMethod());
@@ -84,7 +78,7 @@ final class ChatCompletionClientTest extends TestCase
         // The reply prompt returns prose, not JSON — asking for json_object
         // there would make the model wrap the sentence in a JSON envelope.
         $sent = [];
-        self::client([self::ok('a sentence')], $sent)
+        self::client([NegotiationFixture::modelReply('a sentence')], $sent)
             ->complete(NegotiationFixture::modelAccess(), 'sys', 'usr', json: false);
 
         $body = json_decode((string) $sent[0]->getBody(), true, flags: JSON_THROW_ON_ERROR);
@@ -94,7 +88,7 @@ final class ChatCompletionClientTest extends TestCase
     public function testATransientFailureIsRetriedOnce(): void
     {
         $sent = [];
-        $client = self::client([new Response(503), self::ok('recovered')], $sent);
+        $client = self::client([new Response(503), NegotiationFixture::modelReply('recovered')], $sent);
 
         self::assertSame('recovered', $client->complete(NegotiationFixture::modelAccess(), 'sys', 'usr', json: true));
         self::assertCount(2, $sent, 'The 503 was not retried.');
@@ -118,7 +112,7 @@ final class ChatCompletionClientTest extends TestCase
     {
         $client = self::client([
             new ConnectException('timed out', new Request('POST', 'https://api.example.com/v1/chat/completions')),
-            self::ok('recovered'),
+            NegotiationFixture::modelReply('recovered'),
         ]);
 
         self::assertSame('recovered', $client->complete(NegotiationFixture::modelAccess(), 'sys', 'usr', json: true));
@@ -170,12 +164,36 @@ final class ChatCompletionClientTest extends TestCase
         $secondRecorder = new DecisionRecorder($secondWriter);
         $secondRecorder->begin(NegotiationFixture::snapshot(), NegotiationFixture::context());
 
-        self::client([self::ok('the answer')], recorder: $secondRecorder)
+        self::client([NegotiationFixture::modelReply('the answer')], recorder: $secondRecorder)
             ->complete(NegotiationFixture::modelAccess(), 'system', 'user', json: false);
 
         $secondRecorder->finish(null);
 
         self::assertSame('gpt-4o-mini', $secondWriter->drafts[0]->model);
         self::assertSame(0, $secondWriter->drafts[0]->promptTokens);
+    }
+
+    /**
+     * A scheme-less baseUrl (a plausible merchant typo) makes parse_url()
+     * read the whole string as a path and return a null host. The fallback
+     * for that case must never be the raw baseUrl itself: some gateways carry
+     * a key in the query string, and modelHost lands in a merchant-readable
+     * audit column.
+     */
+    public function testASchemeLessBaseUrlNeverLeaksItsQueryStringAsTheHost(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+        $recorder->begin(NegotiationFixture::snapshot(), NegotiationFixture::context());
+
+        $access = new ModelAccess('sk-test', 'api.example.com/v1?key=SECRET', 'gpt-4o-mini');
+
+        self::client([NegotiationFixture::modelReply('the answer')], recorder: $recorder)
+            ->complete($access, 'system', 'user', json: false);
+
+        $recorder->finish(null);
+
+        self::assertSame('api.example.com', $writer->drafts[0]->modelHost);
+        self::assertStringNotContainsString('SECRET', (string) $writer->drafts[0]->modelHost);
     }
 }

@@ -75,14 +75,10 @@ final readonly class ChatCompletionClient
             'timeout' => self::TIMEOUT_SECONDS,
         ]);
 
-        // Decoded once and shared by usage() and content(), so a malformed
-        // body costs one try/catch instead of two — every branch here adds to
-        // the class-wide complexity budget.
-        try {
-            $decoded = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
-        } catch (\JsonException) {
-            $decoded = null;
-        }
+        // Decoded once and shared by usage() and content(). No THROW_ON_ERROR:
+        // a malformed body should just decode to null, not cost a try/catch —
+        // every branch here adds to the class-wide complexity budget.
+        $decoded = json_decode((string) $response->getBody(), true);
 
         // Only the attempt that reaches here gets recorded: a failed transport
         // call throws out of $this->http->request() above, so it never has a
@@ -92,13 +88,26 @@ final readonly class ChatCompletionClient
         // total time spent waiting on the model.
         $this->recorder->recordModelCall(
             $access->model,
-            parse_url($access->baseUrl, PHP_URL_HOST) ?: $access->baseUrl,
+            self::hostOnly($access->baseUrl),
             self::usage($decoded, 'prompt_tokens'),
             self::usage($decoded, 'completion_tokens'),
             (int) round((microtime(true) - $startedAt) * 1000),
         );
 
         return self::content($decoded);
+    }
+
+    /**
+     * A scheme-less baseUrl (a merchant typo) makes parse_url() read the
+     * whole string as a path, so retry with an assumed scheme to recover the
+     * host anyway. Never fall back to the raw string: it can carry a key in
+     * its query, and this value lands in a merchant-readable audit column.
+     */
+    private static function hostOnly(string $baseUrl): string
+    {
+        $host = parse_url($baseUrl, PHP_URL_HOST) ?: parse_url('http://' . $baseUrl, PHP_URL_HOST);
+
+        return \is_string($host) ? $host : 'unparsable-host';
     }
 
     /**

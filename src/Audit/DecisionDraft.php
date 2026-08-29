@@ -68,6 +68,7 @@ final class DecisionDraft
 
     public ?int $completionTokens = null;
 
+    /** Excludes a failed retry attempt's time — see `durationMs` for the pass's total wall-clock. */
     public ?int $modelLatencyMs = null;
 
     public ?int $durationMs = null;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use GuzzleHttp\Psr7\Response;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteIdentity;
@@ -64,6 +65,14 @@ final class NegotiationFixture
     public static function modelAccess(): ModelAccess
     {
         return new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini');
+    }
+
+    /** A 200 OK with the OpenAI chat-completions envelope around $content. */
+    public static function modelReply(string $content): Response
+    {
+        return new Response(200, [], json_encode([
+            'choices' => [['message' => ['content' => $content]]],
+        ], JSON_THROW_ON_ERROR));
     }
 
     public static function buyerComment(string $text, string $at): QuoteComment

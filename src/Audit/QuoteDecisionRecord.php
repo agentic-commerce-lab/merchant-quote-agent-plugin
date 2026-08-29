@@ -102,6 +102,7 @@ class QuoteDecisionRecord extends EntityStruct
     #[Field(type: FieldType::INT, api: true)]
     public ?int $completionTokens = null;
 
+    /** Excludes a failed retry attempt's time — see `durationMs` for the pass's total wall-clock. */
     #[Field(type: FieldType::INT, api: true)]
     public ?int $modelLatencyMs = null;
 
