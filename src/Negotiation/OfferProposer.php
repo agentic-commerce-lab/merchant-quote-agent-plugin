@@ -44,7 +44,7 @@ final readonly class OfferProposer
         }
 
         if ($settings->rulesOnly) {
-            return $this->authorize($settings, self::deterministicOffer($snapshot, $details), '', null);
+            return $this->authorize($settings, $snapshot, self::deterministicOffer($snapshot, $details), '', null);
         }
 
         $access = $settings->llm;
@@ -69,15 +69,28 @@ final readonly class OfferProposer
             );
         }
 
-        return $this->authorize($settings, $response->toOffer($snapshot->totalNet), $response->message, $prompt->hash);
+        return $this->authorize(
+            $settings,
+            $snapshot,
+            $response->toOffer($snapshot->totalNet),
+            $response->message,
+            $prompt->hash,
+        );
     }
 
+    /**
+     * The bands are checked against the snapshot this round was decided on:
+     * a per-line offer is bounded line by line against those lines, and with
+     * no reference LinePriceOfferCheck rejects every one of them.
+     */
     private function authorize(
         QuoteAgentSettings $settings,
+        PolicySnapshot $snapshot,
         ProposedOffer $offer,
         string $message,
         ?string $promptHash,
     ): ProposedAnswer {
+        $offer = $offer->withReferenceLines($snapshot->lines);
         $authorization = $this->authorizer->authorize($offer, $settings->policy);
 
         if (!$authorization->approved) {
