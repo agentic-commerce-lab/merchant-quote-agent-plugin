@@ -200,6 +200,7 @@ The entity is `api: true` for the **admin API only** and must never be exposed t
 - `begin()` resets — two passes through one recorder, and pass one's ask must not appear in pass two's record. This is the approach's failure mode, so it gets a test rather than a comment.
 - A writer that throws is swallowed and the pass still returns its outcome.
 - `ChatCompletionClient` records tokens and latency without changing what it returns.
+- **`DecisionDraft`'s properties are pinned against `QuoteDecisionRecord`'s `#[Field]` properties by reflection, in both directions**, excluding only `id` (writer-generated) and `terminalState`/`terminalAt` (reserved). Added after measuring the live shop: an unknown payload key does **not** fail the write — `WriteCommandExtractor::normalizeSingle()` skips unmapped keys and `extract()`/`map()` iterate the definition's fields, never the payload's. So drift between a draft property and its entity field produces no exception and no failing write, just a column quietly null in every audit row, in the table #21 reads its results from. The framework will not catch that; this test is what does.
 
 **Integration, on the shop** — the parts that cannot be faked:
 

@@ -1006,7 +1006,7 @@ final class DecisionRecordWriterTest extends TestCase
     public function testTheStartedAtWorkingFieldIsNotWritten(): void
     {
         // startedAt is the draft's own stopwatch, not a column. Passing it to
-        // the DAL would fail the write on an unknown field.
+        // an unknown key is silently DROPPED by the DAL, not rejected (measured).
         $repository = $this->createMock(EntityRepository::class);
         $captured = [];
 
@@ -1053,7 +1053,8 @@ use Shopware\Core\Framework\Uuid\Uuid;
  * without a kernel.
  *
  * `startedAt` is the draft's own stopwatch, not a column: it is excluded
- * explicitly, because handing the DAL an unknown field fails the whole write.
+ * explicitly. Note the DAL does NOT reject an unknown key — it silently
+ * drops it — so DraftMirrorsEntityTest is what actually catches drift.
  */
 final readonly class DecisionRecordWriter implements DecisionRecordWriterInterface
 {
