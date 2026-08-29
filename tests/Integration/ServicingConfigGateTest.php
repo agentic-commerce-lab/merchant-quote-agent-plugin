@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
@@ -94,8 +95,10 @@ final class ServicingConfigGateTest extends IntegrationTestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
-            ): void {
+            ): NegotiationOutcome {
                 ++$this->passes;
+
+                return NegotiationOutcome::Offered;
             }
         };
     }

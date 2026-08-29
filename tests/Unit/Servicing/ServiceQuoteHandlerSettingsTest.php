@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
@@ -26,8 +27,10 @@ final class ServiceQuoteHandlerSettingsTest extends TestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
-            ): void {
+            ): NegotiationOutcome {
                 $this->seen = $settings;
+
+                return NegotiationOutcome::Offered;
             }
         };
 
@@ -66,6 +69,29 @@ final class ServiceQuoteHandlerSettingsTest extends TestCase
             $gateway->customFieldWrites,
             'Nothing was serviced, so nothing may be stamped — a stamp would suppress the next real trigger '
             . 'once the agent is switched back on.',
+        );
+    }
+
+    /** @throws \Throwable the handler's own declared surface */
+    public function testAnEscalatedOutcomeKeepsTheEscalationMarker(): void
+    {
+        // Clearing the marker on every pass would erase one the pipeline just
+        // wrote, and the quote would re-escalate on every later buyer comment.
+        $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
+        $pipeline = ServicingHandlerFixture::countingPipeline(NegotiationOutcome::Escalated);
+
+        ServicingHandlerFixture::handler($gateway, $pipeline)(ServicingHandlerFixture::message());
+
+        $stamp = ServicingHandlerFixture::lastCustomFieldWrite($gateway);
+        self::assertArrayHasKey(
+            ServicingFingerprint::MARKER_KEY,
+            $stamp,
+            'An escalated pass still handled the ask, so it must still be fingerprinted.',
+        );
+        self::assertArrayNotHasKey(
+            QuoteEscalator::MARKER_KEY,
+            $stamp,
+            'An escalated pass must not clear the marker it just wrote.',
         );
     }
 

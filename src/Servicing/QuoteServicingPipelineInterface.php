@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Servicing;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 
 /**
  * The seam issue #18 fills in: snapshot → interpret ask → propose → authorize
@@ -23,6 +24,11 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
  * the gateway is: the handler has already resolved them for this quote's
  * sales channel and refused the quote if they were unusable. #18 cannot end
  * up reading a different sales channel's bands.
+ *
+ * The outcome comes back because the handler cannot infer it. #5 clears the
+ * escalation marker on a successful pass — correct while nothing else could
+ * escalate, and wrong the moment this pipeline can: clearing a marker the
+ * pipeline just wrote makes the quote re-escalate on every later comment.
  */
 interface QuoteServicingPipelineInterface
 {
@@ -30,5 +36,5 @@ interface QuoteServicingPipelineInterface
         QuoteSnapshot $snapshot,
         QuoteGatewayInterface $gateway,
         QuoteAgentSettings $settings,
-    ): void;
+    ): NegotiationOutcome;
 }

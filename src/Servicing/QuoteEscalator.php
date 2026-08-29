@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Servicing;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 
 /**
@@ -52,6 +53,24 @@ final class QuoteEscalator
     public const MARKER_KEY = 'merchant_quote_agent_escalated';
 
     private const BUYER_MESSAGE = 'A member of our team will review this quote personally and get back to you.';
+
+    /**
+     * The customFields fragment that releases a quote for a fresh escalation,
+     * to be spread into a servicing pass's stamp.
+     *
+     * A quote the agent once escalated is fair game again: a fixed
+     * configuration must be able to escalate afresh if it breaks afresh, and
+     * the marker is what would otherwise silence it. But only a pass that
+     * actually ANSWERED may clear it — a pass that escalated wrote this marker
+     * itself, and erasing it would re-escalate the quote on every following
+     * buyer comment, which is the comment spam the marker exists to prevent.
+     *
+     * @return array<string, null> empty when the pass did not answer the buyer
+     */
+    public static function releaseFor(NegotiationOutcome $outcome): array
+    {
+        return $outcome->answeredTheBuyer() ? [self::MARKER_KEY => null] : [];
+    }
 
     public function escalate(
         QuoteGatewayInterface $gateway,

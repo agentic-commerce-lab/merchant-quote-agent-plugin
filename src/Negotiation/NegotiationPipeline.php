@@ -12,6 +12,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\NegotiationProposal;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -25,7 +26,7 @@ use Psr\Log\LoggerInterface;
  * shop whose negotiation quietly changes character when a provider has a bad
  * minute is the silent behaviour change this design exists to remove.
  */
-final readonly class NegotiationPipeline
+final readonly class NegotiationPipeline implements QuoteServicingPipelineInterface
 {
     public function __construct(
         private AskInterpreter $interpreter,
@@ -35,6 +36,7 @@ final readonly class NegotiationPipeline
         private LoggerInterface $logger,
     ) {}
 
+    #[\Override]
     public function service(
         QuoteSnapshot $snapshot,
         QuoteGatewayInterface $gateway,
