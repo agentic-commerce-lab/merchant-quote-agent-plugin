@@ -6,8 +6,13 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionDraft;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
+use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Bucket\TermsAggregation;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\AvgAggregation;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Bucket\TermsResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Metric\AvgResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\WriteException;
@@ -15,6 +20,8 @@ use Shopware\Core\Framework\Uuid\Uuid;
 
 final class DecisionRecordTest extends IntegrationTestCase
 {
+    use PipelineFixture;
+
     public function testTheTableExistsAndTheEntityIsRegistered(): void
     {
         $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
@@ -145,5 +152,92 @@ final class DecisionRecordTest extends IntegrationTestCase
         foreach ($payload as $field => $value) {
             self::assertEquals($value, $written->$field, sprintf('Field "%s" did not round-trip.', $field));
         }
+    }
+
+    /**
+     * The first end-to-end proof that DI wiring resolves a real pass to a
+     * real row: every earlier test built the recorder or writer by hand.
+     * `DatabaseTransactionBehaviour` rolls back everything a test writes
+     * through the shop's connection, pipeline writes included, so this
+     * leaves nothing behind — see NegotiationPipelineTest, whose four tests
+     * already write real quote/comment rows the same way.
+     */
+    public function testARealPassWritesARealRow(): void
+    {
+        $gateway = static::gateway();
+        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'open');
+        self::writeBuyerComment($quoteId, 'Could you do 5% off?');
+
+        self::pipelineWith([
+            '{"additional_discount_percent": 5}',
+            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            'We can offer 5% off.',
+        ])->service(
+            $gateway->fetchSnapshot($quoteId),
+            $gateway,
+            self::enabledSettings(),
+            NegotiationFixture::context(),
+        );
+
+        $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
+        self::assertInstanceOf(EntityRepository::class, $repository);
+
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('quoteId', $quoteId));
+        $record = $repository->search($criteria, Context::createDefaultContext())->first();
+
+        self::assertNotNull($record, 'A real pass wrote no audit record.');
+        self::assertSame('offered', $record->outcome);
+        self::assertSame('grant', $record->band);
+        self::assertSame('comment_written', $record->triggerReason);
+        self::assertNotNull($record->buyerComment);
+        self::assertNotNull($record->interpretedAsks);
+        self::assertIsInt($record->durationMs);
+    }
+
+    /**
+     * #21 reads outcome shares and average granted discount off this table.
+     * Proving the column types aggregate is cheap now and expensive later.
+     * Filtered on a fresh quoteId, not across the table, since other tests
+     * in this run leave their own (soon-to-be-rolled-back) rows behind.
+     */
+    public function testTheAggregationsTheTestRunNeedsActuallyRun(): void
+    {
+        $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
+        self::assertInstanceOf(EntityRepository::class, $repository);
+
+        $quoteId = Uuid::randomHex();
+        $repository->create([
+            self::row($quoteId, 'offered', 5.0),
+            self::row($quoteId, 'offered', 7.0),
+            self::row($quoteId, 'escalated', null),
+        ], Context::createDefaultContext());
+
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('quoteId', $quoteId));
+        $criteria->addAggregation(new TermsAggregation('by-outcome', 'outcome'));
+        $criteria->addAggregation(new AvgAggregation('avg-discount', 'discountPercentGranted'));
+
+        $result = $repository->aggregate($criteria, Context::createDefaultContext());
+
+        $byOutcome = $result->get('by-outcome');
+        self::assertInstanceOf(TermsResult::class, $byOutcome);
+        self::assertSame(2, $byOutcome->get('offered')?->getCount());
+
+        $average = $result->get('avg-discount');
+        self::assertInstanceOf(AvgResult::class, $average);
+        self::assertSame(6.0, $average->getAvg());
+    }
+
+    /** @return array<string, mixed> */
+    private static function row(string $quoteId, string $outcome, ?float $discount): array
+    {
+        return [
+            'id' => Uuid::randomHex(),
+            'quoteId' => $quoteId,
+            'outcome' => $outcome,
+            'discountPercentGranted' => $discount,
+            'durationMs' => 100,
+        ];
     }
 }
