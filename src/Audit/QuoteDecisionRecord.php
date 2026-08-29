@@ -33,116 +33,116 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity as EntityStruct;
 class QuoteDecisionRecord extends EntityStruct
 {
     #[PrimaryKey]
-    #[Field(type: FieldType::UUID, api: true)]
+    #[Field(type: FieldType::UUID, api: ['admin-api' => true, 'store-api' => false])]
     public string $id = '';
 
-    #[Field(type: FieldType::UUID, api: true)]
+    #[Field(type: FieldType::UUID, api: ['admin-api' => true, 'store-api' => false])]
     public string $quoteId = '';
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
     public ?string $quoteNumber = null;
 
-    #[Field(type: FieldType::UUID, api: true)]
+    #[Field(type: FieldType::UUID, api: ['admin-api' => true, 'store-api' => false])]
     public ?string $salesChannelId = null;
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 3)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 3)]
     public ?string $currencyIso = null;
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
     public ?string $triggerReason = null;
 
-    #[Field(type: FieldType::INT, api: true)]
+    #[Field(type: FieldType::INT, api: ['admin-api' => true, 'store-api' => false])]
     public ?int $attempt = null;
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
     public ?string $revisionVersionId = null;
 
-    #[Field(type: FieldType::DATETIME, api: true)]
+    #[Field(type: FieldType::DATETIME, api: ['admin-api' => true, 'store-api' => false])]
     public ?\DateTimeImmutable $revisionUpdatedAt = null;
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 32)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 32)]
     public ?string $band = null;
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 32)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 32)]
     public ?string $outcome = null;
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
     public ?string $escalationReason = null;
 
-    #[Field(type: FieldType::FLOAT, api: true)]
+    #[Field(type: FieldType::FLOAT, api: ['admin-api' => true, 'store-api' => false])]
     public ?float $discountPercentGranted = null;
 
-    #[Field(type: FieldType::FLOAT, api: true)]
+    #[Field(type: FieldType::FLOAT, api: ['admin-api' => true, 'store-api' => false])]
     public ?float $maxDiscountPercent = null;
 
-    #[Field(type: FieldType::FLOAT, api: true)]
+    #[Field(type: FieldType::FLOAT, api: ['admin-api' => true, 'store-api' => false])]
     public ?float $totalNetBefore = null;
 
-    #[Field(type: FieldType::FLOAT, api: true)]
+    #[Field(type: FieldType::FLOAT, api: ['admin-api' => true, 'store-api' => false])]
     public ?float $totalNetAfter = null;
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 128)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 128)]
     public ?string $model = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     public ?string $modelHost = null;
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
     public ?string $extractPromptHash = null;
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
     public ?string $negotiatePromptHash = null;
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
     public ?string $replyPromptHash = null;
 
-    #[Field(type: FieldType::INT, api: true)]
+    #[Field(type: FieldType::INT, api: ['admin-api' => true, 'store-api' => false])]
     public ?int $promptTokens = null;
 
-    #[Field(type: FieldType::INT, api: true)]
+    #[Field(type: FieldType::INT, api: ['admin-api' => true, 'store-api' => false])]
     public ?int $completionTokens = null;
 
     /** Excludes a failed retry attempt's time — see `durationMs` for the pass's total wall-clock. */
-    #[Field(type: FieldType::INT, api: true)]
+    #[Field(type: FieldType::INT, api: ['admin-api' => true, 'store-api' => false])]
     public ?int $modelLatencyMs = null;
 
-    #[Field(type: FieldType::INT, api: true)]
+    #[Field(type: FieldType::INT, api: ['admin-api' => true, 'store-api' => false])]
     public ?int $durationMs = null;
 
-    #[Field(type: FieldType::BOOL, api: true)]
+    #[Field(type: FieldType::BOOL, api: ['admin-api' => true, 'store-api' => false])]
     public ?bool $authorized = null;
 
-    #[Field(type: FieldType::BOOL, api: true)]
+    #[Field(type: FieldType::BOOL, api: ['admin-api' => true, 'store-api' => false])]
     public ?bool $verified = null;
 
-    #[Field(type: FieldType::STRING, api: true)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     public ?string $errorClass = null;
 
-    #[Field(type: FieldType::STRING, api: true, maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
     public ?string $terminalState = null;
 
-    #[Field(type: FieldType::DATETIME, api: true)]
+    #[Field(type: FieldType::DATETIME, api: ['admin-api' => true, 'store-api' => false])]
     public ?\DateTimeImmutable $terminalAt = null;
 
     /** @var array<string, mixed>|null */
-    #[Field(type: FieldType::JSON, api: true)]
+    #[Field(type: FieldType::JSON, api: ['admin-api' => true, 'store-api' => false])]
     public ?array $interpretedAsks = null;
 
-    #[Field(type: FieldType::TEXT, api: true)]
+    #[Field(type: FieldType::TEXT, api: ['admin-api' => true, 'store-api' => false])]
     public ?string $rawProposal = null;
 
     /** @var list<string>|null */
-    #[Field(type: FieldType::JSON, api: true)]
+    #[Field(type: FieldType::JSON, api: ['admin-api' => true, 'store-api' => false])]
     public ?array $violations = null;
 
     /** @var list<string>|null */
-    #[Field(type: FieldType::JSON, api: true)]
+    #[Field(type: FieldType::JSON, api: ['admin-api' => true, 'store-api' => false])]
     public ?array $writes = null;
 
     /** @var list<array<string, string>>|null */
-    #[Field(type: FieldType::JSON, api: true)]
+    #[Field(type: FieldType::JSON, api: ['admin-api' => true, 'store-api' => false])]
     public ?array $errorChain = null;
 
-    #[Field(type: FieldType::TEXT, api: true)]
+    #[Field(type: FieldType::TEXT, api: ['admin-api' => true, 'store-api' => false])]
     public ?string $buyerComment = null;
 }

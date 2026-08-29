@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Audit;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Negotiation\AppliedOffer;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
@@ -85,6 +86,27 @@ final class DecisionRecorderTest extends TestCase
 
         self::assertIsInt($writer->drafts[0]->durationMs);
         self::assertGreaterThanOrEqual(0, $writer->drafts[0]->durationMs);
+    }
+
+    /**
+     * The numerator of #21's "average granted discount against the band"
+     * readout: nothing populates it unless recordApplied() measures it off
+     * the database totals, the same two numbers the buyer's reply is built
+     * from.
+     */
+    public function testAGrantingPassRecordsTheRealDiscountPercentage(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->begin(NegotiationFixture::snapshot(totalNet: 1000.0), self::context());
+        $recorder->recordApplied(
+            new AppliedOffer(true, [], NegotiationFixture::snapshot(totalNet: 950.0)),
+            ['updateQuote'],
+        );
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        self::assertSame(5.0, $writer->drafts[0]->discountPercentGranted);
     }
 
     private static function context(): PassContext

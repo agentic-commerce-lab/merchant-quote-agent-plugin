@@ -170,7 +170,10 @@ final class ChatCompletionClientTest extends TestCase
         $secondRecorder->finish(null);
 
         self::assertSame('gpt-4o-mini', $secondWriter->drafts[0]->model);
-        self::assertSame(0, $secondWriter->drafts[0]->promptTokens);
+        self::assertNull(
+            $secondWriter->drafts[0]->promptTokens,
+            'Unknown cost must stay null, not fold into a silent zero.',
+        );
     }
 
     /**

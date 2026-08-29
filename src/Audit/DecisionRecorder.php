@@ -101,6 +101,10 @@ final class DecisionRecorder
         $this->draft->violations = $applied->violations;
         $this->draft->writes = $writes;
         $this->draft->totalNetAfter = $applied->after->totals->totalNet;
+        $this->draft->discountPercentGranted = GrantedDiscount::of(
+            $this->draft->totalNetBefore,
+            $applied->after->totals->totalNet,
+        );
     }
 
     public function recordReply(string $comment, ?string $promptHash): void
@@ -126,8 +130,8 @@ final class DecisionRecorder
 
         $this->draft->model = $model;
         $this->draft->modelHost = $host;
-        $this->draft->promptTokens = (int) $this->draft->promptTokens + (int) $promptTokens;
-        $this->draft->completionTokens = (int) $this->draft->completionTokens + (int) $completionTokens;
+        $this->draft->promptTokens = TokenTally::add($this->draft->promptTokens, $promptTokens);
+        $this->draft->completionTokens = TokenTally::add($this->draft->completionTokens, $completionTokens);
         $this->draft->modelLatencyMs = (int) $this->draft->modelLatencyMs + $latencyMs;
     }
 

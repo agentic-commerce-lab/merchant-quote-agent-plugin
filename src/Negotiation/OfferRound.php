@@ -145,8 +145,14 @@ final readonly class OfferRound
         ?string $extractHash,
         ?string $negotiateHash,
     ): NegotiationPass {
-        $this->escalator->escalate($gateway, $snapshot, $reason ?? QuoteEscalationReason::NeedsHumanReview);
+        $reason ??= QuoteEscalationReason::NeedsHumanReview;
+        $this->escalator->escalate($gateway, $snapshot, $reason);
 
-        return new NegotiationPass(NegotiationOutcome::Escalated, $extractHash, $negotiateHash);
+        return new NegotiationPass(
+            NegotiationOutcome::Escalated,
+            $extractHash,
+            $negotiateHash,
+            escalationReason: $reason,
+        );
     }
 }

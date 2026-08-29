@@ -48,8 +48,6 @@ final class DecisionRecordWriterTest extends TestCase
 
     public function testTheStartedAtWorkingFieldIsNotWritten(): void
     {
-        // startedAt is the draft's own stopwatch, not a column. Passing it to
-        // the DAL would fail the write on an unknown field.
         $repository = $this->createMock(EntityRepository::class);
         $event = $this->createStub(EntityWrittenContainerEvent::class);
         $captured = [];

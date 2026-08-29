@@ -29,5 +29,8 @@ final class PassOutcome
         $draft->extractPromptHash = $pass->extractHash ?? $draft->extractPromptHash;
         $draft->negotiatePromptHash = $pass->negotiateHash ?? $draft->negotiatePromptHash;
         $draft->replyPromptHash = $pass->replyHash ?? $draft->replyPromptHash;
+        // `??` keeps a reason OfferProposer already recorded (recordProposal)
+        // when the pass itself carries none.
+        $draft->escalationReason = $pass->escalationReason?->value ?? $draft->escalationReason;
     }
 }

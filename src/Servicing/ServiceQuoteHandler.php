@@ -149,8 +149,14 @@ final readonly class ServiceQuoteHandler
             return;
         }
 
+        // Resolved before claimAttempt() commits its counter write: a stale
+        // enum value must throw here, before anything is mutated, rather than
+        // after — an interaction with the try/catch below that clears
+        // ATTEMPTS_KEY would otherwise be needed to avoid parking the quote
+        // for four redeliveries.
+        $reason = ServicingTriggerReason::from($message->reason);
         $attempt = $this->claimAttempt($gateway, $message, $snapshot);
-        $context = new PassContext(ServicingTriggerReason::from($message->reason), $attempt);
+        $context = new PassContext($reason, $attempt);
 
         try {
             $outcome = $pipeline->service($snapshot, $gateway, $settings, $context);

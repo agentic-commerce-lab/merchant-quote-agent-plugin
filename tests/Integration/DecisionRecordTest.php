@@ -193,6 +193,11 @@ final class DecisionRecordTest extends IntegrationTestCase
         self::assertNotNull($record->buyerComment);
         self::assertNotNull($record->interpretedAsks);
         self::assertIsInt($record->durationMs);
+        // #21's average-granted-discount readout has no numerator unless a
+        // real granting pass lands a real percentage here, not the hand-
+        // written value every other test in this file uses.
+        self::assertNotNull($record->discountPercentGranted, 'A granting pass wrote no discount percentage.');
+        self::assertEqualsWithDelta(5.0, $record->discountPercentGranted, 0.5);
     }
 
     /**

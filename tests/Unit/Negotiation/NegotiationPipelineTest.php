@@ -63,6 +63,13 @@ final class NegotiationPipelineTest extends TestCase
             $harness->gateway->customFieldWrites,
             'The band gate must escalate with the price reason, not a generic one.',
         );
+        // The band gate escalates through OfferRound::escalated(), which
+        // holds no recorder of its own — the deterministic gate's own verdict
+        // must still reach the audit trail, not just the buyer-facing marker.
+        self::assertSame(
+            QuoteEscalationReason::DiscountLimitExceeded->value,
+            $harness->writer->drafts[0]->escalationReason,
+        );
     }
 
     public function testAnAskInTheCounterBandIsCountered(): void
@@ -198,6 +205,11 @@ final class NegotiationPipelineTest extends TestCase
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertContains('addComment', $harness->gateway->calls);
+        // ModelUnavailable is caught inside run(), so $error never reaches
+        // record() and errorClass/errorChain stay null — without this reason
+        // reaching the draft, a provider outage is indistinguishable from any
+        // other escalation in the failure-count-by-cause readout.
+        self::assertSame(QuoteEscalationReason::ModelUnavailable->value, $harness->writer->drafts[0]->escalationReason);
     }
 
     public function testAVerificationFailureEscalatesAndLeavesTheChangesInPlace(): void
