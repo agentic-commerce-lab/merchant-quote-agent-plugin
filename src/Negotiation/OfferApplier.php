@@ -54,10 +54,12 @@ final readonly class OfferApplier
         // Read fresh, right before the write: the state the offer is
         // actually measured against, not whatever $snapshot looked like when
         // this round started (interpreting, deciding and proposing all take
-        // time, and none of it holds a lock on the quote).
+        // time, and none of it holds a lock on the quote) — and, since claim()
+        // itself is a write that bumps the quote's revision, the only
+        // revision the write below can safely assume as unchanged.
         $reference = $gateway->fetchSnapshot($quoteId);
 
-        $this->write($gateway, $quoteId, $snapshot->revision, $limits, $offer);
+        $this->write($gateway, $quoteId, $reference->revision, $limits, $offer);
         $gateway->recalculate($quoteId);
 
         $after = $gateway->fetchSnapshot($quoteId);

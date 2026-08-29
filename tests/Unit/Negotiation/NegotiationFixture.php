@@ -29,10 +29,11 @@ final class NegotiationFixture
         string $state = 'open',
         float $totalNet = 1000.0,
         ?float $requestedUnitPrice = null,
+        ?QuoteRevision $revision = null,
     ): QuoteSnapshot {
         return new QuoteSnapshot(
             identity: new QuoteIdentity('q1', '10001', 'EUR', 'sc1'),
-            revision: new QuoteRevision('v1', new \DateTimeImmutable('2026-08-28 10:00:00.000')),
+            revision: $revision ?? new QuoteRevision('v1', new \DateTimeImmutable('2026-08-28 10:00:00.000')),
             totals: new QuoteTotals(totalNet: $totalNet),
             lifecycle: new QuoteLifecycle(stateTechnicalName: $state),
             content: new QuoteContent(lines: [new QuoteLineSnapshot(

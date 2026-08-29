@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
@@ -56,13 +57,19 @@ final class OfferApplierTest extends TestCase
 
     public function testTheFirstWriteCarriesTheRevisionPrecondition(): void
     {
-        // A buyer edit between our read and our write must lose, loudly.
-        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot()]);
+        // claim() itself writes (the open -> in_review transition), which
+        // bumps the quote's revision. The precondition on the write below
+        // must therefore be the POST-claim reference read, not the stale
+        // pre-claim $snapshot — otherwise every quote's first pass would
+        // throw a spurious QuoteRevisionMismatch.
+        $postClaimRevision = new QuoteRevision('v2', new \DateTimeImmutable('2026-08-28 10:00:01.000'));
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(revision: $postClaimRevision)]);
         $snapshot = NegotiationFixture::snapshot();
 
         self::applier()->apply($gateway, $snapshot, NegotiationFixture::settings(), self::quoteWideOffer());
 
-        self::assertSame($snapshot->revision, $gateway->firstExpectedRevision);
+        self::assertSame($postClaimRevision, $gateway->firstExpectedRevision);
+        self::assertNotSame($snapshot->revision, $gateway->firstExpectedRevision);
     }
 
     public function testTheProcessTransitionIsAttemptedAndAnIllegalOneIsSurvived(): void
