@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
-use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;

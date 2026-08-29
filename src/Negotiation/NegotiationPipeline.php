@@ -92,6 +92,21 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             return $this->escalate($gateway, $snapshot, QuoteEscalationReason::NeedsHumanReview, $ask->promptHash);
         }
 
+        if ($ask->hasNonPriceAsk()) {
+            // Shipping, payment terms and bundles are extracted and then go
+            // nowhere: only `price` is composed into the proposal below, and
+            // QuoteUpdate cannot write a delivery term anyway. Answering the
+            // price half and dropping the rest silently is worse than saying
+            // a human takes it — and promising shipping that never lands is
+            // worse still, which is why this does not route through
+            // NonPriceTermsDecider.
+            $this->logger->info('The buyer asked for a non-price term; a human decides that.', [
+                'quoteId' => $snapshot->identity->quoteId,
+            ]);
+
+            return $this->escalate($gateway, $snapshot, QuoteEscalationReason::NeedsHumanReview, $ask->promptHash);
+        }
+
         // `overall` IS the price band here: nothing composes a non-price ask
         // into the proposal, so NegotiationDecider aggregates the price band
         // with a bandless (granting) non-price decision. Reading its own

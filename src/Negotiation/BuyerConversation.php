@@ -43,12 +43,20 @@ final readonly class BuyerConversation
         return $newestAgent === null || $newestBuyer > $newestAgent;
     }
 
-    /** Every buyer comment, oldest first, as the extract prompt expects. */
-    public function buyerText(): string
+    /**
+     * The agent's own earlier replies, oldest first. The negotiate prompt
+     * states it is shown them, and a later round is unreadable without them.
+     */
+    public function agentText(): string
     {
-        return implode("\n", array_map(static fn(QuoteComment $c): string => $c->comment, $this->buyer));
+        return implode("\n", array_map(static fn(QuoteComment $c): string => $c->comment, $this->agent));
     }
 
+    /**
+     * The one comment a pass answers. Every earlier ask was already extracted
+     * and already answered; re-reading the whole history re-applies round
+     * one's "another 5%" to a total that has already come down by it.
+     */
     public function newestBuyerText(): string
     {
         $newest = null;

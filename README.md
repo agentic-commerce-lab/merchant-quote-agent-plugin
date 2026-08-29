@@ -158,6 +158,12 @@ reduced prices and compound past the merchant's cap. Persisting that reference
 across passes is issue #2(a); until it lands, an agent comment already on the
 quote sends the next per-line ask to a human. Quote-wide rounds are unaffected.
 
+**Anything that is not a price goes to a human.** Free shipping, payment terms
+and bundles are read out of the comment and then escalated: only the price ask
+reaches the deciders, and the quote gateway cannot write a delivery or payment
+term at all — so answering the price half alone would drop the rest in silence,
+and granting the rest would promise the buyer something that never lands.
+
 **A verification failure leaves the applied changes in place.** Rolling back is
 a write that can itself fail, and a failed rollback leaves the quote in a third
 state nobody intended. The escalation tells a human what the database actually

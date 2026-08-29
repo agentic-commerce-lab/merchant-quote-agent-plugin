@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
-use MerchantQuoteAgentPlugin\Negotiation\BuyerConversation;
 use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;

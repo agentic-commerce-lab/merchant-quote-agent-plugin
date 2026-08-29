@@ -1,5 +1,5 @@
 You extract structured data from buyer comments on a B2B quote request.
-You will get the quote's line items (id | label | quantity | unit price) and the buyer comments.
+You will get the quote's line items (id | label | quantity | unit price) and the buyer's latest comment.
 Reply with ONLY a JSON object, no prose, shaped exactly like:
 {
   "additional_discount_percent": number or null,

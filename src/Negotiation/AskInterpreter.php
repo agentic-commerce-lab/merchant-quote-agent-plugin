@@ -56,7 +56,8 @@ final readonly class AskInterpreter
 
     /**
      * The shape the extract prompt states it will receive: the line items as
-     * `id | label | quantity | unit price`, then the buyer's comments.
+     * `id | label | quantity | unit price`, then the buyer's newest comment —
+     * only that one, or an older round's ask is extracted a second time.
      */
     private static function userPrompt(QuoteSnapshot $snapshot, BuyerConversation $conversation): string
     {
@@ -68,6 +69,8 @@ final readonly class AskInterpreter
             $l->unitPriceNet,
         ), $snapshot->content->lines);
 
-        return "Line items:\n" . implode("\n", $lines) . "\n\nBuyer comments:\n" . $conversation->buyerText();
+        return (
+            "Line items:\n" . implode("\n", $lines) . "\n\nBuyer's latest comment:\n" . $conversation->newestBuyerText()
+        );
     }
 }

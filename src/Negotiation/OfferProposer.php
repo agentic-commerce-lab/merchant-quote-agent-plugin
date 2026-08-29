@@ -127,9 +127,12 @@ final readonly class OfferProposer
         $limits = $settings->policy->price;
         $countered = $decision->autoReply?->counteredRequestPercent;
 
+        // The prompt tells the model it is shown its own earlier offers, so it
+        // is — and the buyer's LATEST comment is the ask this round answers;
+        // the earlier ones were answered by the replies listed above it.
         return sprintf(
             "Quote total (net): %.2f %s\n\nYOUR AUTHORITY:\n- maximum discount you may grant: %.2f%%\n%s\n\n"
-            . "Buyer comments:\n%s",
+            . "Your earlier replies on this quote:\n%s\n\nBuyer's latest comment:\n%s",
             $snapshot->totalNet,
             $snapshot->currencyIso,
             $limits->maxDiscountPercent,
@@ -139,7 +142,8 @@ final readonly class OfferProposer
                     '- the buyer asked for %.2f%%, which is above your cap: counter, do not grant it',
                     $countered,
                 ),
-            $conversation->buyerText(),
+            $conversation->agentText(),
+            $conversation->newestBuyerText(),
         );
     }
 }
