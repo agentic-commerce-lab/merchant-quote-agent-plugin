@@ -27,6 +27,7 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
         'rulesOnlyMode',
         'llmApiKey',
         'llmBaseUrl',
+        'llmModel',
         'negotiationStrategy',
         'maxDiscountPercent',
         'counterOfferMaxPercent',

@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
@@ -44,6 +45,7 @@ final class ServicingCrashBudgetTest extends IntegrationTestCase
         self::assertInstanceOf(SystemConfigService::class, $config);
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'enabled', true);
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmApiKey', 'sk-integration');
+        $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmModel', 'gpt-4o-mini');
     }
 
     public function testAQuoteAtTheCeilingParksWithoutServicing(): void
@@ -110,10 +112,12 @@ final class ServicingCrashBudgetTest extends IntegrationTestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
-            ): void {
+            ): NegotiationOutcome {
                 $customFields = $gateway->fetchSnapshot($snapshot->identity->quoteId)->lifecycle->customFields;
                 $counter = $customFields[ServiceQuoteHandler::ATTEMPTS_KEY] ?? null;
                 $this->counterDuringPass = \is_int($counter) ? $counter : null;
+
+                return NegotiationOutcome::Offered;
             }
         };
 
@@ -145,8 +149,10 @@ final class ServicingCrashBudgetTest extends IntegrationTestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
-            ): void {
+            ): NegotiationOutcome {
                 ++$this->passes;
+
+                return NegotiationOutcome::Offered;
             }
         };
     }

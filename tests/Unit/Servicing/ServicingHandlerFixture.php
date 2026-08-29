@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
@@ -110,19 +111,31 @@ final class ServicingHandlerFixture
         ];
     }
 
-    /** @return QuoteServicingPipelineInterface&object{passes: int} */
-    public static function countingPipeline(): object
+    /**
+     * One builder rather than a second `pipelineReturning()`: the outcome is
+     * just another thing the counting pipeline reports, and this class is at
+     * mago's method ceiling.
+     *
+     * @return QuoteServicingPipelineInterface&object{passes: int}
+     */
+    public static function countingPipeline(NegotiationOutcome $outcome = NegotiationOutcome::Offered): object
     {
-        return new class implements QuoteServicingPipelineInterface {
+        return new class($outcome) implements QuoteServicingPipelineInterface {
             public int $passes = 0;
+
+            public function __construct(
+                private readonly NegotiationOutcome $outcome,
+            ) {}
 
             #[\Override]
             public function service(
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
-            ): void {
+            ): NegotiationOutcome {
                 ++$this->passes;
+
+                return $this->outcome;
             }
         };
     }

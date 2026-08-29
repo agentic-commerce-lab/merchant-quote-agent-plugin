@@ -50,7 +50,12 @@ final class PluginConfigTest extends IntegrationTestCase
         // Writing then reading proves the key round-trips under the domain the
         // reader uses. A typo in config.xml or in the domain shows up here and
         // nowhere else — a broken config.xml is silent, not an error.
-        foreach (['enabled' => true, 'maxDiscountPercent' => 12.0, 'llmApiKey' => 'sk-probe'] as $key => $value) {
+        foreach ([
+            'enabled' => true,
+            'maxDiscountPercent' => 12.0,
+            'llmApiKey' => 'sk-probe',
+            'llmModel' => 'gpt-4o-mini',
+        ] as $key => $value) {
             $config->set(QuoteAgentSettingsReader::DOMAIN . $key, $value);
             self::assertSame($value, $config->get(QuoteAgentSettingsReader::DOMAIN . $key));
         }

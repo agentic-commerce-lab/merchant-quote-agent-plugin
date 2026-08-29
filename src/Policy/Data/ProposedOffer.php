@@ -19,4 +19,26 @@ final readonly class ProposedOffer
         public OfferedDelivery $delivery = new OfferedDelivery(),
         public OfferedPayment $payment = new OfferedPayment(),
     ) {}
+
+    /**
+     * The pre-negotiation lines every proposed line price is bounded against.
+     * Only the proposer can supply them — it holds the snapshot the round was
+     * decided on — and without them LinePriceOfferCheck has no reference at
+     * all and rejects every per-line offer as "not on this quote".
+     *
+     * @param list<QuoteLineSnapshot> $lines
+     */
+    public function withReferenceLines(array $lines): self
+    {
+        return new self(
+            orderTotalNet: $this->orderTotalNet,
+            price: new OfferedPrice(
+                discountPercent: $this->price->discountPercent,
+                linePricesNet: $this->price->linePricesNet,
+                referenceLines: $lines,
+            ),
+            delivery: $this->delivery,
+            payment: $this->payment,
+        );
+    }
 }

@@ -150,7 +150,7 @@ final readonly class ServiceQuoteHandler
         $this->claimAttempt($gateway, $message, $snapshot);
 
         try {
-            $pipeline->service($snapshot, $gateway, $settings);
+            $outcome = $pipeline->service($snapshot, $gateway, $settings);
         } catch (\Throwable $e) {
             // The process survived, so Messenger's RedeliveryStamp already
             // bounds this failure via retry. The quote-side counter exists only
@@ -171,25 +171,17 @@ final readonly class ServiceQuoteHandler
         // "The stamp describes what was consumed, not what exists afterwards".
         $after = $gateway->fetchSnapshot($message->quoteId);
 
+        // The fingerprint is stamped whatever the outcome: the ask WAS handled,
+        // even when the answer was to escalate. Whether the escalation marker
+        // is ALSO cleared is QuoteEscalator's rule — it owns the key, and a
+        // pass that escalated must keep the marker it just wrote.
         $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
             ServicingFingerprint::MARKER_KEY => ServicingFingerprint::stamp(
                 $snapshot,
                 $after->lifecycle->stateTechnicalName,
             ),
             self::ATTEMPTS_KEY => null,
-            // A quote the agent once escalated is fair game again: a fixed
-            // configuration must be able to escalate afresh if it breaks
-            // afresh, and the marker is what would otherwise silence it.
-            //
-            // #18 MUST REVISIT THIS. The rule "a successful pass means the
-            // agent handled it" is only true while every escalation happens in
-            // the preflight, before service() runs. Once the pipeline can
-            // itself escalate — which QuoteEscalator and
-            // QuoteServicingPipelineInterface both ask it to do, through this
-            // same service — the marker it writes inside service() is erased
-            // two statements later, and the quote re-escalates on every
-            // following buyer comment.
-            QuoteEscalator::MARKER_KEY => null,
+            ...QuoteEscalator::releaseFor($outcome),
         ]));
     }
 

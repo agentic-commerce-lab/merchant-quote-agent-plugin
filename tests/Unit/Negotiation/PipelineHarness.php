@@ -1,0 +1,63 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
+
+use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
+use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
+use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
+use MerchantQuoteAgentPlugin\Negotiation\OfferRound;
+use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
+use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
+use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
+use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
+use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
+use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
+
+/** A fully wired pipeline over a scripted model and a fake gateway. */
+final class PipelineHarness
+{
+    private function __construct(
+        public NegotiationPipeline $pipeline,
+        public FakeQuoteGateway $gateway,
+        public ScriptedClient $spy,
+        public RecordingLogger $logger,
+    ) {}
+
+    /** @param list<string> $replies in call order: extract, negotiate, reply */
+    public static function with(array $replies, float $reReadTotalNet = 950.0): self
+    {
+        [$client, $spy] = ScriptedClient::spy($replies);
+        $prompts = new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
+        $logger = new RecordingLogger();
+        $escalator = new QuoteEscalator();
+
+        // Two snapshots: the pre-apply read, which still carries the quote as
+        // the buyer asked about it, and the post-apply re-read the verifier
+        // measures against it. Making them differ is what gives the verifier
+        // something to check at all.
+        $gateway = new FakeQuoteGateway([
+            NegotiationFixture::snapshot(state: 'in_review'),
+            NegotiationFixture::snapshot(state: 'in_review', totalNet: $reReadTotalNet),
+        ]);
+
+        $pipeline = new NegotiationPipeline(
+            new AskInterpreter($client, $prompts),
+            new NegotiationDecider(),
+            new OfferRound(
+                new OfferProposer($client, $prompts, new OfferAuthorizer()),
+                new OfferApplier(new OfferVerifier(), $logger),
+                new ReplyComposer($client, $prompts, $logger),
+                $escalator,
+                $logger,
+            ),
+            $escalator,
+            $logger,
+        );
+
+        return new self($pipeline, $gateway, $spy, $logger);
+    }
+}

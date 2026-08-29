@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
@@ -59,9 +60,11 @@ final class ServiceQuoteHandlerTest extends TestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
-            ): void {
+            ): NegotiationOutcome {
                 \PHPUnit\Framework\Assert::assertInstanceOf(FakeQuoteGateway::class, $gateway);
                 $this->writesSeenBeforeMe = \count($gateway->customFieldWrites);
+
+                return NegotiationOutcome::Offered;
             }
         };
 
@@ -167,7 +170,7 @@ final class ServiceQuoteHandlerTest extends TestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
-            ): void {
+            ): NegotiationOutcome {
                 throw new \RuntimeException('LLM provider unavailable.');
             }
         };

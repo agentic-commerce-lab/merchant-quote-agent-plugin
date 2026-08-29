@@ -16,8 +16,12 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  */
 final class QuoteAutoReplyPricer
 {
-    public function price(QuoteSnapshot $effective, float $discountPercent, int $validityDays): QuoteAutoReplyDetails
-    {
+    public function price(
+        QuoteSnapshot $effective,
+        float $discountPercent,
+        int $validityDays,
+        ?float $counteredRequestPercent = null,
+    ): QuoteAutoReplyDetails {
         $hasLineAsks = $this->hasLineAsks($effective->lines);
         $factor = 1 - ($discountPercent / 100);
 
@@ -34,6 +38,7 @@ final class QuoteAutoReplyPricer
             perLineAsks: $hasLineAsks,
             lineUnitPricesNet: $lineUnitPricesNet,
             validityDays: $validityDays,
+            counteredRequestPercent: $counteredRequestPercent,
         );
     }
 

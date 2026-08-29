@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use GuzzleHttp\Client as GuzzleClient;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteCommentWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteProductAdderInterface;
@@ -21,6 +22,17 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
+use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
+use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
+use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
+use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
+use MerchantQuoteAgentPlugin\Negotiation\OfferRound;
+use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
+use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
+use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
+use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
+use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
@@ -144,10 +156,58 @@ return static function (ContainerConfigurator $configurator): void {
         service('logger'),
     ]);
 
-    // The gateway argument is the null-returning factory registered above and
-    // the pipeline is #18's, registered nowhere yet — both ignoreOnInvalid()
-    // so an absent or unlicensed backend degrades to a log line rather than a
-    // container error. autoconfigure() picks up #[AsMessageHandler].
+    // Negotiation (issue #18). The prompts are read HERE, at container compile,
+    // and handed in as strings — src/Negotiation/ never touches the filesystem,
+    // which is what keeps it Shopware-free and path-free. services.php lives at
+    // src/Resources/config/, so three levels up is the plugin root; a missing
+    // prompt makes file_get_contents() return false, and str_replace() under
+    // strict_types then fails the container at compile, which is the right
+    // time to find out.
+    $promptDir = \dirname(__DIR__, levels: 3) . '/config/agents/';
+
+    // The `%%` is not decoration. Symfony resolves `%...%` inside a string
+    // argument as a container parameter, and the negotiate prompt says
+    // "allowed up to 10% is perfectly fine" — which the container read as a
+    // parameter name and refused to boot over. `%%` is the literal escape.
+    $prompt = static function (string $file) use ($promptDir): string {
+        $text = file_get_contents($promptDir . $file);
+        \assert(\is_string($text), description: $promptDir . $file . ' could not be read.');
+
+        return str_replace(search: '%', replace: '%%', subject: $text);
+    };
+
+    $services->set(PromptComposer::class)->args([
+        $prompt('quote-extract-agent.prompt.md'),
+        $prompt('quote-negotiate-agent.prompt.md'),
+        $prompt('quote-reply-agent.prompt.md'),
+    ]);
+
+    // Guzzle's own client, registered explicitly: nothing in the shop provides
+    // GuzzleHttp\ClientInterface, and ChatCompletionClient types against it
+    // rather than PSR-18 because that is the contract Guzzle's exceptions ride.
+    $services->set(GuzzleClient::class);
+    $services->set(ChatCompletionClient::class)->args([service(GuzzleClient::class), service('logger')]);
+
+    // The policy deciders take only defaulted collaborators, so autowiring
+    // leaves them at their defaults — no argument list to keep in sync.
+    $services->set(NegotiationDecider::class);
+    $services->set(OfferAuthorizer::class);
+    $services->set(OfferVerifier::class);
+
+    $services->set(AskInterpreter::class);
+    $services->set(OfferProposer::class);
+    $services->set(OfferApplier::class);
+    $services->set(ReplyComposer::class);
+    $services->set(OfferRound::class);
+    $services->set(NegotiationPipeline::class);
+
+    // The one line that turns the agent on.
+    $services->alias(QuoteServicingPipelineInterface::class, NegotiationPipeline::class);
+
+    // The gateway argument is the null-returning factory registered above; the
+    // pipeline is the alias just above it. Both ignoreOnInvalid() so an absent
+    // or unlicensed backend degrades to a log line rather than a container
+    // error. autoconfigure() picks up #[AsMessageHandler].
     $services->set(ServiceQuoteHandler::class)->args([
         service(QuoteServicingLock::class),
         service('logger'),

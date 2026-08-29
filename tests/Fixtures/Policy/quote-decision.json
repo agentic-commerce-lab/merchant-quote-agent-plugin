@@ -199,7 +199,7 @@
     }
   },
   {
-    "description": "no auto counter: ask above grantable max escalates even within counter window",
+    "description": "counter band: ask above grantable max but within counter ceiling auto-replies with counter at max",
     "input": {
       "snapshot": {
         "quoteId": "q1",
@@ -226,9 +226,17 @@
       "interpretation": null
     },
     "expected": {
-      "kind": "escalate",
-      "reason": "discount_limit_exceeded",
-      "requestedDiscountPercent": 12.844036697247708
+      "kind": "auto_reply",
+      "discountPercent": 10.0,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 98.1
+        }
+      ],
+      "validityDays": 14,
+      "counteredRequestPercent": 12.844036697247708
     }
   },
   {

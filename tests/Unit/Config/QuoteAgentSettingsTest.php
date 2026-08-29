@@ -16,7 +16,7 @@ final class QuoteAgentSettingsTest extends TestCase
     public function testSettingsCarryThePolicyAndTheModelAccess(): void
     {
         $policy = new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0));
-        $llm = new ModelAccess('sk-test', 'https://api.openai.com/v1');
+        $llm = new ModelAccess('sk-test', 'https://api.openai.com/v1', 'gpt-4o-mini');
 
         $settings = new QuoteAgentSettings($policy, rulesOnly: false, llm: $llm, strategyPrompt: 'concede slowly');
 

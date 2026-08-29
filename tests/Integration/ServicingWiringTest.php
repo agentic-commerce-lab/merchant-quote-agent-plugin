@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use Shopware\Core\Framework\MessageQueue\AsyncMessageInterface;
@@ -54,6 +56,23 @@ final class ServicingWiringTest extends IntegrationTestCase
         $locks = static::getContainer()->get(QuoteServicingLock::class);
         self::assertInstanceOf(QuoteServicingLock::class, $locks);
         self::assertTrue($locks->for('wiring-probe')->acquire(), 'The wired lock factory cannot acquire.');
+    }
+
+    /**
+     * The alias that turns the agent on (#18). Worth its own assertion because
+     * the handler takes its pipeline with ignoreOnInvalid(): drop the alias and
+     * the handler still resolves, with a null pipeline, and every claimed quote
+     * becomes a log line — which testTheHandlerAndLockResolve cannot see.
+     */
+    public function testTheNegotiationPipelineIsTheRegisteredServicingPipeline(): void
+    {
+        $pipeline = static::getContainer()->get(QuoteServicingPipelineInterface::class);
+
+        self::assertInstanceOf(
+            NegotiationPipeline::class,
+            $pipeline,
+            'Nothing implements the servicing pipeline, so the agent never negotiates.',
+        );
     }
 
     /**

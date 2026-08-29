@@ -14,4 +14,9 @@ enum QuoteEscalationReason: string
     // Issue #5: the agent is enabled but cannot run — no API key, or config
     // that fails its own constraints.
     case NotConfigured = 'not_configured';
+    // Issue #18. The model could not be reached or answered unusably; the
+    // model itself declined; or the database disagreed with what we applied.
+    case ModelUnavailable = 'model_unavailable';
+    case ProposalRejected = 'proposal_rejected';
+    case VerificationFailed = 'verification_failed';
 }

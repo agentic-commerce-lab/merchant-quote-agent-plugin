@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
@@ -44,6 +45,7 @@ final class ServicingReentrancyTest extends IntegrationTestCase
         self::assertInstanceOf(SystemConfigService::class, $config);
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'enabled', true);
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmApiKey', 'sk-integration');
+        $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmModel', 'gpt-4o-mini');
     }
 
     public function testASecondDeliveryDuringAPassHandsOffOnlyOnce(): void
@@ -71,12 +73,12 @@ final class ServicingReentrancyTest extends IntegrationTestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
-            ): void {
+            ): NegotiationOutcome {
                 ++$this->passes;
                 $gateway->addComment($snapshot->identity->quoteId, 'ServicingReentrancyTest agent reply');
 
                 if ($this->replay === null || $this->handler === null) {
-                    return;
+                    return NegotiationOutcome::Offered;
                 }
 
                 // Re-entrant delivery, lock still held by the outer pass.
@@ -85,6 +87,8 @@ final class ServicingReentrancyTest extends IntegrationTestCase
                 } catch (\Throwable) {
                     $this->replayThrew = true;
                 }
+
+                return NegotiationOutcome::Offered;
             }
         };
 
@@ -117,9 +121,11 @@ final class ServicingReentrancyTest extends IntegrationTestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
-            ): void {
+            ): NegotiationOutcome {
                 ++$this->passes;
                 $gateway->addComment($snapshot->identity->quoteId, 'ServicingReentrancyTest agent reply');
+
+                return NegotiationOutcome::Offered;
             }
         };
 
@@ -174,7 +180,7 @@ final class ServicingReentrancyTest extends IntegrationTestCase
                 QuoteSnapshot $snapshot,
                 QuoteGatewayInterface $gateway,
                 QuoteAgentSettings $settings,
-            ): void {
+            ): NegotiationOutcome {
                 ++$this->passes;
 
                 // A BUYER comment arriving mid-pass. Written through the
@@ -190,6 +196,8 @@ final class ServicingReentrancyTest extends IntegrationTestCase
                 }
 
                 $gateway->addComment($snapshot->identity->quoteId, 'agent reply');
+
+                return NegotiationOutcome::Offered;
             }
         };
 
