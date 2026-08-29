@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use GuzzleHttp\Client as GuzzleClient;
+use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteCommentWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteProductAdderInterface;
@@ -62,6 +63,14 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(QuoteCapabilityProfileContributor::class)->autoconfigure(false)->tag('ucp_sdk.profile_contributor', [
         'priority' => -256,
     ]);
+
+    // The audit trail (issue #19). Registered unconditionally — a decision
+    // record is written by the plugin's own servicing pass, not by the
+    // commercial bridge, so it exists whether or not SwagCommercial is
+    // installed. Autoconfiguration reads the class's own #[Entity] attribute
+    // and adds the `shopware.entity` tag; this set() call only has to make
+    // the class a service for that to fire.
+    $services->set(QuoteDecisionRecord::class);
 
     // Stage one of ADR 0001's two-stage gate: class existence decides whether
     // the bridge is REGISTERED at all. Shopware only registers an active
