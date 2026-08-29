@@ -121,3 +121,36 @@ off — silently. Always write `bin/console system:config:set --json <key>
 ceiling currency or a volume-tier line that does not parse makes the whole
 sales channel unusable and escalates, rather than applying the half of the
 policy that happened to be valid.
+
+## How the agent negotiates
+
+Each servicing pass runs six stages: read the quote, interpret the buyer's ask,
+classify it against the merchant's bands, propose an offer, apply and verify it,
+then reply.
+
+**The bands decide what is permitted; the model decides how much within it.**
+An ask above the counter-offer ceiling escalates to a human *before* any
+proposal is requested — so an out-of-authority ask costs one model call rather
+than three, and it escalates even when the model is unreachable. A proposal
+that comes back outside authority is rejected by the policy layer regardless of
+what the merchant's strategy prompt asked for.
+
+**Up to three model calls per pass**, each with its own prompt under
+`config/agents/`: extract (read the ask), negotiate (choose the offer), reply
+(word it). A re-trigger with nothing new since the agent's last reply makes
+none of them.
+
+**Every failure escalates.** A model that cannot be reached, a proposal outside
+authority, or a verifier that disagrees with what actually landed in the
+database all send the quote to a human. The agent never falls back to deciding
+deterministically when the model fails — that would quietly change how your
+shop negotiates.
+
+**A verification failure leaves the applied changes in place.** Rolling back is
+a write that can itself fail, and a failed rollback leaves the quote in a third
+state nobody intended. The escalation tells a human what the database actually
+says.
+
+Prices, discounts and expiry dates are written as absolute values, so a worker
+that dies mid-pass and retries produces the same quote rather than stacking a
+second discount on the first — and the buyer is never messaged twice.
