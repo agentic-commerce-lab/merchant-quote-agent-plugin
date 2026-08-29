@@ -77,6 +77,8 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         $ask = $this->interpreter->interpret($settings, $snapshot, SnapshotAdapter::conversation($snapshot));
 
         if ($ask === null) {
+            $this->round->finishStrandedReply($gateway, $snapshot);
+
             return new NegotiationPass(NegotiationOutcome::NothingToDo);
         }
 

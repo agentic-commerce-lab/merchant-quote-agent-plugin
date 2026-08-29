@@ -107,6 +107,31 @@ final readonly class OfferRound
         );
     }
 
+    /**
+     * A pass that posted its reply and then died leaves the quote in
+     * `in_review`: the retry reads the agent's own comment as the newest one,
+     * so AskInterpreter returns null and the pipeline stops before this class
+     * — and the `sent` transition never happens. The buyer holds a correct,
+     * verified offer against a quote that still says it is being reviewed.
+     *
+     * The state check alone is enough. A crash BEFORE the comment also leaves
+     * `in_review`, but then no agent comment exists, the buyer's ask is still
+     * the newest, and the retry replays the whole round instead of arriving
+     * here.
+     */
+    public function finishStrandedReply(QuoteGatewayInterface $gateway, QuoteSnapshot $snapshot): void
+    {
+        if ($snapshot->lifecycle->stateTechnicalName !== 'in_review') {
+            return;
+        }
+
+        $this->logger->info('This quote was answered but never moved to replied; finishing that transition now.', [
+            'quoteId' => $snapshot->identity->quoteId,
+        ]);
+
+        $this->reply->send($gateway, $snapshot->identity->quoteId);
+    }
+
     private function escalated(
         QuoteGatewayInterface $gateway,
         QuoteSnapshot $snapshot,

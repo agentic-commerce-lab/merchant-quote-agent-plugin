@@ -101,7 +101,13 @@ final readonly class ReplyComposer
         return [$reworded, $prompt->hash];
     }
 
-    private function send(QuoteGatewayInterface $gateway, string $quoteId): void
+    /**
+     * Public because the recovery path calls it: see
+     * OfferRound::finishStrandedReply(). Swallowing the illegal transition is
+     * the point — the comment is already with the buyer, so a state we cannot
+     * move is worth a log line and nothing more.
+     */
+    public function send(QuoteGatewayInterface $gateway, string $quoteId): void
     {
         try {
             $gateway->transition($quoteId, QuoteTransition::Sent);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
@@ -97,6 +98,36 @@ final class NegotiationPipelineTest extends IntegrationTestCase
             $afterFirst,
             \count($gateway->fetchSnapshot($quoteId)->content->comments),
             'A re-run posted a second message to the buyer.',
+        );
+    }
+
+    public function testAReplyPostedByADeadPassStillReachesReplied(): void
+    {
+        // #31, on the shop rather than against a fake: the reply is two writes,
+        // and a worker dying between them used to strand the quote in
+        // `in_review` for good — the retry reads the agent's own comment as
+        // the newest, so the interpreter returns null and nothing was left to
+        // finish the transition.
+        $gateway = static::gateway();
+        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'open');
+        self::writeBuyerComment($quoteId, 'Could you do 5% off?');
+
+        // Exactly what a dead pass leaves behind: the quote moved to in_review
+        // and the buyer answered, but never the `sent` transition after it.
+        $gateway->transition($quoteId, QuoteTransition::Process);
+        $gateway->addComment($quoteId, 'We can offer 5% off.');
+
+        $stranded = $gateway->fetchSnapshot($quoteId);
+        self::assertSame('in_review', $stranded->lifecycle->stateTechnicalName);
+
+        self::pipelineWith([])->service($stranded, $gateway, self::enabledSettings());
+
+        $after = $gateway->fetchSnapshot($quoteId);
+        self::assertSame('replied', $after->lifecycle->stateTechnicalName);
+        self::assertCount(
+            \count($stranded->content->comments),
+            $after->content->comments,
+            'Finishing the transition must not say anything further to the buyer.',
         );
     }
 
