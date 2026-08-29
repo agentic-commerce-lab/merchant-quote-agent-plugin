@@ -92,6 +92,28 @@ final class OfferApplierTest extends TestCase
         self::assertContains('updateQuote', $gateway->calls);
     }
 
+    public function testAnAlreadyClaimedRetryDoesNotReportAClaimWrite(): void
+    {
+        // claim() swallows an IllegalTransitionException on a retry that finds
+        // the quote already in_review — no transition actually happened, so
+        // the audit trail must not claim one did.
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $gateway->transitionThrows = new IllegalTransitionException('in_review', 'in_review', ['sent']);
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+        $recorder->begin(NegotiationFixture::snapshot(state: 'in_review'), NegotiationFixture::context());
+
+        (new OfferApplier(new OfferVerifier(), new NullLogger(), $recorder))->apply(
+            $gateway,
+            NegotiationFixture::snapshot(state: 'in_review'),
+            NegotiationFixture::settings(),
+            self::quoteWideOffer(),
+        );
+        $recorder->finish(null);
+
+        self::assertNotContains('claim', $writer->drafts[0]->writes);
+    }
+
     public function testItVerifiesAgainstWhatTheDatabaseSaysNotWhatWeIntended(): void
     {
         // The re-read is a SECOND snapshot, deliberately different: the

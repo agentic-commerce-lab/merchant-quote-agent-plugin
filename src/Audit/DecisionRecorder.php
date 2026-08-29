@@ -75,7 +75,7 @@ final class DecisionRecorder
         $this->draft->maxDiscountPercent = $maxDiscountPercent;
     }
 
-    public function recordProposal(string $rawResponse, ProposedAnswer $answer): void
+    public function recordProposal(?string $rawResponse, ProposedAnswer $answer): void
     {
         if ($this->draft === null) {
             return;

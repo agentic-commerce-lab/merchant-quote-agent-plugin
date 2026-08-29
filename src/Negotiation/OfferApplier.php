@@ -51,8 +51,7 @@ final readonly class OfferApplier
         $quoteId = $snapshot->identity->quoteId;
         $limits = $settings->policy->price;
 
-        $writes = ['claim'];
-        $this->claim($gateway, $quoteId);
+        $writes = $this->claim($gateway, $quoteId) ? ['claim'] : [];
 
         // Read fresh, right before the write: the state the offer is
         // actually measured against, not whatever $snapshot looked like when
@@ -84,16 +83,22 @@ final readonly class OfferApplier
      * `process` moves the quote to in_review. A retry finds it already there
      * and the machine refuses — which is the correct outcome, not a failure:
      * the transition is bookkeeping and the offer is the substance.
+     *
+     * @return bool whether the transition actually happened, for the audit trail
      */
-    private function claim(QuoteGatewayInterface $gateway, string $quoteId): void
+    private function claim(QuoteGatewayInterface $gateway, string $quoteId): bool
     {
         try {
             $gateway->transition($quoteId, QuoteTransition::Process);
+
+            return true;
         } catch (IllegalTransitionException $e) {
             $this->logger->info('The quote was already claimed; continuing with the offer.', [
                 'quoteId' => $quoteId,
                 'exception' => $e,
             ]);
+
+            return false;
         }
     }
 

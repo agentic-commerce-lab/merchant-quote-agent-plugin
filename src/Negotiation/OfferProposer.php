@@ -42,7 +42,7 @@ final readonly class OfferProposer
         $details = $decision->autoReply;
 
         if ($details === null) {
-            return $this->recorded('', ProposedAnswer::escalate(
+            return $this->recorded(null, ProposedAnswer::escalate(
                 QuoteEscalationReason::NeedsHumanReview,
                 'No priced band decision.',
                 null,
@@ -50,7 +50,7 @@ final readonly class OfferProposer
         }
 
         if ($settings->rulesOnly) {
-            return $this->recorded('', $this->authorize(
+            return $this->recorded(null, $this->authorize(
                 $settings,
                 $snapshot,
                 self::deterministicOffer($snapshot, $details),
@@ -91,8 +91,8 @@ final readonly class OfferProposer
         ));
     }
 
-    /** Records the raw model text (empty when no model was called) alongside the decision, then returns it unchanged. */
-    private function recorded(string $raw, ProposedAnswer $answer): ProposedAnswer
+    /** Records the raw model text (null when no model was called) alongside the decision, then returns it unchanged. */
+    private function recorded(?string $raw, ProposedAnswer $answer): ProposedAnswer
     {
         $this->recorder->recordProposal($raw, $answer);
 
