@@ -50,12 +50,12 @@ final class PipelineHarness
         ]);
 
         $pipeline = new NegotiationPipeline(
-            new AskInterpreter($client, $prompts),
+            new AskInterpreter($client, $prompts, $recorder),
             new NegotiationDecider(),
             new OfferRound(
-                new OfferProposer($client, $prompts, new OfferAuthorizer()),
-                new OfferApplier(new OfferVerifier(), $logger),
-                new ReplyComposer($client, $prompts, $logger),
+                new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder),
+                new OfferApplier(new OfferVerifier(), $logger, $recorder),
+                new ReplyComposer($client, $prompts, $logger, $recorder),
                 $escalator,
                 $logger,
             ),

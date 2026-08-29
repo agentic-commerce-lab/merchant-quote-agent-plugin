@@ -218,13 +218,19 @@ final class NegotiationPipelineTest extends IntegrationTestCase
         self::assertInstanceOf(DecisionRecorder::class, $recorder);
 
         $round = new OfferRound(
-            new OfferProposer($client, $prompts, $authorizer),
-            new OfferApplier($verifier, $logger),
-            new ReplyComposer($client, $prompts, $logger),
+            new OfferProposer($client, $prompts, $authorizer, $recorder),
+            new OfferApplier($verifier, $logger, $recorder),
+            new ReplyComposer($client, $prompts, $logger, $recorder),
             $escalator,
             $logger,
         );
 
-        return new NegotiationPipeline(new AskInterpreter($client, $prompts), $decider, $round, $recorder, $logger);
+        return new NegotiationPipeline(
+            new AskInterpreter($client, $prompts, $recorder),
+            $decider,
+            $round,
+            $recorder,
+            $logger,
+        );
     }
 }

@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -19,7 +21,7 @@ final class OfferApplierTest extends TestCase
 {
     private static function applier(): OfferApplier
     {
-        return new OfferApplier(new OfferVerifier(), new NullLogger());
+        return new OfferApplier(new OfferVerifier(), new NullLogger(), new DecisionRecorder(new FakeDecisionWriter()));
     }
 
     private static function quoteWideOffer(): ProposedOffer

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
@@ -25,6 +26,7 @@ final readonly class AskInterpreter
     public function __construct(
         private ChatCompletionClient $client,
         private PromptComposer $prompts,
+        private DecisionRecorder $recorder,
     ) {}
 
     /** @throws ModelUnavailable */
@@ -51,7 +53,10 @@ final readonly class AskInterpreter
             json: true,
         );
 
-        return new InterpretedAsk(ExtractResponse::toInterpretation($answer), $prompt->hash);
+        $ask = new InterpretedAsk(ExtractResponse::toInterpretation($answer), $prompt->hash);
+        $this->recorder->recordAsk($ask);
+
+        return $ask;
     }
 
     /**

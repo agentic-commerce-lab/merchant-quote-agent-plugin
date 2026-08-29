@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\Discount;
 use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
@@ -38,6 +39,7 @@ final readonly class OfferApplier
     public function __construct(
         private OfferVerifier $verifier,
         private LoggerInterface $logger,
+        private DecisionRecorder $recorder,
     ) {}
 
     public function apply(
@@ -49,6 +51,7 @@ final readonly class OfferApplier
         $quoteId = $snapshot->identity->quoteId;
         $limits = $settings->policy->price;
 
+        $writes = ['claim'];
         $this->claim($gateway, $quoteId);
 
         // Read fresh, right before the write: the state the offer is
@@ -59,8 +62,9 @@ final readonly class OfferApplier
         // revision the write below can safely assume as unchanged.
         $reference = $gateway->fetchSnapshot($quoteId);
 
-        $this->write($gateway, $quoteId, $reference->revision, $limits, $offer);
+        array_push($writes, ...$this->write($gateway, $quoteId, $reference->revision, $limits, $offer));
         $gateway->recalculate($quoteId);
+        $writes[] = 'recalculate';
 
         $after = $gateway->fetchSnapshot($quoteId);
         $violations = $this->verifier->verify(new VerifyOfferInput(
@@ -70,7 +74,10 @@ final readonly class OfferApplier
             now: new \DateTimeImmutable(),
         ));
 
-        return new AppliedOffer($violations === [], $violations, $after);
+        $applied = new AppliedOffer($violations === [], $violations, $after);
+        $this->recorder->recordApplied($applied, $writes);
+
+        return $applied;
     }
 
     /**
@@ -97,6 +104,8 @@ final readonly class OfferApplier
      * stack a second discount onto the first. Only the first write of the
      * pass carries the revision precondition; a buyer edit between our read
      * and our write must lose, loudly, exactly once.
+     *
+     * @return list<string> the write names performed, for the audit trail
      */
     private function write(
         QuoteGatewayInterface $gateway,
@@ -104,7 +113,7 @@ final readonly class OfferApplier
         QuoteRevision $expected,
         QuoteLimits $limits,
         ProposedOffer $offer,
-    ): void {
+    ): array {
         $linePrices = $offer->price->linePricesNet;
         $expiresAt = new \DateTimeImmutable(sprintf('+%d days', $limits->validityDays));
 
@@ -112,7 +121,7 @@ final readonly class OfferApplier
             $gateway->updateLineItems($quoteId, array_map(self::lineChange(...), $linePrices), $expected);
             $gateway->updateQuote($quoteId, new QuoteUpdate(expiresAt: $expiresAt));
 
-            return;
+            return ['updateLineItems', 'updateQuote'];
         }
 
         $gateway->updateQuote(
@@ -123,6 +132,8 @@ final readonly class OfferApplier
             ),
             $expected,
         );
+
+        return ['updateQuote'];
     }
 
     private static function lineChange(QuoteLinePrice $price): QuoteLineItemChange

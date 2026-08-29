@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
 use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -21,7 +23,12 @@ final class ReplyComposerTest extends TestCase
 
     private static function composer(\MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient $client): ReplyComposer
     {
-        return new ReplyComposer($client, self::prompts(), new NullLogger());
+        return new ReplyComposer(
+            $client,
+            self::prompts(),
+            new NullLogger(),
+            new DecisionRecorder(new FakeDecisionWriter()),
+        );
     }
 
     private static function after(float $totalNet = 950.0): \MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot

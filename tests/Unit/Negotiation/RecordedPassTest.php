@@ -49,6 +49,72 @@ final class RecordedPassTest extends TestCase
         self::assertIsInt($draft->durationMs);
     }
 
+    public function testAnOfferedPassRecordsEveryStageItPassedThrough(): void
+    {
+        $harness = PipelineHarness::with([
+            '{"additional_discount_percent":5}',
+            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            'We can bring this quote down by 5% to 950.00 EUR, valid until 2026-09-11.',
+        ]);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        $draft = $harness->writer->drafts[0];
+
+        self::assertNotNull($draft->interpretedAsks, 'AskInterpreter did not record.');
+        self::assertNotNull($draft->rawProposal, 'OfferProposer did not record the raw answer.');
+        self::assertTrue($draft->authorized, 'OfferProposer did not record the authorization result.');
+        self::assertTrue($draft->verified, 'OfferApplier did not record the verification result.');
+        self::assertNotNull($draft->writes, 'OfferApplier did not record what it wrote.');
+        self::assertContains('recalculate', $draft->writes);
+        self::assertSame(950.0, $draft->totalNetAfter);
+        self::assertNotNull($draft->buyerComment);
+        self::assertStringContainsString('%', $draft->buyerComment);
+    }
+
+    public function testAModelOutageAtTheNegotiateCallStillCarriesTheExtractHash(): void
+    {
+        // recordAsk() now runs before the negotiate call, so the extract hash
+        // is on the draft by the time the second call fails. The empty string
+        // reply is the mechanism ScriptedClient actually offers for a
+        // non-transient failure: ChatCompletionClient::content() throws
+        // ModelUnavailable directly on empty message content, with no retry
+        // and no GuzzleException involved (unlike an omitted queue entry,
+        // which throws OutOfBoundsException instead).
+        $harness = PipelineHarness::with([
+            '{"additional_discount_percent":5}',
+            '',
+        ]);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Escalated, $outcome);
+        self::assertCount(1, $harness->writer->drafts);
+        $draft = $harness->writer->drafts[0];
+        self::assertSame('escalated', $draft->outcome);
+        self::assertSame(
+            self::EXTRACT_HASH,
+            $draft->extractPromptHash,
+            'The extract hash recorded before the outage should survive it.',
+        );
+    }
+
     public function testAStructuralAskEscalationRecordsTheExtractHashOnly(): void
     {
         // The transposition #22 needs to depend on: the structural-ask path
