@@ -74,7 +74,9 @@ Indexes on `quote_id`, `created_at`, `outcome`, `sales_channel_id`.
 
 Every #21 readout is then a DAL aggregation over scalars with no post-processing: outcome counts group by `outcome`; average granted discount against the band is `discountPercentGranted` over `maxDiscountPercent`; p50/p95 servicing latency is `durationMs`; failure count by cause is `errorClass`.
 
-Two notes on specific columns. `durationMs` is the pass's own wall-clock and is deliberately distinct from `modelLatencyMs` — #21 asks for servicing latency, and the model calls are only part of it. `attempt` comes from the existing crash-budget counter and is what lets a reader tell one retried quote from four separate ones; without it the run's counts are inflated by every redelivery.
+Two notes on specific columns. `durationMs` is the pass's own wall-clock and is deliberately distinct from `modelLatencyMs` — #21 asks for servicing latency, and the model calls are only part of it. `attempt` comes from the existing crash-budget counter.
+
+**Correction, established during the branch review:** it does *not* let a reader tell one retried quote from four separate ones, as this spec originally claimed. `ServiceQuoteHandler` clears `ATTEMPTS_KEY` on both exits — in the catch before rethrowing, and in the success stamp — so a pass that throws is redelivered, reads a cleared counter, and records `attempt = 0` exactly like the first try. `claimAttempt()` also returns the pre-increment value, so a first pass records `0` while the quote's counter already reads `1`. The column is non-zero only after a worker died *without* throwing, which is the segfault case the counter was actually built for. Read it as the crash-budget counter at pass start, not as a delivery number.
 
 `terminalState` and `terminalAt` are reserved and never written by this work. They exist so the follow-up subscriber is a subscriber and nothing else.
 
@@ -183,7 +185,7 @@ Known consequence: **a merchant looking at the audit trail for a quote the agent
 
 The existing end-of-pass structured log event stays exactly as it is — it is the backstop when a write fails, and #22 already reads it.
 
-**A retried pass writes a second record, on purpose.** Each attempt really happened, and `attempt` is what lets a reader collapse them. #21 counts distinct quotes, not rows.
+**A retried pass writes a second record, on purpose.** Each attempt really happened. #21 counts distinct quotes, not rows — group by `quoteId`, since `attempt` cannot be used to collapse them (see the correction above).
 
 ## Security
 

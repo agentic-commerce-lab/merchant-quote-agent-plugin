@@ -51,6 +51,7 @@ class QuoteDecisionRecord extends EntityStruct
     #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
     public ?string $triggerReason = null;
 
+    /** The crash-budget counter at pass start, not a delivery number: a thrown pass that is redelivered records 0 again. */
     #[Field(type: FieldType::INT, api: ['admin-api' => true, 'store-api' => false])]
     public ?int $attempt = null;
 

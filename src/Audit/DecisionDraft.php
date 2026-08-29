@@ -34,6 +34,7 @@ final class DecisionDraft
 
     public ?string $triggerReason = null;
 
+    /** The crash-budget counter at pass start, not a delivery number: a thrown pass that is redelivered records 0 again. */
     public ?int $attempt = null;
 
     public ?string $revisionVersionId = null;
