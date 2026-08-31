@@ -79,16 +79,5 @@ Shopware.Component.register('merchant-quote-agent-list', {
                 this.isLoading = false;
             }
         },
-
-        onSortColumn(column) {
-            if (this.sortBy === column.property) {
-                this.sortDirection = this.sortDirection === 'ASC' ? 'DESC' : 'ASC';
-            } else {
-                this.sortBy = column.property;
-                this.sortDirection = 'ASC';
-            }
-
-            this.load();
-        },
     },
 });

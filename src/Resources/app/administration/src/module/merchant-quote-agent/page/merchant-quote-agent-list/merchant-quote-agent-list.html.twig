@@ -32,10 +32,10 @@
                     :show-selection="false"
                     :show-settings="false"
                     :allow-edit="false"
+                    :allow-inline-edit="false"
                     :allow-view="true"
                     :allow-delete="acl.can('merchant_quote_agent.deleter')"
                     detail-route="merchant.quote.agent.detail"
-                    @column-sort="onSortColumn"
                 />
 
                 <sw-empty-state
