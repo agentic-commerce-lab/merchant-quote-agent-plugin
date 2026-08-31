@@ -3,7 +3,7 @@ import template from './merchant-quote-agent-detail.html.twig';
 Shopware.Component.register('merchant-quote-agent-detail', {
     template,
 
-    inject: ['repositoryFactory', 'acl'],
+    inject: ['repositoryFactory'],
 
     data() {
         return {
@@ -39,23 +39,45 @@ Shopware.Component.register('merchant-quote-agent-detail', {
             }
         },
 
-        /** JSON columns rendered as readable pairs rather than a dumped blob. */
-        entries(value) {
+        /**
+         * A JSON column as readable "path -> value" pairs. Nested objects become
+         * dotted paths; nulls and empty containers are dropped rather than rendered
+         * as "null" or "[]", which is noise to a merchant reading a decision.
+         */
+        flatten(value, prefix = '') {
             if (value === null || value === undefined) {
                 return [];
             }
 
             if (Array.isArray(value)) {
-                return value.map((item, index) => ({
-                    key: String(index),
-                    value: typeof item === 'object' ? JSON.stringify(item) : String(item),
-                }));
+                return value.flatMap((item, index) => this.flatten(item, `${prefix}[${index}]`));
             }
 
-            return Object.entries(value).map(([key, item]) => ({
-                key,
-                value: typeof item === 'object' ? JSON.stringify(item) : String(item),
+            if (typeof value === 'object') {
+                return Object.entries(value).flatMap(
+                    ([key, item]) => this.flatten(item, prefix ? `${prefix}.${key}` : key),
+                );
+            }
+
+            return [{ key: prefix, value: String(value) }];
+        },
+
+        /** errorChain entries as class/message pairs; `at` (an internal file path) is dropped. */
+        errorChainEntries(value) {
+            if (!Array.isArray(value)) {
+                return [];
+            }
+
+            return value.map((item, index) => ({
+                key: String(index),
+                errorClass: this.dash(item?.class),
+                message: this.dash(item?.message),
             }));
+        },
+
+        /** The consistent fallback for a nullable field: an em dash, never a bare blank. */
+        dash(value) {
+            return value === null || value === undefined || value === '' ? '–' : value;
         },
     },
 });

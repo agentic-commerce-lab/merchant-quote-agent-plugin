@@ -12,7 +12,7 @@
             {% block merchant_quote_agent_detail_asked %}
             <sw-card :title="$tc('merchant-quote-agent.detail.asked')" :is-loading="isLoading">
                 <sw-description-list>
-                    <template v-for="entry in entries(record.interpretedAsks)" :key="entry.key">
+                    <template v-for="entry in flatten(record.interpretedAsks)" :key="entry.key">
                         <dt>{{ entry.key }}</dt>
                         <dd>{{ entry.value }}</dd>
                     </template>
@@ -39,13 +39,13 @@
                     <dt>{{ $tc('merchant-quote-agent.detail.before') }}</dt>
                     <dd>{{ record.totalNetBefore }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.after') }}</dt>
-                    <dd>{{ record.totalNetAfter }}</dd>
+                    <dd>{{ dash(record.totalNetAfter) }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.granted') }}</dt>
-                    <dd>{{ record.discountPercentGranted }}</dd>
+                    <dd>{{ dash(record.discountPercentGranted) }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.authorized') }}</dt>
-                    <dd>{{ record.authorized }}</dd>
+                    <dd>{{ dash(record.authorized) }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.verified') }}</dt>
-                    <dd>{{ record.verified }}</dd>
+                    <dd>{{ dash(record.verified) }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.writes') }}</dt>
                     <dd>{{ (record.writes || []).join(', ') || '&ndash;' }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.violations') }}</dt>
@@ -64,11 +64,13 @@
                     <dt>{{ $tc('merchant-quote-agent.detail.tokens') }}</dt>
                     <dd>{{ record.promptTokens }} / {{ record.completionTokens }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.modelLatency') }}</dt>
-                    <dd>{{ record.modelLatencyMs }}</dd>
+                    <dd>{{ dash(record.modelLatencyMs) }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.duration') }}</dt>
-                    <dd>{{ record.durationMs }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.promptHashes') }}</dt>
-                    <dd>{{ record.extractPromptHash }} / {{ record.negotiatePromptHash }} / {{ record.replyPromptHash }}</dd>
+                    <dd>{{ dash(record.durationMs) }}</dd>
+                    <template v-if="record.extractPromptHash || record.negotiatePromptHash || record.replyPromptHash">
+                        <dt>{{ $tc('merchant-quote-agent.detail.promptHashes') }}</dt>
+                        <dd>{{ dash(record.extractPromptHash) }} / {{ dash(record.negotiatePromptHash) }} / {{ dash(record.replyPromptHash) }}</dd>
+                    </template>
                 </sw-description-list>
             </sw-card>
             {% endblock %}
@@ -85,9 +87,9 @@
                 <sw-description-list v-else>
                     <dt>{{ record.errorClass }}</dt>
                     <dd>
-                        <template v-for="entry in entries(record.errorChain)" :key="entry.key">
-                            {{ entry.value }}<br>
-                        </template>
+                        <div v-for="entry in errorChainEntries(record.errorChain)" :key="entry.key">
+                            <strong>{{ entry.errorClass }}</strong>: {{ entry.message }}
+                        </div>
                     </dd>
                 </sw-description-list>
             </sw-card>
