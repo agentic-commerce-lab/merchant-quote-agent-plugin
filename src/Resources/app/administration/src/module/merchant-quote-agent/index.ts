@@ -1,5 +1,6 @@
 import { privileges } from './acl';
 import './page/merchant-quote-agent-list';
+import './page/merchant-quote-agent-detail';
 
 import deDE from './snippet/de.json';
 import enGB from './snippet/en.json';

@@ -31,6 +31,31 @@
             "valueHandled": "Value handled (net)",
             "granted": "Average discount granted",
             "grantedAgainstCap": "{granted}% against a {cap}% cap"
+        },
+        "detail": {
+            "asked": "What the buyer asked",
+            "allowed": "What policy allowed",
+            "offered": "What was offered",
+            "model": "What the model was told, and what it cost",
+            "told": "What the buyer was told",
+            "failed": "What went wrong",
+            "band": "Band",
+            "cap": "Cap",
+            "escalationReason": "Escalation reason",
+            "before": "Total before (net)",
+            "after": "Total after (net)",
+            "granted": "Granted",
+            "writes": "Writes performed",
+            "authorized": "Authorized",
+            "verified": "Verified",
+            "violations": "Verifier objections",
+            "modelName": "Model",
+            "modelHost": "Host",
+            "tokens": "Tokens (prompt / completion)",
+            "modelLatency": "Model time (excludes a failed retry)",
+            "duration": "Pass duration",
+            "promptHashes": "Prompt versions (extract / negotiate / reply)",
+            "noError": "Nothing went wrong on this pass."
         }
     }
 }
