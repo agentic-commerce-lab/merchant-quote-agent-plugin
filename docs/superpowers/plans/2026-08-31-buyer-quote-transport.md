@@ -43,12 +43,22 @@ Three refs matter: `feat/a2cn-act-carrier` (identity, gateway, DTOs, validator),
 - Create: `src/Identity/AcOAuthAccessTokenReader.php`
 - Test: `tests/Unit/Identity/AcOAuthAccessTokenReaderTest.php`
 - Test: `tests/Unit/Identity/AgentCustomerCredentialTest.php`
+- Modify: `composer.json`, `composer.lock`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `AgentCustomerCredential::fromAccessToken(string $accessToken): self` with `public readonly string $accessToken`; `OAuthAccessTokenInfo::__construct(string $salesChannelId, string $clientId, string $subject, list<string> $scopes)` plus `hasScope(string $scope): bool`; `AccessTokenSubjectReaderInterface::find(string $accessToken, string $salesChannelId): ?OAuthAccessTokenInfo`; `AcOAuthAccessTokenReader` implementing it over `Doctrine\DBAL\Connection`.
+- Produces: `AgentCustomerCredential::fromAccessToken(string $accessToken): self` and `::fromAuthorizationHeader(string $header): self` with `public readonly string $accessToken`; `OAuthAccessTokenInfo::__construct(string $salesChannelId, string $clientId, string $subject, list<string> $scopes)` plus `hasScope(string $scope): bool`; `AccessTokenSubjectReaderInterface::find(string $accessToken, string $salesChannelId): ?OAuthAccessTokenInfo`; `AcOAuthAccessTokenReader` implementing it over `Doctrine\DBAL\Connection`.
 
-- [ ] **Step 1: Write the failing test for the credential**
+- [ ] **Step 1: Add the two composer dependencies this plan needs**
+
+```bash
+composer require --no-update --no-interaction "symfony/http-kernel:^7.4" "ucp-php-sdk/symfony-bundle:>=0.0.5 <0.1.0"
+composer update --lock --no-interaction
+```
+
+`symfony/http-kernel` is for `UnauthorizedHttpException`, thrown from this task onwards; `ucp-php-sdk/symfony-bundle` is for `UcpResponseFactory`, used in Task 6. Both are already installed in the shop through Agentic Commerce, so nothing changes at runtime — declaring them is what makes `composer run quality:depcheck` pass.
+
+- [ ] **Step 2: Write the failing test for the credential**
 
 Create `tests/Unit/Identity/AgentCustomerCredentialTest.php`:
 
@@ -61,7 +71,9 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Identity;
 
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerCredential;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpKernel\Exception\UnauthorizedHttpException;
 
 #[CoversClass(AgentCustomerCredential::class)]
 final class AgentCustomerCredentialTest extends TestCase
@@ -79,15 +91,43 @@ final class AgentCustomerCredentialTest extends TestCase
 
         AgentCustomerCredential::fromAccessToken('');
     }
+
+    public function testItReadsABearerAuthorizationHeader(): void
+    {
+        $credential = AgentCustomerCredential::fromAuthorizationHeader('Bearer ucp_at_abc');
+
+        self::assertSame('ucp_at_abc', $credential->accessToken);
+    }
+
+    #[DataProvider('unusableHeaders')]
+    public function testItRefusesAnythingThatIsNotABearerToken(string $header): void
+    {
+        $this->expectException(UnauthorizedHttpException::class);
+
+        AgentCustomerCredential::fromAuthorizationHeader($header);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unusableHeaders(): iterable
+    {
+        yield 'absent' => [''];
+        yield 'basic' => ['Basic dXNlcjpwYXNz'];
+        yield 'bearer without a token' => ['Bearer '];
+        yield 'lowercase scheme' => ['bearer ucp_at_abc'];
+    }
 }
 ```
 
-- [ ] **Step 2: Run it to make sure it fails**
+The header cases live here, on a class with no dependencies, rather than on the controller: `UcpResponseFactory` and `QuoteCapability` are both `final`, so a controller unit test would have to build the whole graph to reach two lines of string handling. Task 6's kernel-level integration tests cover the controller.
+
+- [ ] **Step 3: Run it to make sure it fails**
 
 Run: `vendor/bin/phpunit --testsuite unit --filter AgentCustomerCredential`
 Expected: FAIL — `Class "MerchantQuoteAgentPlugin\Identity\AgentCustomerCredential" not found`.
 
-- [ ] **Step 3: Write the credential**
+- [ ] **Step 4: Write the credential**
 
 Create `src/Identity/AgentCustomerCredential.php`:
 
@@ -97,6 +137,8 @@ Create `src/Identity/AgentCustomerCredential.php`:
 declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Identity;
+
+use Symfony\Component\HttpKernel\Exception\UnauthorizedHttpException;
 
 /**
  * How an agent proves it may act for a customer: an OAuth access token issued
@@ -122,15 +164,39 @@ final class AgentCustomerCredential
 
         return new self($accessToken);
     }
+
+    /**
+     * Reads the credential straight off the request's Authorization header.
+     *
+     * A missing or non-Bearer header is a 401 rather than a 400: the caller
+     * has not authenticated, and `UnauthorizedHttpException` carries the
+     * `WWW-Authenticate: Bearer` challenge with it. The scheme comparison is
+     * case-sensitive on purpose — RFC 6750 spells it `Bearer`, and accepting
+     * variants only hides a broken client.
+     */
+    public static function fromAuthorizationHeader(string $header): self
+    {
+        if (!str_starts_with($header, 'Bearer ')) {
+            throw new UnauthorizedHttpException('Bearer', 'An identity-linking access token is required.');
+        }
+
+        $token = trim(substr($header, 7));
+
+        if ('' === $token) {
+            throw new UnauthorizedHttpException('Bearer', 'An identity-linking access token is required.');
+        }
+
+        return new self($token);
+    }
 }
 ```
 
-- [ ] **Step 4: Run it to make sure it passes**
+- [ ] **Step 5: Run it to make sure it passes**
 
 Run: `vendor/bin/phpunit --testsuite unit --filter AgentCustomerCredential`
-Expected: PASS (2 tests).
+Expected: PASS (7 tests — two token cases plus the five header cases).
 
-- [ ] **Step 5: Port the token info value object**
+- [ ] **Step 6: Port the token info value object**
 
 ```bash
 git -C "$FORK" show feat/a2cn-act-carrier:src/Ucp/Identity/OAuthAccessTokenInfo.php \
@@ -141,7 +207,7 @@ Then apply exactly two edits to `src/Identity/OAuthAccessTokenInfo.php`:
 1. `namespace Swag\AgenticCommerce\Ucp\Identity;` → `namespace MerchantQuoteAgentPlugin\Identity;`
 2. Delete the ` * @internal` line and the blank comment line above it (this plugin does not use `@internal`; nothing else in `src/` does).
 
-- [ ] **Step 6: Write the failing test for the reader**
+- [ ] **Step 7: Write the failing test for the reader**
 
 Create `tests/Unit/Identity/AcOAuthAccessTokenReaderTest.php`. The reader is the only class that knows Agentic Commerce's schema, so the test pins the table, the hash and the rejection rules:
 
@@ -240,12 +306,12 @@ final class AcOAuthAccessTokenReaderTest extends TestCase
 }
 ```
 
-- [ ] **Step 7: Run it to make sure it fails**
+- [ ] **Step 8: Run it to make sure it fails**
 
 Run: `vendor/bin/phpunit --testsuite unit --filter AcOAuthAccessTokenReader`
 Expected: FAIL — reader class and `AccessTokenSubjectReaderInterface` do not exist.
 
-- [ ] **Step 8: Write the port and its only implementation**
+- [ ] **Step 9: Write the port and its only implementation**
 
 Create `src/Identity/AccessTokenSubjectReaderInterface.php`:
 
@@ -365,15 +431,15 @@ final readonly class AcOAuthAccessTokenReader implements AccessTokenSubjectReade
 }
 ```
 
-- [ ] **Step 9: Run the tests to make sure they pass**
+- [ ] **Step 10: Run the tests to make sure they pass**
 
 Run: `vendor/bin/phpunit --testsuite unit --filter "AcOAuthAccessTokenReader|AgentCustomerCredential"`
 Expected: PASS (6 tests).
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add src/Identity tests/Unit/Identity
+git add composer.json composer.lock src/Identity tests/Unit/Identity
 git commit -m "feat: read the identity-linking access token behind a port of ours
 
 Issue #9. The port is what keeps the coupling to Agentic Commerce's OAuth
@@ -387,12 +453,13 @@ revocation living on the refresh row. Upstream #13 turns it into a delegate."
 
 **Files:**
 - Create: `src/Bridge/SalesChannelResolution.php`
+- Create: `src/Bridge/CustomerContextResolverInterface.php`
 - Create: `src/Bridge/SalesChannelContextResolver.php`
 - Test: `tests/Integration/SalesChannelContextResolverTest.php`
 
 **Interfaces:**
 - Consumes: nothing from Task 1.
-- Produces: `SalesChannelResolution` with `public readonly string $salesChannelId, $languageId, $currencyId, ?string $domainId`; `SalesChannelContextResolver::resolveSalesChannel(RequestContext $context): SalesChannelResolution` and `resolveForCustomer(string $customerId, RequestContext $context): SalesChannelContext` (the resolver generates the fresh context token itself — callers never pass one). Note `Ucp\Sdk\Model\RequestContext`'s first constructor parameter is `$host` — it carries no base URI, so resolution is by host.
+- Produces: `SalesChannelResolution` with `public readonly string $salesChannelId, $languageId, $currencyId, ?string $domainId`; `CustomerContextResolverInterface::resolveSalesChannel(RequestContext $context): SalesChannelResolution` and `::resolveForCustomer(string $customerId, RequestContext $context): SalesChannelContext`, implemented by `SalesChannelContextResolver` (the resolver generates the fresh context token itself — callers never pass one). Note `Ucp\Sdk\Model\RequestContext`'s first constructor parameter is `$host` — it carries no base URI, so resolution is by host.
 
 - [ ] **Step 1: Write the failing integration test**
 
@@ -532,7 +599,46 @@ final readonly class SalesChannelResolution
 }
 ```
 
-- [ ] **Step 4: Write the resolver**
+- [ ] **Step 4: Write the port**
+
+The resolver is `final readonly`, which PHPUnit cannot mock, and Task 3's authenticator has to be unit-testable without a kernel. So the two methods it needs are a port — the same shape the plugin already uses for `QuoteGatewayInterface` and `AccessTokenSubjectReaderInterface`. Create `src/Bridge/CustomerContextResolverInterface.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Bridge;
+
+use Shopware\Core\System\SalesChannel\SalesChannelContext;
+use Ucp\Sdk\Exception\ConfigurationException;
+use Ucp\Sdk\Model\RequestContext;
+
+/**
+ * Which shop a UCP request landed on, and the Shopware context of a customer
+ * acting there.
+ *
+ * A port rather than a bare class so the resource-server side can be unit
+ * tested without a booted kernel: everything behind it is Shopware
+ * infrastructure.
+ */
+interface CustomerContextResolverInterface
+{
+    /** @throws ConfigurationException no active sales channel serves the request's host */
+    public function resolveSalesChannel(RequestContext $context): SalesChannelResolution;
+
+    /**
+     * Materialises the customer's own context, so contract prices, customer
+     * group and rules apply exactly as they would if the customer acted. The
+     * caller must already have proven the authorization.
+     *
+     * @throws ConfigurationException
+     */
+    public function resolveForCustomer(string $customerId, RequestContext $context): SalesChannelContext;
+}
+```
+
+- [ ] **Step 5: Write the resolver**
 
 Create `src/Bridge/SalesChannelContextResolver.php`:
 
@@ -544,6 +650,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Bridge;
 
 use Doctrine\DBAL\Connection;
+use Override;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\SalesChannel\Context\SalesChannelContextServiceInterface;
 use Shopware\Core\System\SalesChannel\Context\SalesChannelContextServiceParameters;
@@ -568,7 +675,7 @@ use Ucp\Sdk\Model\RequestContext;
  * an agent's authority comes from its access token, so it must never need to
  * hold — or be able to reuse — a customer session.
  */
-final readonly class SalesChannelContextResolver
+final readonly class SalesChannelContextResolver implements CustomerContextResolverInterface
 {
     public function __construct(
         private Connection $connection,
@@ -576,6 +683,7 @@ final readonly class SalesChannelContextResolver
     ) {
     }
 
+    #[Override]
     public function resolveSalesChannel(RequestContext $context): SalesChannelResolution
     {
         $host = strtolower(trim($context->host));
@@ -607,11 +715,7 @@ final readonly class SalesChannelContextResolver
         );
     }
 
-    /**
-     * Materialises the customer's own context, so contract prices, customer
-     * group and rules apply exactly as they would if the customer acted. The
-     * caller must already have proven the authorization.
-     */
+    #[Override]
     public function resolveForCustomer(string $customerId, RequestContext $context): SalesChannelContext
     {
         $resolution = $this->resolveSalesChannel($context);
@@ -629,7 +733,7 @@ final readonly class SalesChannelContextResolver
 }
 ```
 
-- [ ] **Step 5: Register both services**
+- [ ] **Step 6: Register the service and its alias**
 
 In `src/Resources/config/services.php`, directly after the `QuoteContractController` block, add:
 
@@ -637,19 +741,21 @@ In `src/Resources/config/services.php`, directly after the `QuoteContractControl
     // Buyer-side sales-channel resolution. Autowired: Connection and the
     // context service are both core services.
     $services->set(SalesChannelContextResolver::class);
+    $services->alias(CustomerContextResolverInterface::class, SalesChannelContextResolver::class);
 ```
 
-and add `use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;` to the import block in alphabetical position (after `MerchantQuoteAgentPlugin\Bridge\QuoteWriters`).
+and add `use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;` plus `use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;` to the import block in alphabetical position (after `MerchantQuoteAgentPlugin\Bridge\QuoteWriters`).
 
-- [ ] **Step 6: Run the integration test to make sure it passes**
+- [ ] **Step 7: Run the integration test to make sure it passes**
 
 Run: `composer run test:integration -- --filter SalesChannelContextResolver`
 Expected: PASS (3 tests).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/Bridge/SalesChannelResolution.php src/Bridge/SalesChannelContextResolver.php \
+git add src/Bridge/SalesChannelResolution.php src/Bridge/CustomerContextResolverInterface.php \
+        src/Bridge/SalesChannelContextResolver.php \
         src/Resources/config/services.php tests/Integration/SalesChannelContextResolverTest.php
 git commit -m "feat: resolve a customer's sales-channel context from a UCP request
 
@@ -667,19 +773,10 @@ token so an agent never holds a customer session."
 - Test: `tests/Unit/Identity/AgentCustomerAuthenticatorTest.php`
 
 **Interfaces:**
-- Consumes: `AccessTokenSubjectReaderInterface::find()`, `AgentCustomerCredential::fromAccessToken()`, `OAuthAccessTokenInfo`, `SalesChannelContextResolver::{resolveSalesChannel,resolveForCustomer}`.
+- Consumes: `AccessTokenSubjectReaderInterface::find()`, `AgentCustomerCredential::fromAccessToken()`, `OAuthAccessTokenInfo`, `CustomerContextResolverInterface::{resolveSalesChannel,resolveForCustomer}` (the interface, never the final class — PHPUnit cannot mock it).
 - Produces: `AgentCustomerAuthenticator::authenticate(AgentCustomerCredential $credential, RequestContext $context, ?string $requiredScope = null): SalesChannelContext`. Throws `UnauthorizedHttpException` for a token problem, `ValidationException` when the token resolves to no customer.
 
-- [ ] **Step 1: Add the two composer dependencies this task and Task 6 need**
-
-```bash
-composer require --no-update --no-interaction "symfony/http-kernel:^7.4" "ucp-php-sdk/symfony-bundle:>=0.0.5 <0.1.0"
-composer update --lock --no-interaction
-```
-
-`symfony/http-kernel` is for `UnauthorizedHttpException` (used here); `ucp-php-sdk/symfony-bundle` is for `UcpResponseFactory` (used in Task 6). Both are already installed in the shop through Agentic Commerce, so nothing changes at runtime — this is what makes `quality:depcheck` pass.
-
-- [ ] **Step 2: Write the failing test**
+- [ ] **Step 1: Write the failing test**
 
 Create `tests/Unit/Identity/AgentCustomerAuthenticatorTest.php`:
 
@@ -690,7 +787,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Identity;
 
-use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
+use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;
 use MerchantQuoteAgentPlugin\Bridge\SalesChannelResolution;
 use MerchantQuoteAgentPlugin\Identity\AccessTokenSubjectReaderInterface;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
@@ -789,9 +886,9 @@ final class AgentCustomerAuthenticatorTest extends TestCase
         return $reader;
     }
 
-    private function resolver(): SalesChannelContextResolver&\PHPUnit\Framework\MockObject\MockObject
+    private function resolver(): CustomerContextResolverInterface&\PHPUnit\Framework\MockObject\MockObject
     {
-        $resolver = $this->createMock(SalesChannelContextResolver::class);
+        $resolver = $this->createMock(CustomerContextResolverInterface::class);
         $resolver->method('resolveSalesChannel')->willReturn(
             new SalesChannelResolution(self::SALES_CHANNEL_ID, 'l', 'c', 'd'),
         );
@@ -816,12 +913,12 @@ final class AgentCustomerAuthenticatorTest extends TestCase
 }
 ```
 
-- [ ] **Step 3: Run it to make sure it fails**
+- [ ] **Step 2: Run it to make sure it fails**
 
 Run: `vendor/bin/phpunit --testsuite unit --filter AgentCustomerAuthenticator`
 Expected: FAIL — `AgentCustomerAuthenticator` not found.
 
-- [ ] **Step 4: Write the authenticator**
+- [ ] **Step 3: Write the authenticator**
 
 Create `src/Identity/AgentCustomerAuthenticator.php`:
 
@@ -832,7 +929,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Identity;
 
-use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
+use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Symfony\Component\HttpKernel\Exception\UnauthorizedHttpException;
 use Ucp\Sdk\Exception\ValidationException;
@@ -857,7 +954,7 @@ use Ucp\Sdk\Model\RequestContext;
 final readonly class AgentCustomerAuthenticator
 {
     public function __construct(
-        private SalesChannelContextResolver $contextResolver,
+        private CustomerContextResolverInterface $contextResolver,
         private AccessTokenSubjectReaderInterface $accessTokenReader,
     ) {
     }
@@ -895,7 +992,7 @@ final readonly class AgentCustomerAuthenticator
 }
 ```
 
-- [ ] **Step 5: Register the service**
+- [ ] **Step 4: Register the service**
 
 In `src/Resources/config/services.php`, after the `SalesChannelContextResolver::class` line:
 
@@ -909,15 +1006,15 @@ In `src/Resources/config/services.php`, after the `SalesChannelContextResolver::
 
 Add the three matching `use` statements for `MerchantQuoteAgentPlugin\Identity\{AccessTokenSubjectReaderInterface, AcOAuthAccessTokenReader, AgentCustomerAuthenticator}`.
 
-- [ ] **Step 6: Run the test to make sure it passes**
+- [ ] **Step 5: Run the test to make sure it passes**
 
 Run: `vendor/bin/phpunit --testsuite unit --filter AgentCustomerAuthenticator`
 Expected: PASS (5 tests).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add composer.json composer.lock src/Identity/AgentCustomerAuthenticator.php \
+git add src/Identity/AgentCustomerAuthenticator.php \
         src/Resources/config/services.php tests/Unit/Identity/AgentCustomerAuthenticatorTest.php
 git commit -m "feat: authenticate a buyer agent by its identity-linking token
 
@@ -1558,96 +1655,17 @@ descriptor keeps coming from QuoteCapabilityDescriptor."
 
 **Files:**
 - Create: `src/Ucp/Quote/Controller/UcpQuoteController.php`
-- Modify: `src/Resources/config/routes.php`
+- Modify: `src/Resources/config/routes.php` (the import, and the comment Task 6 makes false)
 - Modify: `src/Resources/config/services.php`
-- Test: `tests/Unit/Ucp/Quote/UcpQuoteControllerTest.php`
 - Test: `tests/Integration/UcpQuoteEndpointTest.php`
 
 **Interfaces:**
-- Consumes: `QuoteCapability` (six operations), `QuoteRequestValidator::{lineItems,comment}`, `AgentCustomerAuthenticator::authenticate()`, `AgentCustomerCredential::fromAccessToken()`, `UcpResponseFactory::success()`.
+- Consumes: `QuoteCapability` (six operations), `QuoteRequestValidator::{lineItems,comment}`, `AgentCustomerAuthenticator::authenticate()`, `AgentCustomerCredential::fromAuthorizationHeader()`, `UcpResponseFactory::success()`.
+
+There is no controller unit test: `UcpResponseFactory` and `QuoteCapability` are both `final`, so building the graph to reach the controller's own two decisions costs more than it proves. Those two decisions are covered where they have no dependencies — header parsing by `AgentCustomerCredentialTest` (Task 1), everything else by this task's kernel-level integration tests, which exercise the real listener chain.
 - Produces: six routes named `frontend.merchant_quote_agent.quote.{request,list,get,counter,accept,decline}` on the paths in the published OpenAPI document.
 
-- [ ] **Step 1: Write the failing unit test for credential extraction and error mapping**
-
-Create `tests/Unit/Ucp/Quote/UcpQuoteControllerTest.php`:
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace MerchantQuoteAgentPlugin\Tests\Unit\Ucp\Quote;
-
-use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
-use MerchantQuoteAgentPlugin\Ucp\Quote\Controller\UcpQuoteController;
-use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
-use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\TestCase;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpKernel\Exception\UnauthorizedHttpException;
-use Ucp\Sdk\Exception\ConfigurationException;
-use Ucp\Sdk\Model\RequestContext;
-use Ucp\Sdk\Symfony\Bridge\UcpResponseFactory;
-
-#[CoversClass(UcpQuoteController::class)]
-final class UcpQuoteControllerTest extends TestCase
-{
-    public function testARequestWithoutABearerTokenIsUnauthorized(): void
-    {
-        $request = $this->ucpRequest();
-
-        $this->expectException(UnauthorizedHttpException::class);
-
-        $this->controller()->getQuote('0191d3d0a0b071bd9c1a0d9d1a3f9f03', $request);
-    }
-
-    public function testARequestTheSdkListenerNeverSawIsAConfigurationError(): void
-    {
-        $request = new Request();
-        $request->headers->set('Authorization', 'Bearer ucp_at_abc');
-
-        $this->expectException(ConfigurationException::class);
-
-        $this->controller()->getQuote('0191d3d0a0b071bd9c1a0d9d1a3f9f03', $request);
-    }
-
-    public function testAMalformedAuthorizationHeaderIsUnauthorized(): void
-    {
-        $request = $this->ucpRequest();
-        $request->headers->set('Authorization', 'Basic dXNlcjpwYXNz');
-
-        $this->expectException(UnauthorizedHttpException::class);
-
-        $this->controller()->getQuote('0191d3d0a0b071bd9c1a0d9d1a3f9f03', $request);
-    }
-
-    private function ucpRequest(): Request
-    {
-        $request = new Request();
-        $request->attributes->set('ucp_request_context', new RequestContext('shop.example'));
-
-        return $request;
-    }
-
-    private function controller(): UcpQuoteController
-    {
-        return new UcpQuoteController(
-            $this->createMock(QuoteCapability::class),
-            $this->createMock(AgentCustomerAuthenticator::class),
-            $this->createMock(UcpResponseFactory::class),
-            new QuoteRequestValidator(),
-        );
-    }
-}
-```
-
-- [ ] **Step 2: Run it to make sure it fails**
-
-Run: `vendor/bin/phpunit --testsuite unit --filter UcpQuoteController`
-Expected: FAIL — controller class not found.
-
-- [ ] **Step 3: Port the controller**
+- [ ] **Step 1: Port the controller**
 
 ```bash
 mkdir -p src/Ucp/Quote/Controller
@@ -1658,13 +1676,13 @@ git -C "$FORK" show test/mandate-on-sdk-compat:src/Ucp/Quote/Controller/UcpQuote
 Apply exactly these edits:
 
 1. `namespace Swag\AgenticCommerce\Ucp\Quote\Controller;` → `namespace MerchantQuoteAgentPlugin\Ucp\Quote\Controller;`
-2. Imports: drop `Shopware\Core\Framework\Log\Package`, `Shopware\Storefront\Framework\Routing\StorefrontRouteScope`, `Swag\AgenticCommerce\Ucp\Capability\QuoteCapability`, `...\Capability\UcpCapabilityCatalog`, `...\Http\SymfonyRequestContextFactory`, `...\Identity\AgentCustomerCredential`, `...\Quote\QuoteRequestValidator`. Add `MerchantQuoteAgentPlugin\Identity\{AgentCustomerAuthenticator, AgentCustomerCredential}`, `MerchantQuoteAgentPlugin\Ucp\Quote\{QuoteCapability, QuoteRequestValidator}`, `Ucp\Sdk\Exception\ConfigurationException`, `Symfony\Component\HttpKernel\Exception\UnauthorizedHttpException`.
+2. Imports: drop `Shopware\Core\Framework\Log\Package`, `Shopware\Storefront\Framework\Routing\StorefrontRouteScope`, `Swag\AgenticCommerce\Ucp\Capability\QuoteCapability`, `...\Capability\UcpCapabilityCatalog`, `...\Http\SymfonyRequestContextFactory`, `...\Identity\AgentCustomerCredential`, `...\Quote\QuoteRequestValidator`. Add `MerchantQuoteAgentPlugin\Identity\{AgentCustomerAuthenticator, AgentCustomerCredential}`, `MerchantQuoteAgentPlugin\Ucp\Quote\{QuoteCapability, QuoteRequestValidator}`, `Shopware\Core\System\SalesChannel\SalesChannelContext`, `Ucp\Sdk\Exception\ConfigurationException`.
 3. Delete the `#[Package('framework')]` attribute line.
 4. Class-level route attribute becomes `#[Route(defaults: [PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => ['storefront']])]`.
 5. Delete the two contract-document routes (`schema()`, `spec()`) and the `serveFile()` helper — `QuoteContractController` already owns them.
 6. Constructor: replace `SymfonyRequestContextFactory $requestContextFactory` with `AgentCustomerAuthenticator $authenticator`; keep `QuoteCapability`, `UcpResponseFactory`, `QuoteRequestValidator`; drop `$quoteSchemaPath` and `$quoteSpecPath`.
 7. Rename every route: `frontend.ucp.quote.X` → `frontend.merchant_quote_agent.quote.X`.
-8. Replace the private `requestContext()` and `credential()` helpers, and add the authentication step, so each operation reads its context from the request attribute and its customer context from the authenticator:
+8. Replace the private `requestContext()` and `credential()` helpers, and add the authentication step, so each operation reads its context from the request attribute and its customer context from the authenticator. Header parsing itself belongs to the credential (Task 1), so this is only the plumbing:
 
 ```php
     private function requestContext(Request $request): RequestContext
@@ -1681,26 +1699,13 @@ Apply exactly these edits:
         return $context;
     }
 
-    private function credential(Request $request): AgentCustomerCredential
-    {
-        $header = (string) $request->headers->get('Authorization', '');
-
-        if (!str_starts_with($header, 'Bearer ')) {
-            throw new UnauthorizedHttpException('Bearer', 'An identity-linking access token is required.');
-        }
-
-        $token = trim(substr($header, 7));
-
-        if ($token === '') {
-            throw new UnauthorizedHttpException('Bearer', 'An identity-linking access token is required.');
-        }
-
-        return AgentCustomerCredential::fromAccessToken($token);
-    }
-
     private function customerContext(Request $request, RequestContext $context): SalesChannelContext
     {
-        return $this->authenticator->authenticate($this->credential($request), $context);
+        $credential = AgentCustomerCredential::fromAuthorizationHeader(
+            (string) $request->headers->get('Authorization', ''),
+        );
+
+        return $this->authenticator->authenticate($credential, $context);
     }
 ```
 
@@ -1721,7 +1726,7 @@ Apply exactly these edits:
 
 9. Keep `DEFAULT_LIST_LIMIT = 25` and the `$request->query->getInt()` reads as they are.
 
-- [ ] **Step 4: Register the controller and its routes**
+- [ ] **Step 2: Register the controller and its routes**
 
 In `src/Resources/config/services.php`, beside the contract controller:
 
@@ -1731,7 +1736,15 @@ In `src/Resources/config/services.php`, beside the contract controller:
     }
 ```
 
-In `src/Resources/config/routes.php`, add below the existing contract-controller import:
+In `src/Resources/config/routes.php`, first correct the file's own comment. It currently reads "The only routes this plugin owns are the two capability documents; the quote transport itself belongs to the Agentic Commerce plugin (issue #9)" — this task is issue #9, so that is now false. Replace it with:
+
+```php
+// Imported by Bundle::configureRoutes(). Two kinds of route live here: the
+// capability's contract documents, served unconditionally, and its runtime
+// endpoints, which exist only where the commercial quote backend does.
+```
+
+Then add below the existing contract-controller import:
 
 ```php
     // The runtime endpoints only exist where the commercial backend does,
@@ -1744,12 +1757,7 @@ In `src/Resources/config/routes.php`, add below the existing contract-controller
 
 with `use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;` at the top of that file.
 
-- [ ] **Step 5: Run the unit test to make sure it passes**
-
-Run: `vendor/bin/phpunit --testsuite unit --filter UcpQuoteController`
-Expected: PASS (3 tests).
-
-- [ ] **Step 6: Write the failing integration test over the real kernel**
+- [ ] **Step 3: Write the failing integration test over the real kernel**
 
 This is the test that proves what issue #9 inherited from #1: the SDK, not our code, rejects a request without `UCP-Agent`. Create `tests/Integration/UcpQuoteEndpointTest.php`:
 
@@ -1891,14 +1899,14 @@ Add the one missing fixture helper to `tests/Integration/QuoteFixture.php`:
     }
 ```
 
-- [ ] **Step 7: Run it and fix what it finds**
+- [ ] **Step 4: Run it and fix what it finds**
 
 Run: `composer run test:integration -- --filter UcpQuoteEndpoint`
 Expected: PASS (4 tests). Two failures are worth expecting and diagnosing rather than working around:
 - A 404 instead of 400/401 means the routes were not imported — check the `CommercialAvailability` gate in `routes.php` and run `debug:router | grep merchant_quote_agent`.
 - A 500 mentioning "No UCP request context" means the route sits outside the `/ucp/` prefix the SDK listener matches.
 
-- [ ] **Step 8: Verify the routes in the shop**
+- [ ] **Step 5: Verify the routes in the shop**
 
 ```bash
 docker exec -u www-data -w /var/www/html merchant-quote-shop php bin/console cache:clear -n
@@ -1908,11 +1916,11 @@ docker exec -u www-data -w /var/www/html merchant-quote-shop php bin/console deb
 
 Expected: eight rows — the six new endpoints plus the two contract documents.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/Ucp/Quote/Controller/UcpQuoteController.php src/Resources/config/routes.php \
-        src/Resources/config/services.php tests/Unit/Ucp/Quote/UcpQuoteControllerTest.php \
+        src/Resources/config/services.php \
         tests/Integration/UcpQuoteEndpointTest.php tests/Integration/QuoteFixture.php
 git commit -m "feat: serve the six buyer-facing quote endpoints
 
