@@ -49,14 +49,16 @@ Three refs matter: `feat/a2cn-act-carrier` (identity, gateway, DTOs, validator),
 - Consumes: nothing.
 - Produces: `AgentCustomerCredential::fromAccessToken(string $accessToken): self` and `::fromAuthorizationHeader(string $header): self` with `public readonly string $accessToken`; `OAuthAccessTokenInfo::__construct(string $salesChannelId, string $clientId, string $subject, list<string> $scopes)` plus `hasScope(string $scope): bool`; `AccessTokenSubjectReaderInterface::find(string $accessToken, string $salesChannelId): ?OAuthAccessTokenInfo`; `AcOAuthAccessTokenReader` implementing it over `Doctrine\DBAL\Connection`.
 
-- [ ] **Step 1: Add the two composer dependencies this plan needs**
+- [ ] **Step 1: Add the composer dependency this task needs**
 
 ```bash
-composer require --no-update --no-interaction "symfony/http-kernel:^7.4" "ucp-php-sdk/symfony-bundle:>=0.0.5 <0.1.0"
+composer require --no-update --no-interaction "symfony/http-kernel:^7.4"
 composer update --lock --no-interaction
 ```
 
-`symfony/http-kernel` is for `UnauthorizedHttpException`, thrown from this task onwards; `ucp-php-sdk/symfony-bundle` is for `UcpResponseFactory`, used in Task 6. Both are already installed in the shop through Agentic Commerce, so nothing changes at runtime — declaring them is what makes `composer run quality:depcheck` pass.
+`symfony/http-kernel` is for `UnauthorizedHttpException`, thrown from this task onwards. It is already installed in the shop through Shopware itself, so nothing changes at runtime — declaring it is what makes `composer run quality:depcheck` pass.
+
+Declare **only** this one. `ucp-php-sdk/symfony-bundle` is not used until Task 6, and a dependency nothing imports yet makes `quality:depcheck` fail as an unused package — silencing that with an `ignoreErrorsOnPackage` entry trades a real guard for a config entry somebody has to remember to delete. Task 6 declares it in the same commit that first imports it.
 
 - [ ] **Step 2: Write the failing test for the credential**
 
@@ -1655,6 +1657,7 @@ descriptor keeps coming from QuoteCapabilityDescriptor."
 
 **Files:**
 - Create: `src/Ucp/Quote/Controller/UcpQuoteController.php`
+- Modify: `composer.json`, `composer.lock`
 - Modify: `src/Resources/config/routes.php` (the import, and the comment Task 6 makes false)
 - Modify: `src/Resources/config/services.php`
 - Test: `tests/Integration/UcpQuoteEndpointTest.php`
@@ -1665,7 +1668,15 @@ descriptor keeps coming from QuoteCapabilityDescriptor."
 There is no controller unit test: `UcpResponseFactory` and `QuoteCapability` are both `final`, so building the graph to reach the controller's own two decisions costs more than it proves. Those two decisions are covered where they have no dependencies — header parsing by `AgentCustomerCredentialTest` (Task 1), everything else by this task's kernel-level integration tests, which exercise the real listener chain.
 - Produces: six routes named `frontend.merchant_quote_agent.quote.{request,list,get,counter,accept,decline}` on the paths in the published OpenAPI document.
 
-- [ ] **Step 1: Port the controller**
+- [ ] **Step 1: Add the SDK bundle dependency, installed this time**
+
+```bash
+composer require --no-interaction "ucp-php-sdk/symfony-bundle:>=0.0.5 <0.1.0"
+```
+
+Note the missing `--no-update`: `UcpResponseFactory` lives in this package, and Mago's analyzer needs it present in `vendor/` or it reports the class as unknown. The constraint matches the style of the existing `ucp-php-sdk/core` line. The shop already has this package through Agentic Commerce, so nothing changes at runtime. If the resolver wants to move unrelated packages, stop and report.
+
+- [ ] **Step 2: Port the controller**
 
 ```bash
 mkdir -p src/Ucp/Quote/Controller
@@ -1726,7 +1737,7 @@ Apply exactly these edits:
 
 9. Keep `DEFAULT_LIST_LIMIT = 25` and the `$request->query->getInt()` reads as they are.
 
-- [ ] **Step 2: Register the controller and its routes**
+- [ ] **Step 3: Register the controller and its routes**
 
 In `src/Resources/config/services.php`, beside the contract controller:
 
@@ -1757,7 +1768,7 @@ Then add below the existing contract-controller import:
 
 with `use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;` at the top of that file.
 
-- [ ] **Step 3: Write the failing integration test over the real kernel**
+- [ ] **Step 4: Write the failing integration test over the real kernel**
 
 This is the test that proves what issue #9 inherited from #1: the SDK, not our code, rejects a request without `UCP-Agent`. Create `tests/Integration/UcpQuoteEndpointTest.php`:
 
@@ -1899,14 +1910,14 @@ Add the one missing fixture helper to `tests/Integration/QuoteFixture.php`:
     }
 ```
 
-- [ ] **Step 4: Run it and fix what it finds**
+- [ ] **Step 5: Run it and fix what it finds**
 
 Run: `composer run test:integration -- --filter UcpQuoteEndpoint`
 Expected: PASS (4 tests). Two failures are worth expecting and diagnosing rather than working around:
 - A 404 instead of 400/401 means the routes were not imported — check the `CommercialAvailability` gate in `routes.php` and run `debug:router | grep merchant_quote_agent`.
 - A 500 mentioning "No UCP request context" means the route sits outside the `/ucp/` prefix the SDK listener matches.
 
-- [ ] **Step 5: Verify the routes in the shop**
+- [ ] **Step 6: Verify the routes in the shop**
 
 ```bash
 docker exec -u www-data -w /var/www/html merchant-quote-shop php bin/console cache:clear -n
@@ -1916,11 +1927,11 @@ docker exec -u www-data -w /var/www/html merchant-quote-shop php bin/console deb
 
 Expected: eight rows — the six new endpoints plus the two contract documents.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/Ucp/Quote/Controller/UcpQuoteController.php src/Resources/config/routes.php \
-        src/Resources/config/services.php \
+git add composer.json composer.lock src/Ucp/Quote/Controller/UcpQuoteController.php \
+        src/Resources/config/routes.php src/Resources/config/services.php \
         tests/Integration/UcpQuoteEndpointTest.php tests/Integration/QuoteFixture.php
 git commit -m "feat: serve the six buyer-facing quote endpoints
 
