@@ -2,7 +2,7 @@
 <sw-page class="merchant-quote-agent-detail">
     {% block merchant_quote_agent_detail_smart_bar_header %}
     <template #smart-bar-header>
-        <h2>{{ record ? record.quoteNumber : '' }}</h2>
+        <h2>{{ record ? dash(record.quoteNumber) : '' }}</h2>
     </template>
     {% endblock %}
 
@@ -24,9 +24,9 @@
             <sw-card :title="$tc('merchant-quote-agent.detail.allowed')">
                 <sw-description-list>
                     <dt>{{ $tc('merchant-quote-agent.detail.band') }}</dt>
-                    <dd>{{ record.band }}</dd>
+                    <dd>{{ dash(record.band) }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.cap') }}</dt>
-                    <dd>{{ record.maxDiscountPercent }}</dd>
+                    <dd>{{ dash(record.maxDiscountPercent) }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.escalationReason') }}</dt>
                     <dd>{{ record.escalationReason || '&ndash;' }}</dd>
                 </sw-description-list>
@@ -37,7 +37,7 @@
             <sw-card :title="$tc('merchant-quote-agent.detail.offered')">
                 <sw-description-list>
                     <dt>{{ $tc('merchant-quote-agent.detail.before') }}</dt>
-                    <dd>{{ record.totalNetBefore }}</dd>
+                    <dd>{{ dash(record.totalNetBefore) }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.after') }}</dt>
                     <dd>{{ dash(record.totalNetAfter) }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.granted') }}</dt>
@@ -62,7 +62,7 @@
                     <dt>{{ $tc('merchant-quote-agent.detail.modelHost') }}</dt>
                     <dd>{{ record.modelHost || '&ndash;' }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.tokens') }}</dt>
-                    <dd>{{ record.promptTokens }} / {{ record.completionTokens }}</dd>
+                    <dd>{{ dash(record.promptTokens) }} / {{ dash(record.completionTokens) }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.modelLatency') }}</dt>
                     <dd>{{ dash(record.modelLatencyMs) }}</dd>
                     <dt>{{ $tc('merchant-quote-agent.detail.duration') }}</dt>
