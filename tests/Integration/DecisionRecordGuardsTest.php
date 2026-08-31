@@ -1,0 +1,148 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Tests\Integration;
+
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Bucket\TermsAggregation;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\AvgAggregation;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\MaxAggregation;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Bucket\TermsResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Metric\AvgResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Metric\MaxResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Write\WriteException;
+use Shopware\Core\Framework\Uuid\Uuid;
+
+/**
+ * The guards behind the admin page: that the trail cannot be edited through
+ * the API, and that the figures the page shows are queries the database
+ * actually answers.
+ */
+final class DecisionRecordGuardsTest extends IntegrationTestCase
+{
+    public function testAnAdminScopedWriteIsRejected(): void
+    {
+        $repository = self::records();
+        $id = Uuid::randomHex();
+
+        try {
+            Context::createDefaultContext()->scope(Context::USER_SCOPE, static function (Context $userContext) use (
+                $repository,
+                $id,
+            ): void {
+                $repository->create([self::row($id, Uuid::randomHex(), 'offered', 5.0)], $userContext);
+            });
+            self::fail('The write was not rejected.');
+        } catch (WriteException $e) {
+            self::assertStringContainsString(
+                'write-protected',
+                $e->getMessage(),
+                'Rejected for a reason other than write protection: ' . $e->getMessage(),
+            );
+        }
+    }
+
+    public function testTheSameWriteSucceedsInSystemScope(): void
+    {
+        // The other half of the finding: protection must stop the admin API
+        // without stopping DecisionRecordWriter, which writes in system scope.
+        $repository = self::records();
+        $id = Uuid::randomHex();
+
+        $repository->create([self::row($id, Uuid::randomHex(), 'offered', 5.0)], Context::createDefaultContext());
+
+        self::assertNotNull($repository->search(new Criteria([$id]), Context::createDefaultContext())->first());
+    }
+
+    public function testTheValueHandledAggregationCountsEachQuoteOnce(): void
+    {
+        // A quote serviced twice has two rows. Summing totalNetBefore would
+        // report its value twice, so the page takes the max per quoteId and
+        // sums the buckets. This pins that shape.
+        $repository = self::records();
+        $quoteA = Uuid::randomHex();
+        $quoteB = Uuid::randomHex();
+
+        $repository->create([
+            self::row(Uuid::randomHex(), $quoteA, 'offered', 5.0, 1000.0),
+            self::row(Uuid::randomHex(), $quoteA, 'countered', 7.0, 1000.0),
+            self::row(Uuid::randomHex(), $quoteB, 'offered', 3.0, 500.0),
+        ], Context::createDefaultContext());
+
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsAnyFilter('quoteId', [$quoteA, $quoteB]));
+        $criteria->addAggregation(
+            new TermsAggregation('per-quote', 'quoteId', null, null, new MaxAggregation('value', 'totalNetBefore')),
+        );
+
+        $result = $repository->aggregate($criteria, Context::createDefaultContext())->get('per-quote');
+        self::assertInstanceOf(TermsResult::class, $result);
+        self::assertCount(2, $result->getBuckets(), 'One bucket per quote, not per pass.');
+
+        $total = 0.0;
+        foreach ($result->getBuckets() as $bucket) {
+            $max = $bucket->getResult();
+            self::assertInstanceOf(MaxResult::class, $max);
+            $total += (float) $max->getMax();
+        }
+
+        self::assertSame(1500.0, $total, 'Quote A counted once at 1000, not twice.');
+    }
+
+    public function testTheDiscountAverageExcludesEscalatedPasses(): void
+    {
+        // A verification-failed pass carries a real granted discount, because
+        // the write happened and the database shows the reduction. Averaging
+        // those in would mix discounts the agent stood behind with ones it
+        // applied and then escalated over.
+        $repository = self::records();
+        $quoteId = Uuid::randomHex();
+
+        $repository->create([
+            self::row(Uuid::randomHex(), $quoteId, 'offered', 5.0),
+            self::row(Uuid::randomHex(), $quoteId, 'countered', 7.0),
+            self::row(Uuid::randomHex(), $quoteId, 'escalated', 40.0),
+        ], Context::createDefaultContext());
+
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('quoteId', $quoteId));
+        $criteria->addFilter(new EqualsAnyFilter('outcome', ['offered', 'countered']));
+        $criteria->addAggregation(new AvgAggregation('granted', 'discountPercentGranted'));
+
+        $average = $repository->aggregate($criteria, Context::createDefaultContext())->get('granted');
+        self::assertInstanceOf(AvgResult::class, $average);
+        self::assertSame(6.0, $average->getAvg(), 'The 40% escalated row must not be averaged in.');
+    }
+
+    private static function records(): EntityRepository
+    {
+        $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
+        self::assertInstanceOf(EntityRepository::class, $repository);
+
+        return $repository;
+    }
+
+    /** @return array<string, mixed> */
+    private static function row(
+        string $id,
+        string $quoteId,
+        string $outcome,
+        float $granted,
+        float $totalNetBefore = 1000.0,
+    ): array {
+        return [
+            'id' => $id,
+            'quoteId' => $quoteId,
+            'outcome' => $outcome,
+            'discountPercentGranted' => $granted,
+            'maxDiscountPercent' => 10.0,
+            'totalNetBefore' => $totalNetBefore,
+            'durationMs' => 100,
+        ];
+    }
+}
