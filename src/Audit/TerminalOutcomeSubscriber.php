@@ -24,10 +24,16 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  * drives ACTION_EXPIRE through StateMachineRegistry, so it fires this event
  * like any other transition.
  *
- * NO AgentContext::STATE guard, unlike QuoteServicingTrigger. The agent drives
- * exactly two transitions — `process` in OfferApplier and `sent` in
- * ReplyComposer — and neither is terminal, so this subscriber cannot hear its
- * own writes. A guard that can never fire would be worse than this comment.
+ * NO AgentContext::STATE guard, unlike QuoteServicingTrigger. The agent
+ * currently drives only two transitions — `process` in OfferApplier and
+ * `sent` in ReplyComposer — and neither is terminal, so this subscriber
+ * cannot hear its own writes today. A guard that can never fire would be
+ * worse than this comment.
+ *
+ * That "currently" is load-bearing: QuoteTransition also defines `Decline`
+ * and `RequestChange`, with no production caller yet. `Decline` targets
+ * `declined`, one of the five terminal states below — wiring it up is the
+ * change that would require revisiting this guard's absence.
  *
  * Known gap, accepted: `admin_cancel` is reachable from `in_review`, which is
  * where the agent's own pass sits. Cancel a quote mid-pass and this stamps the
