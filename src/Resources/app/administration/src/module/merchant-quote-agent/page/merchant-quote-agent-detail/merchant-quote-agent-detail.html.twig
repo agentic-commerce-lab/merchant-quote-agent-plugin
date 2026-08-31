@@ -81,6 +81,18 @@
             </sw-card>
             {% endblock %}
 
+            {% block merchant_quote_agent_detail_outcome %}
+            <sw-card :title="$tc('merchant-quote-agent.detail.outcome')">
+                <p v-if="!record.terminalState">{{ $tc('merchant-quote-agent.detail.stillOpen') }}</p>
+                <sw-description-list v-else>
+                    <dt>{{ $tc('merchant-quote-agent.detail.terminalState') }}</dt>
+                    <dd>{{ terminalLabel(record.terminalState) }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.terminalAt') }}</dt>
+                    <dd>{{ formatDate(record.terminalAt) }}</dd>
+                </sw-description-list>
+            </sw-card>
+            {% endblock %}
+
             {% block merchant_quote_agent_detail_failed %}
             <sw-card :title="$tc('merchant-quote-agent.detail.failed')">
                 <p v-if="!record.errorClass">{{ $tc('merchant-quote-agent.detail.noError') }}</p>

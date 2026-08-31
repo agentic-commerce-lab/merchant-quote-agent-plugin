@@ -79,5 +79,25 @@ Shopware.Component.register('merchant-quote-agent-detail', {
         dash(value) {
             return value === null || value === undefined || value === '' ? '–' : value;
         },
+
+        /**
+         * The five terminal quote states in the merchant's language. $tc
+         * returns the key itself when no snippet matches, which would render as
+         * a dotted path — so a state Shopware adds later shows its technical
+         * name instead, which is wrong-looking but readable.
+         */
+        terminalLabel(state) {
+            const key = `merchant-quote-agent.detail.terminal.${state}`;
+            const label = this.$tc(key);
+
+            return label === key ? state : label;
+        },
+
+        /** A timestamp a merchant can read, not an ISO string. */
+        formatDate(value) {
+            const dateFilter = Shopware.Filter.getByName('date');
+
+            return dateFilter ? dateFilter(value) : String(value);
+        },
     },
 });

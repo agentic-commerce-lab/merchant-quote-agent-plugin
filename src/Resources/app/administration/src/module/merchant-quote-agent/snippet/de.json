@@ -55,7 +55,18 @@
             "modelLatency": "Modellzeit (ohne fehlgeschlagenen Wiederholungsversuch)",
             "duration": "Dauer des Durchlaufs",
             "promptHashes": "Prompt-Versionen (Extract / Negotiate / Reply)",
-            "noError": "Bei diesem Durchlauf ist nichts schiefgegangen."
+            "noError": "Bei diesem Durchlauf ist nichts schiefgegangen.",
+            "outcome": "Was aus dem Angebot geworden ist",
+            "stillOpen": "Noch offen – bisher kein endgültiges Ergebnis.",
+            "terminalState": "Ergebnis",
+            "terminalAt": "Wann",
+            "terminal": {
+                "accepted": "Angenommen",
+                "declined": "Abgelehnt",
+                "expired": "Abgelaufen",
+                "cancelled": "Storniert",
+                "withdrawn": "Zurückgezogen"
+            }
         }
     }
 }
