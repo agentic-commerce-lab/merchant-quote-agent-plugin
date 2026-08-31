@@ -38,10 +38,14 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  * Known gap, accepted: `admin_cancel` is reachable from `in_review`, which is
  * where the agent's own pass sits. Cancel a quote mid-pass and this stamps the
  * record from the PREVIOUS pass, then NegotiationPipeline's `finally` inserts a
- * newer record carrying no outcome. It needs a merchant cancelling inside the
- * few seconds a pass runs and costs one unlabelled row. Closing it means
- * coordinating with the pipeline's record lifecycle, which recreates the
- * two-owners problem #33 was split out of #19 to avoid.
+ * newer record carrying no outcome — one unlabelled row, and one MISLABELLED
+ * row: the previous pass's record is credited with an outcome it didn't
+ * produce, which #22's replay evaluation cannot tell from a real one. The
+ * window is not "a pass's duration" — QuoteServicingTrigger queues onto
+ * Messenger rather than servicing inline, so it runs from the trigger firing
+ * to DecisionRecorder::finish() inserting the row, queue latency included.
+ * Closing it means coordinating with the pipeline's record lifecycle, which
+ * recreates the two-owners problem #33 was split out of #19 to avoid.
  */
 final readonly class TerminalOutcomeSubscriber implements EventSubscriberInterface
 {
