@@ -25,12 +25,12 @@ use Shopware\Core\Framework\DataAbstractionLayer\Attribute\Protection;
  * Out of reach of this guard: `createdAt` and `updatedAt` are injected by
  * {@see \Shopware\Core\Framework\DataAbstractionLayer\EntityDefinition::defaultFields()}
  * rather than declared with a `#[Field]` attribute here, so the reflection
- * below never sees them. That is currently safe without a guard: the entity
- * has no Store API routes at all, and the framework's field serializers
- * reject a client-supplied `createdAt` and overwrite `updatedAt` from the
- * server clock regardless of what is submitted. If Store API routes are ever
- * added for this entity, that safety net disappears and these two fields
- * need their own check.
+ * below never sees them. That is currently safe without a guard not because
+ * their serializers filter anything on write, but because this entity has
+ * no Store API route of any kind, so no client-supplied value for either
+ * field can ever reach them. If a Store API route is ever added for this
+ * entity, that safety net disappears and these two fields need their own
+ * check.
  */
 final class RecordFieldGuardsTest extends TestCase
 {
