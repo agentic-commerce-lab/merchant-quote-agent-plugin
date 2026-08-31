@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://shopware.github.io/shopware-cli/shopware-extension-schema.json
+#
+# How `shopware-cli extension package` turns this repository into an
+# installable plugin zip. See .github/workflows/plugin-zip.yml.
+compatibility_date: '2026-08-31'
+
+# There is deliberately no `build.zip.composer` block here. shopware-cli skips
+# dependency bundling entirely when the extension's minimum Shopware version is
+# 6.5 or newer — `PrepareFolderForZipping` returns early on that check — because
+# from 6.5 the shop resolves a plugin's Composer requirements itself, through
+# the `custom/plugins/*` path repository in its root composer.json. This plugin
+# requires shopware/core ~6.7.0, so the setting would have no effect and would
+# only read as though vendor were being bundled when it is not.
+#
+# The consequence for whoever installs the zip: `cuyz/valinor` and
+# `ucp-php-sdk/core` are not inside it, and the `composer require` step in the
+# workflow's install notes is what pulls them in.
+
+build:
+  zip:
+    pack:
+      excludes:
+        # Development tooling and internal documentation. None of it is read at
+        # runtime, and the zip is something we hand to other people.
+        #
+        # NOT excluded, deliberately: config/agents/*.prompt.md are runtime
+        # files despite living outside src/ — services.php reads them when the
+        # container is built, and a zip without them fails at boot.
+        # composer.lock is kept so the versions this build was tested against
+        # are recoverable; the shop does not read it.
+        paths:
+          - .github
+          - .vscode
+          - docker
+          - docs
+          - scripts
+          - .jscpd.json
+          - AGENTS.md
+          - captainhook.json
+          - composer-dependency-analyser.php
+          - mago.toml
+          - phpcca.yaml
+          - phpunit.integration.xml.dist
+          - phpunit.xml.dist
+          - skills.lock
