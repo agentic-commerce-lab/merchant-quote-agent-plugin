@@ -80,7 +80,7 @@ final class SalesChannelContextResolverTest extends IntegrationTestCase
 
         self::assertIsArray(
             $row,
-            'no active sales-channel domain with an absolute URL whose channel has an active customer',
+            'the shop has no active sales-channel domain with an absolute URL whose channel has an active customer',
         );
 
         /** @var array{id: string, url: string, sales_channel_id: string, language_id: string, currency_id: string} $row */
