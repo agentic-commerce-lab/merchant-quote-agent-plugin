@@ -56,21 +56,26 @@ final class DecisionRecordGuardsTest extends IntegrationTestCase
 
         $repository->create([self::row($id, Uuid::randomHex(), 'offered', 5.0)], Context::createDefaultContext());
 
-        self::assertNotNull($repository->search(new Criteria([$id]), Context::createDefaultContext())->first());
+        $written = $repository->search(new Criteria([$id]), Context::createDefaultContext())->first();
+        self::assertNotNull($written);
+        self::assertSame('offered', $written->outcome, 'The row exists but did not round-trip its value.');
     }
 
     public function testTheValueHandledAggregationCountsEachQuoteOnce(): void
     {
         // A quote serviced twice has two rows. Summing totalNetBefore would
         // report its value twice, so the page takes the max per quoteId and
-        // sums the buckets. This pins that shape.
+        // sums the buckets. This pins that shape. Quote A's two rows carry
+        // DIFFERENT values (1000 and 1200) on purpose: with equal rows, max,
+        // avg and min per bucket would all agree, and the test would stay
+        // green even if MaxAggregation were swapped for a different one.
         $repository = self::records();
         $quoteA = Uuid::randomHex();
         $quoteB = Uuid::randomHex();
 
         $repository->create([
             self::row(Uuid::randomHex(), $quoteA, 'offered', 5.0, 1000.0),
-            self::row(Uuid::randomHex(), $quoteA, 'countered', 7.0, 1000.0),
+            self::row(Uuid::randomHex(), $quoteA, 'countered', 7.0, 1200.0),
             self::row(Uuid::randomHex(), $quoteB, 'offered', 3.0, 500.0),
         ], Context::createDefaultContext());
 
@@ -91,7 +96,14 @@ final class DecisionRecordGuardsTest extends IntegrationTestCase
             $total += (float) $max->getMax();
         }
 
-        self::assertSame(1500.0, $total, 'Quote A counted once at 1000, not twice.');
+        // 1700 = max(1000,1200) + 500. A plain sum would give 2700; avg per
+        // bucket then summed would give 1600; min per bucket would give 1500.
+        // Only the max-per-quote shape lands on 1700.
+        self::assertSame(
+            1700.0,
+            $total,
+            'Expected max(1000, 1200) + 500 = 1700; a different aggregation shape was used.',
+        );
     }
 
     public function testTheDiscountAverageExcludesEscalatedPasses(): void
