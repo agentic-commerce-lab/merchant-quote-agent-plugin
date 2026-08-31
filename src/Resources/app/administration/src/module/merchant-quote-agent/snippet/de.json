@@ -14,6 +14,12 @@
             "columnEscalationReason": "Eskalationsgrund",
             "emptyStateTitle": "Noch keine Entscheidungen",
             "emptyStateSubline": "Der Agent hat in diesem Zeitraum kein Angebot bearbeitet."
+        },
+        "range": {
+            "label": "Zeitraum",
+            "last7": "Letzte 7 Tage",
+            "last30": "Letzte 30 Tage",
+            "last90": "Letzte 90 Tage"
         }
     }
 }

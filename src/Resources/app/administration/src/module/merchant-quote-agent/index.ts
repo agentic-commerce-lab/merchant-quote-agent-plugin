@@ -40,6 +40,7 @@ Shopware.Module.register('merchant-quote-agent', {
 
     navigation: [
         {
+            id: 'merchant-quote-agent',
             label: 'merchant-quote-agent.general.mainMenuItemGeneral',
             color: '#57D9A3',
             path: 'merchant.quote.agent.index',

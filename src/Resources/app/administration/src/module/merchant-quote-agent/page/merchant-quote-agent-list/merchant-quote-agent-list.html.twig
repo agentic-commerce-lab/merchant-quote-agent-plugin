@@ -1,12 +1,50 @@
 {% block merchant_quote_agent_list %}
 <sw-page class="merchant-quote-agent-list">
+    {% block merchant_quote_agent_list_smart_bar_header %}
+    <template #smart-bar-header>
+        <h2>{{ $tc('merchant-quote-agent.general.mainMenuItemGeneral') }}</h2>
+    </template>
+    {% endblock %}
+
     {% block merchant_quote_agent_list_content %}
     <template #content>
         <sw-card-view>
-            <sw-empty-state
-                :title="$tc('merchant-quote-agent.list.emptyStateTitle')"
-                :subline="$tc('merchant-quote-agent.list.emptyStateSubline')"
-            />
+            {% block merchant_quote_agent_list_range %}
+            <sw-card :title="$tc('merchant-quote-agent.range.label')">
+                <sw-single-select
+                    v-model:value="rangeDays"
+                    :options="rangeOptions"
+                    :label="$tc('merchant-quote-agent.range.label')"
+                />
+            </sw-card>
+            {% endblock %}
+
+            {% block merchant_quote_agent_list_grid %}
+            <sw-card :title="$tc('merchant-quote-agent.general.mainMenuItemGeneral')">
+                <sw-entity-listing
+                    v-if="decisions"
+                    :repository="decisionRepository"
+                    :data-source="decisions"
+                    :columns="columns"
+                    :is-loading="isLoading"
+                    :sort-by="sortBy"
+                    :sort-direction="sortDirection"
+                    :show-selection="false"
+                    :show-settings="false"
+                    :allow-edit="false"
+                    :allow-view="true"
+                    :allow-delete="acl.can('merchant_quote_agent.deleter')"
+                    detail-route="merchant.quote.agent.detail"
+                    @column-sort="onSortColumn"
+                />
+
+                <sw-empty-state
+                    v-else
+                    :title="$tc('merchant-quote-agent.list.emptyStateTitle')"
+                    :subline="$tc('merchant-quote-agent.list.emptyStateSubline')"
+                />
+            </sw-card>
+            {% endblock %}
         </sw-card-view>
     </template>
     {% endblock %}
