@@ -543,10 +543,12 @@ final class SalesChannelContextResolverTest extends IntegrationTestCase
             . ' LOWER(HEX(d.language_id)) AS language_id, LOWER(HEX(d.currency_id)) AS currency_id'
             . ' FROM sales_channel_domain d'
             . ' INNER JOIN sales_channel s ON s.id = d.sales_channel_id AND s.active = 1'
+            . ' WHERE d.url LIKE "http%"'
+            . ' AND EXISTS (SELECT 1 FROM customer c WHERE c.sales_channel_id = s.id AND c.active = 1)'
             . ' ORDER BY d.url LIMIT 1',
         );
 
-        self::assertIsArray($row, 'the shop has no active sales-channel domain');
+        self::assertIsArray($row, 'the shop has no active sales-channel domain with an absolute URL whose channel has an active customer');
 
         /** @var array{id: string, url: string, sales_channel_id: string, language_id: string, currency_id: string} $row */
         return $row;
@@ -699,10 +701,9 @@ final readonly class SalesChannelContextResolver implements CustomerContextResol
             . ' LOWER(HEX(d.language_id)) AS language_id, LOWER(HEX(d.currency_id)) AS currency_id'
             . ' FROM sales_channel_domain d'
             . ' INNER JOIN sales_channel s ON s.id = d.sales_channel_id AND s.active = 1'
-            . ' WHERE LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(d.url, "://", -1), "/", 1)) IN (:hosts)'
+            . ' WHERE LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(SUBSTRING_INDEX(d.url, "://", -1), "/", 1), ":", 1)) = :host'
             . ' ORDER BY CHAR_LENGTH(d.url) ASC LIMIT 1',
-            ['hosts' => [$host, explode(':', $host)[0]]],
-            ['hosts' => \Doctrine\DBAL\ArrayParameterType::STRING],
+            ['host' => strtolower(explode(':', $host)[0])],
         );
 
         if ($row === false) {
@@ -742,7 +743,12 @@ In `src/Resources/config/services.php`, directly after the `QuoteContractControl
 ```php
     // Buyer-side sales-channel resolution. Autowired: Connection and the
     // context service are both core services.
-    $services->set(SalesChannelContextResolver::class);
+    //
+    // ->public() only because nothing injects the resolver yet: Symfony's
+    // RemoveUnusedDefinitionsPass drops an unconsumed private definition, and
+    // the integration test cannot fetch what the container removed. Task 3's
+    // authenticator becomes the consumer; the flag comes out with it.
+    $services->set(SalesChannelContextResolver::class)->public();
     $services->alias(CustomerContextResolverInterface::class, SalesChannelContextResolver::class);
 ```
 
@@ -994,7 +1000,15 @@ final readonly class AgentCustomerAuthenticator
 }
 ```
 
-- [ ] **Step 4: Register the service**
+- [ ] **Step 4: Register the service, and retire Task 2's scaffolding**
+
+Task 2 marked `SalesChannelContextResolver` `->public()` with a comment saying this task removes it: the flag existed only because nothing injected the resolver, so Symfony's `RemoveUnusedDefinitionsPass` deleted the definition and the integration test could not fetch it. Your authenticator is that consumer. Drop `->public()` and its four-line comment, keep `$services->set(SalesChannelContextResolver::class);` and the alias, and prove the graph really consumes it by re-running Task 2's test at the end of this task:
+
+```bash
+composer run test:integration -- --filter SalesChannelContextResolver
+```
+
+Expected: still 3 passing. A "removed or inlined" error means nothing injects the resolver after all — report that rather than restoring the flag.
 
 In `src/Resources/config/services.php`, after the `SalesChannelContextResolver::class` line:
 
@@ -1204,14 +1218,39 @@ Add to `tests/Integration/QuoteFixture.php` (the class already exists and alread
         $url = self::connection($container)->fetchOne(
             'SELECT d.url FROM sales_channel_domain d'
             . ' INNER JOIN sales_channel s ON s.id = d.sales_channel_id AND s.active = 1'
+            . ' WHERE d.url LIKE "http%"'
+            . ' AND EXISTS (SELECT 1 FROM customer c WHERE c.sales_channel_id = s.id AND c.active = 1)'
             . ' ORDER BY d.url LIMIT 1',
         );
 
         if (!\is_string($url)) {
-            throw new \RuntimeException('The shop has no active sales-channel domain.');
+            throw new \RuntimeException('The shop has no active sales-channel domain with an absolute URL whose channel has an active customer.');
         }
 
         return rtrim($url, '/');
+    }
+
+    /**
+     * The sales channel behind that domain. Every customer, token and quote the
+     * integration tests touch must belong to this one channel, or an
+     * access token issued for one channel is invisible to a request resolved
+     * onto another.
+     */
+    public static function storefrontSalesChannelId(ContainerInterface $container): string
+    {
+        $id = self::connection($container)->fetchOne(
+            'SELECT LOWER(HEX(d.sales_channel_id)) FROM sales_channel_domain d'
+            . ' INNER JOIN sales_channel s ON s.id = d.sales_channel_id AND s.active = 1'
+            . ' WHERE d.url LIKE "http%"'
+            . ' AND EXISTS (SELECT 1 FROM customer c WHERE c.sales_channel_id = s.id AND c.active = 1)'
+            . ' ORDER BY d.url LIMIT 1',
+        );
+
+        if (!\is_string($id)) {
+            throw new \RuntimeException('The shop has no active sales-channel domain with an absolute URL whose channel has an active customer.');
+        }
+
+        return $id;
     }
 
     /** Just the host part, which is what the SDK's RequestContext carries. */
@@ -1254,8 +1293,10 @@ Add to `tests/Integration/QuoteFixture.php` (the class already exists and alread
         $id = self::connection($container)->fetchOne(
             'SELECT LOWER(HEX(id)) FROM customer'
             . ' WHERE active = 1'
+            . ' AND sales_channel_id = UNHEX(:salesChannelId)'
             . ' AND JSON_EXTRACT(customer_specific_features, "$.QUOTE_MANAGEMENT") = TRUE'
             . ' LIMIT 1',
+            ['salesChannelId' => self::storefrontSalesChannelId($container)],
         );
 
         if (!\is_string($id)) {
@@ -1273,9 +1314,11 @@ Add to `tests/Integration/QuoteFixture.php` (the class already exists and alread
         $id = self::connection($container)->fetchOne(
             'SELECT LOWER(HEX(id)) FROM customer'
             . ' WHERE active = 1'
+            . ' AND sales_channel_id = UNHEX(:salesChannelId)'
             . ' AND (customer_specific_features IS NULL'
             . ' OR JSON_EXTRACT(customer_specific_features, "$.QUOTE_MANAGEMENT") IS NULL)'
             . ' LIMIT 1',
+            ['salesChannelId' => self::storefrontSalesChannelId($container)],
         );
 
         if (!\is_string($id)) {
@@ -1891,7 +1934,7 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
 }
 ```
 
-Add the one missing fixture helper to `tests/Integration/QuoteFixture.php`:
+Task 4 already added `storefrontSalesChannelId()`; if it is somehow absent, add it now:
 
 ```php
     public static function storefrontSalesChannelId(ContainerInterface $container): string
@@ -1899,11 +1942,13 @@ Add the one missing fixture helper to `tests/Integration/QuoteFixture.php`:
         $id = self::connection($container)->fetchOne(
             'SELECT LOWER(HEX(d.sales_channel_id)) FROM sales_channel_domain d'
             . ' INNER JOIN sales_channel s ON s.id = d.sales_channel_id AND s.active = 1'
+            . ' WHERE d.url LIKE "http%"'
+            . ' AND EXISTS (SELECT 1 FROM customer c WHERE c.sales_channel_id = s.id AND c.active = 1)'
             . ' ORDER BY d.url LIMIT 1',
         );
 
         if (!\is_string($id)) {
-            throw new \RuntimeException('The shop has no active sales-channel domain.');
+            throw new \RuntimeException('The shop has no active sales-channel domain with an absolute URL whose channel has an active customer.');
         }
 
         return $id;
