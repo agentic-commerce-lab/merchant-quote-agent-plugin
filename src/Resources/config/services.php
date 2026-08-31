@@ -28,6 +28,9 @@ use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
+use MerchantQuoteAgentPlugin\Identity\AccessTokenSubjectReaderInterface;
+use MerchantQuoteAgentPlugin\Identity\AcOAuthAccessTokenReader;
+use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -82,12 +85,22 @@ return static function (ContainerConfigurator $configurator): void {
     // Buyer-side sales-channel resolution. Autowired: Connection and the
     // context service are both core services.
     //
-    // ->public() only because nothing injects the resolver yet: Symfony's
-    // RemoveUnusedDefinitionsPass drops an unconsumed private definition, and
-    // the integration test cannot fetch what the container removed. Task 3's
-    // authenticator becomes the consumer; the flag comes out with it.
+    // ->public() only because nothing CONSUMES the resolver yet. Registering a
+    // service is not consuming it: the test service locator holds weak
+    // references, so RemoveUnusedDefinitionsPass drops an unreferenced private
+    // definition and everything it alone referenced — the authenticator and this
+    // resolver disappear from the locator together, and the integration test
+    // cannot fetch what the container removed. Task 6's controller is the first
+    // real consumer (tagged controller.service_arguments); the flag comes out
+    // with it.
     $services->set(SalesChannelContextResolver::class)->public();
     $services->alias(CustomerContextResolverInterface::class, SalesChannelContextResolver::class);
+
+    // Identity: bearer token → customer context. The reader is the only class
+    // that knows Agentic Commerce's OAuth schema (issue #13 retires it).
+    $services->set(AcOAuthAccessTokenReader::class);
+    $services->alias(AccessTokenSubjectReaderInterface::class, AcOAuthAccessTokenReader::class);
+    $services->set(AgentCustomerAuthenticator::class);
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the

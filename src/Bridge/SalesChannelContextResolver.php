@@ -14,8 +14,8 @@ use Ucp\Sdk\Exception\ConfigurationException;
 use Ucp\Sdk\Model\RequestContext;
 
 /**
- * Turns "a UCP request arrived on this base URI, for this customer" into a
- * Shopware sales-channel context.
+ * Turns "a UCP request arrived on this host, for this customer" into a Shopware
+ * sales-channel context.
  *
  * The domain lookup is a direct query rather than the DAL: this runs on every
  * buyer request, the answer is one row, and the criteria/repository route costs
