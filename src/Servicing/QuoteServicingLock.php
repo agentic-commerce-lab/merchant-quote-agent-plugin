@@ -23,6 +23,15 @@ use Symfony\Component\Lock\LockInterface;
  * else in the shop is worse than a documented ceiling. `flock` (Shopware's
  * default, set in core's own framework.yaml) and `semaphore` are host-local, so
  * they give no cross-node exclusion; that gets one warning rather than silence.
+ *
+ * "Host-local" overstates what `flock` actually delivers, which is why the
+ * warning says less than that. Symfony's FlockStore keys its lock file on
+ * `sys_get_temp_dir()`, so two processes exclude each other only while they
+ * share a `/tmp` — and a web server unit under systemd `PrivateTmp=yes` does
+ * not share one with a CLI process on the same machine. Shopware's admin
+ * worker runs inside that web request; a `messenger:consume` worker does not.
+ * Measured on a shop running both: two passes claimed one quote a second
+ * apart and the buyer got two replies to one ask.
  */
 final class QuoteServicingLock
 {
@@ -61,9 +70,12 @@ final class QuoteServicingLock
                 continue;
             }
 
-            $this->logger?->warning('Quote servicing locks are host-local, so two workers on different hosts can '
-            . 'service one quote at the same time and race each other. Point LOCK_DSN at a '
-            . 'shared store before running message workers on more than one node.', ['lockDsn' => $this->lockDsn]);
+            $this->logger?->warning('Quote servicing locks are host-local at best: this store excludes two '
+            . 'processes only while they share a /tmp, which a web server under systemd '
+            . 'PrivateTmp does not do with a CLI worker — so Shopware\'s admin worker and '
+            . 'messenger:consume can service one quote at the same time and reply twice. Switch '
+            . 'the admin worker off once a real worker runs, and point LOCK_DSN at a shared '
+            . 'store before running workers on more than one node.', ['lockDsn' => $this->lockDsn]);
 
             return;
         }
