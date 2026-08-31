@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -33,7 +33,7 @@ jobs:
           tools: composer
 
       - name: Setup Mago
-        uses: nhedger/setup-mago@v1
+        uses: nhedger/setup-mago@v2
 
       - name: Setup jscpd
         run: npm install -g jscpd@5

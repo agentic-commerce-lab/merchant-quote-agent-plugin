@@ -1,0 +1,106 @@
+name: Plugin Zip
+
+# Builds an installable plugin zip on every merge to main, so a test shop can
+# be brought up to date without a local toolchain. Also runs on demand.
+#
+# Why shopware-cli rather than `zip -r`: this repository commits neither
+# `vendor/` nor a compiled administration bundle, so a plain archive installs a
+# plugin whose admin page never appears. `extension package` compiles the
+# administration assets into src/Resources/public/ without needing a booted
+# shop, and applies the excludes in .shopware-extension.yml.
+#
+# The zip carries no `vendor/`, by design rather than omission: shopware-cli
+# skips dependency bundling for Shopware >= 6.5, because the shop resolves a
+# plugin's Composer requirements itself through the `custom/plugins/*` path
+# repository in its root composer.json. See the install note at the end of the
+# job.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-zip-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package plugin
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+          tools: composer
+
+      # The administration build is a Vite/Node toolchain. Pinned rather than
+      # inherited from the runner image so a runner upgrade cannot silently
+      # change the compiled bundle.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Setup Shopware CLI
+        uses: shopware/shopware-cli-action@v3
+
+      # --disable-git packages the checked-out tree as it is. Without it
+      # shopware-cli copies via git, which fails on the detached HEAD a push
+      # checkout produces ("cannot find checkout tag or branch"). A fresh
+      # checkout is already exactly the committed state.
+      #
+      # The version keeps composer.json clean: it is stamped into the artifact
+      # instead, so every zip is traceable to the run that built it without
+      # anyone having to remember to bump a number.
+      - name: Package extension
+        run: |
+          shopware-cli extension package \
+            --disable-git \
+            --overwrite-version "0.0.0-main.${{ github.run_number }}" \
+            .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: MerchantQuoteAgentPlugin-${{ github.run_number }}-${{ github.sha }}
+          path: MerchantQuoteAgentPlugin.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: How to install this
+        run: |
+          {
+            echo "### Plugin zip"
+            echo
+            echo "Artifact: \`MerchantQuoteAgentPlugin-${{ github.run_number }}-${{ github.sha }}\`"
+            echo "Version stamped into composer.json: \`0.0.0-main.${{ github.run_number }}\`"
+            echo
+            echo "The administration bundle is compiled into the zip, so the Quote Agent page appears without building assets in the shop."
+            echo
+            echo "**Installing into a test shop**"
+            echo
+            echo '```bash'
+            echo "unzip MerchantQuoteAgentPlugin.zip -d /path/to/shop/custom/plugins/"
+            echo "cd /path/to/shop"
+            echo "composer require shopware/merchant-quote-agent-plugin"
+            echo "bin/console plugin:refresh"
+            echo "bin/console plugin:install --activate MerchantQuoteAgentPlugin"
+            echo "bin/console cache:clear"
+            echo '```'
+            echo
+            echo "The \`composer require\` step is what pulls the plugin's own dependencies — \`cuyz/valinor\` and \`ucp-php-sdk/core\` — which are deliberately not bundled. Shopware resolves them through the \`custom/plugins/*\` path repository in the shop's root composer.json."
+            echo
+            echo "**Prerequisites:** SwagCommercial with the QuoteManagement licence active, and SwagAgenticCommerce. Both are hard requirements of the plugin, not of the zip."
+          } >> "$GITHUB_STEP_SUMMARY"
