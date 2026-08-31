@@ -745,10 +745,14 @@ In `src/Resources/config/services.php`, directly after the `QuoteContractControl
     // Buyer-side sales-channel resolution. Autowired: Connection and the
     // context service are both core services.
     //
-    // ->public() only because nothing injects the resolver yet: Symfony's
-    // RemoveUnusedDefinitionsPass drops an unconsumed private definition, and
-    // the integration test cannot fetch what the container removed. Task 3's
-    // authenticator becomes the consumer; the flag comes out with it.
+    // ->public() only because nothing CONSUMES the resolver yet. Registering a
+    // service is not consuming it: the test service locator holds weak
+    // references, so RemoveUnusedDefinitionsPass drops an unreferenced private
+    // definition and everything it alone referenced — the authenticator and this
+    // resolver disappear from the locator together, and the integration test
+    // cannot fetch what the container removed. Task 6's controller is the first
+    // real consumer (tagged controller.service_arguments); the flag comes out
+    // with it.
     $services->set(SalesChannelContextResolver::class)->public();
     $services->alias(CustomerContextResolverInterface::class, SalesChannelContextResolver::class);
 ```
@@ -1001,7 +1005,7 @@ final readonly class AgentCustomerAuthenticator
 }
 ```
 
-- [ ] **Step 4: Register the service, retire Task 2's scaffolding, and fix one stale sentence**
+- [ ] **Step 4: Register the service and fix one stale sentence**
 
 `src/Bridge/SalesChannelContextResolver.php`'s class comment opens with `Turns "a UCP request arrived on this base URI, for this customer"`, which contradicts the paragraph below it: resolution is by host, and the SDK's `RequestContext` carries no base URI at all. Replace that first sentence with:
 
@@ -1010,15 +1014,9 @@ final readonly class AgentCustomerAuthenticator
  * sales-channel context.
 ```
 
-Change nothing else in that file.
+Change nothing else in that file. In particular, leave Task 2's `->public()` flag on `SalesChannelContextResolver` alone: registering your authenticator does not consume it. The test service locator holds weak references, so an unreferenced private definition and everything it alone referenced are dropped together — with no controller yet, the authenticator goes and takes the resolver with it. Task 6 owns removing that flag, because its controller is the first real consumer.
 
-Task 2 marked `SalesChannelContextResolver` `->public()` with a comment saying this task removes it: the flag existed only because nothing injected the resolver, so Symfony's `RemoveUnusedDefinitionsPass` deleted the definition and the integration test could not fetch it. Your authenticator is that consumer. Drop `->public()` and its four-line comment, keep `$services->set(SalesChannelContextResolver::class);` and the alias, and prove the graph really consumes it by re-running Task 2's test at the end of this task:
-
-```bash
-composer run test:integration -- --filter SalesChannelContextResolver
-```
-
-Expected: still 3 passing. A "removed or inlined" error means nothing injects the resolver after all — report that rather than restoring the flag.
+At the end of this task, confirm you did not disturb the container: `composer run test:integration -- --filter SalesChannelContextResolver` must still be 3/3.
 
 In `src/Resources/config/services.php`, after the `SalesChannelContextResolver::class` line:
 
@@ -1790,7 +1788,15 @@ Apply exactly these edits:
 
 9. Keep `DEFAULT_LIST_LIMIT = 25` and the `$request->query->getInt()` reads as they are.
 
-- [ ] **Step 3: Register the controller and its routes**
+- [ ] **Step 3: Register the controller, its routes, and retire the resolver's `->public()` flag**
+
+Your controller is the first real consumer of the identity graph: tagged `controller.service_arguments`, it is genuinely referenced, so it keeps `AgentCustomerAuthenticator` alive, which keeps `SalesChannelContextResolver` and the `AccessTokenSubjectReaderInterface` alias alive with it. That is what Task 2's `->public()` flag was standing in for. Delete the flag and its eight-line comment, keeping `$services->set(SalesChannelContextResolver::class);` and the alias, then prove the chain holds by re-running Task 2's test after wiring:
+
+```bash
+composer run test:integration -- --filter SalesChannelContextResolver
+```
+
+Expected: still 3/3. A "removed or inlined" error means the controller is not registered the way you think — fix the registration rather than restoring the flag, and report it if you cannot.
 
 In `src/Resources/config/services.php`, beside the contract controller:
 
