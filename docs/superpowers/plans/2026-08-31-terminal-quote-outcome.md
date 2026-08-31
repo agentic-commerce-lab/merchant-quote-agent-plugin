@@ -510,6 +510,23 @@ final class TerminalOutcomeSubscriberTest extends TestCase
 Run: `vendor/bin/phpunit --filter TerminalOutcomeSubscriberTest`
 Expected: **Error** — `Class "MerchantQuoteAgentPlugin\Audit\TerminalOutcomeSubscriber" not found`.
 
+> **Correction, added during the final whole-branch review (2026-08-31):**
+> `testTheLeaveSideRecordsNothing` above, as written in this plan, does not
+> exercise the enter-side guard. It calls
+> `QuoteTriggerEventFixture::stateEvent('accepted', ...LEAVE)`, which leaves
+> `$fromState` at its `'draft'` default. On the leave side,
+> `StateMachineStateChangeEvent` takes its `stateName` from `previousState`
+> (not `nextState`), so the event under test reports `'draft'` — a
+> non-terminal state that the `TERMINAL_STATES` check would reject on its own,
+> transition side aside. Deleting the subscriber's transition-side check
+> entirely still leaves this test passing, because `'draft'` never reaches the
+> point where that would matter. The committed version instead passes
+> `fromState: 'cancelled'` (with `nextState: 'open'`), which makes the LEAVE
+> side report `'cancelled'` — a terminal state — so the test actually fails if
+> the transition-side check is removed, which is the guard it claims to prove.
+> This plan's test code is left as originally written, since the plan is the
+> execution record; do not copy this pattern without the explicit `fromState`.
+
 - [ ] **Step 4: Write the subscriber**
 
 Create `src/Audit/TerminalOutcomeSubscriber.php`:

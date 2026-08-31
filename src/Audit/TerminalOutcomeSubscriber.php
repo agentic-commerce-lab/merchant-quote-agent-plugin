@@ -82,16 +82,28 @@ final readonly class TerminalOutcomeSubscriber implements EventSubscriberInterfa
 
         $quoteId = $event->getTransition()->getEntityId();
 
+        // A merchant clicking accept must never see a 500 because an audit
+        // write failed, and the expiry task must not abort its batch, so the
+        // writer call is caught and logged. The outer try/catch is the
+        // backstop for a logger that itself misbehaves: a failing DAL write is
+        // exactly the situation most likely to come with a failing log
+        // handler, and a throw escaping this method would fail the merchant's
+        // transition just the same as a throw from the writer would.
         try {
-            $this->writer->recordTerminalOutcome($quoteId, $event->getStateName(), new \DateTimeImmutable());
-        } catch (\Throwable $e) {
-            // A merchant clicking accept must never see a 500 because an audit
-            // write failed, and the expiry task must not abort its batch.
-            $this->logger->error('The terminal quote outcome could not be recorded.', [
-                'quoteId' => $quoteId,
-                'terminalState' => $event->getStateName(),
-                'exception' => $e,
-            ]);
+            try {
+                $this->writer->recordTerminalOutcome($quoteId, $event->getStateName(), new \DateTimeImmutable());
+            } catch (\Throwable $e) {
+                $this->logger->error('The terminal quote outcome could not be recorded.', [
+                    'quoteId' => $quoteId,
+                    'terminalState' => $event->getStateName(),
+                    'exception' => $e,
+                ]);
+            }
+        } catch (\Throwable) {
+            // @mago-expect lint:no-empty-catch-clause
+            // Deliberately empty: a logger that throws must not fail the
+            // quote's state transition, and there is nowhere left to report
+            // the failure.
         }
     }
 }

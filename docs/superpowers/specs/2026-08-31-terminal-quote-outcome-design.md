@@ -198,10 +198,19 @@ the *previous* pass, then `NegotiationPipeline`'s `finally` inserts a newer
 record carrying no outcome. The quote's outcome is then attached to the
 second-newest row.
 
-Accepted, not fixed. It needs a merchant cancelling inside the few seconds a pass
-runs, and it costs one unlabelled row. Closing it means coordinating the
-subscriber with the pipeline's record lifecycle, which recreates the two-owners
-problem #33 was split out of #19 specifically to avoid.
+Accepted, not fixed. It costs one unlabelled row — the new record, which never
+gets an outcome — **and one mislabelled row**: the previous pass's record is
+credited with an outcome that belongs to a different pass, with nothing marking
+it suspect. For #22, which scores prompt variants against outcomes, that is
+strictly worse than the unlabelled row sitting next to it: a dropped sample
+versus a poisoned one. The window this needs is not bounded by how long a pass
+takes to run. `QuoteServicingTrigger::queue()` dispatches onto a Messenger bus
+rather than servicing inline, so the window runs from the trigger firing to
+`DecisionRecorder::finish()` inserting the new row — trigger, queue latency,
+and the pass itself. Under #21's 10,000-negotiation run it is queue depth, not
+pass duration, that sets how wide this hole is. Closing it means coordinating
+the subscriber with the pipeline's record lifecycle, which recreates the
+two-owners problem #33 was split out of #19 specifically to avoid.
 
 Documented in the subscriber's docblock so the next reader does not rediscover
 it as a bug.

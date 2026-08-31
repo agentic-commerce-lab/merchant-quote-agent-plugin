@@ -58,7 +58,7 @@
             "noError": "Nothing went wrong on this pass.",
             "outcome": "What happened to the quote",
             "stillOpen": "Still in flight — no final outcome yet.",
-            "terminalState": "Outcome",
+            "terminalState": "Final state",
             "terminalAt": "When",
             "terminal": {
                 "accepted": "Accepted",

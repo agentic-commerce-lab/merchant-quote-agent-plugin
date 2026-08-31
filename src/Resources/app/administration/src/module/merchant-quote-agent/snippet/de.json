@@ -58,7 +58,7 @@
             "noError": "Bei diesem Durchlauf ist nichts schiefgegangen.",
             "outcome": "Was aus dem Angebot geworden ist",
             "stillOpen": "Noch offen – bisher kein endgültiges Ergebnis.",
-            "terminalState": "Ergebnis",
+            "terminalState": "Endzustand",
             "terminalAt": "Wann",
             "terminal": {
                 "accepted": "Angenommen",

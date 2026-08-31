@@ -95,7 +95,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
 
         /** A timestamp a merchant can read, not an ISO string. */
         formatDate(value) {
-            const dateFilter = Shopware.Filter.getByName('date');
+            const dateFilter = Shopware.Filter?.getByName?.('date');
 
             return dateFilter ? dateFilter(value) : String(value);
         },
