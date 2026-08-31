@@ -80,8 +80,10 @@ Shopware.Component.register('merchant-quote-agent-list', {
                 try {
                     await this.loadFigures();
                 } catch (error) {
-                    // A rejection here must not vanish silently: it leaves the figures
-                    // card hidden (v-if="figures") with no visible sign anything failed.
+                    // A rejection here must not leave the previous range's figures on
+                    // screen as if they were current: drop them so the card hides
+                    // (v-if="figures") instead of quietly lying.
+                    this.figures = null;
                     // eslint-disable-next-line no-console
                     console.error('merchant-quote-agent: failed to load figures', error);
                 }

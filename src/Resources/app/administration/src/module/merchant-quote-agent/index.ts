@@ -13,7 +13,7 @@ Shopware.Module.register('merchant-quote-agent', {
     title: 'merchant-quote-agent.general.mainMenuItemGeneral',
     description: 'merchant-quote-agent.general.description',
     color: '#57D9A3',
-    icon: 'regular-robot',
+    icon: 'regular-chart-bar',
     entity: 'merchant_quote_agent_decision',
 
     snippets: {
@@ -45,7 +45,7 @@ Shopware.Module.register('merchant-quote-agent', {
             label: 'merchant-quote-agent.general.mainMenuItemGeneral',
             color: '#57D9A3',
             path: 'merchant.quote.agent.index',
-            icon: 'regular-robot',
+            icon: 'regular-chart-bar',
             parent: 'sw-order',
             position: 30,
             privilege: 'merchant_quote_agent.viewer',
