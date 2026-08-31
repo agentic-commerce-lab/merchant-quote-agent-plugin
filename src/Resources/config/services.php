@@ -13,6 +13,7 @@ use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteProductAdderInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\VariantRejectingProductAdder;
+use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -23,6 +24,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteStateTransitioner;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
+use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
@@ -76,6 +78,16 @@ return static function (ContainerConfigurator $configurator): void {
         ->arg('$schemaPath', __DIR__ . '/../schema/quote.openapi.json')
         ->arg('$specPath', __DIR__ . '/../schema/quote.spec.html')
         ->tag('controller.service_arguments');
+
+    // Buyer-side sales-channel resolution. Autowired: Connection and the
+    // context service are both core services.
+    //
+    // ->public() only because nothing injects the resolver yet: Symfony's
+    // RemoveUnusedDefinitionsPass drops an unconsumed private definition, and
+    // the integration test cannot fetch what the container removed. Task 3's
+    // authenticator becomes the consumer; the flag comes out with it.
+    $services->set(SalesChannelContextResolver::class)->public();
+    $services->alias(CustomerContextResolverInterface::class, SalesChannelContextResolver::class);
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the
