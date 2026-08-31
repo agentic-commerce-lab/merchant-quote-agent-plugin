@@ -663,17 +663,18 @@ use Ucp\Sdk\Exception\ConfigurationException;
 use Ucp\Sdk\Model\RequestContext;
 
 /**
- * Turns "a UCP request arrived on this base URI, for this customer" into a
- * Shopware sales-channel context.
+ * Turns "a UCP request arrived on this host, for this customer" into a Shopware
+ * sales-channel context.
  *
  * The domain lookup is a direct query rather than the DAL: this runs on every
  * buyer request, the answer is one row, and the criteria/repository route costs
- * more than it explains. Matching is on host — with and without the port, since
- * a stored URL may carry either — and the shortest URL wins, which picks the
- * bare domain over a path-prefixed one. A shop that serves several sales
- * channels from one host under different paths needs the path compared too;
- * Agentic Commerce's own resolver does that, and this is deliberately the
- * simpler thing until a shop needs it.
+ * more than it explains. Matching is on host with any port stripped from both
+ * sides, and the shortest URL wins, which picks the bare domain over a
+ * path-prefixed one. Two ceilings follow: a shop serving different sales
+ * channels on the same host under different paths needs the path compared too,
+ * and one serving them on the same host under different ports needs the port
+ * kept. Agentic Commerce's own resolver does the path comparison; this is
+ * deliberately the simpler thing until a shop needs it.
  *
  * `resolveForCustomer()` mints a fresh context token instead of accepting one:
  * an agent's authority comes from its access token, so it must never need to
@@ -1000,7 +1001,16 @@ final readonly class AgentCustomerAuthenticator
 }
 ```
 
-- [ ] **Step 4: Register the service, and retire Task 2's scaffolding**
+- [ ] **Step 4: Register the service, retire Task 2's scaffolding, and fix one stale sentence**
+
+`src/Bridge/SalesChannelContextResolver.php`'s class comment opens with `Turns "a UCP request arrived on this base URI, for this customer"`, which contradicts the paragraph below it: resolution is by host, and the SDK's `RequestContext` carries no base URI at all. Replace that first sentence with:
+
+```
+ * Turns "a UCP request arrived on this host, for this customer" into a Shopware
+ * sales-channel context.
+```
+
+Change nothing else in that file.
 
 Task 2 marked `SalesChannelContextResolver` `->public()` with a comment saying this task removes it: the flag existed only because nothing injected the resolver, so Symfony's `RemoveUnusedDefinitionsPass` deleted the definition and the integration test could not fetch it. Your authenticator is that consumer. Drop `->public()` and its four-line comment, keep `$services->set(SalesChannelContextResolver::class);` and the alias, and prove the graph really consumes it by re-running Task 2's test at the end of this task:
 
