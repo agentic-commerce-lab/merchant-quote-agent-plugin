@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
@@ -26,6 +27,7 @@ final readonly class ReplyComposer
         private ChatCompletionClient $client,
         private PromptComposer $prompts,
         private LoggerInterface $logger,
+        private DecisionRecorder $recorder,
     ) {}
 
     /**
@@ -57,6 +59,7 @@ final readonly class ReplyComposer
         [$text, $hash] = $this->reword($settings, $template, $reductionPercent, $totalNet, $validUntil);
 
         $gateway->addComment($after->identity->quoteId, $text);
+        $this->recorder->recordReply($text, $hash);
         $this->send($gateway, $after->identity->quoteId);
 
         return $hash;

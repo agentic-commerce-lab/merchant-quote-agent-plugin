@@ -34,7 +34,12 @@ final class NonPriceAskGateTest extends TestCase
             NegotiationFixture::buyerComment('5% off, and can we pay on delivery?', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertSame(1, $harness->spy->calls, 'A non-price ask must not reach the negotiate call.');
@@ -57,7 +62,12 @@ final class NonPriceAskGateTest extends TestCase
             NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Offered, $outcome);
     }

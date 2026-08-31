@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -19,7 +21,7 @@ final class OfferApplierTest extends TestCase
 {
     private static function applier(): OfferApplier
     {
-        return new OfferApplier(new OfferVerifier(), new NullLogger());
+        return new OfferApplier(new OfferVerifier(), new NullLogger(), new DecisionRecorder(new FakeDecisionWriter()));
     }
 
     private static function quoteWideOffer(): ProposedOffer
@@ -88,6 +90,28 @@ final class OfferApplierTest extends TestCase
 
         self::assertTrue($applied->verified, 'An illegal transition must not fail the pass.');
         self::assertContains('updateQuote', $gateway->calls);
+    }
+
+    public function testAnAlreadyClaimedRetryDoesNotReportAClaimWrite(): void
+    {
+        // claim() swallows an IllegalTransitionException on a retry that finds
+        // the quote already in_review — no transition actually happened, so
+        // the audit trail must not claim one did.
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $gateway->transitionThrows = new IllegalTransitionException('in_review', 'in_review', ['sent']);
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+        $recorder->begin(NegotiationFixture::snapshot(state: 'in_review'), NegotiationFixture::context());
+
+        (new OfferApplier(new OfferVerifier(), new NullLogger(), $recorder))->apply(
+            $gateway,
+            NegotiationFixture::snapshot(state: 'in_review'),
+            NegotiationFixture::settings(),
+            self::quoteWideOffer(),
+        );
+        $recorder->finish(null);
+
+        self::assertNotContains('claim', $writer->drafts[0]->writes);
     }
 
     public function testItVerifiesAgainstWhatTheDatabaseSaysNotWhatWeIntended(): void

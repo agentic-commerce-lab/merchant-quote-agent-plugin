@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\Discount;
 use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
@@ -38,6 +39,7 @@ final readonly class OfferApplier
     public function __construct(
         private OfferVerifier $verifier,
         private LoggerInterface $logger,
+        private DecisionRecorder $recorder,
     ) {}
 
     public function apply(
@@ -49,7 +51,7 @@ final readonly class OfferApplier
         $quoteId = $snapshot->identity->quoteId;
         $limits = $settings->policy->price;
 
-        $this->claim($gateway, $quoteId);
+        $writes = $this->claim($gateway, $quoteId) ? ['claim'] : [];
 
         // Read fresh, right before the write: the state the offer is
         // actually measured against, not whatever $snapshot looked like when
@@ -59,8 +61,9 @@ final readonly class OfferApplier
         // revision the write below can safely assume as unchanged.
         $reference = $gateway->fetchSnapshot($quoteId);
 
-        $this->write($gateway, $quoteId, $reference->revision, $limits, $offer);
+        array_push($writes, ...$this->write($gateway, $quoteId, $reference->revision, $limits, $offer));
         $gateway->recalculate($quoteId);
+        $writes[] = 'recalculate';
 
         $after = $gateway->fetchSnapshot($quoteId);
         $violations = $this->verifier->verify(new VerifyOfferInput(
@@ -70,23 +73,32 @@ final readonly class OfferApplier
             now: new \DateTimeImmutable(),
         ));
 
-        return new AppliedOffer($violations === [], $violations, $after);
+        $applied = new AppliedOffer($violations === [], $violations, $after);
+        $this->recorder->recordApplied($applied, $writes);
+
+        return $applied;
     }
 
     /**
      * `process` moves the quote to in_review. A retry finds it already there
      * and the machine refuses — which is the correct outcome, not a failure:
      * the transition is bookkeeping and the offer is the substance.
+     *
+     * @return bool whether the transition actually happened, for the audit trail
      */
-    private function claim(QuoteGatewayInterface $gateway, string $quoteId): void
+    private function claim(QuoteGatewayInterface $gateway, string $quoteId): bool
     {
         try {
             $gateway->transition($quoteId, QuoteTransition::Process);
+
+            return true;
         } catch (IllegalTransitionException $e) {
             $this->logger->info('The quote was already claimed; continuing with the offer.', [
                 'quoteId' => $quoteId,
                 'exception' => $e,
             ]);
+
+            return false;
         }
     }
 
@@ -97,6 +109,8 @@ final readonly class OfferApplier
      * stack a second discount onto the first. Only the first write of the
      * pass carries the revision precondition; a buyer edit between our read
      * and our write must lose, loudly, exactly once.
+     *
+     * @return list<string> the write names performed, for the audit trail
      */
     private function write(
         QuoteGatewayInterface $gateway,
@@ -104,7 +118,7 @@ final readonly class OfferApplier
         QuoteRevision $expected,
         QuoteLimits $limits,
         ProposedOffer $offer,
-    ): void {
+    ): array {
         $linePrices = $offer->price->linePricesNet;
         $expiresAt = new \DateTimeImmutable(sprintf('+%d days', $limits->validityDays));
 
@@ -112,7 +126,7 @@ final readonly class OfferApplier
             $gateway->updateLineItems($quoteId, array_map(self::lineChange(...), $linePrices), $expected);
             $gateway->updateQuote($quoteId, new QuoteUpdate(expiresAt: $expiresAt));
 
-            return;
+            return ['updateLineItems', 'updateQuote'];
         }
 
         $gateway->updateQuote(
@@ -123,6 +137,8 @@ final readonly class OfferApplier
             ),
             $expected,
         );
+
+        return ['updateQuote'];
     }
 
     private static function lineChange(QuoteLinePrice $price): QuoteLineItemChange

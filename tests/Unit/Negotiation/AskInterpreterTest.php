@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use PHPUnit\Framework\TestCase;
 
 final class AskInterpreterTest extends TestCase
@@ -17,6 +19,11 @@ final class AskInterpreterTest extends TestCase
         return new PromptComposer('EXTRACT BASE', 'NEGOTIATE BASE', 'REPLY {{tone}}');
     }
 
+    private static function recorder(): DecisionRecorder
+    {
+        return new DecisionRecorder(new FakeDecisionWriter());
+    }
+
     public function testItInterpretsANewBuyerAsk(): void
     {
         [$client, $spy] = ScriptedClient::spy(['{"additional_discount_percent": 8}']);
@@ -24,7 +31,7 @@ final class AskInterpreterTest extends TestCase
             NegotiationFixture::buyerComment('8% please', '2026-08-28 09:00:00'),
         ]);
 
-        $result = (new AskInterpreter($client, self::prompts()))->interpret(
+        $result = (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
             NegotiationFixture::settings(),
             $snapshot,
             SnapshotAdapter::conversation($snapshot),
@@ -46,7 +53,7 @@ final class AskInterpreterTest extends TestCase
             NegotiationFixture::buyerComment('cheaper on the widgets', '2026-08-28 09:00:00'),
         ]);
 
-        (new AskInterpreter($client, self::prompts()))->interpret(
+        (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
             NegotiationFixture::settings(),
             $snapshot,
             SnapshotAdapter::conversation($snapshot),
@@ -64,7 +71,7 @@ final class AskInterpreterTest extends TestCase
             NegotiationFixture::agentComment('here is 5%', '2026-08-28 09:30:00'),
         ]);
 
-        $result = (new AskInterpreter($client, self::prompts()))->interpret(
+        $result = (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
             NegotiationFixture::settings(),
             $snapshot,
             SnapshotAdapter::conversation($snapshot),
@@ -81,7 +88,7 @@ final class AskInterpreterTest extends TestCase
             NegotiationFixture::buyerComment('hi', '2026-08-28 09:00:00'),
         ]);
 
-        $result = (new AskInterpreter($client, self::prompts()))->interpret(
+        $result = (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
             NegotiationFixture::settings(),
             $snapshot,
             SnapshotAdapter::conversation($snapshot),
@@ -99,7 +106,7 @@ final class AskInterpreterTest extends TestCase
 
         $this->expectException(ModelUnavailable::class);
 
-        (new AskInterpreter($client, self::prompts()))->interpret(
+        (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
             NegotiationFixture::settings(),
             $snapshot,
             SnapshotAdapter::conversation($snapshot),

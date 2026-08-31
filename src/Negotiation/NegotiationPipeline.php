@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
@@ -11,7 +12,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationProposal;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
-use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use Psr\Log\LoggerInterface;
 
@@ -32,40 +33,103 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         private AskInterpreter $interpreter,
         private NegotiationDecider $decider,
         private OfferRound $round,
-        private QuoteEscalator $escalator,
+        private DecisionRecorder $recorder,
         private LoggerInterface $logger,
     ) {}
 
+    /**
+     * @throws \Throwable rethrown as-is after the pass is recorded, so
+     *     Messenger's retry still sees it; nothing here recovers from an
+     *     unknown failure.
+     */
     #[\Override]
     public function service(
         QuoteSnapshot $snapshot,
         QuoteGatewayInterface $gateway,
         QuoteAgentSettings $settings,
+        PassContext $context,
     ): NegotiationOutcome {
+        $this->recorder->begin($snapshot, $context);
+        $pass = null;
+        $error = null;
+
         try {
-            $pass = $this->negotiate($snapshot, $gateway, $settings);
+            $pass = $this->run($snapshot, $gateway, $settings);
+
+            return $pass->outcome;
+        } catch (\Throwable $e) {
+            $error = $e;
+
+            throw $e;
+        } finally {
+            $this->record($pass, $error, $snapshot, $context);
+        }
+    }
+
+    /** Catches ModelUnavailable; every other throwable belongs to the caller. */
+    private function run(
+        QuoteSnapshot $snapshot,
+        QuoteGatewayInterface $gateway,
+        QuoteAgentSettings $settings,
+    ): NegotiationPass {
+        try {
+            return $this->negotiate($snapshot, $gateway, $settings);
         } catch (ModelUnavailable $e) {
             $this->logger->error('The model was unavailable, so this quote goes to a human.', [
                 'quoteId' => $snapshot->identity->quoteId,
                 'exception' => $e,
             ]);
 
-            $pass = $this->escalate($gateway, $snapshot, QuoteEscalationReason::ModelUnavailable);
+            return $this->round->escalated($gateway, $snapshot, QuoteEscalationReason::ModelUnavailable, null, null);
         }
+    }
 
-        // One structured event per pass, every pass, in scope for this issue:
-        // #19 reads these, and #22 needs the hashes to attribute an outcome to
-        // the prompt versions that produced it.
-        $this->logger->info('A quote negotiation pass finished.', [
-            'outcome' => $pass->outcome->value,
-            'quoteId' => $snapshot->identity->quoteId,
-            'salesChannelId' => $snapshot->identity->salesChannelId,
-            'extractPromptHash' => $pass->extractHash,
-            'negotiatePromptHash' => $pass->negotiateHash,
-            'replyPromptHash' => $pass->replyHash,
-        ]);
+    /**
+     * The audit write must never fail a pass: a throw here would roll the
+     * message back into Messenger's retry and re-answer the buyer, which is
+     * the one failure #18 spends the most effort preventing. The structured
+     * log event below stays as the backstop when the write is lost.
+     *
+     * This method runs inside a `finally`, so NOTHING here may throw: a throw
+     * from a `finally` replaces whatever was in flight, silently swapping a
+     * successful outcome for a failure, or the real error for a logging one.
+     * The outer try/catch is the backstop for a logger that itself misbehaves.
+     */
+    private function record(
+        ?NegotiationPass $pass,
+        ?\Throwable $error,
+        QuoteSnapshot $snapshot,
+        PassContext $context,
+    ): void {
+        try {
+            try {
+                $this->recorder->finish($pass, $error);
+            } catch (\Throwable $e) {
+                $this->logger->error('The negotiation pass could not be recorded; the pass itself stands.', [
+                    'quoteId' => $snapshot->identity->quoteId,
+                    'exception' => $e,
+                ]);
+            }
 
-        return $pass->outcome;
+            // One structured event per pass, every pass, in scope for this
+            // issue: #19 reads these, and #22 needs the hashes to attribute
+            // an outcome to the prompt versions that produced it.
+            $this->logger->info('A quote negotiation pass finished.', [
+                'outcome' => $pass?->outcome->value,
+                'trigger' => $context->reason->value,
+                'attempt' => $context->attempt,
+                'quoteId' => $snapshot->identity->quoteId,
+                'salesChannelId' => $snapshot->identity->salesChannelId,
+                'extractPromptHash' => $pass?->extractHash,
+                'negotiatePromptHash' => $pass?->negotiateHash,
+                'replyPromptHash' => $pass?->replyHash,
+            ]);
+        } catch (\Throwable) {
+            // @mago-expect lint:no-empty-catch-clause
+            // Deliberately empty: a logger that throws must not take the
+            // pass with it, and this method runs in a `finally`, so there is
+            // nowhere left to report the failure.
+        }
     }
 
     /** @throws ModelUnavailable */
@@ -91,7 +155,13 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
                 'quoteId' => $snapshot->identity->quoteId,
             ]);
 
-            return $this->escalate($gateway, $snapshot, QuoteEscalationReason::NeedsHumanReview, $ask->promptHash);
+            return $this->round->escalated(
+                $gateway,
+                $snapshot,
+                QuoteEscalationReason::NeedsHumanReview,
+                $ask->promptHash,
+                null,
+            );
         }
 
         if ($ask->hasNonPriceAsk()) {
@@ -106,7 +176,13 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
                 'quoteId' => $snapshot->identity->quoteId,
             ]);
 
-            return $this->escalate($gateway, $snapshot, QuoteEscalationReason::NeedsHumanReview, $ask->promptHash);
+            return $this->round->escalated(
+                $gateway,
+                $snapshot,
+                QuoteEscalationReason::NeedsHumanReview,
+                $ask->promptHash,
+                null,
+            );
         }
 
         // `overall` IS the price band here: nothing composes a non-price ask
@@ -120,24 +196,14 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             $settings->policy,
             new NegotiationProposal(price: $ask->interpretation),
         );
+        $this->recorder->recordDecision($decision, $settings->policy->price->maxDiscountPercent);
 
         if ($decision->overall === Band::Escalate) {
             $reason = $decision->price->escalation->reason ?? QuoteEscalationReason::NeedsHumanReview;
 
-            return $this->escalate($gateway, $snapshot, $reason, $ask->promptHash);
+            return $this->round->escalated($gateway, $snapshot, $reason, $ask->promptHash, null);
         }
 
         return $this->round->play($gateway, $snapshot, $settings, $decision, $ask->promptHash);
-    }
-
-    private function escalate(
-        QuoteGatewayInterface $gateway,
-        QuoteSnapshot $snapshot,
-        QuoteEscalationReason $reason,
-        ?string $extractHash = null,
-    ): NegotiationPass {
-        $this->escalator->escalate($gateway, $snapshot, $reason);
-
-        return new NegotiationPass(NegotiationOutcome::Escalated, $extractHash);
     }
 }

@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\QuoteBandDecider;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use PHPUnit\Framework\TestCase;
 
 final class OfferProposerTest extends TestCase
@@ -21,7 +23,12 @@ final class OfferProposerTest extends TestCase
 
     private static function proposer(\MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient $client): OfferProposer
     {
-        return new OfferProposer($client, self::prompts(), new OfferAuthorizer());
+        return new OfferProposer(
+            $client,
+            self::prompts(),
+            new OfferAuthorizer(),
+            new DecisionRecorder(new FakeDecisionWriter()),
+        );
     }
 
     /** A grant-band decision: the buyer asked 5% against a 10% cap. */

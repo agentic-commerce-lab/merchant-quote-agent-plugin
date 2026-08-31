@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\Response\NegotiateResponse;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
@@ -28,6 +29,7 @@ final readonly class OfferProposer
         private ChatCompletionClient $client,
         private PromptComposer $prompts,
         private OfferAuthorizer $authorizer,
+        private DecisionRecorder $recorder,
     ) {}
 
     /** @throws ModelUnavailable */
@@ -40,11 +42,21 @@ final readonly class OfferProposer
         $details = $decision->autoReply;
 
         if ($details === null) {
-            return ProposedAnswer::escalate(QuoteEscalationReason::NeedsHumanReview, 'No priced band decision.', null);
+            return $this->recorded(null, ProposedAnswer::escalate(
+                QuoteEscalationReason::NeedsHumanReview,
+                'No priced band decision.',
+                null,
+            ));
         }
 
         if ($settings->rulesOnly) {
-            return $this->authorize($settings, $snapshot, self::deterministicOffer($snapshot, $details), '', null);
+            return $this->recorded(null, $this->authorize(
+                $settings,
+                $snapshot,
+                self::deterministicOffer($snapshot, $details),
+                '',
+                null,
+            ));
         }
 
         $access = $settings->llm;
@@ -54,28 +66,37 @@ final readonly class OfferProposer
         }
 
         $prompt = $this->prompts->negotiate($settings);
-        $response = NegotiateResponse::read($this->client->complete(
+        $raw = $this->client->complete(
             $access,
             $prompt->text,
             self::userPrompt($settings, $snapshot, $decision, $conversation),
             json: true,
-        ));
+        );
+        $response = NegotiateResponse::read($raw);
 
         if ($response->escalate) {
-            return ProposedAnswer::escalate(
+            return $this->recorded($raw, ProposedAnswer::escalate(
                 QuoteEscalationReason::NeedsHumanReview,
                 $response->escalationReason ?? 'The agent declined to answer this ask.',
                 $prompt->hash,
-            );
+            ));
         }
 
-        return $this->authorize(
+        return $this->recorded($raw, $this->authorize(
             $settings,
             $snapshot,
             $response->toOffer($snapshot->totalNet),
             $response->message,
             $prompt->hash,
-        );
+        ));
+    }
+
+    /** Records the raw model text (null when no model was called) alongside the decision, then returns it unchanged. */
+    private function recorded(?string $raw, ProposedAnswer $answer): ProposedAnswer
+    {
+        $this->recorder->recordProposal($raw, $answer);
+
+        return $answer;
     }
 
     /**

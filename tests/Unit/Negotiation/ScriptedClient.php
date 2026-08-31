@@ -8,7 +8,9 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use Psr\Log\NullLogger;
 
 /**
@@ -38,8 +40,13 @@ final class ScriptedClient
      *
      * @return array{0: ChatCompletionClient, 1: self}
      */
-    public static function spy(array $replies): array
+    public static function spy(array $replies, ?DecisionRecorder $recorder = null): array
     {
+        // Tests that don't care about the audit trail get a recorder wired to
+        // a throwaway writer, so every ChatCompletionClient construction site
+        // doesn't need to know about DecisionRecorder.
+        $recorder ??= new DecisionRecorder(new FakeDecisionWriter());
+
         $spy = new self();
         $queue = array_map(static fn(string $r): Response => new Response(200, [], json_encode([
             'choices' => [['message' => ['content' => $r]]],
@@ -57,6 +64,6 @@ final class ScriptedClient
             };
         });
 
-        return [new ChatCompletionClient(new Client(['handler' => $stack]), new NullLogger()), $spy];
+        return [new ChatCompletionClient(new Client(['handler' => $stack]), new NullLogger(), $recorder), $spy];
     }
 }

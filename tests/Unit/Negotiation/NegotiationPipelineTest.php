@@ -23,7 +23,12 @@ final class NegotiationPipelineTest extends TestCase
             NegotiationFixture::buyerComment('5% please', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertSame(3, $harness->spy->calls);
@@ -38,7 +43,12 @@ final class NegotiationPipelineTest extends TestCase
             NegotiationFixture::buyerComment('40% off or no deal', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertSame(1, $harness->spy->calls, 'An out-of-authority ask must not reach the model twice.');
@@ -53,6 +63,13 @@ final class NegotiationPipelineTest extends TestCase
             $harness->gateway->customFieldWrites,
             'The band gate must escalate with the price reason, not a generic one.',
         );
+        // The band gate escalates through OfferRound::escalated(), which
+        // holds no recorder of its own — the deterministic gate's own verdict
+        // must still reach the audit trail, not just the buyer-facing marker.
+        self::assertSame(
+            QuoteEscalationReason::DiscountLimitExceeded->value,
+            $harness->writer->drafts[0]->escalationReason,
+        );
     }
 
     public function testAnAskInTheCounterBandIsCountered(): void
@@ -66,7 +83,12 @@ final class NegotiationPipelineTest extends TestCase
             NegotiationFixture::buyerComment('15% please', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Countered, $outcome);
     }
@@ -79,7 +101,12 @@ final class NegotiationPipelineTest extends TestCase
             NegotiationFixture::agentComment('here is 5%', '2026-08-28 09:30:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
         self::assertSame(0, $harness->spy->calls);
@@ -100,7 +127,12 @@ final class NegotiationPipelineTest extends TestCase
             NegotiationFixture::agentComment('here is 5%', '2026-08-28 09:30:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
         self::assertSame([QuoteTransition::Sent], $harness->gateway->transitions);
@@ -123,7 +155,12 @@ final class NegotiationPipelineTest extends TestCase
             NegotiationFixture::buyerComment('make it 20 units', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertSame(1, $harness->spy->calls, 'A structural ask must not reach the negotiate call.');
@@ -142,7 +179,12 @@ final class NegotiationPipelineTest extends TestCase
             NegotiationFixture::buyerComment('95 per unit?', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertNotSame(NegotiationOutcome::Escalated, $outcome);
     }
@@ -154,10 +196,20 @@ final class NegotiationPipelineTest extends TestCase
             NegotiationFixture::buyerComment('5% please', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertContains('addComment', $harness->gateway->calls);
+        // ModelUnavailable is caught inside run(), so $error never reaches
+        // record() and errorClass/errorChain stay null — without this reason
+        // reaching the draft, a provider outage is indistinguishable from any
+        // other escalation in the failure-count-by-cause readout.
+        self::assertSame(QuoteEscalationReason::ModelUnavailable->value, $harness->writer->drafts[0]->escalationReason);
     }
 
     public function testAVerificationFailureEscalatesAndLeavesTheChangesInPlace(): void
@@ -173,9 +225,16 @@ final class NegotiationPipelineTest extends TestCase
             NegotiationFixture::buyerComment('5% please', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertContains('updateQuote', $harness->gateway->calls, 'The applied changes must not be rolled back.');
+        self::assertCount(1, $harness->writer->drafts);
+        self::assertSame('escalated', $harness->writer->drafts[0]->outcome);
     }
 }

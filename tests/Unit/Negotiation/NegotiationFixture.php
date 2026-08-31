@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use GuzzleHttp\Psr7\Response;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteIdentity;
@@ -17,6 +18,8 @@ use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
+use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 
 /** Shared fixtures for the negotiation stages. */
 final class NegotiationFixture
@@ -53,6 +56,25 @@ final class NegotiationFixture
         );
     }
 
+    public static function context(): PassContext
+    {
+        return new PassContext(ServicingTriggerReason::CommentWritten, 0);
+    }
+
+    /** The merchant's LLM credentials, shared so every test points at the same fake host. */
+    public static function modelAccess(): ModelAccess
+    {
+        return new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini');
+    }
+
+    /** A 200 OK with the OpenAI chat-completions envelope around $content. */
+    public static function modelReply(string $content): Response
+    {
+        return new Response(200, [], json_encode([
+            'choices' => [['message' => ['content' => $content]]],
+        ], JSON_THROW_ON_ERROR));
+    }
+
     public static function buyerComment(string $text, string $at): QuoteComment
     {
         return new QuoteComment($text, customerId: 'cust-1', createdAt: new \DateTimeImmutable($at));
@@ -78,7 +100,7 @@ final class NegotiationFixture
                 replyTone: $tone,
             )),
             rulesOnly: $rulesOnly,
-            llm: new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini'),
+            llm: self::modelAccess(),
             strategyPrompt: $strategy,
         );
     }

@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 
 /**
  * The seam issue #18 fills in: snapshot → interpret ask → propose → authorize
@@ -32,9 +33,15 @@ use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
  */
 interface QuoteServicingPipelineInterface
 {
+    /**
+     * The context carries what only the message knows — why the quote was
+     * queued and which attempt this is. #19 records both: without the attempt
+     * number a redelivered quote reads as a second negotiation.
+     */
     public function service(
         QuoteSnapshot $snapshot,
         QuoteGatewayInterface $gateway,
         QuoteAgentSettings $settings,
+        PassContext $context,
     ): NegotiationOutcome;
 }

@@ -27,7 +27,12 @@ final class AskGateTest extends TestCase
             NegotiationFixture::buyerComment('5% and free shipping please', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertSame(1, $harness->spy->calls, 'A non-price ask must not reach the negotiate call.');
@@ -48,7 +53,12 @@ final class AskGateTest extends TestCase
             NegotiationFixture::buyerComment('5% please', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Offered, $outcome);
     }
@@ -70,7 +80,12 @@ final class AskGateTest extends TestCase
             NegotiationFixture::buyerComment('can you do a little better?', '2026-08-28 10:00:00'),
         ]);
 
-        $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertStringContainsString('can you do a little better?', $harness->spy->userPrompts[0]);
         self::assertStringNotContainsString('another 5%', $harness->spy->userPrompts[0]);

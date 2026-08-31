@@ -28,7 +28,12 @@ final class OfferRoundTest extends TestCase
             NegotiationFixture::buyerComment('95 per unit?', '2026-08-28 09:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertStringContainsString('down by 5% to 950.00 EUR', $harness->gateway->comments[0]);
@@ -52,7 +57,12 @@ final class OfferRoundTest extends TestCase
             NegotiationFixture::buyerComment('make it 85 per unit', '2026-08-28 10:00:00'),
         ]);
 
-        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertNotContains('updateLineItems', $harness->gateway->calls, 'Round two must not write line prices.');
@@ -77,7 +87,12 @@ final class OfferRoundTest extends TestCase
             NegotiationFixture::buyerComment('5% please', '2026-08-28 09:00:00'),
         ]);
 
-        $harness->pipeline->service($snapshot, $harness->gateway, NegotiationFixture::settings());
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
         $context = $harness->logger->contextOf('pass finished');
 
         self::assertNotNull($context, 'Every pass must emit one structured event.');
