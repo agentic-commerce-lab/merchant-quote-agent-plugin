@@ -20,6 +20,17 @@
             "last7": "Letzte 7 Tage",
             "last30": "Letzte 30 Tage",
             "last90": "Letzte 90 Tage"
+        },
+        "figures": {
+            "title": "Dieser Zeitraum",
+            "received": "Eingegangene Angebote",
+            "handled": "Vom Agenten bearbeitet",
+            "autoAnswered": "Automatisch beantwortet",
+            "escalated": "An Menschen eskaliert",
+            "expiredUnanswered": "Unbeantwortet abgelaufen",
+            "valueHandled": "Bearbeiteter Wert (netto)",
+            "granted": "Durchschnittlich gewährter Rabatt",
+            "grantedAgainstCap": "{granted}% bei einem Limit von {cap}%"
         }
     }
 }

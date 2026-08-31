@@ -19,6 +19,43 @@
             </sw-card>
             {% endblock %}
 
+            {% block merchant_quote_agent_list_figures %}
+            <sw-card
+                v-if="figures"
+                :title="$tc('merchant-quote-agent.figures.title')"
+                class="merchant-quote-agent-figures"
+            >
+                <sw-description-list>
+                    <dt>{{ $tc('merchant-quote-agent.figures.received') }}</dt>
+                    <dd>{{ figures.received }}</dd>
+
+                    <dt>{{ $tc('merchant-quote-agent.figures.handled') }}</dt>
+                    <dd>{{ figures.handled }} <template v-if="share(figures.handled) !== null">({{ share(figures.handled) }}%)</template></dd>
+
+                    <dt>{{ $tc('merchant-quote-agent.figures.autoAnswered') }}</dt>
+                    <dd>{{ figures.autoAnswered }} <template v-if="share(figures.autoAnswered) !== null">({{ share(figures.autoAnswered) }}%)</template></dd>
+
+                    <dt>{{ $tc('merchant-quote-agent.figures.escalated') }}</dt>
+                    <dd>{{ figures.escalated }} <template v-if="share(figures.escalated) !== null">({{ share(figures.escalated) }}%)</template></dd>
+
+                    <dt>{{ $tc('merchant-quote-agent.figures.expiredUnanswered') }}</dt>
+                    <dd>{{ figures.expiredUnanswered }}</dd>
+
+                    <dt>{{ $tc('merchant-quote-agent.figures.valueHandled') }}</dt>
+                    <dd>{{ figures.valueHandled }}</dd>
+
+                    <dt>{{ $tc('merchant-quote-agent.figures.granted') }}</dt>
+                    <dd v-if="figures.granted !== null">
+                        {{ $tc('merchant-quote-agent.figures.grantedAgainstCap', 0, {
+                            granted: figures.granted.toFixed(1),
+                            cap: (figures.cap ?? 0).toFixed(1),
+                        }) }}
+                    </dd>
+                    <dd v-else>&ndash;</dd>
+                </sw-description-list>
+            </sw-card>
+            {% endblock %}
+
             {% block merchant_quote_agent_list_grid %}
             <sw-card :title="$tc('merchant-quote-agent.general.mainMenuItemGeneral')">
                 <sw-entity-listing
