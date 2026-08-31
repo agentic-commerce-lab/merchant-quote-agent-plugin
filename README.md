@@ -35,6 +35,32 @@ The database is seeded from a dump of the previous shop
 Every integration test runs inside a rolled-back transaction, so the seed
 stays as it was. Design: `docs/superpowers/specs/2026-08-27-dedicated-test-shop-design.md`.
 
+## Installing into another shop
+
+CI packages an installable zip on every merge to main (the *Plugin Zip*
+workflow). It carries the compiled administration bundle but **no `vendor/`**:
+shopware-cli skips dependency bundling for Shopware >= 6.5, because the shop is
+meant to resolve a plugin's Composer requirements itself.
+
+    unzip MerchantQuoteAgentPlugin.zip -d /path/to/shop/custom/plugins/
+    cd /path/to/shop
+    composer require shopware/merchant-quote-agent-plugin   # via the custom/plugins/* path repo
+    bin/console plugin:refresh
+    bin/console plugin:install --activate MerchantQuoteAgentPlugin
+    bin/console cache:clear
+
+That `composer require` is the step that is easy to skip and expensive to
+diagnose. `plugin:install` does refuse without it — *Required plugin/package
+"cuyz/valinor ^2.6" is missing or not installed and activated* — but a plugin
+forced past that check activates cleanly and then throws `Class
+"CuyZ\Valinor\MapperBuilder" not found` on every servicing pass, from inside
+the settings read, before the state check and before any model call. Nothing
+in that message names the plugin or the step that was skipped, and under the
+admin worker (below) it leaves no trace at all.
+
+Prerequisites are the plugin's, not the zip's: SwagCommercial with the
+QuoteManagement licence active, and SwagAgenticCommerce.
+
 ## Operating the servicing loop
 
 The servicing loop (issue #4) only queues messages when a buyer comments or a
@@ -43,8 +69,17 @@ consumes them:
 
     php bin/console messenger:consume async -vv
 
-Without that running, quotes queue silently and forever; there is no other
-symptom.
+Without one, quotes queue silently and forever — unless the shop runs
+Shopware's admin worker (`GET /api/_info/config` →
+`adminWorker.enableAdminWorker`), which looks like a substitute and is not. It
+runs only while someone has the administration open in a browser, and
+`ConsumeMessagesController` hands it a bare event dispatcher carrying neither
+`SendFailedMessageForRetryListener` nor
+`SendFailedMessageToFailureTransportListener`. Symfony's `Worker` therefore
+`reject()`s any message whose handler threw, and the doctrine transport deletes
+the row: no retry, nothing in `failed`, nothing for `messenger:failed:show`,
+and the quote untouched. Everything below about messages parking in `failed`
+describes a real `messenger:consume` worker and only that one.
 
 Locks default to `flock` (Shopware's own default), which only coordinates
 processes on one host. `QuoteServicingLock` logs a startup warning if so, but
