@@ -21,9 +21,10 @@ final class DraftMirrorsEntityTest extends TestCase
     private const ID_IS_WRITER_GENERATED = 'id';
 
     /**
-     * Written by TerminalOutcomeSubscriber after the quote reaches a terminal
-     * state, never by a pass. The exclusion stays: a draft is one pass's
-     * insert, and the outcome is a later update by a different owner.
+     * Written by TerminalOutcomeSubscriber, through TerminalOutcomeWriter,
+     * after the quote reaches a terminal state, never by a pass. The
+     * exclusion stays: a draft is one pass's insert, and the outcome is a
+     * later update by a different owner.
      */
     private const WRITTEN_BY_THE_TERMINAL_SUBSCRIBER = ['terminalState', 'terminalAt'];
 

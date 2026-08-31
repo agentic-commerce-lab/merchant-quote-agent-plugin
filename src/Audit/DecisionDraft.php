@@ -13,9 +13,9 @@ namespace MerchantQuoteAgentPlugin\Audit;
  * lifecycle and DecisionRecordWriter owns the mapping.
  *
  * Mirrors QuoteDecisionRecord's columns one-for-one, minus `id` (the writer
- * generates it), minus `terminalState`/`terminalAt` (written later by
- * TerminalOutcomeSubscriber, never by a pass), plus `startedAt` (a stopwatch
- * the writer excludes from the payload).
+ * generates it), minus `terminalState`/`terminalAt` (written later, via
+ * TerminalOutcomeSubscriber and TerminalOutcomeWriter, never by a pass), plus
+ * `startedAt` (a stopwatch the writer excludes from the payload).
  *
  * @mago-expect lint:too-many-properties
  * The gate fires above 10 and these properties mirror a table's columns
