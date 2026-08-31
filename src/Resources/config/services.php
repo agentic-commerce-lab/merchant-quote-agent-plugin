@@ -45,6 +45,7 @@ use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteContractController;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
@@ -66,6 +67,15 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(QuoteCapabilityProfileContributor::class)->autoconfigure(false)->tag('ucp_sdk.profile_contributor', [
         'priority' => -256,
     ]);
+
+    // The two documents the descriptor advertises. Served by this plugin because
+    // this plugin publishes the descriptor: whoever advertises the URLs owes the
+    // shop the files behind them.
+    $services
+        ->set(QuoteContractController::class)
+        ->arg('$schemaPath', __DIR__ . '/../schema/quote.openapi.json')
+        ->arg('$specPath', __DIR__ . '/../schema/quote.spec.html')
+        ->tag('controller.service_arguments');
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the
