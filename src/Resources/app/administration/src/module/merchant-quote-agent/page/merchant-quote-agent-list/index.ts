@@ -76,7 +76,15 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
             try {
                 this.decisions = await this.decisionRepository.search(this.listCriteria, Shopware.Context.api);
-                await this.loadFigures();
+
+                try {
+                    await this.loadFigures();
+                } catch (error) {
+                    // A rejection here must not vanish silently: it leaves the figures
+                    // card hidden (v-if="figures") with no visible sign anything failed.
+                    // eslint-disable-next-line no-console
+                    console.error('merchant-quote-agent: failed to load figures', error);
+                }
             } finally {
                 this.isLoading = false;
             }
@@ -97,7 +105,9 @@ Shopware.Component.register('merchant-quote-agent-list', {
                 handled,
                 autoAnswered: decisions.autoAnswered,
                 escalated: decisions.escalated,
-                expiredUnanswered: quotes.expired - decisions.answeredQuoteIds.size,
+                expiredUnanswered: [...quotes.expiredQuoteIds].filter(
+                    (id) => !decisions.answeredQuoteIds.has(id),
+                ).length,
                 valueHandled: decisions.perQuote.buckets.reduce(
                     (sum, bucket) => sum + Number(bucket.value?.max ?? 0),
                     0,
@@ -128,19 +138,19 @@ Shopware.Component.register('merchant-quote-agent-list', {
             escalated.addAggregation(Criteria.count('escalated', 'id'));
 
             const [all, answeredResult, escalatedResult] = await Promise.all([
-                this.decisionRepository.aggregate(criteria, Shopware.Context.api),
-                this.decisionRepository.aggregate(answered, Shopware.Context.api),
-                this.decisionRepository.aggregate(escalated, Shopware.Context.api),
+                this.decisionRepository.search(criteria, Shopware.Context.api),
+                this.decisionRepository.search(answered, Shopware.Context.api),
+                this.decisionRepository.search(escalated, Shopware.Context.api),
             ]);
 
             return {
-                perQuote: all.perQuote,
-                autoAnswered: answeredResult.answered?.count ?? 0,
-                escalated: escalatedResult.escalated?.count ?? 0,
-                granted: answeredResult.granted?.avg ?? null,
-                cap: answeredResult.cap?.avg ?? null,
+                perQuote: all.aggregations?.perQuote,
+                autoAnswered: answeredResult.aggregations?.answered?.count ?? 0,
+                escalated: escalatedResult.aggregations?.escalated?.count ?? 0,
+                granted: answeredResult.aggregations?.granted?.avg ?? null,
+                cap: answeredResult.aggregations?.cap?.avg ?? null,
                 answeredQuoteIds: new Set(
-                    (answeredResult.answeredQuotes?.buckets ?? []).map((bucket) => bucket.key),
+                    (answeredResult.aggregations?.answeredQuotes?.buckets ?? []).map((bucket) => bucket.key),
                 ),
             };
         },
@@ -155,16 +165,18 @@ Shopware.Component.register('merchant-quote-agent-list', {
             const expired = new Criteria(1, 1);
             expired.addFilter(this.rangeFilter);
             expired.addFilter(Criteria.equals('stateMachineState.technicalName', 'expired'));
-            expired.addAggregation(Criteria.count('expired', 'id'));
+            expired.addAggregation(Criteria.terms('expiredQuotes', 'id'));
 
             const [receivedResult, expiredResult] = await Promise.all([
-                quoteRepository.aggregate(received, Shopware.Context.api),
-                quoteRepository.aggregate(expired, Shopware.Context.api),
+                quoteRepository.search(received, Shopware.Context.api),
+                quoteRepository.search(expired, Shopware.Context.api),
             ]);
 
             return {
-                received: receivedResult.received?.count ?? 0,
-                expired: expiredResult.expired?.count ?? 0,
+                received: receivedResult.aggregations?.received?.count ?? 0,
+                expiredQuoteIds: new Set(
+                    (expiredResult.aggregations?.expiredQuotes?.buckets ?? []).map((bucket) => bucket.key),
+                ),
             };
         },
 
