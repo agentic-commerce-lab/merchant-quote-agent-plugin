@@ -1,0 +1,101 @@
+{% block merchant_quote_agent_detail %}
+<sw-page class="merchant-quote-agent-detail">
+    {% block merchant_quote_agent_detail_smart_bar_header %}
+    <template #smart-bar-header>
+        <h2>{{ record ? dash(record.quoteNumber) : '' }}</h2>
+    </template>
+    {% endblock %}
+
+    {% block merchant_quote_agent_detail_content %}
+    <template #content>
+        <sw-card-view v-if="record">
+            {% block merchant_quote_agent_detail_asked %}
+            <sw-card :title="$tc('merchant-quote-agent.detail.asked')" :is-loading="isLoading">
+                <sw-description-list>
+                    <template v-for="entry in flatten(record.interpretedAsks)" :key="entry.key">
+                        <dt>{{ entry.key }}</dt>
+                        <dd>{{ entry.value }}</dd>
+                    </template>
+                </sw-description-list>
+            </sw-card>
+            {% endblock %}
+
+            {% block merchant_quote_agent_detail_allowed %}
+            <sw-card :title="$tc('merchant-quote-agent.detail.allowed')">
+                <sw-description-list>
+                    <dt>{{ $tc('merchant-quote-agent.detail.band') }}</dt>
+                    <dd>{{ dash(record.band) }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.cap') }}</dt>
+                    <dd>{{ dash(record.maxDiscountPercent) }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.escalationReason') }}</dt>
+                    <dd>{{ record.escalationReason || '&ndash;' }}</dd>
+                </sw-description-list>
+            </sw-card>
+            {% endblock %}
+
+            {% block merchant_quote_agent_detail_offered %}
+            <sw-card :title="$tc('merchant-quote-agent.detail.offered')">
+                <sw-description-list>
+                    <dt>{{ $tc('merchant-quote-agent.detail.before') }}</dt>
+                    <dd>{{ dash(record.totalNetBefore) }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.after') }}</dt>
+                    <dd>{{ dash(record.totalNetAfter) }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.granted') }}</dt>
+                    <dd>{{ dash(record.discountPercentGranted) }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.authorized') }}</dt>
+                    <dd>{{ dash(record.authorized) }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.verified') }}</dt>
+                    <dd>{{ dash(record.verified) }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.writes') }}</dt>
+                    <dd>{{ (record.writes || []).join(', ') || '&ndash;' }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.violations') }}</dt>
+                    <dd>{{ (record.violations || []).join(', ') || '&ndash;' }}</dd>
+                </sw-description-list>
+            </sw-card>
+            {% endblock %}
+
+            {% block merchant_quote_agent_detail_model %}
+            <sw-card :title="$tc('merchant-quote-agent.detail.model')">
+                <sw-description-list>
+                    <dt>{{ $tc('merchant-quote-agent.detail.modelName') }}</dt>
+                    <dd>{{ record.model || '&ndash;' }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.modelHost') }}</dt>
+                    <dd>{{ record.modelHost || '&ndash;' }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.tokens') }}</dt>
+                    <dd>{{ dash(record.promptTokens) }} / {{ dash(record.completionTokens) }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.modelLatency') }}</dt>
+                    <dd>{{ dash(record.modelLatencyMs) }}</dd>
+                    <dt>{{ $tc('merchant-quote-agent.detail.duration') }}</dt>
+                    <dd>{{ dash(record.durationMs) }}</dd>
+                    <template v-if="record.extractPromptHash || record.negotiatePromptHash || record.replyPromptHash">
+                        <dt>{{ $tc('merchant-quote-agent.detail.promptHashes') }}</dt>
+                        <dd>{{ dash(record.extractPromptHash) }} / {{ dash(record.negotiatePromptHash) }} / {{ dash(record.replyPromptHash) }}</dd>
+                    </template>
+                </sw-description-list>
+            </sw-card>
+            {% endblock %}
+
+            {% block merchant_quote_agent_detail_told %}
+            <sw-card :title="$tc('merchant-quote-agent.detail.told')">
+                <p>{{ record.buyerComment || '&ndash;' }}</p>
+            </sw-card>
+            {% endblock %}
+
+            {% block merchant_quote_agent_detail_failed %}
+            <sw-card :title="$tc('merchant-quote-agent.detail.failed')">
+                <p v-if="!record.errorClass">{{ $tc('merchant-quote-agent.detail.noError') }}</p>
+                <sw-description-list v-else>
+                    <dt>{{ record.errorClass }}</dt>
+                    <dd>
+                        <div v-for="entry in errorChainEntries(record.errorChain)" :key="entry.key">
+                            <strong>{{ entry.errorClass }}</strong>: {{ entry.message }}
+                        </div>
+                    </dd>
+                </sw-description-list>
+            </sw-card>
+            {% endblock %}
+        </sw-card-view>
+    </template>
+    {% endblock %}
+</sw-page>
+{% endblock %}

@@ -1,0 +1,61 @@
+{
+    "merchant-quote-agent": {
+        "general": {
+            "mainMenuItemGeneral": "Quote Agent",
+            "description": "Was der Quote Agent bisher getan hat"
+        },
+        "list": {
+            "columnCreatedAt": "Wann",
+            "columnQuoteNumber": "Angebot",
+            "columnOutcome": "Ergebnis",
+            "columnBand": "Rahmen",
+            "columnGranted": "Gewährt",
+            "columnDuration": "Dauer",
+            "columnEscalationReason": "Eskalationsgrund",
+            "emptyStateTitle": "Noch keine Entscheidungen",
+            "emptyStateSubline": "Der Agent hat in diesem Zeitraum kein Angebot bearbeitet."
+        },
+        "range": {
+            "label": "Zeitraum",
+            "last7": "Letzte 7 Tage",
+            "last30": "Letzte 30 Tage",
+            "last90": "Letzte 90 Tage"
+        },
+        "figures": {
+            "title": "Dieser Zeitraum",
+            "received": "Eingegangene Angebote",
+            "handled": "Vom Agenten bearbeitet",
+            "autoAnswered": "Automatisch beantwortet",
+            "escalated": "An Menschen eskaliert",
+            "expiredUnanswered": "Unbeantwortet abgelaufen",
+            "valueHandled": "Bearbeiteter Wert (netto)",
+            "granted": "Durchschnittlich gewährter Rabatt",
+            "grantedAgainstCap": "{granted}% bei einem Limit von {cap}%"
+        },
+        "detail": {
+            "asked": "Was der Käufer gefragt hat",
+            "allowed": "Was die Richtlinie erlaubt hat",
+            "offered": "Was angeboten wurde",
+            "model": "Was das Modell erhalten hat und was es gekostet hat",
+            "told": "Was dem Käufer gesagt wurde",
+            "failed": "Was schiefgegangen ist",
+            "band": "Rahmen",
+            "cap": "Limit",
+            "escalationReason": "Eskalationsgrund",
+            "before": "Summe vorher (netto)",
+            "after": "Summe nachher (netto)",
+            "granted": "Gewährt",
+            "writes": "Ausgeführte Schreibvorgänge",
+            "authorized": "Autorisiert",
+            "verified": "Verifiziert",
+            "violations": "Einwände der Prüfung",
+            "modelName": "Modell",
+            "modelHost": "Host",
+            "tokens": "Tokens (Prompt / Antwort)",
+            "modelLatency": "Modellzeit (ohne fehlgeschlagenen Wiederholungsversuch)",
+            "duration": "Dauer des Durchlaufs",
+            "promptHashes": "Prompt-Versionen (Extract / Negotiate / Reply)",
+            "noError": "Bei diesem Durchlauf ist nichts schiefgegangen."
+        }
+    }
+}
