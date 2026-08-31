@@ -81,11 +81,28 @@ the row: no retry, nothing in `failed`, nothing for `messenger:failed:show`,
 and the quote untouched. Everything below about messages parking in `failed`
 describes a real `messenger:consume` worker and only that one.
 
-Locks default to `flock` (Shopware's own default), which only coordinates
-processes on one host. `QuoteServicingLock` logs a startup warning if so, but
-two workers on different hosts will still race the same quote. Point
-`LOCK_DSN` at a shared store (e.g. Redis) before running workers on more than
-one node.
+Locks default to `flock` (Shopware's own default), and "one host" is not the
+ceiling it sounds like. Symfony's `FlockStore` keys its lock file on
+`sys_get_temp_dir()`, so exclusion holds only between processes that share a
+`/tmp` — and a web server unit running under systemd `PrivateTmp=yes` (Apache
+and php-fpm on a stock Debian host, among others) does not share one with a
+CLI worker. The admin worker and `messenger:consume` then take *different*
+files for the same quote and neither sees the other. `QuoteServicingLock` logs
+a startup warning whenever the DSN is host-local; read it as "this may not
+even exclude two processes on this machine".
+
+Measured, not inferred: on a shop with both workers live, one buyer comment on
+a quote in `draft` fires both triggers, both passes claim the quote 1s apart
+(`attempt` 0 and 1 in the decision records), and the buyer gets two replies to
+one ask. The discount survives it — offers are written as absolute values, so
+the second pass re-applies the same 10% rather than stacking — but
+"the buyer is never messaged twice" does not.
+
+Two ways out, and the first is the one you want anyway: switch the admin
+worker off (`shopware.admin_worker.enable_admin_worker: false`) once a real
+`messenger:consume` runs, which also stops it deleting failed messages. Or
+point `LOCK_DSN` at a shared store (e.g. Redis) — required regardless before
+running workers on more than one node.
 
 A quote that fails servicing four times *without a thrown exception* (a
 segfaulted worker, not a caught error — see `ServiceQuoteHandler::MAX_ATTEMPTS`)
