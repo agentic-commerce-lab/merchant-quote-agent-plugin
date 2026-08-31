@@ -1,0 +1,14 @@
+{% block merchant_quote_agent_list %}
+<sw-page class="merchant-quote-agent-list">
+    {% block merchant_quote_agent_list_content %}
+    <template #content>
+        <sw-card-view>
+            <sw-empty-state
+                :title="$tc('merchant-quote-agent.list.emptyStateTitle')"
+                :subline="$tc('merchant-quote-agent.list.emptyStateSubline')"
+            />
+        </sw-card-view>
+    </template>
+    {% endblock %}
+</sw-page>
+{% endblock %}

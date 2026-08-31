@@ -1,0 +1,19 @@
+{
+    "merchant-quote-agent": {
+        "general": {
+            "mainMenuItemGeneral": "Quote Agent",
+            "description": "Was der Quote Agent bisher getan hat"
+        },
+        "list": {
+            "columnCreatedAt": "Wann",
+            "columnQuoteNumber": "Angebot",
+            "columnOutcome": "Ergebnis",
+            "columnBand": "Rahmen",
+            "columnGranted": "Gewährt",
+            "columnDuration": "Dauer",
+            "columnEscalationReason": "Eskalationsgrund",
+            "emptyStateTitle": "Noch keine Entscheidungen",
+            "emptyStateSubline": "Der Agent hat in diesem Zeitraum kein Angebot bearbeitet."
+        }
+    }
+}

@@ -51,6 +51,7 @@
     "scripts": {
         "test": "phpunit",
         "test:integration": "scripts/test-integration.sh",
+        "lint:administration": "scripts/lint-administration.sh",
         "format": "mago fmt",
         "format:check": "mago fmt --check",
         "lint": "mago lint",

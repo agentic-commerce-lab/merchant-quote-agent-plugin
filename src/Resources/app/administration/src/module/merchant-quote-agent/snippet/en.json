@@ -1,0 +1,19 @@
+{
+    "merchant-quote-agent": {
+        "general": {
+            "mainMenuItemGeneral": "Quote Agent",
+            "description": "What the quote agent has been doing"
+        },
+        "list": {
+            "columnCreatedAt": "When",
+            "columnQuoteNumber": "Quote",
+            "columnOutcome": "Outcome",
+            "columnBand": "Band",
+            "columnGranted": "Granted",
+            "columnDuration": "Duration",
+            "columnEscalationReason": "Escalation reason",
+            "emptyStateTitle": "No decisions yet",
+            "emptyStateSubline": "The agent has not serviced a quote in this period."
+        }
+    }
+}
