@@ -1756,7 +1756,7 @@ Task 4 registered `SwagCommercialBuyerQuoteGateway` `->public()` with a comment 
 composer run test:integration -- --filter BuyerQuoteFlow
 ```
 
-Expected: still 4/4. A "removed or inlined" error means the capability is not tagged the way you think — fix the registration rather than restoring the flag, and report it if you cannot.
+Expected: still 8/8 — the suite grew during Task 4's fix rounds (it now also covers the limit clamp, a counter-then-decline cycle and accept-places-an-order). A "removed or inlined" error means the capability is not tagged the way you think — fix the registration rather than restoring the flag, and report it if you cannot.
 
 In `src/Resources/config/services.php`, replace the bare `$services->set(QuoteCapability::class);` with:
 
