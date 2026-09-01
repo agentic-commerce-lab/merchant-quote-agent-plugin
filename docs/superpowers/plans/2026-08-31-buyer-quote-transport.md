@@ -2100,6 +2100,8 @@ rejection comes from the SDK rather than from us."
 grep -rn "issue #9" src/ && echo "^ nothing above should promise future work this plan delivered"
 ```
 
+Also correct one claim Task 6 proved false. `src/Identity/AgentCustomerAuthenticator.php`'s class comment says the 401 "carries the `WWW-Authenticate: Bearer` challenge with it". It does not: the SDK's `ExceptionListener` builds its `JsonResponse` from `$throwable->getStatusCode()` alone and never reads `$throwable->getHeaders()`, so the challenge never reaches the client. The status is still right and `UnauthorizedHttpException` is still the correct exception to throw — only the sentence about the header is wrong. Replace that clause with what is actually true: the exception's status is what the SDK honours, and the challenge header is dropped by the SDK's listener (worth raising upstream with the other SDK fixes in #14).
+
 `QuoteCapabilityDescriptor`'s comment ("The spec and schema documents are served by this plugin", and the two forms of the descriptor) stays true — leave it alone.
 
 - [ ] **Step 2: Document the buyer path in the README**
