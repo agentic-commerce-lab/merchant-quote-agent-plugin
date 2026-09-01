@@ -33,13 +33,21 @@ final readonly class OfferProposer
         private DecisionRecorder $recorder,
     ) {}
 
-    /** @throws ModelUnavailable */
+    /**
+     * @param ?QuoteBaselineLines $baseline the quote's prices as the agent
+     *     first found them (#49). Null on the first pass, where the current
+     *     lines ARE the original ones.
+     *
+     * @throws ModelUnavailable
+     */
     public function propose(
         QuoteAgentSettings $settings,
         PolicySnapshot $snapshot,
         QuoteDecision $decision,
         BuyerConversation $conversation,
+        ?QuoteBaselineLines $baseline = null,
     ): ProposedAnswer {
+        $referenceLines = $baseline === null ? $snapshot->lines : $baseline->linesMergedWith($snapshot->lines);
         $details = $decision->autoReply;
 
         if ($details === null) {
@@ -53,7 +61,7 @@ final readonly class OfferProposer
         if ($settings->rulesOnly) {
             return $this->recorded(null, $this->authorize(
                 $settings,
-                $snapshot,
+                $referenceLines,
                 self::deterministicOffer($snapshot, $details),
                 '',
                 null,
@@ -85,7 +93,7 @@ final readonly class OfferProposer
 
         return $this->recorded($raw, $this->authorize(
             $settings,
-            $snapshot,
+            $referenceLines,
             self::atTheBuyersLevel($response->toOffer($snapshot->totalNet), $snapshot, $conversation),
             $response->message,
             $prompt->hash,
@@ -129,18 +137,20 @@ final readonly class OfferProposer
     }
 
     /**
-     * The bands are checked against the snapshot this round was decided on:
-     * a per-line offer is bounded line by line against those lines, and with
-     * no reference LinePriceOfferCheck rejects every one of them.
+     * The bands are checked against the quote's pre-negotiation lines (#49):
+     * a per-line offer is bounded line by line against them, and with no
+     * reference LinePriceOfferCheck rejects every one of them.
+     *
+     * @param list<\MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot> $referenceLines
      */
     private function authorize(
         QuoteAgentSettings $settings,
-        PolicySnapshot $snapshot,
+        array $referenceLines,
         ProposedOffer $offer,
         string $message,
         ?string $promptHash,
     ): ProposedAnswer {
-        $offer = $offer->withReferenceLines($snapshot->lines);
+        $offer = $offer->withReferenceLines($referenceLines);
         $authorization = $this->authorizer->authorize($offer, $settings->policy);
 
         if (!$authorization->approved) {
@@ -154,18 +164,21 @@ final readonly class OfferProposer
         return ProposedAnswer::offer($offer, $message, $promptHash);
     }
 
-    /** Rules-only: the band already priced this, so the band's number IS the offer. */
+    /**
+     * Rules-only: the band already priced this, so the band's number IS the
+     * offer. One ternary rather than two on the same condition: propose()
+     * gained a branch computing the baseline's reference lines (#49), and
+     * OfferProposer sits right at the class-scoped complexity cap.
+     */
     private static function deterministicOffer(
         PolicySnapshot $snapshot,
         \MerchantQuoteAgentPlugin\Policy\Data\QuoteAutoReplyDetails $details,
     ): ProposedOffer {
-        return new ProposedOffer(
-            orderTotalNet: $snapshot->totalNet,
-            price: new OfferedPrice(
-                discountPercent: $details->perLineAsks ? null : $details->discountPercent,
-                linePricesNet: $details->perLineAsks ? $details->lineUnitPricesNet : null,
-            ),
-        );
+        $price = $details->perLineAsks
+            ? new OfferedPrice(linePricesNet: $details->lineUnitPricesNet)
+            : new OfferedPrice(discountPercent: $details->discountPercent);
+
+        return new ProposedOffer(orderTotalNet: $snapshot->totalNet, price: $price);
     }
 
     private static function userPrompt(

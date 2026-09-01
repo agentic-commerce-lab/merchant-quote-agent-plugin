@@ -41,11 +41,13 @@ final readonly class OfferRound
         ?string $extractHash,
     ): NegotiationPass {
         $conversation = SnapshotAdapter::conversation($snapshot);
+        $baseline = QuoteBaseline::read($snapshot);
         $answer = $this->proposer->propose(
             $settings,
             SnapshotAdapter::toPolicy($snapshot),
             $decision->price,
             $conversation,
+            $baseline,
         );
 
         if ($answer->offer === null) {
