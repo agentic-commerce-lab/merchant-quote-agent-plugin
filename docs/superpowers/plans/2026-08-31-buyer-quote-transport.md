@@ -1292,18 +1292,21 @@ Add to `tests/Integration/QuoteFixture.php` (the class already exists and alread
     }
 
     /**
-     * A customer whose `customer_specific_features` map enables
-     * QUOTE_MANAGEMENT. The gate is a JSON map, not a list: an array is
-     * silently ignored, which is exactly the trap the prerequisite-matrix
-     * issue exists to automate away.
+     * A customer whose `customer_specific_features` row enables
+     * QUOTE_MANAGEMENT. That table, not a column on `customer`, is where
+     * SwagCommercial's CustomerSpecificFeatureService actually reads the flag
+     * from (`customer_id` -> `features`, a JSON map, not a list — an array
+     * would be silently ignored, which is the trap the prerequisite-matrix
+     * issue exists to automate away).
      */
     public static function anyQuoteCapableCustomerId(ContainerInterface $container): string
     {
         $id = self::connection($container)->fetchOne(
-            'SELECT LOWER(HEX(id)) FROM customer'
-            . ' WHERE active = 1'
-            . ' AND sales_channel_id = UNHEX(:salesChannelId)'
-            . ' AND JSON_EXTRACT(customer_specific_features, "$.QUOTE_MANAGEMENT") = TRUE'
+            'SELECT LOWER(HEX(c.id)) FROM customer c'
+            . ' INNER JOIN customer_specific_features csf ON csf.customer_id = c.id'
+            . ' WHERE c.active = 1'
+            . ' AND c.sales_channel_id = UNHEX(:salesChannelId)'
+            . ' AND JSON_EXTRACT(csf.features, "$.QUOTE_MANAGEMENT") = TRUE'
             . ' LIMIT 1',
             ['salesChannelId' => self::storefrontSalesChannelId($container)],
         );
@@ -1321,11 +1324,12 @@ Add to `tests/Integration/QuoteFixture.php` (the class already exists and alread
     public static function anyCustomerWithoutQuoteFeature(ContainerInterface $container): string
     {
         $id = self::connection($container)->fetchOne(
-            'SELECT LOWER(HEX(id)) FROM customer'
-            . ' WHERE active = 1'
-            . ' AND sales_channel_id = UNHEX(:salesChannelId)'
-            . ' AND (customer_specific_features IS NULL'
-            . ' OR JSON_EXTRACT(customer_specific_features, "$.QUOTE_MANAGEMENT") IS NULL)'
+            'SELECT LOWER(HEX(c.id)) FROM customer c'
+            . ' LEFT JOIN customer_specific_features csf ON csf.customer_id = c.id'
+            . ' WHERE c.active = 1'
+            . ' AND c.sales_channel_id = UNHEX(:salesChannelId)'
+            . ' AND (csf.features IS NULL'
+            . ' OR JSON_EXTRACT(csf.features, "$.QUOTE_MANAGEMENT") IS NULL)'
             . ' LIMIT 1',
             ['salesChannelId' => self::storefrontSalesChannelId($container)],
         );
@@ -2105,9 +2109,11 @@ issued by the Agentic Commerce plugin.
 
 The token's subject is the trust boundary — nothing in a request body can
 select a customer. The customer must additionally have quote management
-enabled, as a **map**: `{"QUOTE_MANAGEMENT": true}` in
-`customer_specific_features`. An array there is silently ignored, and a
-customer without it gets a 422 naming the flag.
+enabled. Set it through the Admin API's `customerSpecificFeatures` field, which
+SwagCommercial stores in the `customer_specific_features` table (`customer_id`
+-> `features`) and reads as a JSON **map**: `{"QUOTE_MANAGEMENT": true}`. An
+array there is silently ignored, and a customer without the flag gets a 422
+naming it.
 
 Scope is read but not enforced: Agentic Commerce cannot yet issue
 `com.shopware.quote:manage` (its supported-scope list is a private constant),
