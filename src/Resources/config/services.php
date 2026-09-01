@@ -33,6 +33,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
 use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialBuyerQuoteGateway;
+use MerchantQuoteAgentPlugin\Command\AllowAnyAgentCommand;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
@@ -122,6 +123,7 @@ return static function (ContainerConfigurator $configurator): void {
     $services->alias(AccessTokenSubjectReaderInterface::class, AcOAuthAccessTokenReader::class);
     $services->set(AgentCustomerAuthenticator::class);
     $services->set(AgentAccessFlags::class);
+    $services->set(AllowAnyAgentCommand::class)->tag('console.command');
 
     // Widens the SDK's per-request profile-host and agent-domain gates on sales
     // channels whose allow-any-agent flag is on. Decorates the interface the
