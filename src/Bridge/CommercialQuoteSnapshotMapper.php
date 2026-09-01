@@ -15,19 +15,18 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
  * parameter is typed `object` for the same reason the gateway's routes are —
  * the concrete QuoteEntity class lives in a runtime-detected soft dependency
  * this plugin never requires.
- *
- * @mago-expect analysis:mixed-method-access
- * @mago-expect analysis:mixed-argument
- * @mago-expect analysis:invalid-iterator
- * @mago-expect analysis:less-specific-nested-return-statement
- * Every field here is read off an untyped SwagCommercial entity — the same
- * soft-dependency seam SwagCommercialProductAdder suppresses at one call,
- * scaled up because mapping a whole quote touches many fields. There is no
- * SwagCommercial type to narrow to; tests/Integration/BuyerQuoteFlowTest
- * proves the mapping is correct against the live shop.
  */
 final readonly class CommercialQuoteSnapshotMapper
 {
+    /**
+     * @mago-expect analysis:mixed-method-access
+     * @mago-expect analysis:mixed-argument
+     * Every field here is read off an untyped SwagCommercial entity — the
+     * same soft-dependency seam SwagCommercialProductAdder suppresses at one
+     * call, scaled up because one snapshot touches many fields. There is no
+     * SwagCommercial type to narrow to; BuyerQuoteFlowTest proves the mapping
+     * is correct against the live shop.
+     */
     public function toSnapshot(object $quote): QuoteSnapshot
     {
         return new QuoteSnapshot(
@@ -45,6 +44,13 @@ final readonly class CommercialQuoteSnapshotMapper
     }
 
     /**
+     * @mago-expect analysis:invalid-iterator
+     * @mago-expect analysis:mixed-method-access
+     * @mago-expect analysis:less-specific-nested-return-statement
+     * `$quote->getLineItems()` and every field on each item are untyped
+     * SwagCommercial values — no type to narrow to; BuyerQuoteFlowTest proves
+     * the shape against the live shop.
+     *
      * @return list<array{id: string, product_id: string|null, label: string, quantity: int, unit_price: float, total_price: float, requested_unit_price: float|null}>
      */
     private function mapLineItems(object $quote): array
@@ -68,6 +74,13 @@ final readonly class CommercialQuoteSnapshotMapper
     }
 
     /**
+     * @mago-expect analysis:invalid-iterator
+     * @mago-expect analysis:mixed-method-access
+     * @mago-expect analysis:less-specific-nested-return-statement
+     * `$quote->getComments()` and every field on each comment are untyped
+     * SwagCommercial values — no type to narrow to; BuyerQuoteFlowTest proves
+     * the shape against the live shop.
+     *
      * @return list<array{comment: string, author: string, created_at: string|null}>
      */
     private function mapComments(object $quote): array

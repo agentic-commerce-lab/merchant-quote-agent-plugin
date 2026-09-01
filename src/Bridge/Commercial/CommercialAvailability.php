@@ -36,6 +36,30 @@ final class CommercialAvailability
 
     public const QUOTE_CALCULATOR = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\Recalculation\\QuoteCalculator';
 
+    /**
+     * The nine commercial services the buyer-side gateway injects, same
+     * convention as the four above: GatewayWiringTest resolves all of them
+     * against the live shop, so a SwagCommercial rename is a one-line fix
+     * here, not a hunt.
+     */
+    public const QUOTE_REQUEST_ROUTE = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\CartToQuote\\QuoteRequestRoute';
+
+    public const QUOTE_SEND_REQUEST_ROUTE = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\State\\QuoteSendRequestRoute';
+
+    public const QUOTE_LINE_ITEM_ROUTE = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\LineItem\\QuoteLineItemRoute';
+
+    public const QUOTE_LOAD_ROUTE = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\QuoteAccounting\\QuoteLoadRoute';
+
+    public const QUOTE_LISTING_ROUTE = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\QuoteAccounting\\QuoteListingRoute';
+
+    public const QUOTE_REQUEST_CHANGE_ROUTE = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\State\\QuoteRequestChangeRoute';
+
+    public const QUOTE_DECLINE_ROUTE = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\State\\QuoteDeclineRoute';
+
+    public const QUOTE_ORDER_ROUTE = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\QuoteToOrder\\QuoteOrderRoute';
+
+    public const CUSTOMER_SPECIFIC_FEATURE_SERVICE = 'Shopware\\Commercial\\B2B\\CustomerSpecificFeatures\\Domain\\CustomerSpecificFeature\\CustomerSpecificFeatureService';
+
     private const LICENSE_CLASS = 'Shopware\\Commercial\\Licensing\\License';
 
     /**

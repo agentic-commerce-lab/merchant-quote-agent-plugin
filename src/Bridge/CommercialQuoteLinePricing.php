@@ -6,7 +6,6 @@ namespace MerchantQuoteAgentPlugin\Bridge;
 
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
-use Ucp\Sdk\Exception\UnsupportedCapabilityException;
 use Ucp\Sdk\Exception\ValidationException;
 
 /**
@@ -25,20 +24,18 @@ use Ucp\Sdk\Exception\ValidationException;
  * price is a 422, and quote lines are indexed both ways because an agent may
  * address a line either way. Splitting further would redistribute the count
  * without drawing a boundary worth having; the gateway's shape is tracked in #44.
- *
- * @mago-expect analysis:mixed-method-access
- * @mago-expect analysis:invalid-iterator
- * @mago-expect analysis:possibly-invalid-argument
- * Every line item here is read off an untyped SwagCommercial entity — the
- * same soft-dependency seam SwagCommercialProductAdder suppresses at one
- * call. There is no SwagCommercial type to narrow to; BuyerQuoteFlowTest
- * proves the writes are correct against the live shop.
  */
-final class CommercialQuoteLinePricing
+final readonly class CommercialQuoteLinePricing
 {
     public function __construct(
-        private readonly ?object $quoteLineItemRoute = null,
+        private ?object $quoteLineItemRoute = null,
     ) {}
+
+    /** The one commercial route this class needs. */
+    public function isAvailable(): bool
+    {
+        return null !== $this->quoteLineItemRoute;
+    }
 
     /**
      * Buyer asks belong in `requestedPrice` (per unit) - never in a price
@@ -56,15 +53,26 @@ final class CommercialQuoteLinePricing
             return;
         }
 
+        /** @mago-expect analysis:invalid-iterator */
+        /** @mago-expect analysis:mixed-method-access */
         foreach ($quote->getLineItems() ?? [] as $lineItem) {
-            $price = $requestedPrices[$lineItem->getProductId()] ?? null;
-            if (null === $price) {
+            $productId = $lineItem->getProductId();
+
+            // array_key_exists rather than ?? null: mago can see $requestedPrices
+            // is array<string, float>, so a lookup can never itself be null - the
+            // thing that can be missing is the key. Saying that explicitly is what
+            // a null-coalesce here would only assert wrongly.
+            if (!\is_string($productId) || !\array_key_exists($productId, $requestedPrices)) {
                 continue;
             }
 
-            $this->route()->edit($quoteId, (string) $lineItem->getId(), $context, new RequestDataBag([
-                'requestedPrice' => $price,
-            ]));
+            /** @mago-expect analysis:mixed-method-access */
+            CommercialQuoteAccess::service($this->quoteLineItemRoute, 'quote line-item')->edit(
+                $quoteId,
+                (string) $lineItem->getId(),
+                $context,
+                new RequestDataBag(['requestedPrice' => $requestedPrices[$productId]]),
+            );
         }
     }
 
@@ -80,8 +88,11 @@ final class CommercialQuoteLinePricing
         $byId = [];
         $byProductId = [];
 
+        /** @mago-expect analysis:invalid-iterator */
+        /** @mago-expect analysis:mixed-method-access */
         foreach ($quote->getLineItems() ?? [] as $lineItem) {
             $byId[(string) $lineItem->getId()] = $lineItem;
+            /** @mago-expect analysis:mixed-method-access */
             $productId = $lineItem->getProductId();
             if (null !== $productId) {
                 $byProductId[$productId] = $lineItem;
@@ -89,6 +100,14 @@ final class CommercialQuoteLinePricing
         }
 
         foreach ($lineItems as $index => $lineItem) {
+            /**
+             * The wider `$lineItems` shape (`id`, `product_id`,
+             * `requested_unit_price`) always has the one field
+             * `requestedPrice()` reads; the extra keys are why the parameter
+             * type looks like a mismatch.
+             *
+             * @mago-expect analysis:possibly-invalid-argument
+             */
             $price = $this->requestedPrice($lineItem, \sprintf('$.line_items[%d].requested_unit_price', $index));
             if (null === $price) {
                 continue;
@@ -102,24 +121,14 @@ final class CommercialQuoteLinePricing
                 )]);
             }
 
-            $this->route()->edit($quoteId, (string) $target->getId(), $context, new RequestDataBag([
-                'requestedPrice' => $price,
-            ]));
+            /** @mago-expect analysis:mixed-method-access */
+            CommercialQuoteAccess::service($this->quoteLineItemRoute, 'quote line-item')->edit(
+                $quoteId,
+                (string) $target->getId(),
+                $context,
+                new RequestDataBag(['requestedPrice' => $price]),
+            );
         }
-    }
-
-    /**
-     * `$quoteLineItemRoute` is nullable so the plugin degrades service by
-     * service; this is where a missing one surfaces as a legible exception
-     * instead of a fatal error on a null method call.
-     */
-    private function route(): object
-    {
-        if (null === $this->quoteLineItemRoute) {
-            throw new UnsupportedCapabilityException('The commercial quote line-item route is unavailable.');
-        }
-
-        return $this->quoteLineItemRoute;
     }
 
     /**

@@ -14,6 +14,7 @@ use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteProductAdderInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\VariantRejectingProductAdder;
+use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteAccess;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteLinePricing;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteSnapshotMapper;
 use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;
@@ -185,15 +186,22 @@ return static function (ContainerConfigurator $configurator): void {
     if (CommercialAvailability::isAvailableByClass()) {
         $services->set(CommercialQuoteSnapshotMapper::class);
 
-        // Extracted out of the gateway (the follow-up issue on the buyer
-        // gateway's shape covers the rest of it): this is where nearly all of
-        // the branching over an existing quote's line items lived, and it is a
-        // different job from deciding which Store API route to call.
+        // "May this buyer request be served at all, and on whose behalf" —
+        // the preconditions every operation shares, separate from the
+        // gateway because they are a different question from which route
+        // implements the operation. #44 tracks the rest of the gateway's shape.
+        $services->set(CommercialQuoteAccess::class)->arg(
+            '$customerSpecificFeatureService',
+            service(CommercialAvailability::CUSTOMER_SPECIFIC_FEATURE_SERVICE)->nullOnInvalid(),
+        );
+
+        // Extracted out of the gateway for the same reason: this is where
+        // nearly all of the branching over an existing quote's line items
+        // lived, and it is a different job from deciding which Store API
+        // route to call.
         $services->set(CommercialQuoteLinePricing::class)->arg(
             '$quoteLineItemRoute',
-            service(
-                'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\LineItem\\QuoteLineItemRoute',
-            )->nullOnInvalid(),
+            service(CommercialAvailability::QUOTE_LINE_ITEM_ROUTE)->nullOnInvalid(),
         );
 
         // ->public() only because nothing CONSUMES the gateway yet. Registering
@@ -207,55 +215,16 @@ return static function (ContainerConfigurator $configurator): void {
         $services
             ->set(SwagCommercialBuyerQuoteGateway::class)
             ->public()
-            ->arg(
-                '$quoteRequestRoute',
-                service(
-                    'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\CartToQuote\\QuoteRequestRoute',
-                )->nullOnInvalid(),
-            )
-            ->arg(
-                '$quoteSendRequestRoute',
-                service(
-                    'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\State\\QuoteSendRequestRoute',
-                )->nullOnInvalid(),
-            )
-            ->arg(
-                '$quoteLoadRoute',
-                service(
-                    'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\QuoteAccounting\\QuoteLoadRoute',
-                )->nullOnInvalid(),
-            )
-            ->arg(
-                '$quoteListingRoute',
-                service(
-                    'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\QuoteAccounting\\QuoteListingRoute',
-                )->nullOnInvalid(),
-            )
+            ->arg('$quoteRequestRoute', service(CommercialAvailability::QUOTE_REQUEST_ROUTE)->nullOnInvalid())
+            ->arg('$quoteSendRequestRoute', service(CommercialAvailability::QUOTE_SEND_REQUEST_ROUTE)->nullOnInvalid())
+            ->arg('$quoteLoadRoute', service(CommercialAvailability::QUOTE_LOAD_ROUTE)->nullOnInvalid())
+            ->arg('$quoteListingRoute', service(CommercialAvailability::QUOTE_LISTING_ROUTE)->nullOnInvalid())
             ->arg(
                 '$quoteRequestChangeRoute',
-                service(
-                    'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\State\\QuoteRequestChangeRoute',
-                )->nullOnInvalid(),
+                service(CommercialAvailability::QUOTE_REQUEST_CHANGE_ROUTE)->nullOnInvalid(),
             )
-            ->arg(
-                '$quoteDeclineRoute',
-                service(
-                    'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\State\\QuoteDeclineRoute',
-                )->nullOnInvalid(),
-            )
-            ->arg(
-                '$quoteOrderRoute',
-                service(
-                    'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\QuoteToOrder\\QuoteOrderRoute',
-                )->nullOnInvalid(),
-            )
-            ->arg(
-                '$customerSpecificFeatureService',
-                service(
-                    'Shopware\\Commercial\\B2B\\CustomerSpecificFeatures\\Domain\\CustomerSpecificFeature\\CustomerSpecificFeatureService',
-                )->nullOnInvalid(),
-            )
-            ->arg('$quoteRepository', service('quote.repository')->nullOnInvalid());
+            ->arg('$quoteDeclineRoute', service(CommercialAvailability::QUOTE_DECLINE_ROUTE)->nullOnInvalid())
+            ->arg('$quoteOrderRoute', service(CommercialAvailability::QUOTE_ORDER_ROUTE)->nullOnInvalid());
 
         $services->alias(BuyerQuoteGatewayInterface::class, SwagCommercialBuyerQuoteGateway::class);
     }

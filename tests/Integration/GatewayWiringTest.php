@@ -49,6 +49,19 @@ final class GatewayWiringTest extends IntegrationTestCase
     }
 
     /**
+     * The nine ids the buyer-side gateway and its line-pricing collaborator
+     * inject. Separate from the merchant-side test above because these come
+     * from a different `services.php` block, registered on
+     * `SwagCommercialBuyerQuoteGateway`/`CommercialQuoteLinePricing`.
+     */
+    public function testTheBuyerGatewayServiceIdsResolveInThisShop(): void
+    {
+        foreach (self::injectedBuyerCommercialIds() as $id) {
+            static::commercialService($id);
+        }
+    }
+
+    /**
      * Class existence is stage one of ADR 0001's gate and decides whether
      * `services.php` registers the bridge block at all, so a shop where the
      * license toggle is on but the classes are missing must not exist. Cheap,
@@ -83,6 +96,22 @@ final class GatewayWiringTest extends IntegrationTestCase
             CommercialAvailability::QUOTE_COMMENTER,
             CommercialAvailability::CONTEXT_RESTORER,
             CommercialAvailability::QUOTE_CALCULATOR,
+        ];
+    }
+
+    /** @return list<non-empty-string> */
+    private static function injectedBuyerCommercialIds(): array
+    {
+        return [
+            CommercialAvailability::QUOTE_REQUEST_ROUTE,
+            CommercialAvailability::QUOTE_SEND_REQUEST_ROUTE,
+            CommercialAvailability::QUOTE_LINE_ITEM_ROUTE,
+            CommercialAvailability::QUOTE_LOAD_ROUTE,
+            CommercialAvailability::QUOTE_LISTING_ROUTE,
+            CommercialAvailability::QUOTE_REQUEST_CHANGE_ROUTE,
+            CommercialAvailability::QUOTE_DECLINE_ROUTE,
+            CommercialAvailability::QUOTE_ORDER_ROUTE,
+            CommercialAvailability::CUSTOMER_SPECIFIC_FEATURE_SERVICE,
         ];
     }
 }
