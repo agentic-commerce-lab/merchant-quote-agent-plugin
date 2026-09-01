@@ -9,6 +9,11 @@
   "x-polling-interval-seconds": 300,
   "x-state-machine": {
     "states": {
+      "draft": {
+        "actor": "none",
+        "buyer_actions": [],
+        "note": "A request that never reached the merchant (the cart-to-quote step ran but customer_send did not). No buyer operation advances it; it can only be loaded or listed."
+      },
       "open": {
         "actor": "merchant",
         "buyer_actions": []
@@ -67,7 +72,7 @@
         "action": "customer_send",
         "to": "open",
         "actor": "buyer",
-        "note": "performed automatically inside POST /ucp/quotes; draft is never exposed"
+        "note": "performed automatically inside POST /ucp/quotes, so that endpoint never returns a draft; a draft can still be loaded or listed later if this step never ran"
       },
       {
         "from": "open",
