@@ -19,10 +19,12 @@ use Ucp\Sdk\Exception\ValidationException;
  * lines of an existing quote, which is where nearly all of the branching lives.
  *
  * @mago-expect lint:cyclomatic-complexity
- * Both apply*Prices() methods are a loop with a per-item conditional over an
- * existing quote's line items — that branching IS the mapping from a
- * requested unit price to the matching line item, not incidental complexity
- * to design away. Tracked with the rest of the gateway's shape in #44.
+ * The rule aggregates per class (threshold 10) and every branch here is a real
+ * case in agent-supplied input: a line with no requested price is skipped, a
+ * counter line matching neither line id nor product id is a 422, a non-numeric
+ * price is a 422, and quote lines are indexed both ways because an agent may
+ * address a line either way. Splitting further would redistribute the count
+ * without drawing a boundary worth having; the gateway's shape is tracked in #44.
  *
  * @mago-expect analysis:mixed-method-access
  * @mago-expect analysis:invalid-iterator

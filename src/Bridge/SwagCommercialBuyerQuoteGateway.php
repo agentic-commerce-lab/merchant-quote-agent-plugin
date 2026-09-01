@@ -34,14 +34,24 @@ use Ucp\Sdk\Exception\ValidationException;
  * SwagCommercial is a runtime-detected soft dependency — this service is only
  * registered when its classes exist (see CommercialAvailability).
  *
- * @mago-expect lint:cyclomatic-complexity
  * @mago-expect lint:too-many-methods
- * Six Store API operations plus their shared plumbing (feature-gate check,
- * quote load/snapshot, not-found translation) is the surface SwagCommercial's
- * B2B quote backend actually has. This is a straight port of 487 lines of
- * working code, proven against the live shop by BuyerQuoteFlowTest — splitting
- * it further here trades real correctness risk for a lint count. #44 tracks
- * reshaping it properly.
+ * Seven interface methods plus four private helpers (the quote-feature check,
+ * the snapshot/load pair, and the null-route guard added to satisfy Mago's own
+ * analyzer — see that method's docblock) is what six Store API operations and
+ * their shared error handling actually take. Tracked with the rest of the
+ * gateway's shape in #44.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10) and every branch here is real:
+ * requestQuote() rejects an empty line-item list and a non-positive quantity
+ * inline (both 422s), counterQuote() only touches pricing when line items were
+ * actually sent, loadQuote() translates any commercial exception into
+ * not-found so a foreign quote is indistinguishable from a missing one, and
+ * every route access goes through a null-check that turns a missing service
+ * into a named UnsupportedCapabilityException instead of a fatal error. None
+ * of that is incidental complexity; it's the port's error handling. Splitting
+ * further would redistribute the count without drawing a boundary worth
+ * having — the gateway's shape is tracked in #44.
  *
  * @mago-expect analysis:mixed-method-access
  * @mago-expect analysis:mixed-argument
