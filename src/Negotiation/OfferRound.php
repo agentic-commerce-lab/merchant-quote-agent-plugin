@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -41,11 +42,13 @@ final readonly class OfferRound
         ?string $extractHash,
     ): NegotiationPass {
         $conversation = SnapshotAdapter::conversation($snapshot);
+        $baseline = QuoteBaseline::read($snapshot);
         $answer = $this->proposer->propose(
             $settings,
             SnapshotAdapter::toPolicy($snapshot),
             $decision->price,
             $conversation,
+            $baseline,
         );
 
         if ($answer->offer === null) {
@@ -59,14 +62,13 @@ final readonly class OfferRound
             return $this->escalated($gateway, $snapshot, $answer->escalation, $extractHash, $answer->promptHash);
         }
 
-        if ($answer->offer->price->linePricesNet !== null && $conversation->agent !== []) {
-            // #2(a), the half still open: the reference lines a per-line offer
-            // is bounded against are re-captured every round, so round two is
-            // measured against round one's already-reduced prices and
-            // compounds straight past the cap — with the authorizer and the
-            // verifier both clean. Persisting that reference across passes
-            // needs a customField; until then round two is a human's.
-            $this->logger->info('A per-line ask reached a second round; a human takes it until #2(a) lands.', [
+        if ($answer->offer->price->linePricesNet !== null && $baseline === null && self::servicedBefore($snapshot)) {
+            // #49 anchors per-line offers to a stored baseline, so round two
+            // is no longer a human's — except on quotes serviced before that
+            // baseline existed. Those have no anchor, so a per-line offer on
+            // them would still be measured against already-reduced prices.
+            // Retires itself as those quotes close.
+            $this->logger->info('A per-line ask on a quote with no stored baseline; a human takes it.', [
                 'quoteId' => $snapshot->identity->quoteId,
             ]);
 
@@ -130,6 +132,12 @@ final readonly class OfferRound
         ]);
 
         $this->reply->send($gateway, $snapshot->identity->quoteId);
+    }
+
+    /** A quote the agent has answered before carries the servicing fingerprint. */
+    private static function servicedBefore(QuoteSnapshot $snapshot): bool
+    {
+        return ServicingFingerprint::stamped($snapshot->lifecycle->customFields) !== null;
     }
 
     /**

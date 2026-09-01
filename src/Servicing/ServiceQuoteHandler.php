@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
+use MerchantQuoteAgentPlugin\Negotiation\QuoteBaseline;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
@@ -220,8 +221,17 @@ final readonly class ServiceQuoteHandler
 
         // Committed before the pipeline runs, so it survives a process death
         // during it. This ordering IS the mechanism.
+        //
+        // The baseline (#49) rides along for the same reason. Captured here
+        // rather than at the first price write because ServicingFingerprint's
+        // marker is stamped whatever the outcome, so a quote marked serviced
+        // with no baseline must mean exactly one thing — it predates this
+        // deploy — and not "a pass ran but wrote nothing". This is also the
+        // quote as the agent first found it, which is the spec's own
+        // definition and strictly earlier than any pre-write read.
         $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
             self::ATTEMPTS_KEY => $attempts + 1,
+            ...QuoteBaseline::stampIfAbsent($snapshot),
         ]));
 
         return $attempts;

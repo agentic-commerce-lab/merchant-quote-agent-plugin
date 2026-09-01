@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
+use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -94,17 +95,26 @@ final class RecordedOutcomePathsTest extends TestCase
         );
     }
 
-    public function testASecondRoundPerLineAskRecordsOneRecord(): void
+    /**
+     * #49 removed the blanket second-round escalation; what still escalates a
+     * per-line ask on a later round is the absence of a stored baseline on a
+     * quote the servicing fingerprint says was already answered once. Without
+     * the fingerprint marker this quote would now be answered, not escalated.
+     */
+    public function testASecondRoundPerLineAskOnAQuoteWithNoBaselineRecordsOneRecord(): void
     {
         $harness = PipelineHarness::with([
             '{"line_changes":[{"line_item_id":"line-1","quantity":null,"target_unit_price":85,"remove":false}]}',
             '{"action":"offer","line_prices":[{"line_item_id":"line-1","unit_price_net":95}],"message":"95 each."}',
         ]);
-        $snapshot = NegotiationFixture::snapshot(comments: [
-            NegotiationFixture::buyerComment('95 per unit?', '2026-08-28 09:00:00'),
-            NegotiationFixture::agentComment('95 each it is.', '2026-08-28 09:30:00'),
-            NegotiationFixture::buyerComment('make it 85 per unit', '2026-08-28 10:00:00'),
-        ]);
+        $snapshot = NegotiationFixture::withCustomFields(
+            NegotiationFixture::snapshot(comments: [
+                NegotiationFixture::buyerComment('95 per unit?', '2026-08-28 09:00:00'),
+                NegotiationFixture::agentComment('95 each it is.', '2026-08-28 09:30:00'),
+                NegotiationFixture::buyerComment('make it 85 per unit', '2026-08-28 10:00:00'),
+            ]),
+            [ServicingFingerprint::MARKER_KEY => 'some-old-stamp'],
+        );
 
         $harness->pipeline->service(
             $snapshot,

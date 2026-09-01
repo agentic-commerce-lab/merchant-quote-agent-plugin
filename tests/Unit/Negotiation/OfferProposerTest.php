@@ -94,15 +94,11 @@ final class OfferProposerTest extends TestCase
     }
 
     /**
-     * The other half of #47's restriction, and the one the integration suite
-     * had to teach us: OfferRound escalates any per-line offer once the agent
-     * has replied before (#2(a)'s open half — the reference lines are
-     * re-captured each round, so round two would compound past the cap).
-     * Converting here would turn an answerable quote into a human's, which is
-     * worse than the wrong-level answer. Without this guard,
-     * NegotiationPipelineTest and DecisionRecordTest both flip to escalated.
+     * #49 removed the restriction this test used to name: OfferRound no
+     * longer escalates a later-round per-line offer, so the buyer-level
+     * correction now runs on every round, not just the first.
      */
-    public function testAQuoteWideAnswerIsLeftAloneOnceTheAgentHasAlreadyReplied(): void
+    public function testAQuoteWideAnswerIsConvertedOnALaterRoundToo(): void
     {
         [$client] = ScriptedClient::spy(['{"action":"offer","discount_percent":5,"message":"5% for you."}']);
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -119,12 +115,12 @@ final class OfferProposerTest extends TestCase
             );
 
         self::assertNotNull($answer->offer);
-        self::assertSame(
-            5.0,
-            $answer->offer->price->discountPercent,
-            'A later round was converted to per-line prices, which OfferRound escalates.',
+        self::assertNull($answer->offer->price->discountPercent);
+        // The line is 100.00 before the round; 5% off it is 95.00.
+        self::assertEquals(
+            [new \MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice('line-1', 95.0)],
+            $answer->offer->price->linePricesNet,
         );
-        self::assertNull($answer->offer->price->linePricesNet);
     }
 
     public function testTheModelIsToldItsAuthorityAndTheMerchantStrategy(): void
