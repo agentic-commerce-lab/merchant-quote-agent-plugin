@@ -8,23 +8,14 @@ use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
-use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
 use Ucp\Sdk\Exception\ValidationException;
-use Ucp\Sdk\Model\RequestContext;
 
 /**
  * The buyer path end to end through SwagCommercial's Store API routes, in a
  * real customer's sales-channel context: request a quote, read it back, list
  * it. Runs in a rolled-back transaction like every integration test here, so
  * the quotes it creates do not accumulate.
- *
- * @mago-expect lint:too-many-methods
- * Eight cases against six operations plus four shared context-building
- * helpers is the surface of the buyer gateway's contract, not a class with
- * behaviour to split — the money-path tests (counter/decline, accept/order)
- * are exactly the coverage the review round asked for; fewer methods here
- * would mean fewer cases, not a better boundary.
  */
 final class BuyerQuoteFlowTest extends IntegrationTestCase
 {
@@ -39,7 +30,7 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
 
     public function testItRequestsAQuoteAndReadsItBack(): void
     {
-        $context = $this->buyerContext();
+        $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
         $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer(), $context->getContext());
 
         $snapshot = $this->buyerGateway()->requestQuote(
@@ -61,7 +52,7 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
 
     public function testItListsOnlyTheAuthenticatedCustomersQuotes(): void
     {
-        $context = $this->buyerContext();
+        $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
         $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer(), $context->getContext());
         $foreignQuoteId = BuyerQuoteFixture::anyQuoteIdNotOwnedBy(
             static::getContainer(),
@@ -80,7 +71,11 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
     /** "An agent must not be able to ask for the whole table." */
     public function testListQuotesClampsTheLimitToFifty(): void
     {
-        $list = $this->buyerGateway()->listQuotes($this->buyerContext(), 5000, 1);
+        $list = $this->buyerGateway()->listQuotes(
+            BuyerQuoteContextFixture::buyerContext(static::getContainer()),
+            5000,
+            1,
+        );
 
         self::assertSame(50, $list->limit);
     }
@@ -89,7 +84,10 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
     {
         $this->expectException(\Ucp\Sdk\Exception\ResourceNotFoundException::class);
 
-        $this->buyerGateway()->getQuote($this->buyerContext(), \Shopware\Core\Framework\Uuid\Uuid::randomHex());
+        $this->buyerGateway()->getQuote(
+            BuyerQuoteContextFixture::buyerContext(static::getContainer()),
+            \Shopware\Core\Framework\Uuid\Uuid::randomHex(),
+        );
     }
 
     /**
@@ -99,7 +97,7 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
      */
     public function testAnotherCustomersQuoteIsNotFound(): void
     {
-        $context = $this->buyerContext();
+        $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
         $foreignQuoteId = BuyerQuoteFixture::anyQuoteIdNotOwnedBy(
             static::getContainer(),
             $context->getCustomer()?->getId() ?? '',
@@ -112,7 +110,7 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
 
     public function testACustomerWithoutTheQuoteFeatureIsToldWhichFlagIsMissing(): void
     {
-        $context = $this->buyerContextWithoutQuoteFeature();
+        $context = BuyerQuoteContextFixture::buyerContextWithoutQuoteFeature(static::getContainer());
 
         $this->expectException(ValidationException::class);
         $this->expectExceptionMessageMatches('/QUOTE_MANAGEMENT/');
@@ -134,7 +132,7 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
      */
     public function testACounterOfferCanThenBeDeclined(): void
     {
-        $context = $this->buyerContext();
+        $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
         $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer(), $context->getContext());
         $merchantGateway = static::gateway();
 
@@ -176,7 +174,7 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
      */
     public function testAcceptingAQuotePlacesAnOrder(): void
     {
-        $context = $this->buyerContext();
+        $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
         $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer(), $context->getContext());
         $merchantGateway = static::gateway();
 
@@ -201,26 +199,5 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
         self::assertInstanceOf(BuyerQuoteGatewayInterface::class, $gateway);
 
         return $gateway;
-    }
-
-    private function buyerContext(): \Shopware\Core\System\SalesChannel\SalesChannelContext
-    {
-        return $this->contextFor(BuyerQuoteFixture::anyQuoteCapableCustomerId(static::getContainer()));
-    }
-
-    private function buyerContextWithoutQuoteFeature(): \Shopware\Core\System\SalesChannel\SalesChannelContext
-    {
-        return $this->contextFor(BuyerQuoteFixture::anyCustomerWithoutQuoteFeature(static::getContainer()));
-    }
-
-    private function contextFor(string $customerId): \Shopware\Core\System\SalesChannel\SalesChannelContext
-    {
-        $resolver = static::getContainer()->get(SalesChannelContextResolver::class);
-        self::assertInstanceOf(SalesChannelContextResolver::class, $resolver);
-
-        return $resolver->resolveForCustomer(
-            $customerId,
-            new RequestContext(BuyerQuoteFixture::storefrontHost(static::getContainer())),
-        );
     }
 }
