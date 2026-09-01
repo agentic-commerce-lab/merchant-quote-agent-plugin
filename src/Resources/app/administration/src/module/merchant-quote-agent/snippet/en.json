@@ -79,7 +79,9 @@
             "remoteProfileAllowlistHelp": "Hosts whose agent profile this shop may fetch. Profiles are fetched over HTTPS only.",
             "agentAllowlistLabel": "Agent domains",
             "agentAllowlistHelp": "Domains whose agents may transact with this sales channel.",
-            "save": "Save allowlists"
+            "save": "Save allowlists",
+            "forbidden": "Saving needs the Agentic Commerce ucp.editor privilege.",
+            "failed": "The request failed."
         }
     }
 }

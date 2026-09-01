@@ -131,10 +131,10 @@ Shopware.Component.register('merchant-quote-agent-access', {
             const detail = response?.data?.errors?.[0]?.detail;
 
             if (response?.status === 403) {
-                return detail ?? 'This user lacks the Agentic Commerce ucp.editor privilege.';
+                return detail ?? this.$tc('merchant-quote-agent.access.forbidden');
             }
 
-            return detail ?? 'Request failed.';
+            return detail ?? this.$tc('merchant-quote-agent.access.failed');
         },
     },
 });

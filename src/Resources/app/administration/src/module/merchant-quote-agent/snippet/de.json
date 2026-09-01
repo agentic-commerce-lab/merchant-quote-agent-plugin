@@ -79,7 +79,9 @@
             "remoteProfileAllowlistHelp": "Hosts, deren Agenten-Profil dieser Shop abrufen darf. Profile werden ausschließlich über HTTPS abgerufen.",
             "agentAllowlistLabel": "Agenten-Domains",
             "agentAllowlistHelp": "Domains, deren Agenten mit diesem Verkaufskanal handeln dürfen.",
-            "save": "Allowlists speichern"
+            "save": "Allowlists speichern",
+            "forbidden": "Zum Speichern wird die Berechtigung ucp.editor des Agentic-Commerce-Plugins benötigt.",
+            "failed": "Die Anfrage ist fehlgeschlagen."
         }
     }
 }
