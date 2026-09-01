@@ -248,7 +248,7 @@ already promises not to confirm existence.
 | Debt | Retired by |
 | --- | --- |
 | `AcOAuthAccessTokenReader` reads another plugin's table and replicates its hash | #13 upstream: the class becomes a delegate |
-| Scope carried but never enforced | a new upstream ask: make AC's supported-scope list extensible |
+| Scope carried but never enforced | #46 upstream: make AC's supported-scope list extensible |
 | Our profile contributor re-adds the descriptor the AC filter strips | #12 upstream |
 | Route paths duplicated between our controller and any fork build | the fork going away, which is this issue |
 | The buyer path uses `/ucp/quotes` REST routes instead of the SDK's operation dispatch | an SDK operation registry for vendor capabilities; the fork's own comment says the same |

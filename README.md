@@ -79,6 +79,33 @@ A quote already claimed by another worker is *not* parked: the delivery is
 refused with a flat 5-second retry until the lock frees, so a buyer comment
 that lands mid-pass is serviced rather than dropped.
 
+## Buyer-facing quote endpoints
+
+Buyer agents reach the quote capability at `/ucp/quotes` (see
+`/.well-known/ucp/schemas/quote.openapi.json` for the contract). Every request
+needs two headers: `UCP-Agent`, which the UCP SDK enforces for everything under
+`/ucp/`, and `Authorization: Bearer <token>`, an identity-linking access token
+issued by the Agentic Commerce plugin.
+
+`UCP-Agent`'s `profile="<uri>"` must be **https** on a host the shop's SDK
+configuration allowlists (a plain-http or non-allowlisted profile URI is
+rejected before your token is ever read). That failure is a 422, same as any
+other malformed request, not a 401 — so an agent seeing 422 on a request that
+already carries a bearer token should suspect its profile URI, not its token.
+
+The token's subject is the trust boundary — nothing in a request body can
+select a customer. The customer must additionally have quote management
+enabled. Set it through the Admin API's `customerSpecificFeatures` field, which
+SwagCommercial stores in the `customer_specific_features` table (`customer_id`
+-> `features`) and reads as a JSON **map**: `{"QUOTE_MANAGEMENT": true}`. An
+array there is silently ignored, and a customer without the flag gets a 422
+naming it.
+
+Scope is read but not enforced: Agentic Commerce cannot yet issue
+`com.shopware.quote:manage` (its supported-scope list is a private constant),
+so any valid token for the customer is accepted and authorization is by quote
+ownership. Enforcement lands with the upstream scope change.
+
 ## Configuring the agent
 
 Everything is in the plugin's own settings, per sales channel:

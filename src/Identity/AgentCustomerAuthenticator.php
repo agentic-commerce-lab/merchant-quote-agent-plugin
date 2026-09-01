@@ -18,7 +18,12 @@ use Ucp\Sdk\Model\RequestContext;
  * OAuthException on purpose. The SDK's ExceptionListener maps OAuthException to
  * 400, but a rejected bearer token has to be 401 — and that listener honours
  * any HttpExceptionInterface with the exception's own status, so this way the
- * response is a real 401 inside a UCP error envelope.
+ * response is a real 401 inside a UCP error envelope. The status is all it
+ * honours, though: the listener builds its JsonResponse from
+ * `$throwable->getStatusCode()` alone and never reads `$throwable->getHeaders()`,
+ * so the `WWW-Authenticate: Bearer` challenge passed as this exception's first
+ * constructor argument is dropped and never reaches the client. Worth raising
+ * upstream with the other SDK fixes in #14.
  *
  * `$requiredScope` is wired but every caller passes null: Agentic Commerce
  * intersects requested scopes against a private constant that does not include
