@@ -61,6 +61,72 @@ final class OfferProposerTest extends TestCase
         self::assertSame(1, $spy->calls);
     }
 
+    /**
+     * Issue #47, and the half OfferLevelMirrorTest cannot prove: that the
+     * mirror is actually reached. The buyer itemised the ask (a requested
+     * price on the line), the model answered quote-wide anyway, and what
+     * comes back must be a line price — otherwise OfferApplier writes a
+     * quote-level discount to an ask that named a line.
+     */
+    public function testAQuoteWideAnswerToAPerLineAskComesBackAsALinePrice(): void
+    {
+        [$client] = ScriptedClient::spy(['{"action":"offer","discount_percent":5,"message":"5% for you."}']);
+        $snapshot = NegotiationFixture::snapshot(requestedUnitPrice: 95.0);
+
+        $answer = self::proposer($client)
+            ->propose(
+                NegotiationFixture::settings(),
+                SnapshotAdapter::toPolicy($snapshot),
+                self::grantDecision(),
+                SnapshotAdapter::conversation($snapshot),
+            );
+
+        self::assertNotNull($answer->offer);
+        self::assertNull(
+            $answer->offer->price->discountPercent,
+            'The quote-wide discount reached the offer: OfferLevelMirror is not reached from propose().',
+        );
+        // The line is 100.00 before the round; 5% off it is 95.00.
+        self::assertEquals(
+            [new \MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice('line-1', 95.0)],
+            $answer->offer->price->linePricesNet,
+        );
+    }
+
+    /**
+     * The other half of #47's restriction, and the one the integration suite
+     * had to teach us: OfferRound escalates any per-line offer once the agent
+     * has replied before (#2(a)'s open half — the reference lines are
+     * re-captured each round, so round two would compound past the cap).
+     * Converting here would turn an answerable quote into a human's, which is
+     * worse than the wrong-level answer. Without this guard,
+     * NegotiationPipelineTest and DecisionRecordTest both flip to escalated.
+     */
+    public function testAQuoteWideAnswerIsLeftAloneOnceTheAgentHasAlreadyReplied(): void
+    {
+        [$client] = ScriptedClient::spy(['{"action":"offer","discount_percent":5,"message":"5% for you."}']);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::agentComment('Our first offer.', '2026-08-28 09:00:00'),
+            NegotiationFixture::buyerComment('Still too high.', '2026-08-28 10:00:00'),
+        ], requestedUnitPrice: 95.0);
+
+        $answer = self::proposer($client)
+            ->propose(
+                NegotiationFixture::settings(),
+                SnapshotAdapter::toPolicy($snapshot),
+                self::grantDecision(),
+                SnapshotAdapter::conversation($snapshot),
+            );
+
+        self::assertNotNull($answer->offer);
+        self::assertSame(
+            5.0,
+            $answer->offer->price->discountPercent,
+            'A later round was converted to per-line prices, which OfferRound escalates.',
+        );
+        self::assertNull($answer->offer->price->linePricesNet);
+    }
+
     public function testTheModelIsToldItsAuthorityAndTheMerchantStrategy(): void
     {
         [$client, $spy] = ScriptedClient::spy(['{"action":"offer","discount_percent":5,"message":"ok"}']);
