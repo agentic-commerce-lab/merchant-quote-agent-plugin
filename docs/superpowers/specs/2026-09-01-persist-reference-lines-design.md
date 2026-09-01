@@ -21,6 +21,11 @@ Both of these re-derive their reference per pass, and fixing only the first woul
 |---|---|---|
 | Authorizer — `LinePriceOfferCheck` | this round's `$snapshot->lines` | `ProposedOffer::withReferenceLines()` in `OfferProposer::authorize()` |
 | Verifier — `LineOfferVerifier` | this pass's pre-write snapshot | `VerifyOfferInput::$reference` in `OfferApplier::apply()` |
+| Verifier — `DiscountTotalViolation` | the same pre-write snapshot's totals | `VerifyOfferInput::$reference` |
+
+The totals site is easy to overlook because #2 records that quote-level rounds are safe — Shopware's `discount` field is absolute and replaces the previous round's value, so a quote-wide round two still measures correctly. That safety does **not** extend to per-line rounds: writing line prices at 10% off round one's prices leaves the final total ~19% below the original while the pre-write reference makes it look like 10%. Lines and totals leak together, and fixing only the lines would leave a cap that still drifts.
+
+The verifier's reference is therefore read three ways, which constrains what the baseline has to store: `LineOfferVerifier` reads its **lines**, `DiscountTotalViolation` reads its **`totalNet`**, and `NetFactor::of()` reads **both at once** — dividing `totalNet` by the sum of `unitPriceNet × quantity` to normalise gross-vs-net price space. A baseline carrying prices but not quantities and totals would hand `NetFactor` original prices against a current total and produce a meaningless ratio.
 
 ## Scope
 
@@ -53,7 +58,14 @@ This self-corrects on the paths that matter. A pass that escalates writes nothin
 
 ### Shape
 
-A list of `{lineItemId, unitPriceNet}` — the net unit price of every line as the agent first found it. No timestamp: the quote's own history carries that, and an unread field rots.
+```json
+{ "totalNet": 1000.0,
+  "lines": [ { "lineItemId": "…", "unitPriceNet": 100.0, "quantity": 10 } ] }
+```
+
+Quantities and `totalNet` are stored because the verifier needs a *coherent* reference, not just old prices: `NetFactor::of()` divides `totalNet` by the sum of `unitPriceNet × quantity`, so the three values have to come from the same moment or the normalisation is nonsense.
+
+Nothing else is stored. Currency, state and expiry come from the live snapshot when the reference is rebuilt — they are not price history, and a stale copy of them would be a second source of truth. No timestamp either: the quote's own history carries that, and an unread field rots.
 
 ## Components
 
@@ -61,8 +73,10 @@ A list of `{lineItemId, unitPriceNet}` — the net unit price of every line as t
 
 Two static methods, one parsing site:
 
-- `read(BridgeSnapshot $snapshot): ?list<PolicyLineSnapshot>` — null when the field is absent, and also when it is present but malformed, since a baseline nobody can parse must not silently become "no limit".
-- `stamp(list<BridgeLineSnapshot> $lines): array<string, mixed>` — the custom-field fragment for `QuoteUpdate`.
+- `read(BridgeSnapshot $snapshot): ?QuoteBaselineLines` — null when the field is absent, and also when it is present but malformed, since a baseline nobody can parse must not silently become "no limit".
+- `stamp(BridgeSnapshot $snapshot): array<string, mixed>` — the custom-field fragment for `QuoteUpdate`, taking the whole snapshot because it needs the totals as well as the lines.
+
+`QuoteBaselineLines` is a small `final readonly` value object holding `float $totalNet` and `list<PolicyLineSnapshot> $lines`, plus `asReferenceSnapshot(PolicySnapshot $live): PolicySnapshot` — the baseline's prices with the live snapshot's currency and lifecycle. That method is what keeps the "prices from the baseline, everything else from now" rule in one place instead of at both call sites.
 
 It lives in `Negotiation` rather than `Bridge` because it produces policy DTOs, which is the mapping `SnapshotAdapter` already owns. It imports nothing from Shopware, so `NamespacePurityTest` stays green.
 
@@ -70,7 +84,7 @@ It lives in `Negotiation` rather than `Bridge` because it produces policy DTOs, 
 
 - `OfferRound::play` reads the baseline from the bridge snapshot and passes it to `OfferProposer::propose()`, which becomes its fifth parameter — at the cap, not over it.
 - `OfferProposer` uses `$baseline ?? $snapshot->lines` as the reference. Missing baseline resolves to the current lines, which is correct on the first pass by definition.
-- `OfferApplier` reads the baseline itself from the bridge snapshot it already holds, and uses it as the verifier's `reference` when present.
+- `OfferApplier` reads the baseline itself from the bridge snapshot it already holds and passes `asReferenceSnapshot()` as the verifier's `reference` when present, which anchors the line check, the totals check and the net-factor normalisation together.
 
 ### A simplification that falls out
 
@@ -95,7 +109,9 @@ Replacing the removed guard: a per-line offer is escalated only when the quote h
 
 **Unit — `OfferProposer`:** an offer is bounded against the baseline, not against the round's lines. The distinguishing fixture has a baseline strictly higher than the current lines, so a test that confused the two would pass against the wrong number.
 
-**Integration — the one that proves the point:** a three-round per-line chain must not end below `original × (1 − maxDiscountPercent/100)` on any line. This is #2's own stated fixture requirement and nothing currently exercises it; it is the test that would have caught the original defect.
+**Unit — `NetFactor` coherence:** a baseline whose quantities were dropped produces a different net factor from one that keeps them. This is the test that fails if someone later "simplifies" the stored shape back to prices alone.
+
+**Integration — the one that proves the point:** a three-round per-line chain must not end below `original × (1 − maxDiscountPercent/100)` on any line, **and** its final total must not fall below the same bound. This is #2's own stated fixture requirement, extended to the totals site; nothing currently exercises either, and it is the test that would have caught the original defect.
 
 **Integration — the regressions #47 documented:** `NegotiationPipelineTest::testAnInBandAskIsAppliedToTheQuoteAndAnswered` and `DecisionRecordTest::testARealPassWritesARealRow` must be green with the guard removed, since those are what flipped to `escalated` when per-line offers reached a second round.
 
