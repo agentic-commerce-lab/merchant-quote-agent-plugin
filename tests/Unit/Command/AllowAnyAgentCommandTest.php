@@ -87,6 +87,22 @@ final class AllowAnyAgentCommandTest extends TestCase
         self::assertSame(1, $tester->getStatusCode());
     }
 
+    /**
+     * An empty id takes the same branch as no id at all, so both must be
+     * refused rather than quietly listing the channels and reporting success.
+     */
+    public function testItRefusesASwitchWithoutAChannelId(): void
+    {
+        $tester = new CommandTester($this->command(storedFlag: false));
+        $tester->execute(['--on' => true]);
+        self::assertSame(1, $tester->getStatusCode());
+        self::assertStringContainsString('need a sales channel id', $tester->getDisplay());
+
+        $withEmptyId = new CommandTester($this->command(storedFlag: false));
+        $withEmptyId->execute(['salesChannelId' => '', '--on' => true]);
+        self::assertSame(1, $withEmptyId->getStatusCode());
+    }
+
     private function command(bool $storedFlag, ?SystemConfigService $systemConfig = null): AllowAnyAgentCommand
     {
         $connection = $this->createMock(Connection::class);
