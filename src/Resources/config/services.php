@@ -41,6 +41,7 @@ use MerchantQuoteAgentPlugin\Identity\AcOAuthAccessTokenReader;
 use MerchantQuoteAgentPlugin\Identity\AgentAccessFlags;
 use MerchantQuoteAgentPlugin\Identity\AgentAdmittingRuntimeConfigurationResolver;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
+use MerchantQuoteAgentPlugin\Identity\AgentProfileHostValidatorFactory;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -66,6 +67,7 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteLineItemValidator;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Ucp\Sdk\Internal\Service\UrlSafetyValidator;
 use Ucp\Sdk\Service\RuntimeConfigurationResolverInterface;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
@@ -129,6 +131,18 @@ return static function (ContainerConfigurator $configurator): void {
         '$inner',
         service('.inner'),
     );
+
+    // The SDK's profile-fetch validator, rebuilt per request so an
+    // allow-any-agent channel can admit the host the request presents. This
+    // REPLACES the SDK bundle's own definition of the service, because the class
+    // is final and injected concretely, so it cannot be decorated. Whoever
+    // defines this id last wins: AgentAccessWiringTest fails loudly if that
+    // stops being us.
+    $services->set(AgentProfileHostValidatorFactory::class);
+    $services
+        ->set(UrlSafetyValidator::class)
+        ->factory([service(AgentProfileHostValidatorFactory::class), 'create'])
+        ->public();
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the
