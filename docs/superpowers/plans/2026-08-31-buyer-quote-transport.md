@@ -2170,9 +2170,14 @@ Expected: `quality` clean (`format:check`, `lint`, `typecheck`, `quality:filesiz
 scripts/sync-to-shop.sh
 docker exec -u www-data -w /var/www/html merchant-quote-shop php bin/console cache:clear -n
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8095/ucp/quotes           # 422: UCP-Agent missing
-curl -s -o /dev/null -w '%{http_code}\n' -H 'UCP-Agent: manual/1.0' \
-  -H 'UCP-Agent: profile="http://localhost:8095/.well-known/ucp"' \
-  http://localhost:8095/ucp/quotes                                                  # 401: no bearer token
+# One combined header, not two -H flags: two flags send two header lines.
+# Expect 422 here rather than 401 on a local shop — the SDK rejects a plain-http
+# profile URI before it ever reads the credential, because profileFetchingDevelopmentMode
+# is off (it is a bundle DI parameter, not part of the sales-channel config row).
+# The 401 path is covered by UcpQuoteEndpointTest against the real kernel.
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H 'UCP-Agent: manual/1.0; profile="http://localhost:8095/.well-known/ucp"' \
+  http://localhost:8095/ucp/quotes                                                  # 422, see above
 curl -s http://localhost:8095/.well-known/ucp | python3 -m json.tool | grep -A3 shopware.quote
 ```
 
@@ -2184,7 +2189,7 @@ Two corrections Task 6 established the hard way, so do not re-derive them: the S
 
 ```bash
 git add README.md docs/superpowers/specs/2026-08-31-buyer-quote-transport-design.md \
-        src/Ucp/Quote/QuoteCapability.php src/Ucp/Quote/QuoteCapabilityDescriptor.php
+        src/Identity/AgentCustomerAuthenticator.php
 git commit -m "docs: the buyer-facing quote path and the scope debt behind it
 
 Issue #9. Records the two headers a buyer agent needs, the QUOTE_MANAGEMENT map
