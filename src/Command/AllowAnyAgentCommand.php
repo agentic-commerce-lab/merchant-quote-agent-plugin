@@ -68,7 +68,13 @@ final class AllowAnyAgentCommand extends Command
         $off = (bool) $input->getOption('off');
 
         if (!\is_string($salesChannelId) || $salesChannelId === '') {
-            return $this->list($io, $on || $off);
+            if ($on || $off) {
+                $io->error('--on and --off need a sales channel id.');
+
+                return Command::FAILURE;
+            }
+
+            return $this->list($io);
         }
 
         if ($on === $off) {
@@ -78,7 +84,7 @@ final class AllowAnyAgentCommand extends Command
         }
 
         $channels = $this->channels();
-        if (!isset($channels[$salesChannelId])) {
+        if (!\array_key_exists($salesChannelId, $channels)) {
             $io->error(\sprintf('Unknown sales channel "%s". Run without arguments to list them.', $salesChannelId));
 
             return Command::FAILURE;
@@ -103,14 +109,8 @@ final class AllowAnyAgentCommand extends Command
     /**
      * @throws \Doctrine\DBAL\Exception
      */
-    private function list(SymfonyStyle $io, bool $switchWithoutChannel): int
+    private function list(SymfonyStyle $io): int
     {
-        if ($switchWithoutChannel) {
-            $io->error('--on and --off need a sales channel id.');
-
-            return Command::FAILURE;
-        }
-
         $rows = [];
         foreach ($this->channels() as $id => $name) {
             $rows[] = [$name, $id, $this->flags->allowAnyAgent($id) ? 'on' : 'off'];
@@ -132,7 +132,7 @@ final class AllowAnyAgentCommand extends Command
 
         /** @var array{id: string, name: string} $row */
         foreach ($this->connection->fetchAllAssociative(
-            'SELECT LOWER(HEX(sc.id)) AS id, COALESCE(t.name, sc.id) AS name'
+            'SELECT LOWER(HEX(sc.id)) AS id, COALESCE(t.name, LOWER(HEX(sc.id))) AS name'
             . ' FROM sales_channel sc'
             . ' LEFT JOIN sales_channel_translation t ON t.sales_channel_id = sc.id'
             . ' WHERE sc.active = 1 GROUP BY sc.id, t.name ORDER BY name',
