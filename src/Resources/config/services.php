@@ -39,6 +39,7 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Identity\AccessTokenSubjectReaderInterface;
 use MerchantQuoteAgentPlugin\Identity\AcOAuthAccessTokenReader;
 use MerchantQuoteAgentPlugin\Identity\AgentAccessFlags;
+use MerchantQuoteAgentPlugin\Identity\AgentAdmittingRuntimeConfigurationResolver;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
@@ -65,6 +66,7 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteLineItemValidator;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Ucp\Sdk\Service\RuntimeConfigurationResolverInterface;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
@@ -118,6 +120,15 @@ return static function (ContainerConfigurator $configurator): void {
     $services->alias(AccessTokenSubjectReaderInterface::class, AcOAuthAccessTokenReader::class);
     $services->set(AgentCustomerAuthenticator::class);
     $services->set(AgentAccessFlags::class);
+
+    // Widens the SDK's per-request profile-host and agent-domain gates on sales
+    // channels whose allow-any-agent flag is on. Decorates the interface the
+    // Agentic Commerce plugin aliases, the same seam that plugin uses for
+    // AgentProfileFetcherInterface.
+    $services->set(AgentAdmittingRuntimeConfigurationResolver::class)->decorate(RuntimeConfigurationResolverInterface::class)->arg(
+        '$inner',
+        service('.inner'),
+    );
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the
