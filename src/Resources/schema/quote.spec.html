@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>com.shopware.quote — capability specification</title>
+    <style>
+        :root { color-scheme: light dark; --ink: #17202a; --muted: #667085; --line: #d0d5dd; --surface: #fff; --accent: #0b5fff; --code: #f4f6fa; }
+        @media (prefers-color-scheme: dark) {
+            :root { --ink: #e6e8eb; --muted: #9aa4b2; --line: #333a45; --surface: #16191d; --accent: #7aa2ff; --code: #1e232a; }
+            body { background: #0f1216; }
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #f7f9fc; color: var(--ink); font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        main { max-width: 860px; margin: 0 auto; padding: 40px 20px 64px; }
+        h1 { font-size: 28px; margin: 0 0 4px; }
+        .lede { color: var(--muted); margin: 0 0 32px; }
+        h2 { font-size: 20px; margin: 36px 0 10px; padding-top: 18px; border-top: 1px solid var(--line); }
+        h3 { font-size: 16px; margin: 22px 0 6px; }
+        code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13.5px; }
+        code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+        pre { background: var(--code); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin: 12px 0; display: block; overflow-x: auto; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+        th { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+        a { color: var(--accent); }
+        .note { background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 16px 0; color: var(--muted); }
+    </style>
+</head>
+<body>
+<main>
+    <h1><code>com.shopware.quote</code></h1>
+    <p class="lede">
+        Vendor capability for the Shopware B2B Request-for-Quote flow. It is protocol-neutral,
+        so any UCP buyer agent can use it. <code>com.shopware.*</code> is Shopware's own
+        reverse-domain namespace; <code>dev.ucp.*</code> is reserved for the UCP governing body.
+    </p>
+
+    <p>
+        The machine-readable contract is the OpenAPI document advertised next to this page in
+        the capability descriptor (<code>schema</code>). This page is the prose companion, covering
+        the parts an implementer has to get right that a schema cannot express.
+    </p>
+
+    <h2>Discovery</h2>
+    <p>
+        The capability appears in <code>/.well-known/ucp</code> only when the shop has the
+        commercial B2B Quote Management feature installed and licensed, and the merchant has
+        enabled the capability for that sales channel. Its descriptor carries the endpoint and
+        the schema URL:
+    </p>
+<pre>"com.shopware.quote": [{
+  "version": "2026-04-08",
+  "spec":    "https://shop.example/.well-known/ucp/specs/quote.html",
+  "schema":  "https://shop.example/.well-known/ucp/schemas/quote.openapi.json",
+  "config": {
+    "endpoint": "https://shop.example/ucp/quotes",
+    "schema":   "https://shop.example/.well-known/ucp/schemas/quote.openapi.json"
+  }
+}]</pre>
+    <p>
+        If the entry is absent, the shop cannot quote: fall back to ordinary checkout, or tell
+        the user that quoting is unavailable. Do not hard-code the endpoint; read it from the
+        descriptor.
+    </p>
+
+    <h2>Authorization</h2>
+    <p>
+        Quote operations act for a specific customer, so they need a credential that names one.
+        Obtain an OAuth 2.0 access token through the shop's
+        <code>dev.ucp.common.identity_linking</code> capability with the scope
+        <code>com.shopware.quote:manage</code>, and send it as
+        <code>Authorization: Bearer &lt;token&gt;</code>.
+    </p>
+    <p class="note">
+        The token is the trust boundary. Its subject decides whose quotes are touched. Nothing
+        in the request body can name a customer, and the agent never holds customer credentials.
+        Revoking the link stops the token working immediately.
+    </p>
+    <p class="note">
+        This shop does not yet enforce the <code>com.shopware.quote:manage</code> scope: request
+        it when linking identity, but no token can carry it until the identity-linking capability
+        supports issuing it. Authorization is by quote ownership instead — the token's subject
+        identifies the customer, and every operation is scoped to that customer's own quotes.
+    </p>
+    <p>
+        Requests also carry the usual <code>UCP-Agent</code> header, and an
+        <code>Idempotency-Key</code> on writes. A Shopware
+        <code>sw-context-token</code> is deliberately not accepted: it carries no OAuth
+        scopes and could reuse the customer's existing storefront cart.
+    </p>
+    <p>
+        Beyond authorization, the customer must have the commercial Quote Management feature
+        enabled on their account. If not, calls fail with a validation error naming the missing
+        feature. That is a merchant-side setting, not something an agent can resolve.
+    </p>
+
+    <h2>Operations</h2>
+    <table>
+        <tr><th>Operation</th><th>Meaning</th></tr>
+        <tr><td><code>POST /ucp/quotes</code></td><td>Request a quote. Line items with optional per-unit asks and a comment. Returns the quote in state <code>open</code>.</td></tr>
+        <tr><td><code>GET /ucp/quotes</code></td><td>The customer's quotes, newest first, paged. Use it to rediscover a quote or poll several negotiations.</td></tr>
+        <tr><td><code>GET /ucp/quotes/{id}</code></td><td>One quote: state, offered prices, totals, expiry, comments.</td></tr>
+        <tr><td><code>POST /ucp/quotes/{id}/counter</code></td><td>Counter-offer with new per-unit asks and/or a comment. Valid from <code>replied</code>.</td></tr>
+        <tr><td><code>POST /ucp/quotes/{id}/accept</code></td><td>Accept the offer. <strong>Accepting is ordering</strong>: it places a real order and returns its reference.</td></tr>
+        <tr><td><code>POST /ucp/quotes/{id}/decline</code></td><td>Decline the offer, optionally with a comment.</td></tr>
+    </table>
+
+    <h2>State machine</h2>
+    <table>
+        <tr><th>State</th><th>Whose turn</th><th>What the buyer can do</th></tr>
+        <tr><td><code>open</code></td><td>merchant</td><td>poll</td></tr>
+        <tr><td><code>in_review</code></td><td>merchant</td><td>poll</td></tr>
+        <tr><td><code>replied</code></td><td><strong>buyer</strong></td><td>accept, counter, decline</td></tr>
+        <tr><td><code>change_requested</code></td><td>merchant</td><td>poll</td></tr>
+        <tr><td><code>accepted</code> / <code>declined</code> / <code>expired</code> / <code>withdrawn</code> / <code>cancelled</code></td><td>none</td><td>terminal for the buyer</td></tr>
+    </table>
+    <p>
+        Only <code>replied</code> is buyer-actionable. Acting from any other state fails, so
+        drive the flow from the state you read rather than from what you expect.
+    </p>
+
+    <h2>Expiration</h2>
+    <p>
+        Every response exposes <code>expiration_date</code>, which may be <code>null</code>
+        before the merchant has replied. A quote can be flagged <code>expired</code> by a
+        background job, and accepting an expired quote fails. Read the date from the offer and
+        act before it.
+    </p>
+
+    <h2>Price semantics</h2>
+    <p>
+        All amounts are in the quote's <code>currency</code>.
+        <code>totals.tax_status</code> says whether <code>totals.gross</code> or
+        <code>totals.net</code> is the customer-facing authoritative amount. Every line item
+        price (<code>unit_price</code>, <code>requested_unit_price</code>, and the
+        <code>requested_unit_price</code> you send) is <strong>per unit</strong>. Your
+        requested price is an ask; the merchant's offer appears in <code>unit_price</code> and
+        the totals once the quote reaches <code>replied</code>.
+    </p>
+
+    <h2>Asynchronous negotiation</h2>
+    <p>
+        The merchant side answers out-of-band, possibly automated, possibly days later. Poll
+        <code>GET /ucp/quotes/{id}</code> (or the listing) for state changes; the recommended
+        interval is 300 seconds, published as <code>x-polling-interval-seconds</code> in the
+        schema. There is no webhook for quote state in this version.
+    </p>
+
+    <h2>Errors</h2>
+    <table>
+        <tr><th>Situation</th><th>Result</th><th>Status</th></tr>
+        <tr><td>Capability disabled, not licensed, or the commercial Quote Management backend is unavailable</td><td>unsupported capability (and the capability is absent from discovery)</td><td>501</td></tr>
+        <tr><td>Access token missing, invalid, expired, or revoked</td><td>invalid token</td><td>401</td></tr>
+        <tr><td>Credential resolves to no customer</td><td>validation error naming the header</td><td>422</td></tr>
+        <tr><td>Quote Management not enabled for the customer (<code>customer_specific_features</code>)</td><td>validation error naming the feature</td><td>422</td></tr>
+        <tr><td>Malformed request body or line items</td><td>validation error</td><td>422</td></tr>
+        <tr><td>Quote id unknown <em>or owned by another customer</em></td><td>not found, without confirming existence</td><td>404</td></tr>
+        <tr><td>Accepting from a non-actionable or expired state</td><td>error from the commercial quote-to-order flow</td><td>400</td></tr>
+    </table>
+    <p class="note">
+        <code>com.shopware.quote:manage</code> is not in this table: it is requested but not
+        enforced (see Authorization above), so a missing scope never causes a failure on its own.
+    </p>
+
+    <h2>Versioning</h2>
+    <p>
+        The capability version tracks the UCP protocol version in the descriptor. Additive
+        fields may appear without a version change; read defensively and ignore unknown fields.
+    </p>
+</main>
+</body>
+</html>

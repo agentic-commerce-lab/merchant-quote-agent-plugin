@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
@@ -59,12 +60,15 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
-     * The bridge gateway under test. The collaborator graph is hand-built from
-     * container services. `scripts/sync-to-shop.sh` installs the plugin into
-     * this shop via composer's path repository, so
-     * `src/Resources/config/services.php` does load here — `preflight()` a
-     * few lines below resolves `ServicingPreflight`, a plugin service, from
-     * the container.
+     * The merchant-side bridge gateway under test. The collaborator graph is
+     * hand-built from container services. `scripts/sync-to-shop.sh` installs
+     * the plugin into this shop via composer's path repository, so
+     * `src/Resources/config/services.php` does load here — `preflight()` a few
+     * lines below resolves `ServicingPreflight` from the container, and the
+     * buyer-side suites resolve `BuyerQuoteGatewayInterface` and
+     * `SalesChannelContextResolver` straight from it (BuyerQuoteFlowTest,
+     * SalesChannelContextResolverTest), while UcpQuoteEndpointTest routes real
+     * HTTP through the controller `services.php` registers.
      *
      * The last step still goes through `QuoteGatewayFactory::create()` rather
      * than `new SwagCommercialQuoteGateway(...)`, so the license gate every
@@ -85,6 +89,24 @@ abstract class IntegrationTestCase extends TestCase
             . CommercialAvailability::LICENSE_TOGGLE
             . ' license toggle is off in this shop.',
         );
+
+        return $gateway;
+    }
+
+    /**
+     * The buyer-side counterpart of `gateway()`: resolved straight from the
+     * container, since `services.php` compiles here (see `gateway()`'s own
+     * docblock) and this one is a factory-produced service under its own
+     * interface, exactly like `QuoteGatewayInterface`.
+     *
+     * Kept on the base class for the same reason `gateway()` is: one override
+     * point shared by every integration test that needs it, rather than each
+     * test class duplicating the accessor.
+     */
+    protected static function buyerGateway(): BuyerQuoteGatewayInterface
+    {
+        $gateway = static::getContainer()->get(BuyerQuoteGatewayInterface::class);
+        self::assertInstanceOf(BuyerQuoteGatewayInterface::class, $gateway);
 
         return $gateway;
     }

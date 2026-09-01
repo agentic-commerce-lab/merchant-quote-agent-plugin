@@ -10,12 +10,17 @@ use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeSubscriber;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriterInterface;
+use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteCommentWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteProductAdderInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\VariantRejectingProductAdder;
+use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteAccess;
+use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteLinePricing;
+use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteSnapshotMapper;
+use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -26,9 +31,14 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteStateTransitioner;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
+use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
+use MerchantQuoteAgentPlugin\Bridge\SwagCommercialBuyerQuoteGateway;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
+use MerchantQuoteAgentPlugin\Identity\AccessTokenSubjectReaderInterface;
+use MerchantQuoteAgentPlugin\Identity\AcOAuthAccessTokenReader;
+use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -47,7 +57,12 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
+use MerchantQuoteAgentPlugin\Ucp\Quote\Controller\UcpQuoteController;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteContractController;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteLineItemValidator;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
@@ -59,8 +74,16 @@ return static function (ContainerConfigurator $configurator): void {
 
     // Autoconfiguration adds `ucp_sdk.capability` (the SDK registers it for
     // every CapabilityInterface), which is what gets the descriptor into the
-    // SDK's CapabilityRegistry.
-    $services->set(QuoteCapability::class);
+    // SDK's CapabilityRegistry. The gateway is ignoreOnInvalid() so a shop
+    // without SwagCommercial still compiles: the capability's own guard turns
+    // the resulting null into a 501, not a container error.
+    $services->set(QuoteCapability::class)->arg(
+        '$gateway',
+        service(BuyerQuoteGatewayInterface::class)->ignoreOnInvalid(),
+    );
+    $services->set(QuoteRequestValidator::class);
+    $services->set(QuoteLineItemValidator::class);
+    $services->set(QuoteFieldAssertions::class);
 
     // Must run AFTER the Agentic Commerce plugin's capability filter, which
     // strips descriptors it does not own. Its contributor sits at the default
@@ -69,6 +92,30 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(QuoteCapabilityProfileContributor::class)->autoconfigure(false)->tag('ucp_sdk.profile_contributor', [
         'priority' => -256,
     ]);
+
+    // The two documents the descriptor advertises. Served by this plugin because
+    // this plugin publishes the descriptor: whoever advertises the URLs owes the
+    // shop the files behind them.
+    $services
+        ->set(QuoteContractController::class)
+        ->arg('$schemaPath', __DIR__ . '/../schema/quote.openapi.json')
+        ->arg('$specPath', __DIR__ . '/../schema/quote.spec.html')
+        ->tag('controller.service_arguments');
+
+    if (CommercialAvailability::isAvailableByClass()) {
+        $services->set(UcpQuoteController::class)->tag('controller.service_arguments');
+    }
+
+    // Buyer-side sales-channel resolution. Autowired: Connection and the
+    // context service are both core services.
+    $services->set(SalesChannelContextResolver::class);
+    $services->alias(CustomerContextResolverInterface::class, SalesChannelContextResolver::class);
+
+    // Identity: bearer token → customer context. The reader is the only class
+    // that knows Agentic Commerce's OAuth schema (issue #13 retires it).
+    $services->set(AcOAuthAccessTokenReader::class);
+    $services->alias(AccessTokenSubjectReaderInterface::class, AcOAuthAccessTokenReader::class);
+    $services->set(AgentCustomerAuthenticator::class);
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the
@@ -150,6 +197,43 @@ return static function (ContainerConfigurator $configurator): void {
     // `?QuoteGatewayInterface`. Per the spec's non-goals there is deliberately
     // no null-object implementation: capability absence belongs one layer up.
     $services->set(QuoteGatewayInterface::class)->factory([service(QuoteGatewayFactory::class), 'create']);
+
+    // Buyer-side counterpart of the merchant gateway. Every commercial route is
+    // an ignore-on-invalid reference, so the container compiles on a shop
+    // without SwagCommercial and the capability reports itself unsupported.
+    // (No `isAvailableByClass()` guard here: the early return above already
+    // means SwagCommercial's classes provably exist past this point.)
+    $services->set(CommercialQuoteSnapshotMapper::class);
+
+    // "May this buyer request be served at all, and on whose behalf" —
+    // the preconditions every operation shares, separate from the
+    // gateway because they are a different question from which route
+    // implements the operation. #44 tracks the rest of the gateway's shape.
+    $services->set(CommercialQuoteAccess::class)->arg(
+        '$customerSpecificFeatureService',
+        service(CommercialAvailability::CUSTOMER_SPECIFIC_FEATURE_SERVICE)->nullOnInvalid(),
+    );
+
+    // Extracted out of the gateway for the same reason: this is where
+    // nearly all of the branching over an existing quote's line items
+    // lived, and it is a different job from deciding which Store API
+    // route to call.
+    $services->set(CommercialQuoteLinePricing::class)->arg(
+        '$quoteLineItemRoute',
+        service(CommercialAvailability::QUOTE_LINE_ITEM_ROUTE)->nullOnInvalid(),
+    );
+
+    $services
+        ->set(SwagCommercialBuyerQuoteGateway::class)
+        ->arg('$quoteRequestRoute', service(CommercialAvailability::QUOTE_REQUEST_ROUTE)->nullOnInvalid())
+        ->arg('$quoteSendRequestRoute', service(CommercialAvailability::QUOTE_SEND_REQUEST_ROUTE)->nullOnInvalid())
+        ->arg('$quoteLoadRoute', service(CommercialAvailability::QUOTE_LOAD_ROUTE)->nullOnInvalid())
+        ->arg('$quoteListingRoute', service(CommercialAvailability::QUOTE_LISTING_ROUTE)->nullOnInvalid())
+        ->arg('$quoteRequestChangeRoute', service(CommercialAvailability::QUOTE_REQUEST_CHANGE_ROUTE)->nullOnInvalid())
+        ->arg('$quoteDeclineRoute', service(CommercialAvailability::QUOTE_DECLINE_ROUTE)->nullOnInvalid())
+        ->arg('$quoteOrderRoute', service(CommercialAvailability::QUOTE_ORDER_ROUTE)->nullOnInvalid());
+
+    $services->alias(BuyerQuoteGatewayInterface::class, SwagCommercialBuyerQuoteGateway::class);
 
     // Configuration (issue #5). Autowired: the factory takes ValidatorInterface,
     // which Shopware aliases to HappyPathValidator — harmless, because a

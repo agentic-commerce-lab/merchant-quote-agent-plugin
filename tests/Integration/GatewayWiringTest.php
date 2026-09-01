@@ -14,24 +14,29 @@ use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
  * `scripts/sync-to-shop.sh` installs the plugin into this shop via composer's
  * path repository, so Shopware does load our `services.php`, and
  * `QuoteGatewayInterface` does compile as a factory-produced service (`bin/console
- * debug:container` confirms it, factory `QuoteGatewayFactory::create()`). What
- * is left is split by who can check it:
+ * debug:container` confirms it, factory `QuoteGatewayFactory::create()`). The
+ * buyer-side services compile too: BuyerQuoteFlowTest and
+ * SalesChannelContextResolverTest resolve `BuyerQuoteGatewayInterface` and
+ * `SalesChannelContextResolver` straight from the container, and
+ * UcpQuoteEndpointTest routes real HTTP through the controller it registers.
+ * What is left is split by who can check it:
  *
  * - **The analyzer** covers the file's structure. `services.php` lives under
  *   `src/`, so `mago analyze` parses it, resolves every `::class` and every
  *   `use`, and would reject a misspelled service class or a missing
  *   `service()` import. No test needs to restate that.
- * - **This test** covers the one thing no analyzer can see: that the four
- *   SwagCommercial ids the file injects are ids a shop with SwagCommercial
- *   actually has. They are string literals by necessity (ADR 0001), so a typo
- *   or an upstream rename is invisible until runtime. It reads them from the
- *   same constants `services.php` references, so there is one copy of each id
- *   in the codebase and this follows it.
- * - **Nothing yet** covers resolving `QuoteGatewayInterface` from the
- *   container by service id, rather than the hand-built graph
+ * - **This test** covers the one thing no analyzer can see: that the
+ *   SwagCommercial ids the file injects — merchant-side and buyer-side — are
+ *   ids a shop with SwagCommercial actually has. They are string literals by
+ *   necessity (ADR 0001), so a typo or an upstream rename is invisible until
+ *   runtime. It reads them from the same constants `services.php` references,
+ *   so there is one copy of each id in the codebase and this follows it.
+ * - **Nothing yet** covers resolving the merchant-side `QuoteGatewayInterface`
+ *   from the container by service id, rather than the hand-built graph
  *   `IntegrationTestCase::gatewayFactory()` assembles — that gap is no longer
  *   about the plugin being uninstallable, just about no test here asking for
- *   it that way.
+ *   it that way. The buyer-side interface is resolved that way by
+ *   BuyerQuoteFlowTest.
  */
 final class GatewayWiringTest extends IntegrationTestCase
 {
@@ -44,6 +49,19 @@ final class GatewayWiringTest extends IntegrationTestCase
     {
         foreach (self::injectedCommercialIds() as $id) {
             // Fails with commercialService()'s own diagnostic if the id is wrong.
+            static::commercialService($id);
+        }
+    }
+
+    /**
+     * The nine ids the buyer-side gateway and its line-pricing collaborator
+     * inject. Separate from the merchant-side test above because these come
+     * from a different `services.php` block, registered on
+     * `SwagCommercialBuyerQuoteGateway`/`CommercialQuoteLinePricing`.
+     */
+    public function testTheBuyerGatewayServiceIdsResolveInThisShop(): void
+    {
+        foreach (self::injectedBuyerCommercialIds() as $id) {
             static::commercialService($id);
         }
     }
@@ -83,6 +101,22 @@ final class GatewayWiringTest extends IntegrationTestCase
             CommercialAvailability::QUOTE_COMMENTER,
             CommercialAvailability::CONTEXT_RESTORER,
             CommercialAvailability::QUOTE_CALCULATOR,
+        ];
+    }
+
+    /** @return list<non-empty-string> */
+    private static function injectedBuyerCommercialIds(): array
+    {
+        return [
+            CommercialAvailability::QUOTE_REQUEST_ROUTE,
+            CommercialAvailability::QUOTE_SEND_REQUEST_ROUTE,
+            CommercialAvailability::QUOTE_LINE_ITEM_ROUTE,
+            CommercialAvailability::QUOTE_LOAD_ROUTE,
+            CommercialAvailability::QUOTE_LISTING_ROUTE,
+            CommercialAvailability::QUOTE_REQUEST_CHANGE_ROUTE,
+            CommercialAvailability::QUOTE_DECLINE_ROUTE,
+            CommercialAvailability::QUOTE_ORDER_ROUTE,
+            CommercialAvailability::CUSTOMER_SPECIFIC_FEATURE_SERVICE,
         ];
     }
 }
