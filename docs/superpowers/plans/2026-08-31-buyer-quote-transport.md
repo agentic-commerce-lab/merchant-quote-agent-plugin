@@ -2169,13 +2169,16 @@ Expected: `quality` clean (`format:check`, `lint`, `typecheck`, `quality:filesiz
 ```bash
 scripts/sync-to-shop.sh
 docker exec -u www-data -w /var/www/html merchant-quote-shop php bin/console cache:clear -n
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8095/ucp/quotes           # 400: UCP-Agent missing
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8095/ucp/quotes           # 422: UCP-Agent missing
 curl -s -o /dev/null -w '%{http_code}\n' -H 'UCP-Agent: manual/1.0' \
+  -H 'UCP-Agent: profile="http://localhost:8095/.well-known/ucp"' \
   http://localhost:8095/ucp/quotes                                                  # 401: no bearer token
 curl -s http://localhost:8095/.well-known/ucp | python3 -m json.tool | grep -A3 shopware.quote
 ```
 
-Expected: 400, then 401, and the discovery document still advertising the capability whose endpoints now answer.
+Expected: 422, then 401, and the discovery document still advertising the capability whose endpoints now answer.
+
+Two corrections Task 6 established the hard way, so do not re-derive them: the SDK maps `ValidationException` to **422**, not 400 (`UcpErrorDescriptor::fromThrowable()`, unconditional), and `UCP-Agent` must carry the literal `profile="<uri>"` form — its parser matches only that, so a bare agent string is rejected as a missing profile rather than accepted.
 
 - [ ] **Step 6: Commit**
 
