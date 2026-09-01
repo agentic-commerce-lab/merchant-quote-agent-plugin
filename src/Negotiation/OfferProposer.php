@@ -94,7 +94,7 @@ final readonly class OfferProposer
         return $this->recorded($raw, $this->authorize(
             $settings,
             $referenceLines,
-            self::atTheBuyersLevel($response->toOffer($snapshot->totalNet), $snapshot, $conversation),
+            self::atTheBuyersLevel($response->toOffer($snapshot->totalNet), $snapshot),
             $response->message,
             $prompt->hash,
         ));
@@ -105,27 +105,14 @@ final readonly class OfferProposer
      * percentage. The rules-only path picks the level from `perLineAsks`
      * already; the model is merely told to, so its answer is corrected here.
      *
-     * FIRST ROUND ONLY, and that restriction is load-bearing rather than
-     * cautious. OfferRound escalates ANY per-line offer once the agent has
-     * already replied, because the reference lines a per-line offer is bounded
-     * against are re-captured every round and round two would compound past
-     * the cap — #2(a)'s open half. Converting a later round would therefore
-     * turn a quote the agent can answer into a quote a human has to, which is
-     * a worse outcome than the wrong-level answer this fixes. Measured, not
-     * assumed: without this guard, NegotiationPipelineTest and
-     * DecisionRecordTest both flip from offered to escalated, and every open
-     * quote in the test shop carries a requested price, so the conversion
-     * fires on essentially all of them.
-     *
-     * Round two keeps answering quote-wide until #2(a) persists the reference
-     * lines across passes.
+     * This ran on the first round only until #49, because OfferRound escalated
+     * any per-line offer on a later round and converting one would have turned
+     * an answerable quote into a human's. The stored baseline removed that
+     * guard, so the correction now applies to every round.
      */
-    private static function atTheBuyersLevel(
-        ProposedOffer $offer,
-        PolicySnapshot $snapshot,
-        BuyerConversation $conversation,
-    ): ProposedOffer {
-        return $conversation->agent === [] ? OfferLevelMirror::mirror($offer, $snapshot->lines) : $offer;
+    private static function atTheBuyersLevel(ProposedOffer $offer, PolicySnapshot $snapshot): ProposedOffer
+    {
+        return OfferLevelMirror::mirror($offer, $snapshot->lines);
     }
 
     /** Records the raw model text (null when no model was called) alongside the decision, then returns it unchanged. */
