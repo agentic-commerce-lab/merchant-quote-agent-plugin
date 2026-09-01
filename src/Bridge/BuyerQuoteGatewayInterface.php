@@ -31,7 +31,7 @@ interface BuyerQuoteGatewayInterface
      * Two steps in Shopware: the line items become a draft quote, which is
      * then sent, moving it to `open`.
      *
-     * @param list<array{product_id?: string, product_number?: string, quantity?: int, requested_unit_price?: float|int|string}> $lineItems
+     * @param list<array{product_id?: string, quantity?: int, requested_unit_price?: float|int|string}> $lineItems
      * @throws ValidationException
      */
     public function requestQuote(SalesChannelContext $context, array $lineItems, ?string $comment): QuoteSnapshot;

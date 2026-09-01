@@ -21,9 +21,18 @@ final class QuoteRequestValidator
     ) {}
 
     /**
+     * The two shapes below are what {@see QuoteLineItemValidator} and
+     * {@see QuoteFieldAssertions} actually enforce, one per `$required`
+     * branch: `product_id` a non-empty string and `quantity` a positive int
+     * for a quote request; `id`/`product_id` optionally non-empty strings,
+     * at least one present, for a counter-offer. `requested_unit_price`, in
+     * either case, is a non-negative number if present at all.
+     *
      * @param array<string, mixed> $payload
      *
-     * @return list<array<string, mixed>>
+     * @return ($required is true
+     *     ? list<array{product_id?: string, quantity?: int, requested_unit_price?: float|int|string}>
+     *     : list<array{id?: string, product_id?: string, requested_unit_price?: float|int|string}>)
      */
     public function lineItems(array $payload, bool $required): array
     {
@@ -44,7 +53,7 @@ final class QuoteRequestValidator
             $this->lineItemValidator->validate($lineItem, $index, $required);
         }
 
-        /** @var list<array<string, mixed>> $lineItems */
+        /** @var list<array{id?: string, product_id?: string, quantity?: int, requested_unit_price?: float|int|string}> $lineItems */
         return $lineItems;
     }
 

@@ -39,7 +39,7 @@ final class QuoteCapability implements CapabilityInterface
     }
 
     /**
-     * @param list<array{product_id?: string, product_number?: string, quantity?: int, requested_unit_price?: float|int|string}> $lineItems
+     * @param list<array{product_id?: string, quantity?: int, requested_unit_price?: float|int|string}> $lineItems
      */
     public function requestQuote(SalesChannelContext $context, array $lineItems, ?string $comment): QuoteSnapshot
     {

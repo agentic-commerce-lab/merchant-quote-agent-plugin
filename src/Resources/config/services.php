@@ -54,6 +54,7 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
+use MerchantQuoteAgentPlugin\Ucp\Quote\Controller\UcpQuoteController;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteContractController;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
@@ -98,18 +99,13 @@ return static function (ContainerConfigurator $configurator): void {
         ->arg('$specPath', __DIR__ . '/../schema/quote.spec.html')
         ->tag('controller.service_arguments');
 
+    if (CommercialAvailability::isAvailableByClass()) {
+        $services->set(UcpQuoteController::class)->tag('controller.service_arguments');
+    }
+
     // Buyer-side sales-channel resolution. Autowired: Connection and the
     // context service are both core services.
-    //
-    // ->public() only because nothing CONSUMES the resolver yet. Registering a
-    // service is not consuming it: the test service locator holds weak
-    // references, so RemoveUnusedDefinitionsPass drops an unreferenced private
-    // definition and everything it alone referenced — the authenticator and this
-    // resolver disappear from the locator together, and the integration test
-    // cannot fetch what the container removed. Task 6's controller is the first
-    // real consumer (tagged controller.service_arguments); the flag comes out
-    // with it.
-    $services->set(SalesChannelContextResolver::class)->public();
+    $services->set(SalesChannelContextResolver::class);
     $services->alias(CustomerContextResolverInterface::class, SalesChannelContextResolver::class);
 
     // Identity: bearer token → customer context. The reader is the only class
