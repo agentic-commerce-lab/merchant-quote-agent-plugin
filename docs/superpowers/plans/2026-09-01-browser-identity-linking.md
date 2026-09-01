@@ -566,14 +566,18 @@ final class AgentAuthorizationRegistrarTest extends TestCase
 
     private const CLIENT_ID = 'https://agent.example/.well-known/ucp?run=1';
 
-    /** @var list<PendingAuthorization> */
-    private array $stored = [];
-
-    private function store(): PendingAuthorizationStoreInterface
+    /**
+     * A recording double. The captured records are read off the object itself:
+     * a promoted constructor property cannot be by-reference (fatal error), so
+     * the double owns the array rather than aliasing the test's.
+     */
+    private function store()
     {
-        return new class($this->stored) implements PendingAuthorizationStoreInterface {
-            /** @param list<PendingAuthorization> $stored */
-            public function __construct(private array &$stored) {}
+        // Deliberately no return type: the anonymous class's own shape has to
+        // flow to the caller so `$store->stored` type-checks.
+        return new class implements PendingAuthorizationStoreInterface {
+            /** @var list<PendingAuthorization> */
+            public array $stored = [];
 
             public function store(PendingAuthorization $pending, int $ttlSeconds): string
             {
@@ -629,15 +633,16 @@ final class AgentAuthorizationRegistrarTest extends TestCase
 
     public function testItRegistersAVerifiedRequest(): void
     {
-        $registrar = new AgentAuthorizationRegistrar($this->store());
+        $store = $this->store();
+        $registrar = new AgentAuthorizationRegistrar($store);
 
         $handle = $registrar->register($this->payload(), $this->context(), self::SALES_CHANNEL_ID);
 
         self::assertSame('handle-value', $handle);
-        self::assertCount(1, $this->stored);
-        self::assertSame(self::CLIENT_ID, $this->stored[0]->clientId);
-        self::assertSame(self::SALES_CHANNEL_ID, $this->stored[0]->salesChannelId);
-        self::assertSame('2026-04-08', $this->stored[0]->agentProfile['ucp']['version']);
+        self::assertCount(1, $store->stored);
+        self::assertSame(self::CLIENT_ID, $store->stored[0]->clientId);
+        self::assertSame(self::SALES_CHANNEL_ID, $store->stored[0]->salesChannelId);
+        self::assertSame('2026-04-08', $store->stored[0]->agentProfile['ucp']['version']);
     }
 
     /**
