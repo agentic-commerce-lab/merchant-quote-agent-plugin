@@ -138,11 +138,18 @@ return static function (ContainerConfigurator $configurator): void {
     // is final and injected concretely, so it cannot be decorated. Whoever
     // defines this id last wins: AgentAccessWiringTest fails loudly if that
     // stops being us.
+    //
+    // Non-shared: a shared instance would be built once from whichever request
+    // was in scope at the first fetch and then reused for every later request
+    // on that worker (FrankenPHP, RoadRunner), so the widening would stick to
+    // the first agent that happened to ask. Private, like the bundle's own
+    // definition — HttpAgentProfileFetcher injects this id concretely, so it
+    // is referenced and nothing prunes it.
     $services->set(AgentProfileHostValidatorFactory::class);
     $services
         ->set(UrlSafetyValidator::class)
         ->factory([service(AgentProfileHostValidatorFactory::class), 'create'])
-        ->public();
+        ->share(false);
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the

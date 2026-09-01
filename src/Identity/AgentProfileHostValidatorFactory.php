@@ -28,6 +28,17 @@ use Ucp\Sdk\Symfony\UcpSdkConfiguration;
  * dependency on an `@internal` SDK class and on its service id, so
  * AgentAccessWiringTest pins both: that the container resolves a validator
  * built by this factory, and that a host nobody allowlisted is still refused.
+ *
+ * The SDK's own `UrlSafetyValidator::class` definition (services.php) is
+ * non-shared so THIS factory rebuilds it per request. `HttpAgentProfileFetcher`,
+ * the one consumer that matters, is itself a shared SDK service and holds
+ * whichever validator it was built with for the life of the container --
+ * under a long-running worker (FrankenPHP, RoadRunner) that is whichever
+ * request was in scope the first time that fetcher was resolved. Non-shared
+ * is still correct here (a fresh `->create()` call, e.g. from a test fetching
+ * the id directly, always reflects the current request), and redefining the
+ * fetcher too to chase full per-request accuracy is more coupling to the SDK
+ * than a dev-oriented toggle is worth.
  */
 final class AgentProfileHostValidatorFactory
 {
