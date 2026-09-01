@@ -56,6 +56,7 @@ use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteContractController;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
@@ -67,8 +68,14 @@ return static function (ContainerConfigurator $configurator): void {
 
     // Autoconfiguration adds `ucp_sdk.capability` (the SDK registers it for
     // every CapabilityInterface), which is what gets the descriptor into the
-    // SDK's CapabilityRegistry.
-    $services->set(QuoteCapability::class);
+    // SDK's CapabilityRegistry. The gateway is ignoreOnInvalid() so a shop
+    // without SwagCommercial still compiles: the capability's own guard turns
+    // the resulting null into a 501, not a container error.
+    $services->set(QuoteCapability::class)->arg(
+        '$gateway',
+        service(BuyerQuoteGatewayInterface::class)->ignoreOnInvalid(),
+    );
+    $services->set(QuoteRequestValidator::class);
 
     // Must run AFTER the Agentic Commerce plugin's capability filter, which
     // strips descriptors it does not own. Its contributor sits at the default
@@ -204,17 +211,8 @@ return static function (ContainerConfigurator $configurator): void {
             service(CommercialAvailability::QUOTE_LINE_ITEM_ROUTE)->nullOnInvalid(),
         );
 
-        // ->public() only because nothing CONSUMES the gateway yet. Registering
-        // a service is not consuming it: the test service locator holds weak
-        // references, so RemoveUnusedDefinitionsPass drops an unreferenced
-        // private definition and everything it alone referenced, and the
-        // integration test cannot fetch what the container removed. Task 5's
-        // QuoteCapability is the first real consumer — the SDK's registry
-        // references it through the ucp_sdk.capability tag — and the flag comes
-        // out with it.
         $services
             ->set(SwagCommercialBuyerQuoteGateway::class)
-            ->public()
             ->arg('$quoteRequestRoute', service(CommercialAvailability::QUOTE_REQUEST_ROUTE)->nullOnInvalid())
             ->arg('$quoteSendRequestRoute', service(CommercialAvailability::QUOTE_SEND_REQUEST_ROUTE)->nullOnInvalid())
             ->arg('$quoteLoadRoute', service(CommercialAvailability::QUOTE_LOAD_ROUTE)->nullOnInvalid())
