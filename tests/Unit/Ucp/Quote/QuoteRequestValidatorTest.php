@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Ucp\Quote;
 
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteLineItemValidator;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
@@ -41,7 +43,7 @@ final class QuoteRequestValidatorTest extends TestCase
     #[DataProvider('invalidPayloads')]
     public function testItRejectsPayloadValuesThatDoNotMatchThePublishedSchema(array $payload): void
     {
-        $validator = new QuoteRequestValidator();
+        $validator = self::validator();
 
         $this->expectException(ValidationException::class);
         $validator->lineItems($payload, true);
@@ -59,9 +61,40 @@ final class QuoteRequestValidatorTest extends TestCase
             ]],
             'comment' => 'Volume price, please.',
         ];
-        $validator = new QuoteRequestValidator();
+        $validator = self::validator();
 
         self::assertSame($payload['line_items'], $validator->lineItems($payload, true));
         self::assertSame($payload['comment'], $validator->comment($payload));
+    }
+
+    #[Test]
+    public function testACounterLineItemMayIdentifyItselfById(): void
+    {
+        $payload = ['line_items' => [['id' => 'line-item-id', 'requested_unit_price' => 8.5]]];
+
+        self::assertSame($payload['line_items'], self::validator()->lineItems($payload, false));
+    }
+
+    #[Test]
+    public function testACounterLineItemMayIdentifyItselfByProductId(): void
+    {
+        $payload = ['line_items' => [['product_id' => 'product-id', 'requested_unit_price' => 8.5]]];
+
+        self::assertSame($payload['line_items'], self::validator()->lineItems($payload, false));
+    }
+
+    #[Test]
+    public function testACounterLineItemWithNeitherIdIsRejected(): void
+    {
+        $payload = ['line_items' => [['requested_unit_price' => 8.5]]];
+
+        $this->expectException(ValidationException::class);
+
+        self::validator()->lineItems($payload, false);
+    }
+
+    private static function validator(): QuoteRequestValidator
+    {
+        return new QuoteRequestValidator(new QuoteLineItemValidator(new QuoteFieldAssertions()));
     }
 }

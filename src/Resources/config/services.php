@@ -56,6 +56,8 @@ use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteContractController;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteLineItemValidator;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 
@@ -76,6 +78,8 @@ return static function (ContainerConfigurator $configurator): void {
         service(BuyerQuoteGatewayInterface::class)->ignoreOnInvalid(),
     );
     $services->set(QuoteRequestValidator::class);
+    $services->set(QuoteLineItemValidator::class);
+    $services->set(QuoteFieldAssertions::class);
 
     // Must run AFTER the Agentic Commerce plugin's capability filter, which
     // strips descriptors it does not own. Its contributor sits at the default

@@ -16,12 +16,9 @@ use Ucp\Sdk\Exception\ValidationException;
  */
 final class QuoteRequestValidator
 {
-    private readonly QuoteLineItemValidator $lineItemValidator;
-
-    public function __construct()
-    {
-        $this->lineItemValidator = new QuoteLineItemValidator();
-    }
+    public function __construct(
+        private readonly QuoteLineItemValidator $lineItemValidator,
+    ) {}
 
     /**
      * @param array<string, mixed> $payload
