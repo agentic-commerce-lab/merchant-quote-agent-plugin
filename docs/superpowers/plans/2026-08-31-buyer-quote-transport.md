@@ -1054,6 +1054,7 @@ carried but not enforced until Agentic Commerce can issue ours."
 **Files:**
 - Create: `src/Bridge/BuyerQuoteGatewayInterface.php`
 - Create: `src/Bridge/SwagCommercialBuyerQuoteGateway.php`
+- Create: `src/Bridge/CommercialQuoteSnapshotMapper.php`
 - Create: `src/Ucp/Quote/QuoteSnapshot.php`
 - Create: `src/Ucp/Quote/QuoteList.php`
 - Modify: `src/Resources/config/services.php`
@@ -1061,7 +1062,7 @@ carried but not enforced until Agentic Commerce can issue ours."
 
 **Interfaces:**
 - Consumes: `SalesChannelContext` from Task 3's authenticator (the gateway never sees a credential), `CommercialAvailability::{isAvailableByClass,isLicensed}`.
-- Produces: `BuyerQuoteGatewayInterface` with `isAvailable(): bool`, `requestQuote(SalesChannelContext $context, array $lineItems, ?string $comment): QuoteSnapshot`, `getQuote(SalesChannelContext $context, string $quoteId): QuoteSnapshot`, `listQuotes(SalesChannelContext $context, int $limit, int $page): QuoteList`, `counterQuote(SalesChannelContext $context, string $quoteId, array $lineItems, ?string $comment): QuoteSnapshot`, `acceptQuote(SalesChannelContext $context, string $quoteId): QuoteSnapshot`, `declineQuote(SalesChannelContext $context, string $quoteId, ?string $comment): QuoteSnapshot`. Plus `QuoteSnapshot::toArray()` and `QuoteList::toArray()`.
+- Produces: `BuyerQuoteGatewayInterface` with `isAvailable(): bool`, `requestQuote(SalesChannelContext $context, array $lineItems, ?string $comment): QuoteSnapshot`, `getQuote(SalesChannelContext $context, string $quoteId): QuoteSnapshot`, `listQuotes(SalesChannelContext $context, int $limit, int $page): QuoteList`, `counterQuote(SalesChannelContext $context, string $quoteId, array $lineItems, ?string $comment): QuoteSnapshot`, `acceptQuote(SalesChannelContext $context, string $quoteId): QuoteSnapshot`, `declineQuote(SalesChannelContext $context, string $quoteId, ?string $comment): QuoteSnapshot`. Plus `QuoteSnapshot::toArray()`, `QuoteList::toArray()`, and `CommercialQuoteSnapshotMapper::toSnapshot(object $quote): QuoteSnapshot`.
 
 - [ ] **Step 1: Port the two response DTOs**
 
@@ -1458,9 +1459,59 @@ Apply exactly these edits, in order:
 7. Delete `appendA2cnAct()` and every call to it, and delete the `$a2cnActs` argument at every `new QuoteSnapshot(...)` call site.
 8. Replace `QuoteBackendFeature::isAvailableByClass()` with `CommercialAvailability::isAvailableByClass()` and, in `isAvailable()`, the licence check with `CommercialAvailability::isLicensed()`.
 9. Add `#[Override]` to each of the seven interface methods.
-10. In `hasCustomerQuoteFeature()`, when the feature is absent throw
+10. **Extract the mapping methods into their own class.** `toSnapshot()`, `mapLineItems()` and `mapComments()` turn a commercial quote entity into our published DTO — a different job from calling Store API routes, and the source file is 487 physical lines, over this repo's ~400-line gate (`composer run quality:filesize`), so the split is needed on both counts. Move all three verbatim into `src/Bridge/CommercialQuoteSnapshotMapper.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Bridge;
+
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
+
+/**
+ * Turns a SwagCommercial quote entity into the snapshot published to buyer
+ * agents.
+ *
+ * Separate from the gateway because it is a different job: the gateway calls
+ * the commercial Store API routes, this reads whatever comes back. The
+ * parameter is typed `object` for the same reason the gateway's routes are —
+ * the concrete QuoteEntity class lives in a runtime-detected soft dependency
+ * this plugin never requires.
+ */
+final readonly class CommercialQuoteSnapshotMapper
+{
+    public function toSnapshot(object $quote): QuoteSnapshot
+    {
+        // the fork's toSnapshot() body, verbatim, minus the $a2cnActs argument
+    }
+
+    /**
+     * @return list<array{id: string, product_id: string|null, label: string, quantity: int, unit_price: float, total_price: float, requested_unit_price: float|null}>
+     */
+    private function mapLineItems(object $quote): array
+    {
+        // the fork's mapLineItems() body, verbatim
+    }
+
+    /**
+     * @return list<array{comment: string, author: string, created_at: string|null}>
+     */
+    private function mapComments(object $quote): array
+    {
+        // the fork's mapComments() body, verbatim
+    }
+}
+```
+
+Then give the gateway a `private CommercialQuoteSnapshotMapper $snapshotMapper` constructor parameter (autowired — it has no arguments of its own) and replace each `$this->toSnapshot(...)` call with `$this->snapshotMapper->toSnapshot(...)`. Register it in `services.php` beside the gateway, inside the same availability gate: `$services->set(CommercialQuoteSnapshotMapper::class);`. Run `composer run quality:filesize` before committing; both files must come in under 400 lines.
+
+11. In `hasCustomerQuoteFeature()`, when the feature is absent throw
     `new ValidationException('Quote management is not enabled for this customer.', ['customer_specific_features must contain {"QUOTE_MANAGEMENT": true}'])`
     instead of returning false to a caller that turns it into a bare 403.
+
+12. Add `#[Override]` to the mapper's methods only if it implements an interface — it does not, so leave them bare.
 
 - [ ] **Step 7: Register the gateway behind the availability gate**
 
@@ -1471,6 +1522,8 @@ In `src/Resources/config/services.php`, next to the existing `QuoteGatewayFactor
     // an ignore-on-invalid reference, so the container compiles on a shop
     // without SwagCommercial and the capability reports itself unsupported.
     if (CommercialAvailability::isAvailableByClass()) {
+        $services->set(CommercialQuoteSnapshotMapper::class);
+
         $services->set(SwagCommercialBuyerQuoteGateway::class)
             ->arg('$quoteRequestRoute', service('Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\CartToQuote\\QuoteRequestRoute')->nullOnInvalid())
             ->arg('$quoteSendRequestRoute', service('Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\State\\QuoteSendRequestRoute')->nullOnInvalid())
@@ -1505,6 +1558,7 @@ Expected: PASS (4 tests). A skip means the shop's licence toggle is off — fix 
 
 ```bash
 git add src/Bridge/BuyerQuoteGatewayInterface.php src/Bridge/SwagCommercialBuyerQuoteGateway.php \
+        src/Bridge/CommercialQuoteSnapshotMapper.php \
         src/Ucp/Quote/QuoteSnapshot.php src/Ucp/Quote/QuoteList.php \
         src/Resources/config/services.php tests/Integration
 git commit -m "feat: buyer-side quote gateway over the commercial Store API routes
