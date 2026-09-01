@@ -52,15 +52,17 @@ final class BaselineCompoundingTest extends IntegrationTestCase
                 continue; // Shopware-generated line; the totals assertion covers it.
             }
 
+            $threshold = round($originalPrice * $floorFactor, 2) - 0.01;
+
             self::assertGreaterThanOrEqual(
-                round($originalPrice * $floorFactor, 2) - 0.01,
+                $threshold,
                 round($line->unitPriceNet, 2),
                 sprintf(
-                    'Line "%s" ended at %s, below the %s floor set by the ORIGINAL price %s — '
-                    . 'the per-line reference is compounding again.',
+                    'Line "%s" ended at %s, below the %s floor (a cent under the cap set by the ORIGINAL '
+                    . 'price %s) — the per-line reference is compounding again.',
                     $line->identity->label ?? $line->identity->lineItemId,
                     $line->unitPriceNet,
-                    $originalPrice * $floorFactor,
+                    $threshold,
                     $originalPrice,
                 ),
             );

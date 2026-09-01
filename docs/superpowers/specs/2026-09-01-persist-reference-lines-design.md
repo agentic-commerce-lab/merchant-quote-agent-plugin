@@ -103,6 +103,14 @@ Replacing the removed guard: a per-line offer is escalated only when the quote h
 
 **A line removed mid-negotiation** leaves a stale entry that is never looked up. Pruning it would be a second write for no reader.
 
+## Known limitations
+
+Two things the final review found and this branch deliberately does not fix:
+
+**A quantity reduction or line removal mid-negotiation inflates the totals check.** `QuoteBaselineLines::asReferenceSnapshot()` hands the verifier the stored `totalNet`, and `DiscountTotalViolation` computes `(reference->totalNet − final->totalNet) / reference->totalNet`. If the buyer halves a quantity or drops a line, the total falls structurally and the check reads that as a discount — so a legal 5% concession on a quote that lost half its volume can read as far over the cap and escalate. It fails safe (a human gets it, nothing is under-charged), and rescaling the reference total touches the exact arithmetic this branch spent five tasks getting right, so it is deferred deliberately rather than overlooked.
+
+**"Quote-level rounds are safe" (above) is too strong.** It holds for an all-quote-wide chain, because Shopware's `discount` field is absolute and replaces. A quote-wide round *following* a per-line round stacks on the already-reduced lines, and only the verifier catches it, after the write. Largely unreachable now that `OfferLevelMirror` runs on every round and converts any quote carrying a `requestedUnitPrice` to per-line — but the claim above overstates the guarantee.
+
 ## Testing
 
 **Unit — `QuoteBaseline`:** round-trip through `stamp`/`read`; absent field yields null; malformed field yields null rather than a partial list; a line absent from the baseline resolves to its current price; a stale entry for a removed line is ignored.

@@ -15,13 +15,19 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot as PolicyLine;
  */
 final class BaselineRow
 {
+    private function __construct() {}
+
     /**
      * Null for anything that does not parse. The caller turns one null row
      * into a null baseline: a partial list would be a smaller cap than the
      * merchant set, applied silently.
      *
-     * is_numeric rather than is_float because custom fields survive the
-     * database as JSON, so 100.0 can come back as the integer 100.
+     * `unitPriceNet` uses is_numeric rather than is_int because custom fields
+     * survive the database as JSON, so 100.0 can come back as the integer
+     * 100. `quantity` uses strict is_int instead: it originates as a PHP int
+     * (Shopware line quantities are never fractional) and round-trips as one,
+     * so a non-int value here means the field is corrupt, not that JSON
+     * reshaped it.
      */
     public static function read(mixed $row): ?PolicyLine
     {

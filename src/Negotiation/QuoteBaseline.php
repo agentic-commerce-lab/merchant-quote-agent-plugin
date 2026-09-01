@@ -22,6 +22,8 @@ final class QuoteBaseline
 {
     public const KEY = 'merchant_quote_agent_baseline';
 
+    private function __construct() {}
+
     public static function read(BridgeSnapshot $snapshot): ?QuoteBaselineLines
     {
         $raw = $snapshot->lifecycle->customFields[self::KEY] ?? null;
@@ -66,5 +68,19 @@ final class QuoteBaseline
                 'lines' => array_map(BaselineRow::write(...), $snapshot->content->lines),
             ],
         ];
+    }
+
+    /**
+     * `stamp()`, or an empty fragment once a baseline already exists —
+     * spread-friendly, so a caller building a customFields array does not
+     * need its own conditional. Kept off `stamp()` itself because #49's other
+     * caller, OfferApplier::write(), already has its own null-vs-array shape
+     * for the same check.
+     *
+     * @return array<string, mixed>
+     */
+    public static function stampIfAbsent(BridgeSnapshot $snapshot): array
+    {
+        return self::read($snapshot) === null ? self::stamp($snapshot) : [];
     }
 }

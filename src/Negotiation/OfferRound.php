@@ -137,7 +137,7 @@ final readonly class OfferRound
     /** A quote the agent has answered before carries the servicing fingerprint. */
     private static function servicedBefore(QuoteSnapshot $snapshot): bool
     {
-        return ($snapshot->lifecycle->customFields[ServicingFingerprint::MARKER_KEY] ?? null) !== null;
+        return ServicingFingerprint::stamped($snapshot->lifecycle->customFields) !== null;
     }
 
     /**

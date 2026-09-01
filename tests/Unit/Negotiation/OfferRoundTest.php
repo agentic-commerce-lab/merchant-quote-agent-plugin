@@ -32,8 +32,14 @@ use PHPUnit\Framework\TestCase;
  */
 final class OfferRoundTest extends TestCase
 {
-    /** An OfferRound whose scripted model answer is per-line or quote-wide, on request. */
-    private static function round(bool $perLineOffer): OfferRound
+    /**
+     * An OfferRound whose scripted model answer is per-line or quote-wide, on
+     * request, plus the logger it was built with, so a test can pin an
+     * escalation to the guard's own log message rather than just its outcome.
+     *
+     * @return array{0: OfferRound, 1: RecordingLogger}
+     */
+    private static function round(bool $perLineOffer): array
     {
         $recorder = new DecisionRecorder(new FakeDecisionWriter());
         $logger = new RecordingLogger();
@@ -43,13 +49,15 @@ final class OfferRoundTest extends TestCase
         [$client] = ScriptedClient::spy([$offerReply, 'a rewording that keeps none of the facts']);
         $prompts = new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
 
-        return new OfferRound(
+        $round = new OfferRound(
             new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder),
             new OfferApplier(new OfferVerifier(), $logger, $recorder),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             new QuoteEscalator(),
             $logger,
         );
+
+        return [$round, $logger];
     }
 
     /** @param array<string, mixed> $customFields */
@@ -122,7 +130,7 @@ final class OfferRoundTest extends TestCase
      */
     public function testAPerLineOfferOnAQuoteServicedBeforeTheBaselineExistedStillEscalates(): void
     {
-        $round = self::round(perLineOffer: true);
+        [$round, $logger] = self::round(perLineOffer: true);
         $snapshot = self::snapshotWith(agentComment: true, customFields: [
             ServicingFingerprint::MARKER_KEY => 'some-old-stamp',
         ]);
@@ -130,12 +138,16 @@ final class OfferRoundTest extends TestCase
         $pass = $round->play(self::gateway(), $snapshot, self::settings(), self::decision(), null);
 
         self::assertSame(NegotiationOutcome::Escalated, $pass->outcome);
+        self::assertNotNull(
+            $logger->contextOf('no stored baseline'),
+            'Escalated, but not via the missing-baseline guard — some other refusal fired instead.',
+        );
     }
 
     /** With a baseline present, round two is answered rather than handed to a human. */
     public function testAPerLineOfferOnALaterRoundIsAnsweredOnceTheQuoteHasABaseline(): void
     {
-        $round = self::round(perLineOffer: true);
+        [$round] = self::round(perLineOffer: true);
         $snapshot = self::snapshotWith(agentComment: true, customFields: [
             ServicingFingerprint::MARKER_KEY => 'some-old-stamp',
             QuoteBaseline::KEY => [

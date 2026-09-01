@@ -27,6 +27,13 @@ final readonly class QuoteBaselineLines
      * Prices from the baseline, everything else from now. Currency, state and
      * expiry are not price history, and a stored copy of them would be a
      * second source of truth that goes stale.
+     *
+     * Known limitation, deliberately not fixed here: `totalNet` is the
+     * baseline's stored total, unadjusted for a quantity reduction or a line
+     * removal since. DiscountTotalViolation reads the gap between this total
+     * and the final one as discount, so a buyer who halves a quantity or
+     * drops a line shrinks the total structurally and the check reads that as
+     * a concession — see the design doc's "Known limitations" section.
      */
     public function asReferenceSnapshot(PolicySnapshot $live): PolicySnapshot
     {
@@ -47,19 +54,31 @@ final readonly class QuoteBaselineLines
      * quote" and escalate for no reason. A line REMOVED mid-negotiation
      * leaves a stale baseline entry that is simply never looked up.
      *
+     * A baseline row matched by id also picks up the CURRENT line's label
+     * here (#49 fix 4): the stored row never carries one — see
+     * QuoteBaseline::stamp() — so without this, LineReferenceViolation's
+     * messages fall back to a raw UUID from round two on.
+     *
      * @param list<PolicyLine> $current
      *
      * @return list<PolicyLine>
      */
     public function linesMergedWith(array $current): array
     {
+        $currentById = [];
+
+        foreach ($current as $line) {
+            $currentById[$line->lineItemId()] = $line;
+        }
+
         $known = [];
+        $merged = [];
 
         foreach ($this->lines as $line) {
             $known[$line->lineItemId()] = true;
+            $match = $currentById[$line->lineItemId()] ?? null;
+            $merged[] = $match === null ? $line : $line->withLabel($match->label());
         }
-
-        $merged = $this->lines;
 
         foreach ($current as $line) {
             if (!isset($known[$line->lineItemId()])) {
