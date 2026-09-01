@@ -1637,7 +1637,7 @@ Edits: namespace to `MerchantQuoteAgentPlugin\Tests\Unit\Ucp\Quote`; imports to 
         $descriptor = (new QuoteCapability())->describe();
 
         self::assertSame(QuoteCapabilityDescriptor::NAME, $descriptor->name);
-        self::assertSame(QuoteCapabilityDescriptor::SCHEMA_PATH, $descriptor->schema);
+        self::assertSame(QuoteCapabilityDescriptor::SCHEMA_PATH, $descriptor->schemaUrl);
     }
 
     public function testAnUnwiredGatewayMakesEveryOperationUnsupported(): void
