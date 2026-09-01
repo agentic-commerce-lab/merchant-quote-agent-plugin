@@ -46,6 +46,28 @@ final class SalesChannelContextResolverTest extends IntegrationTestCase
         $this->resolver()->resolveSalesChannel(new RequestContext('not-a-shop.invalid'));
     }
 
+    public function testItResolvesASalesChannelFromABareHost(): void
+    {
+        $domain = $this->anyStorefrontDomain();
+        $host = (string) parse_url($domain['url'], \PHP_URL_HOST);
+
+        $resolution = $this->resolver()->resolveByHost($host);
+
+        self::assertNotNull($resolution);
+        self::assertSame($domain['sales_channel_id'], $resolution->salesChannelId);
+    }
+
+    public function testItReturnsNullForAHostNoSalesChannelServes(): void
+    {
+        self::assertNull($this->resolver()->resolveByHost('not-a-shop.invalid'));
+    }
+
+    public function testItReturnsNullForAnEmptyHostRatherThanGuessing(): void
+    {
+        self::assertNull($this->resolver()->resolveByHost(null));
+        self::assertNull($this->resolver()->resolveByHost(''));
+    }
+
     private function resolver(): SalesChannelContextResolver
     {
         $resolver = static::getContainer()->get(SalesChannelContextResolver::class);
