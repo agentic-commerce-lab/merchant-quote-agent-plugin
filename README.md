@@ -93,6 +93,12 @@ rejected before your token is ever read). That failure is a 422, same as any
 other malformed request, not a 401 — so an agent seeing 422 on a request that
 already carries a bearer token should suspect its profile URI, not its token.
 
+On a shop whose SDK `signaturePolicy` is `strict`, agents must additionally
+sign their requests per RFC 9421 (`Signature`/`Signature-Input` headers); an
+unsigned request is rejected before it reaches these endpoints. This plugin's
+integration suite runs against a `log`-policy shop, so the signed path is not
+covered by tests here.
+
 The token's subject is the trust boundary — nothing in a request body can
 select a customer. The customer must additionally have quote management
 enabled. Set it through the Admin API's `customerSpecificFeatures` field, which

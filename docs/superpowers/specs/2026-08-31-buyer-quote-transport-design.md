@@ -243,6 +243,21 @@ already promises not to confirm existence.
   and the discovery document's advertised capability must stay consistent with
   what is routed.
 
+## Known limitations of what this proves
+
+- **Signature policy.** The endpoint tests run against a `log`-policy shop. Under
+  `strict`, both authenticated tests would 401 on a missing request signature
+  before reaching the controller, because `Rfc9421RequestSignatureService::verify()`
+  returns `verified: false` for a request carrying no signature headers.
+  Exercising it needs the suite to sign with a real keypair.
+- **Agent profile fetching is stubbed in tests.** Agentic Commerce's
+  `TestAgentProfileFetcherCompilerPass` swaps the HTTP fetcher for
+  `StaticAgentProfileFetcher` in the test environment, because the real
+  fetcher's SSRF check rejects local hosts unconditionally. So no test here
+  exercises a real remote profile fetch — TLS, redirects, timeouts, schema
+  validation. That gap is inherited from Agentic Commerce's own suite rather
+  than introduced by this work.
+
 ## Debt this deliberately takes on
 
 | Debt | Retired by |
