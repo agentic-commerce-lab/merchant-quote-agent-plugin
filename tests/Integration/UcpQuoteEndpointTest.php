@@ -69,9 +69,12 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
 
     public function testAListRequestWithAValidTokenReturnsTheCustomersQuotes(): void
     {
+        $customerId = BuyerQuoteFixture::anyQuoteCapableCustomerId(static::getContainer());
+        $foreignQuoteId = BuyerQuoteFixture::anyQuoteIdNotOwnedBy(static::getContainer(), $customerId);
+
         $response = $this->send('GET', '/ucp/quotes', headers: [
             'HTTP_UCP_AGENT' => $this->agentHeader(),
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->issueToken(),
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->issueToken($customerId),
         ]);
 
         self::assertSame(200, $response->getStatusCode());
@@ -79,7 +82,14 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
         $payload = json_decode((string) $response->getContent(), true, 512, \JSON_THROW_ON_ERROR);
 
         self::assertIsArray($payload);
-        self::assertArrayHasKey('quotes', $payload['data'] ?? $payload);
+        self::assertArrayHasKey('quotes', $payload);
+        // Non-empty, so the ownership check below is not vacuously true.
+        self::assertNotEmpty($payload['quotes']);
+
+        // Ownership, not just shape: a quote belonging to another customer on
+        // the same sales channel must never appear in this customer's list.
+        $quoteIds = array_column($payload['quotes'], 'id');
+        self::assertNotContains($foreignQuoteId, $quoteIds);
     }
 
     public function testAnUnknownTokenIsRejectedWithA401(): void

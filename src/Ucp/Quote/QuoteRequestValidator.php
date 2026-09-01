@@ -23,16 +23,20 @@ final class QuoteRequestValidator
     /**
      * The two shapes below are what {@see QuoteLineItemValidator} and
      * {@see QuoteFieldAssertions} actually enforce, one per `$required`
-     * branch: `product_id` a non-empty string and `quantity` a positive int
-     * for a quote request; `id`/`product_id` optionally non-empty strings,
-     * at least one present, for a counter-offer. `requested_unit_price`, in
-     * either case, is a non-negative number if present at all.
+     * branch. For a quote request: `product_id` (non-empty string) and
+     * `quantity` (positive int) are both guaranteed present;
+     * `requested_unit_price` is optional, a non-negative number if given at
+     * all. For a counter-offer: `id`/`product_id` are each optionally a
+     * non-empty string, with at least one of the two present, but
+     * `requested_unit_price` is mandatory there - {@see
+     * QuoteLineItemValidator::validateCounterIdentity()} throws when it is
+     * absent - and still a non-negative number.
      *
      * @param array<string, mixed> $payload
      *
      * @return ($required is true
-     *     ? list<array{product_id?: string, quantity?: int, requested_unit_price?: float|int|string}>
-     *     : list<array{id?: string, product_id?: string, requested_unit_price?: float|int|string}>)
+     *     ? list<array{product_id: string, quantity: int, requested_unit_price?: float|int|string}>
+     *     : list<array{id?: string, product_id?: string, requested_unit_price: float|int|string}>)
      */
     public function lineItems(array $payload, bool $required): array
     {
@@ -53,7 +57,12 @@ final class QuoteRequestValidator
             $this->lineItemValidator->validate($lineItem, $index, $required);
         }
 
-        /** @var list<array{id?: string, product_id?: string, quantity?: int, requested_unit_price?: float|int|string}> $lineItems */
+        if ($required) {
+            /** @var list<array{product_id: string, quantity: int, requested_unit_price?: float|int|string}> $lineItems */
+            return $lineItems;
+        }
+
+        /** @var list<array{id?: string, product_id?: string, requested_unit_price: float|int|string}> $lineItems */
         return $lineItems;
     }
 
