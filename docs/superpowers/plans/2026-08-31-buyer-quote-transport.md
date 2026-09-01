@@ -1983,7 +1983,7 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
 
     public function testOurReaderFindsATokenAgenticCommerceItselfIssued(): void
     {
-        $customerId = QuoteFixture::anyQuoteCapableCustomerId(static::getContainer());
+        $customerId = BuyerQuoteFixture::anyQuoteCapableCustomerId(static::getContainer());
         $token = $this->issueToken($customerId);
 
         $reader = static::getContainer()->get(AccessTokenSubjectReaderInterface::class);
@@ -2004,7 +2004,7 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
         $set = $store->issueTokenSet(
             $this->salesChannelId(),
             'integration-test-client',
-            $customerId ?? QuoteFixture::anyQuoteCapableCustomerId(static::getContainer()),
+            $customerId ?? BuyerQuoteFixture::anyQuoteCapableCustomerId(static::getContainer()),
             'dev.ucp.shopping.cart:manage',
         );
 
@@ -2016,7 +2016,7 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
 
     private function salesChannelId(): string
     {
-        return QuoteFixture::storefrontSalesChannelId(static::getContainer());
+        return BuyerQuoteFixture::storefrontSalesChannelId(static::getContainer());
     }
 
     /**
@@ -2024,7 +2024,7 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
      */
     private function send(string $method, string $path, array $headers = []): \Symfony\Component\HttpFoundation\Response
     {
-        $baseUri = QuoteFixture::storefrontBaseUri(static::getContainer());
+        $baseUri = BuyerQuoteFixture::storefrontBaseUri(static::getContainer());
         $request = Request::create($baseUri . $path, $method, server: $headers);
 
         return KernelLifecycleManager::getKernel()->handle($request);
@@ -2032,7 +2032,7 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
 }
 ```
 
-Task 4 already added `storefrontSalesChannelId()`; if it is somehow absent, add it now:
+Task 4's fix rounds moved every buyer-path helper into `tests/Integration/BuyerQuoteFixture.php` (a `too-many-methods` split), so `storefrontSalesChannelId()`, `storefrontBaseUri()` and `anyQuoteCapableCustomerId()` all live there now — `QuoteFixture` keeps only the merchant-side helpers. Use `BuyerQuoteFixture` throughout this task's test. For reference, that method reads:
 
 ```php
     public static function storefrontSalesChannelId(ContainerInterface $container): string
