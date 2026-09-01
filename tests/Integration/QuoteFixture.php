@@ -26,6 +26,12 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
  * whatever this returns, and an accepted/cancelled quote would make those
  * fail unpredictably depending on row order. Ordered deterministically so
  * reruns exercise the same quote.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * @mago-expect lint:too-many-methods
+ * A fixture is a bag of independent, single-purpose shop lookups, one per
+ * integration test's need — not a class with behaviour to design down.
+ * Splitting it by table would just relocate the same count of one-liners.
  */
 final class QuoteFixture
 {
@@ -122,5 +128,157 @@ final class QuoteFixture
         $criteria->addSorting(new FieldSorting('quoteNumber'));
 
         return $repository->searchIds($criteria, $context);
+    }
+
+    /**
+     * The base URI of an active storefront domain — what a UCP request to this
+     * shop would carry, and what SalesChannelContextResolver matches against.
+     */
+    public static function storefrontBaseUri(ContainerInterface $container): string
+    {
+        $url = self::connection($container)
+            ->fetchOne(
+                'SELECT d.url FROM sales_channel_domain d'
+                . ' INNER JOIN sales_channel s ON s.id = d.sales_channel_id AND s.active = 1'
+                . ' WHERE d.url LIKE "http%"'
+                . ' AND EXISTS (SELECT 1 FROM customer c WHERE c.sales_channel_id = s.id AND c.active = 1)'
+                . ' ORDER BY d.url LIMIT 1',
+            );
+
+        if (!\is_string($url)) {
+            throw new \RuntimeException(
+                'The shop has no active sales-channel domain with an absolute URL whose channel has an active customer.',
+            );
+        }
+
+        return rtrim($url, '/');
+    }
+
+    /**
+     * The sales channel behind that domain. Every customer, token and quote the
+     * integration tests touch must belong to this one channel, or an
+     * access token issued for one channel is invisible to a request resolved
+     * onto another.
+     */
+    public static function storefrontSalesChannelId(ContainerInterface $container): string
+    {
+        $id = self::connection($container)
+            ->fetchOne(
+                'SELECT LOWER(HEX(d.sales_channel_id)) FROM sales_channel_domain d'
+                . ' INNER JOIN sales_channel s ON s.id = d.sales_channel_id AND s.active = 1'
+                . ' WHERE d.url LIKE "http%"'
+                . ' AND EXISTS (SELECT 1 FROM customer c WHERE c.sales_channel_id = s.id AND c.active = 1)'
+                . ' ORDER BY d.url LIMIT 1',
+            );
+
+        if (!\is_string($id)) {
+            throw new \RuntimeException(
+                'The shop has no active sales-channel domain with an absolute URL whose channel has an active customer.',
+            );
+        }
+
+        return $id;
+    }
+
+    /** Just the host part, which is what the SDK's RequestContext carries. */
+    public static function storefrontHost(ContainerInterface $container): string
+    {
+        $host = parse_url(self::storefrontBaseUri($container), \PHP_URL_HOST);
+
+        if (!\is_string($host) || $host === '') {
+            throw new \RuntimeException('The shop\'s sales-channel domain has no host.');
+        }
+
+        return $host;
+    }
+
+    /**
+     * A quote some other customer owns, for the ownership boundary tests.
+     */
+    public static function anyQuoteIdNotOwnedBy(ContainerInterface $container, string $customerId): string
+    {
+        $id = self::connection($container)
+            ->fetchOne('SELECT LOWER(HEX(id)) FROM quote WHERE customer_id <> :customerId LIMIT 1', [
+                'customerId' => \Shopware\Core\Framework\Uuid\Uuid::fromHexToBytes($customerId),
+            ]);
+
+        if (!\is_string($id)) {
+            throw new \RuntimeException('The shop has no quote owned by another customer.');
+        }
+
+        return $id;
+    }
+
+    /**
+     * A customer whose `customer_specific_features` row enables
+     * QUOTE_MANAGEMENT. That table, not a column on `customer`, is where
+     * SwagCommercial's CustomerSpecificFeatureService actually reads the flag
+     * from (`customer_id` -> `features`, a JSON map, not a list — an array
+     * would be silently ignored).
+     */
+    public static function anyQuoteCapableCustomerId(ContainerInterface $container): string
+    {
+        $id = self::connection($container)
+            ->fetchOne('SELECT LOWER(HEX(c.id)) FROM customer c'
+            . ' INNER JOIN customer_specific_features csf ON csf.customer_id = c.id'
+            . ' WHERE c.active = 1'
+            . ' AND c.sales_channel_id = UNHEX(:salesChannelId)'
+            . ' AND JSON_EXTRACT(csf.features, "$.QUOTE_MANAGEMENT") = TRUE'
+            . ' LIMIT 1', ['salesChannelId' => self::storefrontSalesChannelId($container)]);
+
+        if (!\is_string($id)) {
+            throw new \RuntimeException(
+                'No customer in this shop has QUOTE_MANAGEMENT enabled. Set it with a PATCH against the Admin API:'
+                . ' {"customerSpecificFeatures": {"QUOTE_MANAGEMENT": true}}.',
+            );
+        }
+
+        return $id;
+    }
+
+    public static function anyCustomerWithoutQuoteFeature(ContainerInterface $container): string
+    {
+        $id = self::connection($container)
+            ->fetchOne('SELECT LOWER(HEX(c.id)) FROM customer c'
+            . ' LEFT JOIN customer_specific_features csf ON csf.customer_id = c.id'
+            . ' WHERE c.active = 1'
+            . ' AND c.sales_channel_id = UNHEX(:salesChannelId)'
+            . ' AND (csf.features IS NULL'
+            . ' OR JSON_EXTRACT(csf.features, "$.QUOTE_MANAGEMENT") IS NULL)'
+            . ' LIMIT 1', ['salesChannelId' => self::storefrontSalesChannelId($container)]);
+
+        if (!\is_string($id)) {
+            throw new \RuntimeException('Every customer in this shop has QUOTE_MANAGEMENT enabled.');
+        }
+
+        return $id;
+    }
+
+    /** A product an agent may put on a quote: active, and in a live version. */
+    public static function anyPurchasableProductId(ContainerInterface $container, Context $context): string
+    {
+        $id = self::connection($container)
+            ->fetchOne('SELECT LOWER(HEX(id)) FROM product'
+            . ' WHERE active = 1 AND version_id = :version AND parent_id IS NULL'
+            . ' AND child_count = 0 LIMIT 1', [
+                'version' => \Shopware\Core\Framework\Uuid\Uuid::fromHexToBytes(\Shopware\Core\Defaults::LIVE_VERSION),
+            ]);
+
+        if (!\is_string($id)) {
+            throw new \RuntimeException('The shop has no simple active product to quote.');
+        }
+
+        return $id;
+    }
+
+    private static function connection(ContainerInterface $container): \Doctrine\DBAL\Connection
+    {
+        $connection = $container->get(\Doctrine\DBAL\Connection::class);
+
+        if (!$connection instanceof \Doctrine\DBAL\Connection) {
+            throw new \RuntimeException('The container has no DBAL connection.');
+        }
+
+        return $connection;
     }
 }
