@@ -1524,7 +1524,15 @@ In `src/Resources/config/services.php`, next to the existing `QuoteGatewayFactor
     if (CommercialAvailability::isAvailableByClass()) {
         $services->set(CommercialQuoteSnapshotMapper::class);
 
-        $services->set(SwagCommercialBuyerQuoteGateway::class)
+        // ->public() only because nothing CONSUMES the gateway yet. Registering
+        // a service is not consuming it: the test service locator holds weak
+        // references, so RemoveUnusedDefinitionsPass drops an unreferenced
+        // private definition and everything it alone referenced, and the
+        // integration test cannot fetch what the container removed. Task 5's
+        // QuoteCapability is the first real consumer — the SDK's registry
+        // references it through the ucp_sdk.capability tag — and the flag comes
+        // out with it.
+        $services->set(SwagCommercialBuyerQuoteGateway::class)->public()
             ->arg('$quoteRequestRoute', service('Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\CartToQuote\\QuoteRequestRoute')->nullOnInvalid())
             ->arg('$quoteSendRequestRoute', service('Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\State\\QuoteSendRequestRoute')->nullOnInvalid())
             ->arg('$quoteLineItemRoute', service('Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\LineItem\\QuoteLineItemRoute')->nullOnInvalid())
@@ -1728,7 +1736,15 @@ final class QuoteCapability implements CapabilityInterface
 }
 ```
 
-- [ ] **Step 6: Wire the optional gateway into the capability**
+- [ ] **Step 6: Wire the optional gateway into the capability, and retire Task 4's scaffolding**
+
+Task 4 registered `SwagCommercialBuyerQuoteGateway` `->public()` with a comment saying this task removes it: the flag stood in for a real consumer, because an unreferenced private definition and everything it alone referenced are dropped from the test service locator together. Your `QuoteCapability` is that consumer — autoconfiguration tags it `ucp_sdk.capability`, and the SDK's registry references it. Delete the flag and its comment, then prove the chain holds by re-running Task 4's test after wiring:
+
+```bash
+composer run test:integration -- --filter BuyerQuoteFlow
+```
+
+Expected: still 4/4. A "removed or inlined" error means the capability is not tagged the way you think — fix the registration rather than restoring the flag, and report it if you cannot.
 
 In `src/Resources/config/services.php`, replace the bare `$services->set(QuoteCapability::class);` with:
 
