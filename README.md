@@ -35,6 +35,15 @@ The database is seeded from a dump of the previous shop
 Every integration test runs inside a rolled-back transaction, so the seed
 stays as it was. Design: `docs/superpowers/specs/2026-08-27-dedicated-test-shop-design.md`.
 
+Touched anything under `src/Resources/app/administration`? Compile it in the
+container — `scripts/sync-to-shop.sh` only pushes sources:
+
+    docker exec merchant-quote-shop bash -lc 'cd /var/www/html && ./bin/build-administration.sh'
+
+Skip that and the admin keeps serving the previous build. If the compiled
+bundle goes missing entirely, Shopware drops the module without a word and its
+routes render a blank administration rather than an error.
+
 ## Installing into another shop
 
 CI packages an installable zip on every merge to main (the *Plugin Zip*
