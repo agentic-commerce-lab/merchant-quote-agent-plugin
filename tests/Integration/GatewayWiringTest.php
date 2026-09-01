@@ -8,30 +8,25 @@ use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
 
 /**
- * Covers `src/Resources/config/services.php` as far as is reachable without
- * installing the plugin.
+ * Covers `src/Resources/config/services.php` from outside the container.
  *
- * That caveat shapes the whole class. The plugin cannot be installed into this
- * shop — `composer.json` declares `php ^8.3` against a default PHP of 8.2,
- * requires `ucp-php-sdk/core >=0.0.5` where 0.0.2 is what exists, and
- * `cuyz/valinor` is absent from the shop's vendor tree — so Shopware never
- * loads our `services.php` and `getContainer()->get(QuoteGatewayInterface::class)`
- * cannot resolve. What is left is split by who can check it:
+ * `services.php` does compile in this shop's container — BuyerQuoteFlowTest
+ * and SalesChannelContextResolverTest resolve `BuyerQuoteGatewayInterface`
+ * and `SalesChannelContextResolver` straight from it, and UcpQuoteEndpointTest
+ * routes real HTTP through the controller it registers, which proves
+ * autowire/autoconfigure defaults resolve and the buyer-side services survive
+ * compilation. What those tests cannot see is what this one is for:
  *
  * - **The analyzer** covers the file's structure. `services.php` lives under
  *   `src/`, so `mago analyze` parses it, resolves every `::class` and every
  *   `use`, and would reject a misspelled service class or a missing
  *   `service()` import. No test needs to restate that.
- * - **This test** covers the one thing no analyzer can see: that the four
- *   SwagCommercial ids the file injects are ids a shop with SwagCommercial
- *   actually has. They are string literals by necessity (ADR 0001), so a typo
- *   or an upstream rename is invisible until runtime. It reads them from the
- *   same constants `services.php` references, so there is one copy of each id
- *   in the codebase and this follows it.
- * - **Nothing yet** covers Shopware compiling the file in a real container:
- *   the autowire/autoconfigure defaults resolving, and
- *   `QuoteGatewayInterface` surviving compilation as a factory-produced
- *   service. That needs an install, and is reported as such.
+ * - **This test** covers the one thing no analyzer can see: that the
+ *   SwagCommercial ids the file injects (merchant-side and buyer-side) are
+ *   ids a shop with SwagCommercial actually has. They are string literals by
+ *   necessity (ADR 0001), so a typo or an upstream rename is invisible until
+ *   runtime. It reads them from the same constants `services.php` references,
+ *   so there is one copy of each id in the codebase and this follows it.
  */
 final class GatewayWiringTest extends IntegrationTestCase
 {

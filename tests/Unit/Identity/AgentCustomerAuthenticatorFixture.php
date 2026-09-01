@@ -85,8 +85,11 @@ final class AgentCustomerAuthenticatorFixture
             }
 
             #[\Override]
-            public function resolveForCustomer(string $customerId, RequestContext $context): SalesChannelContext
-            {
+            public function resolveForCustomer(
+                string $customerId,
+                RequestContext $context,
+                ?SalesChannelResolution $resolution = null,
+            ): SalesChannelContext {
                 $this->resolvedCustomerId = $customerId;
 
                 return $this->context;

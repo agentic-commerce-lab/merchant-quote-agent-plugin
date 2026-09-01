@@ -69,9 +69,12 @@ final readonly class SalesChannelContextResolver implements CustomerContextResol
 
     /** @throws \Doctrine\DBAL\Exception */
     #[Override]
-    public function resolveForCustomer(string $customerId, RequestContext $context): SalesChannelContext
-    {
-        $resolution = $this->resolveSalesChannel($context);
+    public function resolveForCustomer(
+        string $customerId,
+        RequestContext $context,
+        ?SalesChannelResolution $resolution = null,
+    ): SalesChannelContext {
+        $resolution ??= $this->resolveSalesChannel($context);
 
         return $this->contextService->get(
             new SalesChannelContextServiceParameters(

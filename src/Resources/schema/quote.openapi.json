@@ -3,7 +3,7 @@
   "info": {
     "title": "com.shopware.quote",
     "version": "2026-04-08",
-    "description": "Buyer-facing B2B Request-for-Quote capability for Shopware shops. Protocol-neutral: any UCP buyer agent can use it.\n\n## Authentication and authorization\n\nQuote operations act on behalf of a customer. Obtain an OAuth 2.0 access token through the shop's `dev.ucp.common.identity_linking` capability with the `com.shopware.quote:manage` scope, then send it as `Authorization: Bearer <token>`. The access token subject is the trust boundary: the customer's consent decides whose quotes are touched, and nothing in the request body can select a customer. An unscoped Shopware context token is not accepted. Requests also carry the standard `UCP-Agent` header and a request signature when the shop's signature policy requires it.\n\nThe quote capability must be enabled for the sales channel, negotiated with the requesting agent, and backed by a licensed commercial Quote Management installation. The customer must additionally have the Quote Management feature enabled (`customer_specific_features`). Unknown and foreign quote ids both return not found, without confirming existence.\n\n## State machine\n\n`open` and `in_review` are the merchant's turn. `replied` is the buyer's turn: accept, counter, or decline. `change_requested` returns the turn to the merchant. Accepted, declined, expired, withdrawn, and cancelled quotes are terminal for the buyer; a merchant may reopen or extend a quote as documented in `x-state-machine`.\n\n## Expiration\n\nOffers carry `expiration_date` (ISO 8601, always present in responses, and possibly null before the merchant replies). Agents must read it and act before it.\n\n## Price semantics\n\nAll amounts are in the quote's `currency`. `totals.tax_status` states whether `totals.gross` or `totals.net` is authoritative. Line item prices and requested prices are **per unit**.\n\n## Async negotiation\n\nThe merchant responds out-of-band. Agents poll `GET /ucp/quotes/{id}` for state changes; the recommended interval is 300 seconds. Webhooks are not part of this capability version.",
+    "description": "Buyer-facing B2B Request-for-Quote capability for Shopware shops. Protocol-neutral: any UCP buyer agent can use it.\n\n## Authentication and authorization\n\nQuote operations act on behalf of a customer. Obtain an OAuth 2.0 access token through the shop's `dev.ucp.common.identity_linking` capability with the `com.shopware.quote:manage` scope, then send it as `Authorization: Bearer <token>`. The access token subject is the trust boundary: the customer's consent decides whose quotes are touched, and nothing in the request body can select a customer. An unscoped Shopware context token is not accepted. Requests also carry the standard `UCP-Agent` header and a request signature when the shop's signature policy requires it.\n\nThe `com.shopware.quote:manage` scope is requested when obtaining the token, but this shop does not yet enforce it: no token can carry it until the identity-linking capability supports issuing it. Authorization today is by quote ownership instead — the token's subject identifies the customer, and every operation is scoped to that customer's own quotes; a request whose token carries no linked customer fails with a validation error rather than succeeding unscoped.\n\nThe quote capability must be enabled for the sales channel, negotiated with the requesting agent, and backed by a licensed commercial Quote Management installation (otherwise every request fails as unsupported). The customer must additionally have the Quote Management feature enabled (`customer_specific_features`). Unknown and foreign quote ids both return not found, without confirming existence.\n\n## State machine\n\n`open` and `in_review` are the merchant's turn. `replied` is the buyer's turn: accept, counter, or decline. `change_requested` returns the turn to the merchant. Accepted, declined, expired, withdrawn, and cancelled quotes are terminal for the buyer; a merchant may reopen or extend a quote as documented in `x-state-machine`.\n\n## Expiration\n\nOffers carry `expiration_date` (ISO 8601, always present in responses, and possibly null before the merchant replies). Agents must read it and act before it.\n\n## Price semantics\n\nAll amounts are in the quote's `currency`. `totals.tax_status` states whether `totals.gross` or `totals.net` is authoritative. Line item prices and requested prices are **per unit**.\n\n## Async negotiation\n\nThe merchant responds out-of-band. Agents poll `GET /ucp/quotes/{id}` for state changes; the recommended interval is 300 seconds. Webhooks are not part of this capability version.",
     "x-capability": "com.shopware.quote"
   },
   "x-polling-interval-seconds": 300,
@@ -166,14 +166,14 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
           },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
+          "501": {
+            "$ref": "#/components/responses/Unsupported"
           }
         }
       },
@@ -215,11 +215,14 @@
               }
             }
           },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "501": {
+            "$ref": "#/components/responses/Unsupported"
           }
         }
       }
@@ -244,11 +247,17 @@
               }
             }
           },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "501": {
+            "$ref": "#/components/responses/Unsupported"
           }
         }
       }
@@ -283,14 +292,17 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "501": {
+            "$ref": "#/components/responses/Unsupported"
           }
         }
       }
@@ -336,11 +348,17 @@
               }
             }
           },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "501": {
+            "$ref": "#/components/responses/Unsupported"
           }
         }
       }
@@ -375,14 +393,17 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "501": {
+            "$ref": "#/components/responses/Unsupported"
           }
         }
       }
@@ -394,7 +415,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "OAuth 2.0",
-        "description": "Identity-linking access token carrying the com.shopware.quote:manage scope. The token subject identifies the customer."
+        "description": "Identity-linking access token. Its subject identifies the customer, which is what this shop authorizes on today; the com.shopware.quote:manage scope is requested but not yet enforced."
       },
       "ucpAgent": {
         "type": "apiKey",
@@ -416,8 +437,8 @@
       }
     },
     "responses": {
-      "BadRequest": {
-        "description": "Invalid payload or state",
+      "Unauthorized": {
+        "description": "Access token missing, invalid, expired, or revoked",
         "content": {
           "application/json": {
             "schema": {
@@ -426,8 +447,8 @@
           }
         }
       },
-      "Forbidden": {
-        "description": "Capability disabled, not licensed, or Quote Management not enabled for the customer",
+      "UnprocessableEntity": {
+        "description": "Invalid payload, the access token does not resolve to a customer, or Quote Management is not enabled for the customer (`customer_specific_features` must contain `{\"QUOTE_MANAGEMENT\": true}`)",
         "content": {
           "application/json": {
             "schema": {
@@ -437,7 +458,17 @@
         }
       },
       "NotFound": {
-        "description": "Quote unknown or owned by another customer",
+        "description": "Quote unknown or owned by another customer, without confirming which",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unsupported": {
+        "description": "The quote capability is disabled, not licensed, or the commercial Quote Management backend is unavailable",
         "content": {
           "application/json": {
             "schema": {
@@ -540,8 +571,12 @@
             "type": "string"
           },
           "state": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "enum": [
+              "draft",
               "open",
               "in_review",
               "replied",
@@ -551,8 +586,10 @@
               "expired",
               "withdrawn",
               "cancelled",
-              "reopen"
-            ]
+              "reopen",
+              null
+            ],
+            "description": "Null only if the merchant's state machine state could not be resolved. `draft` is a request left behind by a quote-to-order flow that never reached the merchant."
           },
           "expiration_date": {
             "type": [
@@ -587,13 +624,17 @@
                 "description": "Total excluding tax"
               },
               "tax_status": {
-                "type": "string",
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "enum": [
                   "gross",
                   "net",
-                  "tax-free"
+                  "tax-free",
+                  null
                 ],
-                "description": "Which total is the customer-facing authoritative amount"
+                "description": "Which total is the customer-facing authoritative amount; null if the commercial backend did not report one"
               }
             }
           },
@@ -659,40 +700,9 @@
               }
             }
           },
-          "order_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Set after acceptance"
-          },
-          "ucp": {
-            "type": "object",
-            "properties": {
-              "version": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "AcceptResponse": {
-        "type": "object",
-        "required": [
-          "quote_id",
-          "state",
-          "order"
-        ],
-        "properties": {
-          "quote_id": {
-            "type": "string"
-          },
-          "state": {
-            "type": "string",
-            "const": "accepted"
-          },
           "order": {
             "type": "object",
+            "description": "Present only after acceptance",
             "required": [
               "id"
             ],
@@ -717,6 +727,10 @@
             }
           }
         }
+      },
+      "AcceptResponse": {
+        "description": "The accepted quote, with the order block populated.",
+        "$ref": "#/components/schemas/Quote"
       },
       "Error": {
         "type": "object",

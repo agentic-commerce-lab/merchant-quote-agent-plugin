@@ -39,6 +39,29 @@ final class QuoteSnapshot
     ) {}
 
     /**
+     * A copy with the order reference attached, for acceptQuote() to report
+     * the order it just placed without rebuilding every field by hand and
+     * risking one dropped in the transposition.
+     */
+    public function withOrder(string $orderId, ?string $orderNumber): self
+    {
+        return new self(
+            id: $this->id,
+            quoteNumber: $this->quoteNumber,
+            state: $this->state,
+            expirationDate: $this->expirationDate,
+            currency: $this->currency,
+            totalGross: $this->totalGross,
+            totalNet: $this->totalNet,
+            taxStatus: $this->taxStatus,
+            lineItems: $this->lineItems,
+            comments: $this->comments,
+            orderId: $orderId,
+            orderNumber: $orderNumber,
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array

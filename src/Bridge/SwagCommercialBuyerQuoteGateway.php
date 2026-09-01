@@ -81,6 +81,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         return (
             $this->hasCommercialRoutes()
             && $this->linePricing->isAvailable()
+            && $this->access->isAvailable()
             && CommercialAvailability::isLicensed()
         );
     }
@@ -242,8 +243,9 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $customerId = $this->access->requireCustomerId($context);
         $this->access->assertCustomerHasQuoteFeature($customerId);
 
+        $quote = $this->loadQuote($quoteId, $context);
+
         if ([] !== $lineItems) {
-            $quote = $this->loadQuote($quoteId, $context);
             $this->linePricing->applyCounterPrices($quoteId, $quote, $lineItems, $context);
         }
 
@@ -264,6 +266,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $this->access->assertServable();
         $customerId = $this->access->requireCustomerId($context);
         $this->access->assertCustomerHasQuoteFeature($customerId);
+        $this->loadQuote($quoteId, $context);
 
         /**
          * The route returns an untyped SwagCommercial order — no type to
@@ -282,20 +285,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
          * @mago-expect analysis:mixed-method-access
          * @mago-expect analysis:mixed-argument
          */
-        return new QuoteSnapshot(
-            id: $snapshot->id,
-            quoteNumber: $snapshot->quoteNumber,
-            state: $snapshot->state,
-            expirationDate: $snapshot->expirationDate,
-            currency: $snapshot->currency,
-            totalGross: $snapshot->totalGross,
-            totalNet: $snapshot->totalNet,
-            taxStatus: $snapshot->taxStatus,
-            lineItems: $snapshot->lineItems,
-            comments: $snapshot->comments,
-            orderId: (string) $order->getId(),
-            orderNumber: $order->getOrderNumber(),
-        );
+        return $snapshot->withOrder((string) $order->getId(), $order->getOrderNumber());
     }
 
     #[Override]
@@ -304,6 +294,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $this->access->assertServable();
         $customerId = $this->access->requireCustomerId($context);
         $this->access->assertCustomerHasQuoteFeature($customerId);
+        $this->loadQuote($quoteId, $context);
 
         CommercialQuoteAccess::service($this->quoteDeclineRoute, 'quote decline')->decline(
             $context,

@@ -57,7 +57,7 @@ final readonly class AgentCustomerAuthenticator
             ));
         }
 
-        $context = $this->contextResolver->resolveForCustomer($token->subject, $requestContext);
+        $context = $this->contextResolver->resolveForCustomer($token->subject, $requestContext, $resolution);
 
         if ($context->getCustomer() === null) {
             throw new ValidationException('The access token does not identify a customer.', [

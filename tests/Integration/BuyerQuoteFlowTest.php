@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
-use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
@@ -31,7 +30,7 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
     public function testItRequestsAQuoteAndReadsItBack(): void
     {
         $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
-        $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer(), $context->getContext());
+        $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer());
 
         $snapshot = $this->buyerGateway()->requestQuote(
             $context,
@@ -53,7 +52,7 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
     public function testItListsOnlyTheAuthenticatedCustomersQuotes(): void
     {
         $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
-        $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer(), $context->getContext());
+        $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer());
         $foreignQuoteId = BuyerQuoteFixture::anyQuoteIdNotOwnedBy(
             static::getContainer(),
             $context->getCustomer()?->getId() ?? '',
@@ -108,6 +107,44 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
         $this->buyerGateway()->getQuote($context, $foreignQuoteId);
     }
 
+    /**
+     * accept/decline/counter must translate an unknown or foreign id to not
+     * found *before* touching the commercial mutating route, the same way
+     * getQuote() already does — otherwise the customer-ownership check that
+     * route performs surfaces as a raw commercial exception instead of a
+     * uniform 404. One test covers all three call sites (including counter's
+     * comment-only path, which skips the pricing branch that used to be the
+     * only place counter() loaded the quote) rather than one test each, to
+     * stay under mago's method-count ceiling.
+     */
+    public function testAcceptDeclineAndACommentOnlyCounterAreNotFoundForAnUnknownOrForeignId(): void
+    {
+        $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
+        $unknownId = \Shopware\Core\Framework\Uuid\Uuid::randomHex();
+        $foreignId = BuyerQuoteFixture::anyQuoteIdNotOwnedBy(
+            static::getContainer(),
+            $context->getCustomer()?->getId() ?? '',
+        );
+
+        foreach ([
+            'acceptQuote(unknown)' => fn() => $this->buyerGateway()->acceptQuote($context, $unknownId),
+            'declineQuote(unknown)' => fn() => $this->buyerGateway()->declineQuote($context, $unknownId, null),
+            'counterQuote(foreign, comment only)' => fn() => $this->buyerGateway()->counterQuote(
+                $context,
+                $foreignId,
+                [],
+                'Comment only, no prices.',
+            ),
+        ] as $label => $operation) {
+            try {
+                $operation();
+                self::fail($label . ' should have thrown ResourceNotFoundException.');
+            } catch (\Ucp\Sdk\Exception\ResourceNotFoundException) {
+                self::assertTrue(true, $label . ' correctly not found.');
+            }
+        }
+    }
+
     public function testACustomerWithoutTheQuoteFeatureIsToldWhichFlagIsMissing(): void
     {
         $context = BuyerQuoteContextFixture::buyerContextWithoutQuoteFeature(static::getContainer());
@@ -133,7 +170,7 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
     public function testACounterOfferCanThenBeDeclined(): void
     {
         $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
-        $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer(), $context->getContext());
+        $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer());
         $merchantGateway = static::gateway();
 
         $snapshot = $this->buyerGateway()->requestQuote(
@@ -162,9 +199,9 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
     }
 
     /**
-     * Accepting turns a quote into an order — the one operation that rebuilds
-     * a `QuoteSnapshot` field by field (`orderId`/`orderNumber` added), so
-     * this is what would catch a transposed field there.
+     * Accepting turns a quote into an order — the one operation that attaches
+     * `orderId`/`orderNumber` to the snapshot via `QuoteSnapshot::withOrder()`,
+     * so this is what would catch that going wrong.
      *
      * `QuoteOrderRoute` refuses an expired quote, and a quote moved to
      * `replied` by the bare state-machine transition (rather than through the
@@ -175,7 +212,7 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
     public function testAcceptingAQuotePlacesAnOrder(): void
     {
         $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
-        $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer(), $context->getContext());
+        $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer());
         $merchantGateway = static::gateway();
 
         $snapshot = $this->buyerGateway()->requestQuote(
@@ -191,13 +228,5 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
         self::assertSame('accepted', $accepted->state);
         self::assertNotNull($accepted->orderId);
         self::assertNotNull($accepted->orderNumber);
-    }
-
-    private function buyerGateway(): BuyerQuoteGatewayInterface
-    {
-        $gateway = static::getContainer()->get(BuyerQuoteGatewayInterface::class);
-        self::assertInstanceOf(BuyerQuoteGatewayInterface::class, $gateway);
-
-        return $gateway;
     }
 }

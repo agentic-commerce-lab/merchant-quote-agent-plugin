@@ -30,6 +30,18 @@ final readonly class CommercialQuoteAccess
     ) {}
 
     /**
+     * Whether the customer-specific-feature service actually resolved. It is
+     * `nullOnInvalid()` like the gateway's own routes, and every one of the
+     * four mutating operations needs it via assertCustomerHasQuoteFeature() —
+     * a shop missing only this service must not advertise the capability as
+     * available and then fail every mutation with a 501.
+     */
+    public function isAvailable(): bool
+    {
+        return null !== $this->customerSpecificFeatureService;
+    }
+
+    /**
      * ADR 0001's stage two: the licence toggle every commercial quote SERVICE
      * checks on entry. A shop with SwagCommercial installed but unlicensed
      * must not serve quote requests, counter-offers or orders just because

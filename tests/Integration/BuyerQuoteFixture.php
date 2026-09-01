@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use Shopware\Core\Defaults;
-use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
@@ -165,7 +164,7 @@ final class BuyerQuoteFixture
     }
 
     /** A product an agent may put on a quote: active, and in a live version. */
-    public static function anyPurchasableProductId(ContainerInterface $container, Context $context): string
+    public static function anyPurchasableProductId(ContainerInterface $container): string
     {
         $id = self::connection($container)
             ->fetchOne('SELECT LOWER(HEX(id)) FROM product'

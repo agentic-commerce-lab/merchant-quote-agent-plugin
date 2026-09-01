@@ -26,7 +26,14 @@ interface CustomerContextResolverInterface
      * group and rules apply exactly as they would if the customer acted. The
      * caller must already have proven the authorization.
      *
+     * Pass `$resolution` when the caller already resolved the sales channel
+     * (e.g. to read the request's host); otherwise it is resolved again here.
+     *
      * @throws ConfigurationException
      */
-    public function resolveForCustomer(string $customerId, RequestContext $context): SalesChannelContext;
+    public function resolveForCustomer(
+        string $customerId,
+        RequestContext $context,
+        ?SalesChannelResolution $resolution = null,
+    ): SalesChannelContext;
 }

@@ -9,8 +9,9 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * `toArray()` is the wire format published at
- * `.well-known/ucp/schemas/quote.openapi.json` — a renamed or dropped key
- * here is a contract break no other test catches.
+ * `.well-known/ucp/schemas/quote.openapi.json` — every key it emits is
+ * checked against that file's `Quote` schema below, so a renamed or dropped
+ * key here is a contract break this test actually catches.
  */
 final class QuoteSnapshotTest extends TestCase
 {
@@ -28,6 +29,10 @@ final class QuoteSnapshotTest extends TestCase
         self::assertSame(9.5, $payload['line_items'][0]['requested_unit_price']);
         self::assertArrayHasKey('comments', $payload);
         self::assertArrayNotHasKey('order', $payload);
+        self::assertEmpty(
+            array_diff(array_keys($payload), self::quoteSchemaPropertyNames()),
+            'toArray() emits a key the published Quote schema does not declare.',
+        );
     }
 
     public function testExpirationDateIsPresentButNullWhenNotSet(): void
@@ -56,5 +61,37 @@ final class QuoteSnapshotTest extends TestCase
         );
 
         self::assertSame(['id' => 'order-id', 'order_number' => '10001'], $accepted->toArray()['order']);
+        self::assertEmpty(
+            array_diff(array_keys($accepted->toArray()), self::quoteSchemaPropertyNames()),
+            'toArray() emits a key the published Quote schema does not declare.',
+        );
+    }
+
+    public function testWithOrderAttachesTheOrderWithoutChangingAnyOtherField(): void
+    {
+        $snapshot = QuoteCapabilityFixture::snapshot();
+        $withOrder = $snapshot->withOrder('order-id', '10001');
+
+        self::assertSame($snapshot->id, $withOrder->id);
+        self::assertSame($snapshot->state, $withOrder->state);
+        self::assertSame($snapshot->lineItems, $withOrder->lineItems);
+        self::assertSame('order-id', $withOrder->orderId);
+        self::assertSame('10001', $withOrder->orderNumber);
+    }
+
+    /**
+     * The published `Quote` schema's own top-level property names, read from
+     * the same file the capability descriptor advertises — not a second
+     * hardcoded list that could drift from it on its own.
+     *
+     * @return list<string>
+     */
+    private static function quoteSchemaPropertyNames(): array
+    {
+        $path = \dirname(__DIR__, 4) . '/src/Resources/schema/quote.openapi.json';
+        /** @var array{components: array{schemas: array{Quote: array{properties: array<string, mixed>}}}} $schema */
+        $schema = json_decode((string) file_get_contents($path), true, 512, \JSON_THROW_ON_ERROR);
+
+        return array_keys($schema['components']['schemas']['Quote']['properties']);
     }
 }

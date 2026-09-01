@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
@@ -59,18 +60,18 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
-     * The bridge gateway under test. The collaborator graph is hand-built from
-     * container services because the plugin is deliberately not installed into
-     * this shop (its composer constraints are unsatisfiable here, see Task 1),
-     * so `src/Resources/config/services.php` never loads and
-     * `QuoteGatewayInterface` cannot be resolved from the container.
-     *
-     * The last step still goes through `QuoteGatewayFactory::create()` rather
-     * than `new SwagCommercialQuoteGateway(...)`, so the license gate every
-     * caller depends on is exercised by all of these tests instead of only by
-     * GatewayWiringTest. What remains unverified without an install is
-     * `services.php` itself; GatewayWiringTest covers as much of it as is
-     * reachable from outside the container.
+     * The merchant-side bridge gateway under test. The collaborator graph is
+     * hand-built from container services rather than resolved as
+     * `QuoteGatewayInterface` directly: `src/Resources/config/services.php`
+     * does compile in this shop's container — `BuyerQuoteGatewayInterface`
+     * and `SalesChannelContextResolver` are resolved straight from it
+     * elsewhere in this suite (BuyerQuoteFlowTest, SalesChannelContextResolverTest),
+     * and UcpQuoteEndpointTest routes real HTTP through the controller
+     * `services.php` registers — but hand-building here means the last step
+     * still goes through `QuoteGatewayFactory::create()` rather than
+     * `new SwagCommercialQuoteGateway(...)`, so the license gate every caller
+     * depends on is exercised by all of these tests instead of only by
+     * GatewayWiringTest.
      *
      * Kept on the base class so the integration test classes share one
      * override point instead of duplicating a helper.
@@ -85,6 +86,24 @@ abstract class IntegrationTestCase extends TestCase
             . CommercialAvailability::LICENSE_TOGGLE
             . ' license toggle is off in this shop.',
         );
+
+        return $gateway;
+    }
+
+    /**
+     * The buyer-side counterpart of `gateway()`: resolved straight from the
+     * container, since `services.php` compiles here (see `gateway()`'s own
+     * docblock) and this one is a factory-produced service under its own
+     * interface, exactly like `QuoteGatewayInterface`.
+     *
+     * Kept on the base class for the same reason `gateway()` is: one override
+     * point shared by every integration test that needs it, rather than each
+     * test class duplicating the accessor.
+     */
+    protected static function buyerGateway(): BuyerQuoteGatewayInterface
+    {
+        $gateway = static::getContainer()->get(BuyerQuoteGatewayInterface::class);
+        self::assertInstanceOf(BuyerQuoteGatewayInterface::class, $gateway);
 
         return $gateway;
     }
