@@ -61,17 +61,20 @@ abstract class IntegrationTestCase extends TestCase
 
     /**
      * The merchant-side bridge gateway under test. The collaborator graph is
-     * hand-built from container services rather than resolved as
-     * `QuoteGatewayInterface` directly: `src/Resources/config/services.php`
-     * does compile in this shop's container — `BuyerQuoteGatewayInterface`
-     * and `SalesChannelContextResolver` are resolved straight from it
-     * elsewhere in this suite (BuyerQuoteFlowTest, SalesChannelContextResolverTest),
-     * and UcpQuoteEndpointTest routes real HTTP through the controller
-     * `services.php` registers — but hand-building here means the last step
-     * still goes through `QuoteGatewayFactory::create()` rather than
-     * `new SwagCommercialQuoteGateway(...)`, so the license gate every caller
-     * depends on is exercised by all of these tests instead of only by
-     * GatewayWiringTest.
+     * hand-built from container services. `scripts/sync-to-shop.sh` installs
+     * the plugin into this shop via composer's path repository, so
+     * `src/Resources/config/services.php` does load here — `preflight()` a few
+     * lines below resolves `ServicingPreflight` from the container, and the
+     * buyer-side suites resolve `BuyerQuoteGatewayInterface` and
+     * `SalesChannelContextResolver` straight from it (BuyerQuoteFlowTest,
+     * SalesChannelContextResolverTest), while UcpQuoteEndpointTest routes real
+     * HTTP through the controller `services.php` registers.
+     *
+     * The last step still goes through `QuoteGatewayFactory::create()` rather
+     * than `new SwagCommercialQuoteGateway(...)`, so the license gate every
+     * caller depends on is exercised by all of these tests instead of only by
+     * GatewayWiringTest, which covers `services.php` itself — the compiled
+     * container, not the hand-built graph these helpers use.
      *
      * Kept on the base class so the integration test classes share one
      * override point instead of duplicating a helper.

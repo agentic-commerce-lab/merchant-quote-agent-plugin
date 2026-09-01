@@ -8,25 +8,35 @@ use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
 
 /**
- * Covers `src/Resources/config/services.php` from outside the container.
+ * Covers `src/Resources/config/services.php` as far as this class exercises
+ * it — not the whole file.
  *
- * `services.php` does compile in this shop's container — BuyerQuoteFlowTest
- * and SalesChannelContextResolverTest resolve `BuyerQuoteGatewayInterface`
- * and `SalesChannelContextResolver` straight from it, and UcpQuoteEndpointTest
- * routes real HTTP through the controller it registers, which proves
- * autowire/autoconfigure defaults resolve and the buyer-side services survive
- * compilation. What those tests cannot see is what this one is for:
+ * `scripts/sync-to-shop.sh` installs the plugin into this shop via composer's
+ * path repository, so Shopware does load our `services.php`, and
+ * `QuoteGatewayInterface` does compile as a factory-produced service (`bin/console
+ * debug:container` confirms it, factory `QuoteGatewayFactory::create()`). The
+ * buyer-side services compile too: BuyerQuoteFlowTest and
+ * SalesChannelContextResolverTest resolve `BuyerQuoteGatewayInterface` and
+ * `SalesChannelContextResolver` straight from the container, and
+ * UcpQuoteEndpointTest routes real HTTP through the controller it registers.
+ * What is left is split by who can check it:
  *
  * - **The analyzer** covers the file's structure. `services.php` lives under
  *   `src/`, so `mago analyze` parses it, resolves every `::class` and every
  *   `use`, and would reject a misspelled service class or a missing
  *   `service()` import. No test needs to restate that.
  * - **This test** covers the one thing no analyzer can see: that the
- *   SwagCommercial ids the file injects (merchant-side and buyer-side) are
+ *   SwagCommercial ids the file injects — merchant-side and buyer-side — are
  *   ids a shop with SwagCommercial actually has. They are string literals by
  *   necessity (ADR 0001), so a typo or an upstream rename is invisible until
  *   runtime. It reads them from the same constants `services.php` references,
  *   so there is one copy of each id in the codebase and this follows it.
+ * - **Nothing yet** covers resolving the merchant-side `QuoteGatewayInterface`
+ *   from the container by service id, rather than the hand-built graph
+ *   `IntegrationTestCase::gatewayFactory()` assembles — that gap is no longer
+ *   about the plugin being uninstallable, just about no test here asking for
+ *   it that way. The buyer-side interface is resolved that way by
+ *   BuyerQuoteFlowTest.
  */
 final class GatewayWiringTest extends IntegrationTestCase
 {

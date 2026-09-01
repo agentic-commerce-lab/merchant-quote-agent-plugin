@@ -20,8 +20,13 @@ final class DraftMirrorsEntityTest extends TestCase
     /** Written by DecisionRecordWriter itself, never a draft property. */
     private const ID_IS_WRITER_GENERATED = 'id';
 
-    /** Reserved for the terminal-state follow-up subscriber, not this issue. */
-    private const RESERVED_TERMINAL_FIELDS = ['terminalState', 'terminalAt'];
+    /**
+     * Written by TerminalOutcomeSubscriber, through TerminalOutcomeWriter,
+     * after the quote reaches a terminal state, never by a pass. The
+     * exclusion stays: a draft is one pass's insert, and the outcome is a
+     * later update by a different owner.
+     */
+    private const WRITTEN_BY_THE_TERMINAL_SUBSCRIBER = ['terminalState', 'terminalAt'];
 
     /** The draft's own stopwatch; DecisionRecordWriter excludes it, not a column. */
     private const DRAFT_ONLY_WORKING_FIELDS = ['startedAt'];
@@ -38,7 +43,7 @@ final class DraftMirrorsEntityTest extends TestCase
 
     public function testEveryEntityFieldIsADraftPropertyOrExplicitlyReserved(): void
     {
-        $excluded = [self::ID_IS_WRITER_GENERATED, ...self::RESERVED_TERMINAL_FIELDS];
+        $excluded = [self::ID_IS_WRITER_GENERATED, ...self::WRITTEN_BY_THE_TERMINAL_SUBSCRIBER];
 
         self::assertEmpty(
             array_diff($this->entityFieldNames(), $this->draftPropertyNames(), $excluded),
