@@ -1,0 +1,70 @@
+{% block merchant_quote_agent_access %}
+<sw-page class="merchant-quote-agent-access">
+    {% block merchant_quote_agent_access_smart_bar_header %}
+    <template #smart-bar-header>
+        <h2>{{ $tc('merchant-quote-agent.access.cardTitle') }}</h2>
+    </template>
+    {% endblock %}
+
+    {% block merchant_quote_agent_access_content %}
+    <template #content>
+        <sw-card-view>
+            {% block merchant_quote_agent_access_card %}
+            <mt-card
+                :title="$tc('merchant-quote-agent.access.cardTitle')"
+                :is-loading="isLoading"
+            >
+                <p class="merchant-quote-agent-access__hint">
+                    {{ $tc('merchant-quote-agent.access.hint') }}
+                </p>
+
+                <mt-select
+                    :label="$tc('merchant-quote-agent.access.salesChannelLabel')"
+                    :options="salesChannels.map((channel) => ({ value: channel.id, label: channel.name }))"
+                    :model-value="salesChannelId"
+                    :disabled="isLoading"
+                    @update:model-value="(value) => { salesChannelId = value; loadConfig(); }"
+                />
+
+                <mt-banner v-if="error" variant="critical">
+                    {{ error }}
+                </mt-banner>
+
+                <mt-textarea
+                    :label="$tc('merchant-quote-agent.access.platformAllowlistLabel')"
+                    :help-text="$tc('merchant-quote-agent.access.platformAllowlistHelp')"
+                    :disabled="!canEdit || isLoading"
+                    :model-value="lists.platformAllowlist"
+                    @update:model-value="(value) => { lists.platformAllowlist = value; }"
+                />
+
+                <mt-textarea
+                    :label="$tc('merchant-quote-agent.access.remoteProfileAllowlistLabel')"
+                    :help-text="$tc('merchant-quote-agent.access.remoteProfileAllowlistHelp')"
+                    :disabled="!canEdit || isLoading"
+                    :model-value="lists.remoteProfileAllowlist"
+                    @update:model-value="(value) => { lists.remoteProfileAllowlist = value; }"
+                />
+
+                <mt-textarea
+                    :label="$tc('merchant-quote-agent.access.agentAllowlistLabel')"
+                    :help-text="$tc('merchant-quote-agent.access.agentAllowlistHelp')"
+                    :disabled="!canEdit || isLoading"
+                    :model-value="lists.agentAllowlist"
+                    @update:model-value="(value) => { lists.agentAllowlist = value; }"
+                />
+
+                <mt-button
+                    variant="primary"
+                    :disabled="!canEdit || isSaving || !salesChannelId"
+                    @click="save"
+                >
+                    {{ $tc('merchant-quote-agent.access.save') }}
+                </mt-button>
+            </mt-card>
+            {% endblock %}
+        </sw-card-view>
+    </template>
+    {% endblock %}
+</sw-page>
+{% endblock %}
