@@ -1457,11 +1457,18 @@ Apply exactly these edits, in order:
 1. `namespace Swag\AgenticCommerce\Ucp\Gateway;` → `namespace MerchantQuoteAgentPlugin\Bridge;`
 2. `final class ShopwareQuoteGateway implements QuoteGatewayInterface` → `final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterface`
 3. Imports: drop `Swag\AgenticCommerce\Ucp\Identity\AgentCustomerAuthenticator`, `...\AgentCustomerCredential`, `...\ShopwareIdentityLinkingAdapter`, `...\Quote\A2cnActField`, `...\Quote\QuoteBackendFeature`, `...\Quote\QuoteGatewayInterface`, `Ucp\Sdk\Model\RequestContext`. Add `MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability`, `MerchantQuoteAgentPlugin\Ucp\Quote\QuoteList`, `MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot`, `Override`.
-4. Constructor: drop the `AgentCustomerAuthenticator $authenticator` parameter. Keep every `?object` route parameter, `CartService`, `LineItemFactoryRegistry`, `$customerSpecificFeatureService` and `$quoteRepository` exactly as they are — they are the soft-dependency seam.
-5. Delete the private `customerContext()` helper (lines ~251-274 in the source): the context now arrives as a parameter.
+4. Constructor: drop the `AgentCustomerAuthenticator $authenticator` parameter, and drop `$quoteRepository` — its only reader was `appendA2cnAct()`, which goes with A2CN, so keeping it would be a dead argument the parameter-list justification would misdescribe. Keep every `?object` route parameter, `CartService`, `LineItemFactoryRegistry` and `$customerSpecificFeatureService` exactly as they are — they are the soft-dependency seam.
+5. Delete the private `customerContext()` helper (lines ~251-274 in the source) — but first read it, because it does **four** things and only the first is replaced by the parameter:
+
+   - builds the customer's sales-channel context (now a parameter — this is the only part that goes away);
+   - asserts `isLicensed()`, throwing `UnsupportedCapabilityException('Quote management is not licensed for this shop.')`;
+   - null-checks the commercial routes before use;
+   - requires a customer on the context, throwing `ValidationException('Quote operations require a linked customer context.')`.
+
+   The other three must survive the port. Add three private helpers and call them from all six operations: `assertServable()` for the licence check, `commercialService(?object $service, string $name): object` for the null guard (used for every route **and** for `customerSpecificFeatureService`), and `requireCustomerId(SalesChannelContext $context): string` for the customer check, carrying the fork's own message. Keep the feature-flag check separate from the customer check: the read operations skip the flag, never the customer.
 6. In all six public operations: replace the signature per `BuyerQuoteGatewayInterface`, delete the `?array $a2cnAct = null` parameter, and replace the opening `$context = $this->customerContext($credential, $requestContext);` with nothing — the parameter is already named `$context`.
 7. Delete `appendA2cnAct()` and every call to it, and delete the `$a2cnActs` argument at every `new QuoteSnapshot(...)` call site.
-8. Replace `QuoteBackendFeature::isAvailableByClass()` with `CommercialAvailability::isAvailableByClass()` and, in `isAvailable()`, the licence check with `CommercialAvailability::isLicensed()`.
+8. `isAvailable()` keeps the fork's shape, not a class-existence check: a private `hasCommercialRoutes()` over the routes this class holds, `&&` a new `CommercialQuoteLinePricing::isAvailable()` (the line-item route moved there), `&&` `CommercialAvailability::isLicensed()`. Do **not** use `CommercialAvailability::isAvailableByClass()` here — it tests `QuoteManipulation`, `QuoteCommenter` and `License`, three merchant-side classes, and says nothing about whether the buyer routes were injected.
 9. Add `#[Override]` to each of the seven interface methods.
 10. **Extract the mapping methods into their own class.** `toSnapshot()`, `mapLineItems()` and `mapComments()` turn a commercial quote entity into our published DTO — a different job from calling Store API routes, and the source file is 487 physical lines, over this repo's ~400-line gate (`composer run quality:filesize`), so the split is needed on both counts. Move all three verbatim into `src/Bridge/CommercialQuoteSnapshotMapper.php`:
 
@@ -1545,14 +1552,15 @@ In `src/Resources/config/services.php`, next to the existing `QuoteGatewayFactor
             ->arg('$quoteRequestChangeRoute', service('Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\State\\QuoteRequestChangeRoute')->nullOnInvalid())
             ->arg('$quoteDeclineRoute', service('Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\State\\QuoteDeclineRoute')->nullOnInvalid())
             ->arg('$quoteOrderRoute', service('Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\QuoteToOrder\\QuoteOrderRoute')->nullOnInvalid())
-            ->arg('$customerSpecificFeatureService', service('Shopware\\Commercial\\B2B\\CustomerSpecificFeatures\\Domain\\CustomerSpecificFeature\\CustomerSpecificFeatureService')->nullOnInvalid())
-            ->arg('$quoteRepository', service('quote.repository')->nullOnInvalid());
+            ->arg('$customerSpecificFeatureService', service('Shopware\\Commercial\\B2B\\CustomerSpecificFeatures\\Domain\\CustomerSpecificFeature\\CustomerSpecificFeatureService')->nullOnInvalid());
 
         $services->alias(BuyerQuoteGatewayInterface::class, SwagCommercialBuyerQuoteGateway::class);
     }
 ```
 
-These nine ids are copied from the fork's own `ShopwareQuoteGateway` block, so they are the ones that worked. Confirm two of them against the live shop anyway — a SwagCommercial rename is exactly the failure this seam exists to localise:
+These ids are copied from the fork's own `ShopwareQuoteGateway` block, so they are the ones that worked — but do not leave them as literals here. `CommercialAvailability`'s own docblock states the convention for exactly this risk: the ids live on that class as public constants so a SwagCommercial rename is a one-line fix rather than a hunt, and `GatewayWiringTest` resolves each one against the live shop, which is what catches a rename that `nullOnInvalid()` would otherwise swallow into a silent null. Add the new ids as constants beside the existing four, reference them here, and extend `GatewayWiringTest` to cover them.
+
+Confirm two against the live shop as well:
 
 ```bash
 docker exec -u www-data -w /var/www/html merchant-quote-shop \
@@ -1564,7 +1572,7 @@ docker exec -u www-data -w /var/www/html merchant-quote-shop \
 - [ ] **Step 8: Run the integration test to make sure it passes**
 
 Run: `composer run test:integration -- --filter BuyerQuoteFlow`
-Expected: PASS (4 tests). A skip means the shop's licence toggle is off — fix the shop, do not weaken the test.
+Expected: PASS (five tests — request/read-back, listing, unknown id, another customer's id, and the missing-feature message). A skip means the shop's licence toggle is off — fix the shop, do not weaken the test.
 
 - [ ] **Step 9: Commit**
 
