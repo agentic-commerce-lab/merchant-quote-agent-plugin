@@ -55,7 +55,18 @@
             "modelLatency": "Model time (excludes a failed retry)",
             "duration": "Pass duration",
             "promptHashes": "Prompt versions (extract / negotiate / reply)",
-            "noError": "Nothing went wrong on this pass."
+            "noError": "Nothing went wrong on this pass.",
+            "outcome": "What happened to the quote",
+            "stillOpen": "Still in flight — no final outcome yet.",
+            "terminalState": "Final state",
+            "terminalAt": "When",
+            "terminal": {
+                "accepted": "Accepted",
+                "declined": "Declined",
+                "expired": "Expired",
+                "cancelled": "Cancelled",
+                "withdrawn": "Withdrawn"
+            }
         }
     }
 }

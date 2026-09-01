@@ -60,17 +60,17 @@ abstract class IntegrationTestCase extends TestCase
 
     /**
      * The bridge gateway under test. The collaborator graph is hand-built from
-     * container services because the plugin is deliberately not installed into
-     * this shop (its composer constraints are unsatisfiable here, see Task 1),
-     * so `src/Resources/config/services.php` never loads and
-     * `QuoteGatewayInterface` cannot be resolved from the container.
+     * container services. `scripts/sync-to-shop.sh` installs the plugin into
+     * this shop via composer's path repository, so
+     * `src/Resources/config/services.php` does load here — `preflight()` a
+     * few lines below resolves `ServicingPreflight`, a plugin service, from
+     * the container.
      *
      * The last step still goes through `QuoteGatewayFactory::create()` rather
      * than `new SwagCommercialQuoteGateway(...)`, so the license gate every
      * caller depends on is exercised by all of these tests instead of only by
-     * GatewayWiringTest. What remains unverified without an install is
-     * `services.php` itself; GatewayWiringTest covers as much of it as is
-     * reachable from outside the container.
+     * GatewayWiringTest, which covers `services.php` itself — the compiled
+     * container, not the hand-built graph these helpers use.
      *
      * Kept on the base class so the integration test classes share one
      * override point instead of duplicating a helper.

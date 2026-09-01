@@ -7,6 +7,9 @@ use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
+use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeSubscriber;
+use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
+use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteCommentWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteProductAdderInterface;
@@ -80,6 +83,14 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(DecisionRecordWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
     $services->alias(DecisionRecordWriterInterface::class, DecisionRecordWriter::class);
     $services->set(DecisionRecorder::class);
+
+    // The outcome half of the audit trail (#33): a subscriber on the core
+    // quote state machine stamps terminal_state / terminal_at onto the newest
+    // record. autoconfigure() gives the subscriber its kernel.event_subscriber
+    // tag, so only the repository argument needs naming.
+    $services->set(TerminalOutcomeWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
+    $services->alias(TerminalOutcomeWriterInterface::class, TerminalOutcomeWriter::class);
+    $services->set(TerminalOutcomeSubscriber::class);
 
     // Stage one of ADR 0001's two-stage gate: class existence decides whether
     // the bridge is REGISTERED at all. Shopware only registers an active

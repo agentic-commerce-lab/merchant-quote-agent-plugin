@@ -20,9 +20,11 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity as EntityStruct;
  * read: DAL cannot aggregate inside a JSON column, so anything #21 counts or
  * averages has to be its own column.
  *
- * `terminalState` and `terminalAt` are reserved and never written here. The
- * subscriber that fills them is a follow-up; the columns exist so that
- * follow-up needs no migration.
+ * `terminalState` and `terminalAt` are the only two columns not written by a
+ * servicing pass. TerminalOutcomeSubscriber stamps them later, via
+ * TerminalOutcomeWriter, when the quote reaches one of the five states that
+ * end a negotiation, so a record's insert still has exactly one owner and the
+ * outcome is a separate update.
  *
  * Write-protected to system scope on every field: DecisionRecordWriter writes
  * through Context::createDefaultContext(), which is system scope, while

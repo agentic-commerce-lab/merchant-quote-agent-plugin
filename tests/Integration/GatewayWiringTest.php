@@ -8,15 +8,14 @@ use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
 
 /**
- * Covers `src/Resources/config/services.php` as far as is reachable without
- * installing the plugin.
+ * Covers `src/Resources/config/services.php` as far as this class exercises
+ * it — not the whole file.
  *
- * That caveat shapes the whole class. The plugin cannot be installed into this
- * shop — `composer.json` declares `php ^8.3` against a default PHP of 8.2,
- * requires `ucp-php-sdk/core >=0.0.5` where 0.0.2 is what exists, and
- * `cuyz/valinor` is absent from the shop's vendor tree — so Shopware never
- * loads our `services.php` and `getContainer()->get(QuoteGatewayInterface::class)`
- * cannot resolve. What is left is split by who can check it:
+ * `scripts/sync-to-shop.sh` installs the plugin into this shop via composer's
+ * path repository, so Shopware does load our `services.php`, and
+ * `QuoteGatewayInterface` does compile as a factory-produced service (`bin/console
+ * debug:container` confirms it, factory `QuoteGatewayFactory::create()`). What
+ * is left is split by who can check it:
  *
  * - **The analyzer** covers the file's structure. `services.php` lives under
  *   `src/`, so `mago analyze` parses it, resolves every `::class` and every
@@ -28,10 +27,11 @@ use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
  *   or an upstream rename is invisible until runtime. It reads them from the
  *   same constants `services.php` references, so there is one copy of each id
  *   in the codebase and this follows it.
- * - **Nothing yet** covers Shopware compiling the file in a real container:
- *   the autowire/autoconfigure defaults resolving, and
- *   `QuoteGatewayInterface` surviving compilation as a factory-produced
- *   service. That needs an install, and is reported as such.
+ * - **Nothing yet** covers resolving `QuoteGatewayInterface` from the
+ *   container by service id, rather than the hand-built graph
+ *   `IntegrationTestCase::gatewayFactory()` assembles — that gap is no longer
+ *   about the plugin being uninstallable, just about no test here asking for
+ *   it that way.
  */
 final class GatewayWiringTest extends IntegrationTestCase
 {
