@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Negotiation\ClarificationMarker;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
@@ -113,5 +114,11 @@ final class ServiceQuoteHandlerSettingsTest extends TestCase
             $stamp[QuoteEscalator::MARKER_KEY],
             'A fixed configuration must be able to escalate again if it breaks again.',
         );
+        // The handler spreads both markers' releaseFor() into the same stamp;
+        // an answering pass must release the clarification marker too, or the
+        // first ambiguity in a quote's life permanently consumes its one
+        // question.
+        self::assertArrayHasKey(ClarificationMarker::MARKER_KEY, $stamp);
+        self::assertNull($stamp[ClarificationMarker::MARKER_KEY]);
     }
 }

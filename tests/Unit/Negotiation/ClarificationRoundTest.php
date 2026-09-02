@@ -62,6 +62,8 @@ final class ClarificationRoundTest extends TestCase
 
         self::assertSame(NegotiationOutcome::Escalated, $pass->outcome);
         self::assertSame(QuoteEscalationReason::NeedsHumanReview, $pass->escalationReason);
+        self::assertSame('extract-hash', $pass->extractHash);
+        self::assertNull($pass->negotiateHash);
 
         // The buyer gets the escalation constant, never the question again.
         self::assertCount(1, $harness->gateway->comments);

@@ -363,6 +363,15 @@ reaches the deciders, and the quote gateway cannot write a delivery or payment
 term at all — so answering the price half alone would drop the rest in silence,
 and granting the rest would promise the buyer something that never lands.
 
+**An ambiguous ask is put back to the buyer rather than guessed at.** When the
+extract step returns `clarification_questions` — asks that are clear in intent
+but ambiguous in reference, like "10% off" on a five-line quote — the agent
+posts those questions verbatim, writes no offer, and does not spend the
+negotiate call. If the ask is still ambiguous after the buyer answers, it goes
+to a human instead of being asked again. The marker that enforces "once"
+clears as soon as a pass answers with an offer, so a genuinely new ambiguity
+later in the same quote is asked about rather than escalated silently.
+
 **A verification failure leaves the applied changes in place.** Rolling back is
 a write that can itself fail, and a failed rollback leaves the quote in a third
 state nobody intended. The escalation tells a human what the database actually

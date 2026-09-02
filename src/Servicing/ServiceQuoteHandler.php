@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
+use MerchantQuoteAgentPlugin\Negotiation\ClarificationMarker;
 use MerchantQuoteAgentPlugin\Negotiation\QuoteBaseline;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
@@ -185,6 +186,10 @@ final readonly class ServiceQuoteHandler
         // even when the answer was to escalate. Whether the escalation marker
         // is ALSO cleared is QuoteEscalator's rule — it owns the key, and a
         // pass that escalated must keep the marker it just wrote.
+        //
+        // Two markers are released here, each by its owner's rule: a pass that
+        // escalated keeps the escalation marker it just wrote, and a pass that
+        // asked a clarification keeps that one.
         $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
             ServicingFingerprint::MARKER_KEY => ServicingFingerprint::stamp(
                 $snapshot,
@@ -192,6 +197,7 @@ final readonly class ServiceQuoteHandler
             ),
             self::ATTEMPTS_KEY => null,
             ...QuoteEscalator::releaseFor($outcome),
+            ...ClarificationMarker::releaseFor($outcome),
         ]));
     }
 
