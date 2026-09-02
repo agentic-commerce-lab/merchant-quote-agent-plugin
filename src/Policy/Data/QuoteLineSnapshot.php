@@ -68,4 +68,21 @@ final readonly class QuoteLineSnapshot
             requestedUnitPrice: $requestedUnitPrice,
         );
     }
+
+    /** #49: carries a live line's label onto a stored baseline row, which never has one. */
+    public function withLabel(?string $label): self
+    {
+        return new self(
+            identity: new QuoteLineIdentity(
+                lineItemId: $this->identity->lineItemId,
+                label: $label,
+                productId: $this->identity->productId,
+                unit: $this->identity->unit,
+            ),
+            quantity: $this->quantity,
+            unitPriceNet: $this->unitPriceNet,
+            totalNet: $this->totalNet,
+            requestedUnitPrice: $this->requestedUnitPrice,
+        );
+    }
 }

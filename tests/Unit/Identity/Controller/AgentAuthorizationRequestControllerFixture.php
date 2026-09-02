@@ -112,6 +112,12 @@ final class AgentAuthorizationRequestControllerFixture
             }
 
             #[\Override]
+            public function resolveByHost(?string $host): ?SalesChannelResolution
+            {
+                throw new \LogicException('not used in this test');
+            }
+
+            #[\Override]
             public function resolveForCustomer(
                 string $customerId,
                 RequestContext $context,

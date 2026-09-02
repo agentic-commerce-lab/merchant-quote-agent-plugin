@@ -1,6 +1,7 @@
 import { privileges } from './acl';
 import './page/merchant-quote-agent-list';
 import './page/merchant-quote-agent-detail';
+import './page/merchant-quote-agent-access';
 
 import deDE from './snippet/de.json';
 import enGB from './snippet/en.json';
@@ -37,6 +38,17 @@ Shopware.Module.register('merchant-quote-agent', {
                 privilege: 'merchant_quote_agent.viewer',
             },
         },
+        access: {
+            component: 'merchant-quote-agent-access',
+            path: 'access',
+            meta: {
+                parentPath: 'merchant.quote.agent.index',
+                // The Agentic Commerce plugin's privileges, deliberately: this
+                // page reads and writes that plugin's config through its API, so
+                // its ACL is the one that actually gates the data.
+                privilege: 'ucp.viewer',
+            },
+        },
     },
 
     navigation: [
@@ -49,6 +61,14 @@ Shopware.Module.register('merchant-quote-agent', {
             parent: 'sw-order',
             position: 30,
             privilege: 'merchant_quote_agent.viewer',
+        },
+        {
+            id: 'merchant-quote-agent-access',
+            label: 'merchant-quote-agent.access.mainMenuItem',
+            path: 'merchant.quote.agent.access',
+            parent: 'sw-order',
+            position: 31,
+            privilege: 'ucp.viewer',
         },
     ],
 });

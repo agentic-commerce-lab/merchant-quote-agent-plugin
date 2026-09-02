@@ -85,6 +85,12 @@ final class AgentCustomerAuthenticatorFixture
             }
 
             #[\Override]
+            public function resolveByHost(?string $host): ?SalesChannelResolution
+            {
+                return new SalesChannelResolution($this->salesChannelId, 'l', 'c', 'd');
+            }
+
+            #[\Override]
             public function resolveForCustomer(
                 string $customerId,
                 RequestContext $context,

@@ -16,6 +16,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Negotiation\QuoteBaseline;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
@@ -103,5 +104,38 @@ final class NegotiationFixture
             llm: self::modelAccess(),
             strategyPrompt: $strategy,
         );
+    }
+
+    /**
+     * The same snapshot with different quote custom fields. A separate method
+     * rather than a sixth parameter on snapshot(), which is already at the
+     * parameter-count gate.
+     *
+     * @param array<string, mixed> $customFields
+     */
+    public static function withCustomFields(QuoteSnapshot $snapshot, array $customFields): QuoteSnapshot
+    {
+        return new QuoteSnapshot(
+            identity: $snapshot->identity,
+            revision: $snapshot->revision,
+            totals: $snapshot->totals,
+            lifecycle: new QuoteLifecycle(
+                stateTechnicalName: $snapshot->lifecycle->stateTechnicalName,
+                expiresAt: $snapshot->lifecycle->expiresAt,
+                customFields: $customFields,
+            ),
+            content: $snapshot->content,
+        );
+    }
+
+    /** A stored baseline saying every line started at `$unitPriceNet`. */
+    public static function baselineOf(float $totalNet, float $unitPriceNet): array
+    {
+        return [
+            QuoteBaseline::KEY => [
+                'totalNet' => $totalNet,
+                'lines' => [['lineItemId' => 'line-1', 'unitPriceNet' => $unitPriceNet, 'quantity' => 10]],
+            ],
+        ];
     }
 }

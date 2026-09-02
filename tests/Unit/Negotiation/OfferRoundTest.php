@@ -4,7 +4,26 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
+use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
+use MerchantQuoteAgentPlugin\Negotiation\OfferRound;
+use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
+use MerchantQuoteAgentPlugin\Negotiation\QuoteBaseline;
+use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
+use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
+use MerchantQuoteAgentPlugin\Policy\Data\Band;
+use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
+use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
+use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
+use MerchantQuoteAgentPlugin\Policy\QuoteBandDecider;
+use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
+use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -13,6 +32,69 @@ use PHPUnit\Framework\TestCase;
  */
 final class OfferRoundTest extends TestCase
 {
+    /**
+     * An OfferRound whose scripted model answer is per-line or quote-wide, on
+     * request, plus the logger it was built with, so a test can pin an
+     * escalation to the guard's own log message rather than just its outcome.
+     *
+     * @return array{0: OfferRound, 1: RecordingLogger}
+     */
+    private static function round(bool $perLineOffer): array
+    {
+        $recorder = new DecisionRecorder(new FakeDecisionWriter());
+        $logger = new RecordingLogger();
+        $offerReply = $perLineOffer
+            ? '{"action":"offer","line_prices":[{"line_item_id":"line-1","unit_price_net":95}],"message":"95 each."}'
+            : '{"action":"offer","discount_percent":5,"message":"5% off."}';
+        [$client] = ScriptedClient::spy([$offerReply, 'a rewording that keeps none of the facts']);
+        $prompts = new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
+
+        $round = new OfferRound(
+            new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder),
+            new OfferApplier(new OfferVerifier(), $logger, $recorder),
+            new ReplyComposer($client, $prompts, $logger, $recorder),
+            new QuoteEscalator(),
+            $logger,
+        );
+
+        return [$round, $logger];
+    }
+
+    /** @param array<string, mixed> $customFields */
+    private static function snapshotWith(bool $agentComment, array $customFields): QuoteSnapshot
+    {
+        $comments = $agentComment
+            ? [
+                NegotiationFixture::agentComment('Our first offer.', '2026-08-28 09:00:00'),
+                NegotiationFixture::buyerComment('Still too high.', '2026-08-28 10:00:00'),
+            ]
+            : [];
+
+        return NegotiationFixture::withCustomFields(NegotiationFixture::snapshot(comments: $comments), $customFields);
+    }
+
+    private static function gateway(): FakeQuoteGateway
+    {
+        return new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+    }
+
+    private static function settings(): QuoteAgentSettings
+    {
+        return NegotiationFixture::settings();
+    }
+
+    /** A grant-band decision: the buyer asked 5% against a 10% cap. */
+    private static function decision(): NegotiationDecision
+    {
+        $snapshot = SnapshotAdapter::toPolicy(NegotiationFixture::snapshot());
+        $price = (new QuoteBandDecider())->decide(
+            $snapshot->withBuyerTargetNet(950.0),
+            NegotiationFixture::settings()->policy->price,
+        );
+
+        return new NegotiationDecision(Band::Grant, $price);
+    }
+
     public function testAPerLineOfferTellsTheBuyerWhatTheQuoteActuallyCameDownBy(): void
     {
         // A per-line offer carries no `discountPercent` — deliberately, in both
@@ -40,35 +122,46 @@ final class OfferRoundTest extends TestCase
         self::assertStringNotContainsString('0%', $harness->gateway->comments[0]);
     }
 
-    public function testASecondRoundPerLineAskGoesToAHuman(): void
+    /**
+     * #49 removed the blanket second-round escalation, but a quote serviced
+     * before the baseline existed still has no anchor, so a per-line offer on
+     * it would be measured against already-reduced prices. Those keep
+     * escalating until they close.
+     */
+    public function testAPerLineOfferOnAQuoteServicedBeforeTheBaselineExistedStillEscalates(): void
     {
-        // #2(a), still open: `withReferenceLines` is captured fresh every
-        // round, so round two is bounded against round one's already-reduced
-        // prices — measured at 15% then 27.75% cumulative against a 15% cap,
-        // with the authorizer and the verifier both clean. An agent comment on
-        // the quote is what says this is round two.
-        $harness = PipelineHarness::with([
-            '{"line_changes":[{"line_item_id":"line-1","quantity":null,"target_unit_price":85,"remove":false}]}',
-            '{"action":"offer","line_prices":[{"line_item_id":"line-1","unit_price_net":95}],"message":"95 each."}',
-        ]);
-        $snapshot = NegotiationFixture::snapshot(comments: [
-            NegotiationFixture::buyerComment('95 per unit?', '2026-08-28 09:00:00'),
-            NegotiationFixture::agentComment('95 each it is.', '2026-08-28 09:30:00'),
-            NegotiationFixture::buyerComment('make it 85 per unit', '2026-08-28 10:00:00'),
+        [$round, $logger] = self::round(perLineOffer: true);
+        $snapshot = self::snapshotWith(agentComment: true, customFields: [
+            ServicingFingerprint::MARKER_KEY => 'some-old-stamp',
         ]);
 
-        $outcome = $harness->pipeline->service(
-            $snapshot,
-            $harness->gateway,
-            NegotiationFixture::settings(),
-            NegotiationFixture::context(),
-        );
+        $pass = $round->play(self::gateway(), $snapshot, self::settings(), self::decision(), null);
 
-        self::assertSame(NegotiationOutcome::Escalated, $outcome);
-        self::assertNotContains('updateLineItems', $harness->gateway->calls, 'Round two must not write line prices.');
+        self::assertSame(NegotiationOutcome::Escalated, $pass->outcome);
         self::assertNotNull(
-            $harness->logger->contextOf('per-line ask reached a second round'),
-            'The escalation must be the second-round guard, not some other refusal.',
+            $logger->contextOf('no stored baseline'),
+            'Escalated, but not via the missing-baseline guard — some other refusal fired instead.',
+        );
+    }
+
+    /** With a baseline present, round two is answered rather than handed to a human. */
+    public function testAPerLineOfferOnALaterRoundIsAnsweredOnceTheQuoteHasABaseline(): void
+    {
+        [$round] = self::round(perLineOffer: true);
+        $snapshot = self::snapshotWith(agentComment: true, customFields: [
+            ServicingFingerprint::MARKER_KEY => 'some-old-stamp',
+            QuoteBaseline::KEY => [
+                'totalNet' => 1000.0,
+                'lines' => [['lineItemId' => 'line-1', 'unitPriceNet' => 100.0, 'quantity' => 10]],
+            ],
+        ]);
+
+        $pass = $round->play(self::gateway(), $snapshot, self::settings(), self::decision(), null);
+
+        self::assertNotSame(
+            NegotiationOutcome::Escalated,
+            $pass->outcome,
+            'A per-line round two with a baseline was escalated: the stopgap is still in place.',
         );
     }
 

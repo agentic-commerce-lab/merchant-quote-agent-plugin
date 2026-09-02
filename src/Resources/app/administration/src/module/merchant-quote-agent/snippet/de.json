@@ -67,6 +67,21 @@
                 "cancelled": "Storniert",
                 "withdrawn": "Zurückgezogen"
             }
+        },
+        "access": {
+            "mainMenuItem": "Agenten-Zugriff",
+            "cardTitle": "Agenten-Zugriff",
+            "hint": "Ein Host pro Zeile. Ein Eintrag gilt auch für Subdomains, example.com lässt also agent.example.com zu. Eine leere Liste verbietet nicht alles: Profil-Hosts fällt auf Agent-Plattformen zurück, und leere Agent-Plattformen fallen auf die eigene Domain dieses Verkaufskanals zurück — erst wenn alle drei leer sind, wird jeder externe Agent abgelehnt. Zum Speichern wird die Agentic-Commerce-Berechtigung ucp.editor benötigt.",
+            "salesChannelLabel": "Verkaufskanal",
+            "platformAllowlistLabel": "Agenten-Plattformen",
+            "platformAllowlistHelp": "Hosts, die beim Identity Linking als Agenten-Plattform auftreten dürfen.",
+            "remoteProfileAllowlistLabel": "Profil-Hosts",
+            "remoteProfileAllowlistHelp": "Hosts, deren Agenten-Profil dieser Shop abrufen darf. Profile werden ausschließlich über HTTPS abgerufen.",
+            "agentAllowlistLabel": "Agenten-Domains",
+            "agentAllowlistHelp": "Domains, deren Agenten mit diesem Verkaufskanal handeln dürfen.",
+            "save": "Allowlists speichern",
+            "forbidden": "Zum Speichern wird die Berechtigung ucp.editor des Agentic-Commerce-Plugins benötigt.",
+            "failed": "Die Anfrage ist fehlgeschlagen."
         }
     }
 }

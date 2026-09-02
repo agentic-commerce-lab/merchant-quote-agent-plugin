@@ -10,6 +10,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Negotiation\QuoteBaseline;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
@@ -132,6 +133,42 @@ final class ServicingCrashBudgetTest extends IntegrationTestCase
             'The crash counter was not committed to the database before the pipeline ran. A segfault '
             . 'during servicing leaves no exception and no retry stamp, so an uncommitted counter '
             . 'means the doctrine transport redelivers the poison message hourly, forever.',
+        );
+    }
+
+    /**
+     * #49: the baseline used to ride in the price write, which runs AFTER the
+     * pipeline. A pass with nothing to answer (NothingToDo) still stamps the
+     * servicing fingerprint on its way out, so a quote could end up marked
+     * serviced with no baseline at all — and OfferRound's guard reads that
+     * combination as "predates the baseline", escalating the very first
+     * per-line ask the stopgap this branch removed would have answered.
+     * Moving the capture into claimAttempt() closes that gap: it runs before
+     * the pipeline on every pass, whatever the pipeline goes on to do.
+     */
+    public function testAPassThatWritesNothingStillLeavesABaseline(): void
+    {
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
+        $gateway = static::gateway();
+
+        $pipeline = new class implements QuoteServicingPipelineInterface {
+            #[\Override]
+            public function service(
+                QuoteSnapshot $snapshot,
+                QuoteGatewayInterface $gateway,
+                QuoteAgentSettings $settings,
+                PassContext $context,
+            ): NegotiationOutcome {
+                return NegotiationOutcome::NothingToDo;
+            }
+        };
+
+        $handler = new ServiceQuoteHandler(self::locks(), new NullLogger(), static::preflight(), $gateway, $pipeline);
+        $handler(ServiceQuoteMessage::because($quoteId, ServicingTriggerReason::StateEntered));
+
+        self::assertNotNull(
+            QuoteBaseline::read($gateway->fetchSnapshot($quoteId)),
+            'A pass that wrote nothing left the quote marked serviced but with no stored baseline.',
         );
     }
 

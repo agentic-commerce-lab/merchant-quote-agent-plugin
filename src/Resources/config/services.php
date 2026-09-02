@@ -34,12 +34,16 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
 use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialBuyerQuoteGateway;
 use MerchantQuoteAgentPlugin\Command\AgentGrantsCommand;
+use MerchantQuoteAgentPlugin\Command\AllowAnyAgentCommand;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Identity\AccessTokenSubjectReaderInterface;
 use MerchantQuoteAgentPlugin\Identity\AcOAuthAccessTokenReader;
+use MerchantQuoteAgentPlugin\Identity\AgentAccessFlags;
+use MerchantQuoteAgentPlugin\Identity\AgentAdmittingRuntimeConfigurationResolver;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
+use MerchantQuoteAgentPlugin\Identity\AgentProfileHostValidatorFactory;
 use MerchantQuoteAgentPlugin\Identity\Authorization\AcAgentGrantReader;
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationContextFactory;
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationRegistrar;
@@ -79,6 +83,8 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteLineItemValidator;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Ucp\Sdk\Internal\Service\UrlSafetyValidator;
+use Ucp\Sdk\Service\RuntimeConfigurationResolverInterface;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
@@ -131,6 +137,40 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(AcOAuthAccessTokenReader::class);
     $services->alias(AccessTokenSubjectReaderInterface::class, AcOAuthAccessTokenReader::class);
     $services->set(AgentCustomerAuthenticator::class);
+    $services->set(AgentAccessFlags::class);
+    $services->set(AllowAnyAgentCommand::class)->tag('console.command');
+
+    // Widens the SDK's per-request profile-host and agent-domain gates on sales
+    // channels whose allow-any-agent flag is on. Decorates the interface the
+    // Agentic Commerce plugin aliases, the same seam that plugin uses for
+    // AgentProfileFetcherInterface.
+    $services->set(AgentAdmittingRuntimeConfigurationResolver::class)->decorate(RuntimeConfigurationResolverInterface::class)->arg(
+        '$inner',
+        service('.inner'),
+    );
+
+    // The SDK's profile-fetch validator, rebuilt per request so an
+    // allow-any-agent channel can admit the host the request presents. This
+    // REPLACES the SDK bundle's own definition of the service, because the class
+    // is final and injected concretely, so it cannot be decorated. Whoever
+    // defines this id last wins: AgentAccessWiringTest fails loudly if that
+    // stops being us.
+    //
+    // Non-shared: a shared instance would be built once from whichever request
+    // NOTE: this does not make the widening per-request in production -- the
+    // shared consumers above it bake in the first instance. See
+    // AgentProfileHostValidatorFactory's docblock and the README.
+    //
+    // was in scope at the first fetch and then reused for every later request
+    // on that worker (FrankenPHP, RoadRunner), so the widening would stick to
+    // the first agent that happened to ask. Private, like the bundle's own
+    // definition — HttpAgentProfileFetcher injects this id concretely, so it
+    // is referenced and nothing prunes it.
+    $services->set(AgentProfileHostValidatorFactory::class);
+    $services
+        ->set(UrlSafetyValidator::class)
+        ->factory([service(AgentProfileHostValidatorFactory::class), 'create'])
+        ->share(false);
 
     // The operational off-switch (issue #49-adjacent): list and revoke grants
     // from the console. No storefront self-service page exists yet, so this is

@@ -8,7 +8,6 @@ use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\Discount;
 use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
-use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
@@ -61,13 +60,20 @@ final readonly class OfferApplier
         // revision the write below can safely assume as unchanged.
         $reference = $gateway->fetchSnapshot($quoteId);
 
-        array_push($writes, ...$this->write($gateway, $quoteId, $reference->revision, $limits, $offer));
+        array_push($writes, ...$this->write($gateway, $quoteId, $reference, $limits, $offer));
         $gateway->recalculate($quoteId);
         $writes[] = 'recalculate';
 
+        $live = SnapshotAdapter::toPolicy($reference);
+        $baselineLines = QuoteBaseline::read($reference);
+
         $after = $gateway->fetchSnapshot($quoteId);
         $violations = $this->verifier->verify(new VerifyOfferInput(
-            reference: SnapshotAdapter::toPolicy($reference),
+            // #49: the baseline when the quote has one, so the line check, the
+            // totals check and NetFactor's normalisation are all anchored to
+            // the original prices. On the first pass there is none and the
+            // pre-write snapshot IS the original, so this degrades correctly.
+            reference: $baselineLines?->asReferenceSnapshot($live) ?? $live,
             final: SnapshotAdapter::toPolicy($after),
             limits: $limits,
             now: new \DateTimeImmutable(),
@@ -115,16 +121,24 @@ final readonly class OfferApplier
     private function write(
         QuoteGatewayInterface $gateway,
         string $quoteId,
-        QuoteRevision $expected,
+        QuoteSnapshot $reference,
         QuoteLimits $limits,
         ProposedOffer $offer,
     ): array {
+        $expected = $reference->revision;
         $linePrices = $offer->price->linePricesNet;
         $expiresAt = new \DateTimeImmutable(sprintf('+%d days', $limits->validityDays));
 
+        // #49: the snapshot read immediately above is the pre-negotiation
+        // state on the first pass that writes anything, so the baseline rides
+        // in the update this method already issues. A pass that escalates
+        // writes nothing and stores nothing, which is correct — nothing
+        // changed, so the next pass's prices are still the original ones.
+        $baseline = QuoteBaseline::read($reference) === null ? QuoteBaseline::stamp($reference) : null;
+
         if ($linePrices !== null && $linePrices !== []) {
             $gateway->updateLineItems($quoteId, array_map(self::lineChange(...), $linePrices), $expected);
-            $gateway->updateQuote($quoteId, new QuoteUpdate(expiresAt: $expiresAt));
+            $gateway->updateQuote($quoteId, new QuoteUpdate(expiresAt: $expiresAt, customFields: $baseline));
 
             return ['updateLineItems', 'updateQuote'];
         }
@@ -134,6 +148,7 @@ final readonly class OfferApplier
             new QuoteUpdate(
                 discount: new Discount(DiscountType::Percentage, $offer->price->discountPercent ?? 0.0),
                 expiresAt: $expiresAt,
+                customFields: $baseline,
             ),
             $expected,
         );
