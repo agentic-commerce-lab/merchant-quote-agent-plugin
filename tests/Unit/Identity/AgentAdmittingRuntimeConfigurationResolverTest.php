@@ -11,6 +11,8 @@ use MerchantQuoteAgentPlugin\Identity\AgentAdmittingRuntimeConfigurationResolver
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
+use Ucp\Sdk\Enum\SignaturePolicy;
+use Ucp\Sdk\Enum\Transport;
 use Ucp\Sdk\Model\Config\RuntimeConfiguration;
 use Ucp\Sdk\Model\Http\HttpRequest;
 use Ucp\Sdk\Service\RuntimeConfigurationResolverInterface;
@@ -26,23 +28,23 @@ final class AgentAdmittingRuntimeConfigurationResolverTest extends TestCase
     {
         $resolved = $this->resolve(flagOn: true, headers: ['UCP-Agent' => self::AGENT_HEADER]);
 
-        self::assertSame(['chatgpt.com', 'agent.example'], $resolved->allowedProfileHosts);
-        self::assertSame(['chatgpt.com', 'agent.example'], $resolved->allowedAgentDomains);
+        self::assertSame(['profiles.example', 'agent.example'], $resolved->allowedProfileHosts);
+        self::assertSame(['agents.example', 'agent.example'], $resolved->allowedAgentDomains);
     }
 
     public function testItChangesNothingWhileTheFlagIsOff(): void
     {
         $resolved = $this->resolve(flagOn: false, headers: ['UCP-Agent' => self::AGENT_HEADER]);
 
-        self::assertSame(['chatgpt.com'], $resolved->allowedProfileHosts);
-        self::assertSame(['chatgpt.com'], $resolved->allowedAgentDomains);
+        self::assertSame(['profiles.example'], $resolved->allowedProfileHosts);
+        self::assertSame(['agents.example'], $resolved->allowedAgentDomains);
     }
 
     public function testItChangesNothingWithoutAUsableHeader(): void
     {
-        self::assertSame(['chatgpt.com'], $this->resolve(flagOn: true, headers: [])->allowedProfileHosts);
+        self::assertSame(['profiles.example'], $this->resolve(flagOn: true, headers: [])->allowedProfileHosts);
         self::assertSame(
-            ['chatgpt.com'],
+            ['profiles.example'],
             $this->resolve(flagOn: true, headers: ['UCP-Agent' => 'manual/1.0'])->allowedProfileHosts,
         );
     }
@@ -50,10 +52,10 @@ final class AgentAdmittingRuntimeConfigurationResolverTest extends TestCase
     public function testItDoesNotAdmitAHostTwice(): void
     {
         $resolved = $this->resolve(flagOn: true, headers: [
-            'UCP-Agent' => 'manual/1.0; profile="https://chatgpt.com/.well-known/ucp"',
+            'UCP-Agent' => 'manual/1.0; profile="https://profiles.example/.well-known/ucp"',
         ]);
 
-        self::assertSame(['chatgpt.com'], $resolved->allowedProfileHosts);
+        self::assertSame(['profiles.example'], $resolved->allowedProfileHosts);
     }
 
     public function testItPreservesEveryOtherRuntimeSetting(): void
@@ -62,9 +64,14 @@ final class AgentAdmittingRuntimeConfigurationResolverTest extends TestCase
 
         self::assertSame('2026-04-08', $resolved->version);
         self::assertSame('https://shop.example', $resolved->baseUri);
+        self::assertSame(SignaturePolicy::Strict, $resolved->signaturePolicy);
         self::assertTrue($resolved->idempotencyRequired);
+        self::assertSame(['2026-04-08', '2026-01-01'], $resolved->supportedVersions);
+        self::assertSame([Transport::Rest, Transport::Mcp], $resolved->transports);
         self::assertSame(['catalog'], $resolved->enabledCapabilities);
         self::assertSame('tenant-1', $resolved->tenantIdentifier);
+        self::assertSame(['mcp' => 'https://shop.example/ucp/mcp'], $resolved->transportEndpoints);
+        self::assertTrue($resolved->profileFetchingDevelopmentMode);
     }
 
     public function testItChangesNothingWhenTheHostMatchesNoSalesChannel(): void
@@ -77,7 +84,7 @@ final class AgentAdmittingRuntimeConfigurationResolverTest extends TestCase
         $decorator = new AgentAdmittingRuntimeConfigurationResolver($inner, $flags, $resolver);
 
         self::assertSame(
-            ['chatgpt.com'],
+            ['profiles.example'],
             $decorator->resolve($this->request(['UCP-Agent' => self::AGENT_HEADER]))->allowedProfileHosts,
         );
     }
@@ -111,14 +118,23 @@ final class AgentAdmittingRuntimeConfigurationResolverTest extends TestCase
 
     private function inner(): RuntimeConfigurationResolverInterface
     {
+        // Every field is deliberately set away from its constructor default,
+        // and the two widened lists are deliberately different, so that
+        // dropping a field or transposing the two lists fails a test instead
+        // of matching a default that happened to agree.
         $configuration = new RuntimeConfiguration(
             '2026-04-08',
             'https://shop.example',
-            allowedProfileHosts: ['chatgpt.com'],
-            allowedAgentDomains: ['chatgpt.com'],
+            signaturePolicy: SignaturePolicy::Strict,
+            idempotencyRequired: true,
+            allowedProfileHosts: ['profiles.example'],
+            allowedAgentDomains: ['agents.example'],
+            supportedVersions: ['2026-04-08', '2026-01-01'],
+            transports: [Transport::Rest, Transport::Mcp],
             enabledCapabilities: ['catalog'],
             tenantIdentifier: 'tenant-1',
-            idempotencyRequired: true,
+            transportEndpoints: ['mcp' => 'https://shop.example/ucp/mcp'],
+            profileFetchingDevelopmentMode: true,
         );
 
         $inner = $this->createMock(RuntimeConfigurationResolverInterface::class);

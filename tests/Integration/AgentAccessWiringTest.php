@@ -62,7 +62,7 @@ final class AgentAccessWiringTest extends IntegrationTestCase
         self::assertInstanceOf(
             UrlSafetyValidator::class,
             $validator,
-            'the SDK bundle no longer defines this service under this id',
+            'nothing defines this service under this id any more',
         );
 
         // With no allow-any-agent channel in scope, our factory must reproduce
