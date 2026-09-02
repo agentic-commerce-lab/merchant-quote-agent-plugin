@@ -1467,6 +1467,7 @@ from an unverified request."
 ### Task 5: The consent page
 
 **Files:**
+- Modify: `composer.json` + `composer.lock` — see the dependency note below
 - Create: `src/Identity/Controller/AgentConsentController.php`
 - Create: `src/Resources/views/storefront/page/quote-agent/consent.html.twig`
 - Create: `src/Resources/snippet/en_GB/messages.en-GB.json` (if absent — check first)
@@ -1480,6 +1481,37 @@ from an unverified request."
   - Route `frontend.merchant_quote_agent.authorize` at `GET /quote-agent/authorize`
   - Route `frontend.merchant_quote_agent.authorize.grant` at `POST /quote-agent/authorize`
   - Session key `merchant_quote_agent.pending_authorization`
+
+> **Dependency note (plan amendment, verified before dispatch).** This is the
+> plugin's first controller that renders HTML, and `StorefrontController` lives
+> in `shopware/storefront`, which the plugin did NOT require — only
+> `shopware/core`. Verified: the class was absent from vendor, so this task's
+> controller (and the static-method test that loads it) would have fatalled at
+> class load. `shopware/storefront:~6.7.0` has therefore been added to
+> `composer.json` `require` and installed in the worktree; it resolved cleanly
+> to v6.7.13.1, matching the shop's own Shopware version, pulling only
+> `scssphp/scssphp` and `meyfa/php-svg`, with no advisories and the suite still
+> green.
+>
+> Two consequences the implementer must handle:
+> 1. `composer.json` and `composer.lock` are already modified but NOT committed.
+>    Commit them TOGETHER with the controller. `composer run quality:depcheck`
+>    currently FAILS with `shopware/storefront` reported unused, and only passes
+>    once the controller actually extends `StorefrontController` — so a commit of
+>    the dependency alone would leave the branch with a red gate.
+> 2. The plugin's other three controllers (`UcpQuoteController`,
+>    `QuoteContractController`, `AgentAuthorizationRequestController`) are plain
+>    `final class` declarations that return JSON and extend nothing. Extending
+>    `StorefrontController` here is a deliberate departure, justified because
+>    this is the only controller rendering a themed page; say so in the
+>    docblock so the inconsistency reads as a decision.
+>
+> Confirmed signature: `renderStorefront(string $view, array $parameters)`.
+>
+> Accepted limitation: a headless-only installation without the storefront
+> bundle cannot serve this consent page. That is inherent — the page is a
+> storefront page — and such an installation has no login UI to send a human to
+> either.
 
 **Why the handle goes in the session:** Shopware's login page and guest-login page disagree on whether `redirectParameters` is an array or a JSON string (`AuthController.php:106` passes `json_encode([])` as the default, `:134` passes `[]`). Stashing the handle in the session and redirecting to a parameterless `redirectTo` sidesteps that entirely, and keeps the handle out of the post-login URL and referrer.
 
@@ -1902,6 +1934,7 @@ from the context we build."
 ### Task 6: Listing and revoking grants
 
 **Files:**
+- Modify: `composer.json` — declare `symfony/console` (see the dependency note below)
 - Create: `src/Identity/Authorization/AgentGrantReaderInterface.php`
 - Create: `src/Identity/Authorization/AcAgentGrantReader.php`
 - Create: `src/Command/AgentGrantsCommand.php`
@@ -1915,6 +1948,26 @@ from the context we build."
   - `AgentGrantReaderInterface::revoke(string $customerId, string $clientId): int` returning rows revoked.
 
 This is a fifth direct read of AC's OAuth tables. It goes behind an interface so #13's upstream fix retires it together with `AcOAuthAccessTokenReader`.
+
+> **Dependency note (plan amendment, verified before dispatch).** This is the
+> plugin's first console command, and `symfony/console` is NOT declared in
+> `composer.json` — the classes resolve only transitively. This plugin declares
+> every Symfony component it uses directly (there are eight), and
+> `composer run quality:depcheck` reports shadow dependencies, so using
+> `Symfony\Component\Console\*` without declaring it would trip that gate.
+>
+> Add `"symfony/console": "^7.4"` to `require`, matching the constraint the other
+> Symfony components use. Verified: it resolves as a declaration-only change —
+> 0 installs, 1 lock update — because the package is already present
+> transitively. No `composer install` needed, and no new code arrives in vendor.
+> Commit `composer.json` (and `composer.lock`) together with the command, and
+> confirm `composer run quality:depcheck` passes before finishing.
+
+> **Verified assumption:** AC stores `subject` as a plain string, not binary.
+> Its own `DoctrineDbalUcpOAuthStore` writes `'subject' => $subject` and reads
+> `(string) $row['subject']`, with no `HEX()` wrapping — unlike
+> `sales_channel_id`, which it reads as `LOWER(HEX(sales_channel_id))`. So do
+> NOT wrap the customer id in `Uuid::fromHexToBytes()` when querying by subject.
 
 - [ ] **Step 1: Write the failing test**
 
