@@ -1367,7 +1367,7 @@ In `snippet/en.json`, under `merchant-quote-agent`, add an `access` object:
         "access": {
             "mainMenuItem": "Agent access",
             "cardTitle": "Agent access",
-            "hint": "One host per line. An empty list allows nothing; an entry also covers its subdomains, so example.com admits agent.example.com. Saving needs the Agentic Commerce ucp.editor privilege.",
+            "hint": "One host per line. An entry also covers its subdomains; an empty list is not a deny-all (see the README), so example.com admits agent.example.com. Saving needs the Agentic Commerce ucp.editor privilege.",
             "salesChannelLabel": "Sales channel",
             "platformAllowlistLabel": "Agent platforms",
             "platformAllowlistHelp": "Hosts allowed to act as an agent platform when identity linking is used.",
@@ -1385,7 +1385,7 @@ and the German equivalent in `snippet/de.json`:
         "access": {
             "mainMenuItem": "Agenten-Zugriff",
             "cardTitle": "Agenten-Zugriff",
-            "hint": "Ein Host pro Zeile. Eine leere Liste erlaubt nichts; ein Eintrag gilt auch für Subdomains, example.com lässt also agent.example.com zu. Zum Speichern wird die Agentic-Commerce-Berechtigung ucp.editor benötigt.",
+            "hint": "Ein Host pro Zeile. Ein Eintrag gilt auch für Subdomains; eine leere Liste verbietet nicht alles (siehe README), example.com lässt also agent.example.com zu. Zum Speichern wird die Agentic-Commerce-Berechtigung ucp.editor benötigt.",
             "salesChannelLabel": "Verkaufskanal",
             "platformAllowlistLabel": "Agenten-Plattformen",
             "platformAllowlistHelp": "Hosts, die beim Identity Linking als Agenten-Plattform auftreten dürfen.",

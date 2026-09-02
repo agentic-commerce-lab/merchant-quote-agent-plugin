@@ -96,10 +96,11 @@ final class AllowAnyAgentCommand extends Command
             $io->warning(\sprintf(
                 'Sales channel "%s" now admits any agent that presents a fetchable, signed profile. Turn it off when'
                 . ' you are done: --off.'
-                . ' On a long-running worker (FrankenPHP, RoadRunner) this only takes effect for the first request'
-                . ' that worker serves and then silently stops applying to later ones -- restart the worker after'
-                . ' changing this flag, and do not conclude from one working request that every later one is'
-                . ' covered.',
+                . ' Under php-fpm only: on a long-running worker (FrankenPHP, RoadRunner) this switch is'
+                . ' effectively inoperative. The installation-wide allowlist freezes at whatever the worker\'s'
+                . ' first request of any kind produced, which is almost never the agent\'s, and restarting the'
+                . ' worker only re-runs the same lottery. Do not widen the permanent allowlists to compensate --'
+                . ' see the README.',
                 $channels[$salesChannelId],
             ));
 

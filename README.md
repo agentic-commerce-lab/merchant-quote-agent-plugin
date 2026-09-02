@@ -182,8 +182,17 @@ pages). They are Agentic Commerce's data, not ours: this page reads and writes
 that plugin's own config API, so loading it needs `ucp.viewer` and saving
 needs `ucp.editor` — both separate from this plugin's own ACL. A user without
 `ucp.editor` gets that plugin's 403 on save, surfaced verbatim rather than
-reported as success. An empty list allows nothing, and an entry also covers
-its subdomains.
+reported as success. An entry also covers its subdomains.
+
+**An empty list here is not a deny-all.** Agentic Commerce substitutes rather
+than passes through: emptying *Profile hosts* falls back to *Agent platforms*,
+and emptying *Agent platforms* too falls back to the sales channel's own
+domain host (`UcpConfig::toRuntimeConfiguration()`). So clearing *Profile
+hosts* to stop the shop fetching profiles does not stop it — it keeps fetching
+for every host still listed under *Agent platforms*. Clearing all three is
+what denies every remote agent. The deny-on-empty rule does hold for the
+SDK-level lists, which is where the expectation comes from, and not for the
+per-channel lists this page edits.
 
 **The allowlists are an SSRF and abuse control, not an authenticity check.**
 They gate which hosts the shop will make an outbound profile-fetch request to
@@ -221,24 +230,38 @@ by the console command above — and it must never be added to Agentic
 Commerce's config row.
 
 **On FrankenPHP or RoadRunner — Shopware's other supported runtime, alongside
-php-fpm — the switch widens the installation-wide list for exactly one request
-per worker process, then silently stops.** The SDK's `RequestContextListener`
-is a kernel event listener the container builds once per process; it holds the
-request-context factory, which holds the agent profile fetcher, which holds
-the validator our factory builds — all shared services, so the validator
-actually consulted is whichever one got built for the first request that
-worker served. The failure is silent in both directions: turn the switch on,
-test once, see it work, and have every later request on that worker refused;
-or test only after the worker has already served a request, conclude the
-switch does nothing, and start widening the permanent allowlists instead —
-which is exactly what this switch exists to prevent. Under php-fpm, one
-request per process, this is invisible. It is not fixed: making the two
-middle definitions in that chain non-shared is about six lines and would be
-safe — the fetcher's cache is a repository, not in-memory state — but buys
-nothing while the listener above them is shared regardless — the listener is
-what the kernel actually holds. The per-sales-channel gates are unaffected by any of
-this: that decorator reads the presented header fresh on every request,
-worker or not.
+php-fpm — this switch is effectively inoperative, and restarting the worker
+does not help.** The SDK's `RequestContextListener` is a kernel event listener
+the container builds once per process; it holds the request-context factory,
+which holds the agent profile fetcher, which holds the validator our factory
+builds — all shared services. So the installation-wide list *freezes* at
+whatever the worker's **first request of any kind** produced, and it is not
+only UCP requests that instantiate the listener.
+
+The practical consequence is that the first request is almost never the
+agent's — any storefront GET will do — so the list freezes unwidened and the
+switch never appears to work at all. Restarting the worker only re-runs the
+same lottery. The temptation then is to conclude the switch is broken and
+start widening the permanent allowlists instead, which is exactly what it
+exists to prevent.
+
+If the first request *was* a flagged agent's, the opposite holds: that host
+stays in the installation-wide list for the worker's whole lifetime, so that
+agent keeps working — and the frozen host applies to requests on sales
+channels where the flag is **off**. That is contained rather than exploitable,
+and by design: the per-sales-channel gate is evaluated per request, since the
+decorator takes the request as an argument and caches nothing, so an agent on
+an unflagged channel is still refused there. The residual exposure is narrow —
+a host a merchant listed per channel, which the installation-wide list was
+meant to block, can slip through on a later request in the same worker.
+
+Under php-fpm, one request per process, none of this is visible. It is not
+fixed: making the two middle definitions non-shared is about six lines and
+would be safe — the fetcher's cache is a repository, not in-memory state —
+but buys nothing while the listener above them is shared regardless, and the
+listener is what the kernel actually holds. Breaking that means changing
+another package's instantiation semantics for every installation of this
+plugin, to serve a development switch.
 
 To exercise the switch as a real external agent rather than trusting the unit
 tests, `scripts/ucp-quote-agent.py` (kept out of this repo; ask a colleague if

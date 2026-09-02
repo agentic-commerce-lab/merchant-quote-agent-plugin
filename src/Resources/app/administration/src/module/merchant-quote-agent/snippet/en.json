@@ -71,7 +71,7 @@
         "access": {
             "mainMenuItem": "Agent access",
             "cardTitle": "Agent access",
-            "hint": "One host per line. An empty list allows nothing; an entry also covers its subdomains, so example.com admits agent.example.com. Saving needs the Agentic Commerce ucp.editor privilege.",
+            "hint": "One host per line. An entry also covers its subdomains, so example.com admits agent.example.com. An empty list is not a deny-all: Profile hosts falls back to Agent platforms, and an empty Agent platforms falls back to this sales channel's own domain — clearing all three is what denies every remote agent. Saving needs the Agentic Commerce ucp.editor privilege.",
             "salesChannelLabel": "Sales channel",
             "platformAllowlistLabel": "Agent platforms",
             "platformAllowlistHelp": "Hosts allowed to act as an agent platform when identity linking is used.",

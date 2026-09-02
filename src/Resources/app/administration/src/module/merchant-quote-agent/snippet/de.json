@@ -71,7 +71,7 @@
         "access": {
             "mainMenuItem": "Agenten-Zugriff",
             "cardTitle": "Agenten-Zugriff",
-            "hint": "Ein Host pro Zeile. Eine leere Liste erlaubt nichts; ein Eintrag gilt auch für Subdomains, example.com lässt also agent.example.com zu. Zum Speichern wird die Agentic-Commerce-Berechtigung ucp.editor benötigt.",
+            "hint": "Ein Host pro Zeile. Ein Eintrag gilt auch für Subdomains, example.com lässt also agent.example.com zu. Eine leere Liste verbietet nicht alles: Profil-Hosts fällt auf Agent-Plattformen zurück, und leere Agent-Plattformen fallen auf die eigene Domain dieses Verkaufskanals zurück — erst wenn alle drei leer sind, wird jeder externe Agent abgelehnt. Zum Speichern wird die Agentic-Commerce-Berechtigung ucp.editor benötigt.",
             "salesChannelLabel": "Verkaufskanal",
             "platformAllowlistLabel": "Agenten-Plattformen",
             "platformAllowlistHelp": "Hosts, die beim Identity Linking als Agenten-Plattform auftreten dürfen.",
