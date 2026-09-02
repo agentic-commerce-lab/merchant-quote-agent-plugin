@@ -7,7 +7,9 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 use MerchantQuoteAgentPlugin\Negotiation\InterpretedAsk;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
+use MerchantQuoteAgentPlugin\Policy\Data\InterpretedLineChange;
 use MerchantQuoteAgentPlugin\Policy\Data\PriceAsk;
+use MerchantQuoteAgentPlugin\Policy\Data\StructuralAsks;
 use PHPUnit\Framework\TestCase;
 
 final class InterpretedAskTest extends TestCase
@@ -37,6 +39,56 @@ final class InterpretedAskTest extends TestCase
         self::assertFalse(NegotiationOutcome::Clarified->answeredTheBuyer());
         self::assertTrue(NegotiationOutcome::Offered->answeredTheBuyer());
         self::assertTrue(NegotiationOutcome::Countered->answeredTheBuyer());
+    }
+
+    public function testAnAskIsNotStructuralWhenQuantityMatchesExistingSnapshot(): void
+    {
+        $snapshot = NegotiationFixture::snapshot();
+        $ask = new InterpretedAsk(new CommentInterpretation(structural: new StructuralAsks(lineChanges: [
+            new InterpretedLineChange(lineItemId: 'line-1', quantity: 10, targetUnitPrice: 760.0),
+        ])), 'hash');
+
+        self::assertFalse($ask->isStructural($snapshot));
+    }
+
+    public function testAnAskIsStructuralWhenQuantityDiffersFromExistingSnapshot(): void
+    {
+        $snapshot = NegotiationFixture::snapshot();
+        $ask = new InterpretedAsk(new CommentInterpretation(structural: new StructuralAsks(lineChanges: [
+            new InterpretedLineChange(lineItemId: 'line-1', quantity: 20, targetUnitPrice: 760.0),
+        ])), 'hash');
+
+        self::assertTrue($ask->isStructural($snapshot));
+    }
+
+    public function testAnAskIsStructuralWhenLineIsRemoved(): void
+    {
+        $snapshot = NegotiationFixture::snapshot();
+        $ask = new InterpretedAsk(new CommentInterpretation(structural: new StructuralAsks(lineChanges: [
+            new InterpretedLineChange(lineItemId: 'line-1', remove: true),
+        ])), 'hash');
+
+        self::assertTrue($ask->isStructural($snapshot));
+    }
+
+    public function testAnAskIsStructuralWhenProductIsAdded(): void
+    {
+        $snapshot = NegotiationFixture::snapshot();
+        $ask = new InterpretedAsk(
+            new CommentInterpretation(structural: new StructuralAsks(addProducts: ['prod-new'])),
+            'hash',
+        );
+
+        self::assertTrue($ask->isStructural($snapshot));
+    }
+
+    public function testAnAskIsStructuralWhenQuantitySpecifiedWithoutSnapshot(): void
+    {
+        $ask = new InterpretedAsk(new CommentInterpretation(structural: new StructuralAsks(lineChanges: [
+            new InterpretedLineChange(lineItemId: 'line-1', quantity: 10),
+        ])), 'hash');
+
+        self::assertTrue($ask->isStructural());
     }
 
     /** @param list<string> $questions */

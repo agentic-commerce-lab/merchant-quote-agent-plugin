@@ -146,7 +146,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             return new NegotiationPass(NegotiationOutcome::NothingToDo);
         }
 
-        if ($ask->isStructural()) {
+        if ($ask->isStructural($snapshot)) {
             // Changing WHAT is being sold is outside a price-and-validity
             // mandate. Nothing downstream acts on these asks either —
             // CommentLineTargets reads lineChanges only for target prices —

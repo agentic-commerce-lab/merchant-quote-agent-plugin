@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot as PolicyQuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot as PolicySnapshot;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferLevelMirror;
@@ -91,10 +92,15 @@ final readonly class OfferProposer
             ));
         }
 
+        $offer = LinePriceNormalizer::normalize(
+            self::atTheBuyersLevel($response->toOffer($snapshot->totalNet), $snapshot),
+            $snapshot->lines,
+        );
+
         return $this->recorded($raw, $this->authorize(
             $settings,
             $referenceLines,
-            self::atTheBuyersLevel($response->toOffer($snapshot->totalNet), $snapshot),
+            $offer,
             $response->message,
             $prompt->hash,
         ));
@@ -128,7 +134,7 @@ final readonly class OfferProposer
      * a per-line offer is bounded line by line against them, and with no
      * reference LinePriceOfferCheck rejects every one of them.
      *
-     * @param list<\MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot> $referenceLines
+     * @param list<PolicyQuoteLineSnapshot> $referenceLines
      */
     private function authorize(
         QuoteAgentSettings $settings,
@@ -177,14 +183,23 @@ final readonly class OfferProposer
         $limits = $settings->policy->price;
         $countered = $decision->autoReply?->counteredRequestPercent;
 
+        $lines = array_map(static fn(PolicyQuoteLineSnapshot $l): string => sprintf(
+            '%s | %s | %d | %.2f',
+            $l->lineItemId(),
+            $l->label() ?? '',
+            $l->quantity,
+            $l->unitPriceNet,
+        ), $snapshot->lines);
+
         // The prompt tells the model it is shown its own earlier offers, so it
         // is — and the buyer's LATEST comment is the ask this round answers;
         // the earlier ones were answered by the replies listed above it.
         return sprintf(
-            "Quote total (net): %.2f %s\n\nYOUR AUTHORITY:\n- maximum discount you may grant: %.2f%%\n%s\n\n"
+            "Quote total (net): %.2f %s\n\nLine items (id | label | quantity | unit price net):\n%s\n\nYOUR AUTHORITY:\n- maximum discount you may grant: %.2f%%\n%s\n\n"
             . "Your earlier replies on this quote:\n%s\n\nBuyer's latest comment:\n%s",
             $snapshot->totalNet,
             $snapshot->currencyIso,
+            implode("\n", $lines),
             $limits->maxDiscountPercent,
             $countered === null
                 ? ''

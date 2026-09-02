@@ -412,9 +412,9 @@ def discover_oauth(shop: str) -> dict:
 # --------------------------------------------------------------------------
 # 3. the ask
 # --------------------------------------------------------------------------
-def pick_product(rest: str, agent: str) -> tuple:
+def pick_product(rest: str, agent: str, product_query: str = None) -> tuple:
     while True:
-        query = ask("\nProduct to ask about")
+        query = product_query or ask("\nProduct to ask about")
         if not query:
             continue
         found = call(
@@ -433,6 +433,9 @@ def pick_product(rest: str, agent: str) -> tuple:
 
         if not products:
             print(f"[catalog] nothing matched {query!r}.")
+            if product_query:
+                product_query = None
+                continue
             manual = ask("Paste a Shopware product UUID (or Enter to search again)")
             if manual:
                 price = ask_float("  its unit price in the shop currency", 0.0)
@@ -452,7 +455,7 @@ def pick_product(rest: str, agent: str) -> tuple:
             print(f"  {index}) {product.get('title')} — {money(unit, currency)}{flag}")
             print(f"     id {product.get('id')}")
 
-        choice = ask_int("Which one", 1)
+        choice = 1 if (product_query and len(rows) == 1) else ask_int("Which one", 1)
         if not 1 <= choice <= len(rows):
             print("  out of range")
             continue
@@ -466,6 +469,8 @@ def pick_product(rest: str, agent: str) -> tuple:
                 "the RFQ will come back as an unsupported product."
             )
             if ask("  continue anyway? (y/N)", "n").lower() != "y":
+                if product_query:
+                    product_query = None
                 continue
         if unit is None:
             unit = ask_float("  no price in the catalog; unit price in shop currency", 0.0)
@@ -508,10 +513,15 @@ def login(shop: str, meta: dict, agent: str, redirect: str) -> str:
     if not url:
         sys.exit(f"[fatal] no authorization_url in the response: {registered}")
 
-    print(f"\n[login] opening the shop's own sign-in and consent page:\n        {url}\n")
+    print(f"\n[login] opening the shop's own sign-in and consent page:\n        {url}\n", flush=True)
+    try:
+        with open("/tmp/auth_url.txt", "w") as _f:
+            _f.write(url)
+    except Exception:
+        pass
     webbrowser.open(url)
 
-    print("[login] waiting for consent to come back over the tunnel (10 min)...")
+    print("[login] waiting for consent to come back over the tunnel (10 min)...", flush=True)
     if not SIGNED_IN.wait(600):
         sys.exit("[fatal] no consent callback within 10 minutes")
 
@@ -662,7 +672,13 @@ def negotiate(quotes: str, quote: dict, token: str, agent: str, currency: str) -
 
 
 # --------------------------------------------------------------------------
-def run(shop: str) -> None:
+def run(
+    shop: str,
+    product_query: str = None,
+    quantity_opt: int = None,
+    asking_price_opt: float = None,
+    discount_opt: float = None,
+) -> None:
     STATE["key"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".ucp-agent-key.pem")
     STATE["jwk"] = make_key(STATE["key"])
     print(f"[agent] ephemeral ES256 key, kid {KID}")
@@ -680,10 +696,14 @@ def run(shop: str) -> None:
         quotes, rest = discover(shop)
         oauth = discover_oauth(shop)
 
-        product_id, title, unit, currency = pick_product(rest, agent)
-        quantity = ask_int("Quantity", 100)
-        percent = ask_float("Discount to ask for (%)", 20.0)
-        asking = discounted(unit, percent)
+        product_id, title, unit, currency = pick_product(rest, agent, product_query)
+        quantity = quantity_opt if quantity_opt is not None else ask_int("Quantity", 100)
+        if asking_price_opt is not None:
+            asking = asking_price_opt
+            percent = round((1 - asking / unit) * 100, 2) if unit else 0.0
+        else:
+            percent = discount_opt if discount_opt is not None else ask_float("Discount to ask for (%)", 20.0)
+            asking = discounted(unit, percent)
         print(
             f"\n[ask] {quantity}× {title}\n"
             f"[ask] list {money(unit, currency)}/unit  →  asking {money(asking, currency)}/unit "
@@ -764,6 +784,10 @@ def selftest() -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--shop", help="shop base URL; prompted for if omitted")
+    parser.add_argument("--product", help="product name or query to search for")
+    parser.add_argument("--quantity", type=int, help="quantity to request")
+    parser.add_argument("--asking-price", type=float, help="unit price to ask for")
+    parser.add_argument("--discount", type=float, help="discount percent to ask for")
     parser.add_argument("--selftest", action="store_true", help="run the offline checks and exit")
     args = parser.parse_args()
 
@@ -772,6 +796,12 @@ if __name__ == "__main__":
         sys.exit(0)
 
     try:
-        run((args.shop or ask("Shop address", DEFAULT_SHOP)).rstrip("/"))
+        run(
+            (args.shop or ask("Shop address", DEFAULT_SHOP)).rstrip("/"),
+            product_query=args.product,
+            quantity_opt=args.quantity,
+            asking_price_opt=args.asking_price,
+            discount_opt=args.discount,
+        )
     except KeyboardInterrupt:
         print("\n[abort]")
