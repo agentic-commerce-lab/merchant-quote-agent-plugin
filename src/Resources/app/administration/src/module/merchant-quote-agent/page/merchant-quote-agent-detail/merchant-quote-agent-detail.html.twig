@@ -2,109 +2,182 @@
 <sw-page class="merchant-quote-agent-detail">
     {% block merchant_quote_agent_detail_smart_bar_header %}
     <template #smart-bar-header>
-        <h2>{{ record ? dash(record.quoteNumber) : '' }}</h2>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <h2>Quote #{{ quoteNumber }}</h2>
+            <mt-badge v-if="finalTerminalState" variant="success">
+                {{ terminalLabel(finalTerminalState) }}
+            </mt-badge>
+            <mt-badge v-else-if="finalOutcome" :variant="outcomeVariant(finalOutcome)">
+                {{ outcomeLabel(finalOutcome) }}
+            </mt-badge>
+        </div>
     </template>
     {% endblock %}
 
     {% block merchant_quote_agent_detail_content %}
     <template #content>
         <sw-card-view v-if="record">
-            {% block merchant_quote_agent_detail_asked %}
-            <sw-card :title="$tc('merchant-quote-agent.detail.asked')" :is-loading="isLoading">
-                <sw-description-list>
-                    <template v-for="entry in flatten(record.interpretedAsks)" :key="entry.key">
-                        <dt>{{ entry.key }}</dt>
-                        <dd>{{ entry.value }}</dd>
-                    </template>
-                </sw-description-list>
+            {% block merchant_quote_agent_detail_overview %}
+            <sw-card :title="$tc('merchant-quote-agent.detail.summaryTitle')" :is-loading="isLoading">
+                <sw-container columns="1fr 1fr 1fr 1fr" gap="16px">
+                    <div>
+                        <small style="color: #6b7280; display: block; margin-bottom: 4px;">{{ $tc('merchant-quote-agent.detail.finalStatus') }}</small>
+                        <mt-badge v-if="finalTerminalState" variant="success">
+                            {{ terminalLabel(finalTerminalState) }}
+                        </mt-badge>
+                        <mt-badge v-else-if="finalOutcome" :variant="outcomeVariant(finalOutcome)">
+                            {{ outcomeLabel(finalOutcome) }}
+                        </mt-badge>
+                        <small v-if="finalTerminalAt" style="color: #6b7280; display: block; margin-top: 4px;">
+                            {{ formatDate(finalTerminalAt) }}
+                        </small>
+                    </div>
+
+                    <div>
+                        <small style="color: #6b7280; display: block; margin-bottom: 4px;">{{ $tc('merchant-quote-agent.detail.roundsTotal') }}</small>
+                        <strong style="font-size: 16px;">{{ totalRounds }}</strong>
+                    </div>
+
+                    <div>
+                        <small style="color: #6b7280; display: block; margin-bottom: 4px;">{{ $tc('merchant-quote-agent.detail.offeredNet') }}</small>
+                        <strong style="font-size: 16px;">{{ latestRound && latestRound.totalNetAfter !== null ? formatCurrency(latestRound.totalNetAfter, latestRound.currencyIso) : '–' }}</strong>
+                    </div>
+
+                    <div>
+                        <small style="color: #6b7280; display: block; margin-bottom: 4px;">{{ $tc('merchant-quote-agent.detail.offeredDiscount') }}</small>
+                        <strong style="font-size: 16px;">{{ latestRound && latestRound.discountPercentGranted !== null ? latestRound.discountPercentGranted + '%' : '–' }}</strong>
+                    </div>
+                </sw-container>
             </sw-card>
             {% endblock %}
 
-            {% block merchant_quote_agent_detail_allowed %}
-            <sw-card :title="$tc('merchant-quote-agent.detail.allowed')">
-                <sw-description-list>
-                    <dt>{{ $tc('merchant-quote-agent.detail.band') }}</dt>
-                    <dd>{{ dash(record.band) }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.cap') }}</dt>
-                    <dd>{{ dash(record.maxDiscountPercent) }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.escalationReason') }}</dt>
-                    <dd>{{ record.escalationReason || '&ndash;' }}</dd>
-                </sw-description-list>
-            </sw-card>
-            {% endblock %}
+            {% block merchant_quote_agent_detail_timeline %}
+            <div style="margin: 24px 0 12px 0;">
+                <h3 style="font-size: 18px; margin-bottom: 4px;">{{ $tc('merchant-quote-agent.detail.flowTitle') }}</h3>
+                <p style="color: #6b7280; margin: 0;">{{ $tc('merchant-quote-agent.detail.flowSubtitle') }}</p>
+            </div>
 
-            {% block merchant_quote_agent_detail_offered %}
-            <sw-card :title="$tc('merchant-quote-agent.detail.offered')">
-                <sw-description-list>
-                    <dt>{{ $tc('merchant-quote-agent.detail.before') }}</dt>
-                    <dd>{{ dash(record.totalNetBefore) }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.after') }}</dt>
-                    <dd>{{ dash(record.totalNetAfter) }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.granted') }}</dt>
-                    <dd>{{ dash(record.discountPercentGranted) }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.authorized') }}</dt>
-                    <dd>{{ dash(record.authorized) }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.verified') }}</dt>
-                    <dd>{{ dash(record.verified) }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.writes') }}</dt>
-                    <dd>{{ (record.writes || []).join(', ') || '&ndash;' }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.violations') }}</dt>
-                    <dd>{{ (record.violations || []).join(', ') || '&ndash;' }}</dd>
-                </sw-description-list>
-            </sw-card>
-            {% endblock %}
-
-            {% block merchant_quote_agent_detail_model %}
-            <sw-card :title="$tc('merchant-quote-agent.detail.model')">
-                <sw-description-list>
-                    <dt>{{ $tc('merchant-quote-agent.detail.modelName') }}</dt>
-                    <dd>{{ record.model || '&ndash;' }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.modelHost') }}</dt>
-                    <dd>{{ record.modelHost || '&ndash;' }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.tokens') }}</dt>
-                    <dd>{{ dash(record.promptTokens) }} / {{ dash(record.completionTokens) }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.modelLatency') }}</dt>
-                    <dd>{{ dash(record.modelLatencyMs) }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.duration') }}</dt>
-                    <dd>{{ dash(record.durationMs) }}</dd>
-                    <template v-if="record.extractPromptHash || record.negotiatePromptHash || record.replyPromptHash">
-                        <dt>{{ $tc('merchant-quote-agent.detail.promptHashes') }}</dt>
-                        <dd>{{ dash(record.extractPromptHash) }} / {{ dash(record.negotiatePromptHash) }} / {{ dash(record.replyPromptHash) }}</dd>
-                    </template>
-                </sw-description-list>
-            </sw-card>
-            {% endblock %}
-
-            {% block merchant_quote_agent_detail_told %}
-            <sw-card :title="$tc('merchant-quote-agent.detail.told')">
-                <p>{{ record.buyerComment || '&ndash;' }}</p>
-            </sw-card>
-            {% endblock %}
-
-            {% block merchant_quote_agent_detail_outcome %}
-            <sw-card :title="$tc('merchant-quote-agent.detail.outcome')">
-                <p v-if="!record.terminalState">{{ $tc('merchant-quote-agent.detail.stillOpen') }}</p>
-                <sw-description-list v-else>
-                    <dt>{{ $tc('merchant-quote-agent.detail.terminalState') }}</dt>
-                    <dd>{{ terminalLabel(record.terminalState) }}</dd>
-                    <dt>{{ $tc('merchant-quote-agent.detail.terminalAt') }}</dt>
-                    <dd>{{ formatDate(record.terminalAt) }}</dd>
-                </sw-description-list>
-            </sw-card>
-            {% endblock %}
-
-            {% block merchant_quote_agent_detail_failed %}
-            <sw-card :title="$tc('merchant-quote-agent.detail.failed')">
-                <p v-if="!record.errorClass">{{ $tc('merchant-quote-agent.detail.noError') }}</p>
-                <sw-description-list v-else>
-                    <dt>{{ record.errorClass }}</dt>
-                    <dd>
-                        <div v-for="entry in errorChainEntries(record.errorChain)" :key="entry.key">
-                            <strong>{{ entry.errorClass }}</strong>: {{ entry.message }}
+            <div v-for="round in formattedRounds" :key="round.id" style="margin-bottom: 24px;">
+                <sw-card :title="`${round.title} (${round.badgeLabel})`">
+                    <template #headerRight>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="color: #6b7280; font-size: 13px;">{{ round.timestamp }}</span>
+                            <mt-badge :variant="round.outcomeVariant">
+                                {{ round.outcomeLabel }}
+                            </mt-badge>
                         </div>
-                    </dd>
-                </sw-description-list>
-            </sw-card>
+                    </template>
+
+                    <!-- STEP 1: BUYER -->
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="font-size: 14px; font-weight: 600; color: #1e3a8a; margin-bottom: 8px;">
+                            {{ $tc('merchant-quote-agent.detail.buyerSection') }}
+                        </h4>
+                        <div v-if="round.buyerComment" style="background: #f0f9ff; border-left: 4px solid #0284c7; padding: 12px 16px; border-radius: 4px; margin-bottom: 12px;">
+                            <span style="display: block; font-size: 12px; color: #0369a1; font-weight: 600; margin-bottom: 4px;">
+                                {{ $tc('merchant-quote-agent.detail.buyerCommentLabel') }}
+                            </span>
+                            <span style="font-size: 14px; color: #0f172a;">{{ round.buyerComment }}</span>
+                        </div>
+                        <div v-else style="color: #94a3b8; font-style: italic;">–</div>
+
+                        <sw-description-list v-if="round.interpretedAsks.length" style="margin-top: 8px;">
+                            <template v-for="ask in round.interpretedAsks" :key="ask.label">
+                                <dt>{{ ask.label }}</dt>
+                                <dd><strong>{{ ask.value }}</strong></dd>
+                            </template>
+                        </sw-description-list>
+                    </div>
+
+                    <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
+
+                    <!-- STEP 2 & 3: POLICY & AI -->
+                    <sw-container columns="1fr 1fr" gap="24px" style="margin-bottom: 20px;">
+                        <div>
+                            <h4 style="font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px;">
+                                {{ $tc('merchant-quote-agent.detail.policySection') }}
+                            </h4>
+                            <sw-description-list>
+                                <dt>{{ $tc('merchant-quote-agent.detail.bandLabel') }}</dt>
+                                <dd>
+                                    <mt-badge :variant="bandVariant(round.band)">
+                                        {{ round.band }}
+                                    </mt-badge>
+                                </dd>
+
+                                <dt>{{ $tc('merchant-quote-agent.detail.capLabel') }}</dt>
+                                <dd>{{ round.maxDiscountPercent }}</dd>
+
+                                <template v-if="round.escalationReason">
+                                    <dt>{{ $tc('merchant-quote-agent.detail.escalationReason') }}</dt>
+                                    <dd style="color: #d97706; font-weight: 600;">{{ round.escalationReason }}</dd>
+                                </template>
+                            </sw-description-list>
+                        </div>
+
+                        <div>
+                            <h4 style="font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px;">
+                                {{ $tc('merchant-quote-agent.detail.aiSection') }}
+                            </h4>
+                            <sw-description-list>
+                                <dt>{{ $tc('merchant-quote-agent.detail.modelLabel') }}</dt>
+                                <dd>{{ round.model }}</dd>
+
+                                <template v-if="round.tokens">
+                                    <dt>{{ $tc('merchant-quote-agent.detail.tokensLabel') }}</dt>
+                                    <dd>{{ round.tokens }}</dd>
+                                </template>
+
+                                <template v-if="round.modelLatencyMs">
+                                    <dt>{{ $tc('merchant-quote-agent.detail.latencyLabel') }}</dt>
+                                    <dd>{{ round.modelLatencyMs }}</dd>
+                                </template>
+                            </sw-description-list>
+                        </div>
+                    </sw-container>
+
+                    <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
+
+                    <!-- STEP 4: MERCHANT ACTION & REPLY -->
+                    <div>
+                        <h4 style="font-size: 14px; font-weight: 600; color: #065f46; margin-bottom: 8px;">
+                            {{ $tc('merchant-quote-agent.detail.merchantSection') }}
+                        </h4>
+
+                        <div v-if="round.outcome === 'replied'" style="margin-bottom: 12px;">
+                            <sw-description-list style="margin-bottom: 12px;">
+                                <dt>{{ $tc('merchant-quote-agent.detail.before') }} &rarr; {{ $tc('merchant-quote-agent.detail.after') }}</dt>
+                                <dd><strong>{{ round.totalNetBefore }} &rarr; {{ round.totalNetAfter }}</strong></dd>
+
+                                <template v-if="round.discountPercentGranted">
+                                    <dt>{{ $tc('merchant-quote-agent.detail.offeredDiscount') }}</dt>
+                                    <dd><strong style="color: #059669;">{{ round.discountPercentGranted }}</strong></dd>
+                                </template>
+                            </sw-description-list>
+
+                            <div v-if="round.messageToBuyer" style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 12px 16px; border-radius: 4px;">
+                                <span style="display: block; font-size: 12px; color: #047857; font-weight: 600; margin-bottom: 4px;">
+                                    {{ $tc('merchant-quote-agent.detail.merchantMessageLabel') }}
+                                </span>
+                                <span style="font-size: 14px; color: #064e3b; font-weight: 500;">{{ round.messageToBuyer }}</span>
+                            </div>
+                        </div>
+
+                        <div v-else-if="round.outcome === 'escalated'" style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 4px;">
+                            <span style="display: block; font-size: 12px; color: #b45309; font-weight: 600; margin-bottom: 4px;">
+                                {{ $tc('merchant-quote-agent.detail.outcomeLabel') }}: {{ round.outcomeLabel }}
+                            </span>
+                            <span style="font-size: 14px; color: #78350f;">
+                                Reason: <strong>{{ round.escalationReason || 'Needs human review' }}</strong>
+                            </span>
+                        </div>
+
+                        <div v-else style="color: #6b7280; font-style: italic;">
+                            {{ round.outcomeLabel }}
+                        </div>
+                    </div>
+                </sw-card>
+            </div>
             {% endblock %}
         </sw-card-view>
     </template>

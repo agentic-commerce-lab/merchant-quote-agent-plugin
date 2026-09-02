@@ -41,13 +41,12 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
         columns() {
             return [
-                { property: 'createdAt', label: 'merchant-quote-agent.list.columnCreatedAt', primary: true },
-                { property: 'quoteNumber', label: 'merchant-quote-agent.list.columnQuoteNumber' },
+                { property: 'quoteNumber', label: 'merchant-quote-agent.list.columnQuoteNumber', primary: true },
                 { property: 'outcome', label: 'merchant-quote-agent.list.columnOutcome' },
+                { property: 'buyerComment', label: 'merchant-quote-agent.list.columnBuyerAsk' },
+                { property: 'discountPercentGranted', label: 'merchant-quote-agent.list.columnMerchantOffer' },
                 { property: 'band', label: 'merchant-quote-agent.list.columnBand' },
-                { property: 'discountPercentGranted', label: 'merchant-quote-agent.list.columnGranted' },
-                { property: 'durationMs', label: 'merchant-quote-agent.list.columnDuration' },
-                { property: 'escalationReason', label: 'merchant-quote-agent.list.columnEscalationReason' },
+                { property: 'createdAt', label: 'merchant-quote-agent.list.columnCreatedAt' },
             ];
         },
 
@@ -186,6 +185,60 @@ Shopware.Component.register('merchant-quote-agent-list', {
             const received = this.figures?.received ?? 0;
 
             return received > 0 ? Math.round((value / received) * 100) : null;
+        },
+
+        outcomeVariant(outcome) {
+            if (outcome === 'replied') {
+                return 'success';
+            }
+            if (outcome === 'escalated') {
+                return 'critical';
+            }
+            if (outcome === 'declined') {
+                return 'neutral';
+            }
+            return 'info';
+        },
+
+        outcomeLabel(outcome) {
+            const key = `merchant-quote-agent.list.outcome.${outcome}`;
+            const label = this.$tc(key);
+
+            return label === key ? outcome : label;
+        },
+
+        formatCurrency(value, currencyIso = 'EUR') {
+            if (value === null || value === undefined) {
+                return '–';
+            }
+
+            return `${Number(value).toFixed(2)} ${currencyIso}`;
+        },
+
+        formatDiscount(item) {
+            if (item.discountPercentGranted !== null && item.discountPercentGranted !== undefined) {
+                return `${Number(item.discountPercentGranted).toFixed(1)}%`;
+            }
+
+            if (item.totalNetAfter) {
+                return this.formatCurrency(item.totalNetAfter, item.currencyIso);
+            }
+
+            return '–';
+        },
+
+        truncate(text, max = 60) {
+            if (!text) {
+                return '–';
+            }
+
+            return text.length > max ? `${text.slice(0, max)}…` : text;
+        },
+
+        formatDate(value) {
+            const dateFilter = Shopware.Filter?.getByName?.('date');
+
+            return dateFilter ? dateFilter(value) : String(value);
         },
     },
 });

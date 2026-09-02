@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
+use MerchantQuoteAgentPlugin\Policy\Data\InterpretedLineChange;
 
 /** What the buyer asked for, and the hash of the prompt that read it. */
 final readonly class InterpretedAsk
@@ -17,22 +19,55 @@ final readonly class InterpretedAsk
     /**
      * True when the buyer asked to change WHAT is being sold rather than what
      * it costs. A line change carrying only a target PRICE is a price ask and
-     * squarely in the mandate; a quantity, a removal or an added product is
-     * not.
+     * squarely in the mandate; a quantity change (different from the current line
+     * item quantity), a removal or an added product is not.
      */
-    public function isStructural(): bool
+    public function isStructural(?QuoteSnapshot $snapshot = null): bool
     {
         if ($this->interpretation->structural->addProducts !== []) {
             return true;
         }
 
+        $existingQuantities = [];
+        if ($snapshot !== null) {
+            foreach ($snapshot->content->lines as $line) {
+                $existingQuantities[$line->identity->lineItemId] = $line->quantity;
+            }
+        }
+
         foreach ($this->interpretation->structural->lineChanges as $change) {
-            if ($change->quantity !== null || $change->remove === true) {
+            if ($this->isLineChangeStructural($change, $existingQuantities, $snapshot)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * @param array<string, int> $existingQuantities
+     */
+    private function isLineChangeStructural(
+        InterpretedLineChange $change,
+        array $existingQuantities,
+        ?QuoteSnapshot $snapshot,
+    ): bool {
+        if ($change->remove === true) {
+            return true;
+        }
+
+        if ($change->quantity === null) {
+            return false;
+        }
+
+        if ($snapshot === null) {
+            return true;
+        }
+
+        return (
+            !\array_key_exists($change->lineItemId, $existingQuantities)
+            || $change->quantity !== $existingQuantities[$change->lineItemId]
+        );
     }
 
     /**

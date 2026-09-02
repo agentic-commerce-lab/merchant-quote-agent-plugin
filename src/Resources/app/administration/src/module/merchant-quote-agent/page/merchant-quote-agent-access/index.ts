@@ -18,7 +18,7 @@ import template from './merchant-quote-agent-access.html.twig';
 Shopware.Component.register('merchant-quote-agent-access', {
     template,
 
-    inject: ['httpClient', 'syncService', 'acl'],
+    inject: ['syncService', 'acl'],
 
     data() {
         return {
@@ -34,6 +34,10 @@ Shopware.Component.register('merchant-quote-agent-access', {
     computed: {
         canEdit() {
             return this.acl.can('ucp.editor');
+        },
+
+        httpClient() {
+            return this.syncService.httpClient;
         },
     },
 

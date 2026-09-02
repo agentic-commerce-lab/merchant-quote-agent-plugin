@@ -75,7 +75,51 @@
                     :allow-view="true"
                     :allow-delete="acl.can('merchant_quote_agent.deleter')"
                     detail-route="merchant.quote.agent.detail"
-                />
+                >
+                    <template #column-quoteNumber="{ item }">
+                        <router-link :to="{ name: 'merchant.quote.agent.detail', params: { id: item.id } }">
+                            <strong>#{{ item.quoteNumber || '–' }}</strong>
+                        </router-link>
+                    </template>
+
+                    <template #column-outcome="{ item }">
+                        <mt-badge :variant="outcomeVariant(item.outcome)">
+                            {{ outcomeLabel(item.outcome) }}
+                        </mt-badge>
+                    </template>
+
+                    <template #column-buyerComment="{ item }">
+                        <span :title="item.buyerComment">
+                            {{ truncate(item.buyerComment, 55) }}
+                        </span>
+                    </template>
+
+                    <template #column-discountPercentGranted="{ item }">
+                        <template v-if="item.outcome === 'replied'">
+                            <strong>{{ formatDiscount(item) }}</strong>
+                            <small v-if="item.totalNetAfter" style="color: #6b7280; display: block;">
+                                ({{ formatCurrency(item.totalNetAfter, item.currencyIso) }})
+                            </small>
+                        </template>
+                        <template v-else-if="item.escalationReason">
+                            <span style="color: #d97706; font-size: 12px;">
+                                {{ item.escalationReason }}
+                            </span>
+                        </template>
+                        <span v-else>&ndash;</span>
+                    </template>
+
+                    <template #column-band="{ item }">
+                        <mt-badge v-if="item.band" variant="neutral">
+                            {{ item.band }}
+                        </mt-badge>
+                        <span v-else>&ndash;</span>
+                    </template>
+
+                    <template #column-createdAt="{ item }">
+                        {{ formatDate(item.createdAt) }}
+                    </template>
+                </sw-entity-listing>
 
                 <sw-empty-state
                     v-else
