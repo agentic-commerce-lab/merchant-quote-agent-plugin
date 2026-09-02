@@ -1339,7 +1339,16 @@ final class AgentAuthorizationContextFactoryTest extends TestCase
         return new PendingAuthorization(
             '0191d3d0a0b071bd9c1a0d9d1a3f9f01',
             'https://agent.example/.well-known/ucp',
-            (new PlatformProfile('2026-04-08', [], [], []))->toArray(),
+            // json_decode(json_encode(...)) is NOT ceremony — it reproduces what
+            // the store actually hands back, and the factory depends on it.
+            // PlatformProfile::toArray() renders empty maps as stdClass so they
+            // serialise as `{}` rather than `[]`, but fromArray() requires
+            // arrays and throws ValidationException: 'Platform profile section
+            // "services" must be an object.' on the stdClass form. The real flow
+            // survives because the row goes through json_encode on write and
+            // json_decode(..., true) on read; a test that skips that round-trip
+            // fails for a reason unrelated to the code under test.
+            json_decode(json_encode((new PlatformProfile('2026-04-08', [], [], []))->toArray()), true),
             'https://agent.example/callback',
             'dev.ucp.shopping.order:read',
             'state-value',
@@ -1440,7 +1449,7 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationContextFac
 Run: `vendor/bin/phpunit tests/Unit/Identity/Authorization/AgentAuthorizationContextFactoryTest.php`
 Expected: PASS, 2 tests.
 
-If `PlatformProfile::fromArray()` rejects the stored shape, print the array in the test and match its `fromArray` expectations — do not loosen the factory.
+`PlatformProfile::fromArray()` rejects a profile that has not been through JSON: `toArray()` emits `stdClass` for empty `services`/`capabilities`/`payment_handlers` maps, and `fromArray()` demands arrays, throwing `ValidationException: Platform profile section "services" must be an object.` The fixtures above JSON round-trip for exactly this reason. Do NOT loosen the factory to accept `stdClass` — the store is the only producer of this value in production and it always round-trips through JSON. Instead note the constraint in the factory's docblock, so a future caller who passes a freshly-`toArray()`d profile straight to `forConsent()` learns why it throws.
 
 - [ ] **Step 6: Commit**
 
@@ -2280,7 +2289,16 @@ final class BrowserIdentityLinkingTest extends IntegrationTestCase
         return new PendingAuthorization(
             $salesChannelId,
             'https://agent.example/.well-known/ucp',
-            (new PlatformProfile('2026-04-08', [], [], []))->toArray(),
+            // json_decode(json_encode(...)) is NOT ceremony — it reproduces what
+            // the store actually hands back, and the factory depends on it.
+            // PlatformProfile::toArray() renders empty maps as stdClass so they
+            // serialise as `{}` rather than `[]`, but fromArray() requires
+            // arrays and throws ValidationException: 'Platform profile section
+            // "services" must be an object.' on the stdClass form. The real flow
+            // survives because the row goes through json_encode on write and
+            // json_decode(..., true) on read; a test that skips that round-trip
+            // fails for a reason unrelated to the code under test.
+            json_decode(json_encode((new PlatformProfile('2026-04-08', [], [], []))->toArray()), true),
             'https://agent.example/callback',
             'dev.ucp.shopping.order:read',
             'state-value',
