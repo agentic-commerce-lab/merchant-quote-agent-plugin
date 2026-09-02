@@ -2490,7 +2490,11 @@ git commit -m "test: handle lifecycle and the boundary rule against a real datab
 - Consumes: the endpoints from Tasks 3 and 5.
 - Produces: nothing.
 
-- [ ] **Step 1: Bring the script into this branch**
+- [ ] **Step 1: Bring the script into this branch, FIRST, and commit it**
+
+Do this before any editing. The copy in the primary checkout is currently the
+only copy and it is untracked, so this `cp` is the moment it first gets version
+control — an interrupted Task 8 must not leave it unprotected.
 
 ```bash
 cp ~/projects/merchant-quote-agent-plugin/scripts/ucp-quote-agent.py scripts/
@@ -2498,6 +2502,24 @@ python3 scripts/ucp-quote-agent.py --selftest
 ```
 
 Expected: `selftest ok`.
+
+The `.gitignore` rules that belong with this script are ALREADY on this branch
+(committed separately, ahead of this task) — verify with
+`grep ucp-agent-key .gitignore` and do not duplicate them:
+
+```
+scripts/.ucp-agent-key.pem
+scripts/__pycache__/
+```
+
+Why that matters, and why it is not hygiene: the script generates an ephemeral
+EC **private key** at `scripts/.ucp-agent-key.pem` and removes it in a `finally`
+block, but a killed run — Ctrl-C, a crash, a sleeping machine, all of which have
+happened during this plan — leaves it on disk. Without the ignore rule it then
+appears untracked in `git status`, which is exactly how a key gets swept into a
+`git add -A`. The path is derived from the script's own location
+(`os.path.dirname(os.path.abspath(__file__))`), so if you ever relocate the
+script, the ignore rule has to move with it.
 
 - [ ] **Step 2: Replace the local sign-in page with the shop's flow**
 
