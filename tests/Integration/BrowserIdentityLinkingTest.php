@@ -134,14 +134,41 @@ final class BrowserIdentityLinkingTest extends IntegrationTestCase
         );
     }
 
-    public function testTheConsentContextSatisfiesTheClientBinding(): void
+    /**
+     * `PlatformProfile::toArray()` renders empty `services`/`capabilities`/
+     * `payment_handlers` maps as `stdClass`, but `fromArray()` requires arrays
+     * and throws `ValidationException` on the `stdClass` form. Production only
+     * survives that mismatch because `DbalPendingAuthorizationStore::store()`
+     * runs the profile through `json_encode()` and `find()` runs the row back
+     * through `json_decode(..., true)`, which normalises `stdClass` to array.
+     * Every other fixture in this file *simulates* that with an explicit
+     * `json_decode(json_encode(...))` — this test feeds `toArray()`'s raw
+     * output straight into `store()` with no round-trip of its own, so the
+     * store is what has to do the normalising. If it ever stopped doing so,
+     * `AgentAuthorizationContextFactory::forConsent()`'s call to
+     * `PlatformProfile::fromArray()` would throw and this test would fail.
+     */
+    public function testAStoredProfileSurvivesTheRoundTripIntoAConsentContext(): void
     {
-        $pending = $this->pending($this->salesChannelId());
+        $store = $this->store();
+        $pending = new PendingAuthorization(
+            $this->salesChannelId(),
+            'https://agent.example/.well-known/ucp',
+            (new PlatformProfile('2026-04-08', [], [], []))->toArray(),
+            'https://agent.example/callback',
+            'dev.ucp.shopping.order:read',
+            'state-value',
+            'challenge-value',
+            'S256',
+        );
 
-        $context = (new AgentAuthorizationContextFactory())->forConsent($pending, 'shop.example', 'ctx-token');
+        $handle = $store->store($pending, 600);
+        $found = $store->find($handle);
+        self::assertNotNull($found);
 
-        self::assertTrue($context->signatureVerified);
-        self::assertSame($pending->clientId, $context->platformProfileUri);
+        $context = (new AgentAuthorizationContextFactory())->forConsent($found, 'shop.example', 'ctx-token');
+
         self::assertNotNull($context->platformProfile);
+        self::assertSame('2026-04-08', $context->platformProfile->version);
     }
 }
