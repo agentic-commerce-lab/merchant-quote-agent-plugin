@@ -21,27 +21,49 @@ final class ConsentRequestGuardTest extends TestCase
     {
         $guard = new ConsentRequestGuard($this->store(null));
 
-        self::assertNull($guard->verifiedPending('unknown-handle', $this->context(
-            self::SALES_CHANNEL_ID,
-            signedIn: true,
-        )));
+        self::assertNull($guard->verifiedPending(
+            'unknown-handle',
+            $this->context(self::SALES_CHANNEL_ID, signedIn: true),
+            $guard->formToken('unknown-handle'),
+        ));
     }
 
     public function testAGuestSessionIsRefusedEvenForAKnownHandle(): void
     {
         $guard = new ConsentRequestGuard($this->store($this->pending(self::SALES_CHANNEL_ID)));
 
-        self::assertNull($guard->verifiedPending('handle', $this->context(self::SALES_CHANNEL_ID, signedIn: false)));
+        self::assertNull($guard->verifiedPending(
+            'handle',
+            $this->context(self::SALES_CHANNEL_ID, signedIn: false),
+            $guard->formToken('handle'),
+        ));
     }
 
     public function testACustomerSignedInOnAnotherSalesChannelIsRefused(): void
     {
         $guard = new ConsentRequestGuard($this->store($this->pending(self::SALES_CHANNEL_ID)));
 
-        self::assertNull($guard->verifiedPending('handle', $this->context(
-            '0191d3d0a0b071bd9c1a0d9d1a3f9fff',
-            signedIn: true,
-        )));
+        self::assertNull($guard->verifiedPending(
+            'handle',
+            $this->context('0191d3d0a0b071bd9c1a0d9d1a3f9fff', signedIn: true),
+            $guard->formToken('handle'),
+        ));
+    }
+
+    /**
+     * The binding this closes: a handle swapped into the session by another
+     * tab after the page was rendered must not be grantable by the still
+     * displayed page's token.
+     */
+    public function testATokenNotMatchingTheHandleIsRefused(): void
+    {
+        $guard = new ConsentRequestGuard($this->store($this->pending(self::SALES_CHANNEL_ID)));
+
+        self::assertNull($guard->verifiedPending(
+            'handle',
+            $this->context(self::SALES_CHANNEL_ID, signedIn: true),
+            $guard->formToken('a-different-handle'),
+        ));
     }
 
     public function testAMatchingSignedInCustomerOnTheRegisteredChannelIsAccepted(): void
@@ -49,10 +71,11 @@ final class ConsentRequestGuardTest extends TestCase
         $pending = $this->pending(self::SALES_CHANNEL_ID);
         $guard = new ConsentRequestGuard($this->store($pending));
 
-        self::assertSame($pending, $guard->verifiedPending('handle', $this->context(
-            self::SALES_CHANNEL_ID,
-            signedIn: true,
-        )));
+        self::assertSame($pending, $guard->verifiedPending(
+            'handle',
+            $this->context(self::SALES_CHANNEL_ID, signedIn: true),
+            $guard->formToken('handle'),
+        ));
     }
 
     /**

@@ -63,11 +63,18 @@ final class AgentConsentControllerFixture
     /**
      * A recording double. `find()` and `consume()` return independently
      * configurable results, so a race where `find()` still sees a record but
-     * a concurrent `consume()` already claimed it is representable.
+     * a concurrent `consume()` already claimed it is representable. Both
+     * honour `$expectedHandle`: a handle that does not match sees a null
+     * result regardless of the configured one, so a test that submits the
+     * wrong handle is actually exercising "not found", not just a store
+     * that always says no.
      */
-    public static function store(?PendingAuthorization $findResult, ?PendingAuthorization $consumeResult): object
-    {
-        return new class($findResult, $consumeResult) implements PendingAuthorizationStoreInterface {
+    public static function store(
+        ?PendingAuthorization $findResult,
+        ?PendingAuthorization $consumeResult,
+        string $expectedHandle = 'the-handle',
+    ): object {
+        return new class($findResult, $consumeResult, $expectedHandle) implements PendingAuthorizationStoreInterface {
             public int $consumeCalls = 0;
 
             /** @var list<string> */
@@ -76,6 +83,7 @@ final class AgentConsentControllerFixture
             public function __construct(
                 private readonly ?PendingAuthorization $findResult,
                 private readonly ?PendingAuthorization $consumeResult,
+                private readonly string $expectedHandle,
             ) {}
 
             public function store(PendingAuthorization $pending, int $ttlSeconds): string
@@ -85,7 +93,7 @@ final class AgentConsentControllerFixture
 
             public function find(#[\SensitiveParameter] string $handle): ?PendingAuthorization
             {
-                return $this->findResult;
+                return $handle === $this->expectedHandle ? $this->findResult : null;
             }
 
             public function consume(#[\SensitiveParameter] string $handle): ?PendingAuthorization
@@ -93,7 +101,7 @@ final class AgentConsentControllerFixture
                 $this->consumeCalls++;
                 $this->consumedHandles[] = $handle;
 
-                return $this->consumeResult;
+                return $handle === $this->expectedHandle ? $this->consumeResult : null;
             }
         };
     }
@@ -134,9 +142,27 @@ final class AgentConsentControllerFixture
         };
     }
 
-    public static function grantRequest(string $handle, bool $grant): Request
-    {
-        $request = Request::create('/quote-agent/authorize', 'POST', ['grant' => $grant ? '1' : '0']);
+    /**
+     * A POST with a session already carrying `$handle`. `$token` defaults to
+     * the correct one for `$handle`, so tests that are not specifically about
+     * the token check do not have to think about it; pass a wrong one to
+     * exercise the mismatch. `$extraBody` lets a test plant browser-supplied
+     * values (e.g. a decoy `redirect_uri`) that grant() must ignore.
+     *
+     * @param array<string, mixed> $extraBody
+     */
+    public static function grantRequest(
+        string $handle,
+        bool $grant,
+        #[\SensitiveParameter]
+        ?string $token = null,
+        array $extraBody = [],
+    ): Request {
+        $body = array_merge($extraBody, [
+            'grant' => $grant ? '1' : '0',
+            'token' => $token ?? hash('sha256', $handle),
+        ]);
+        $request = Request::create('/quote-agent/authorize', 'POST', $body);
         $session = new Session(new MockArraySessionStorage());
         $session->set(AgentConsentController::SESSION_KEY, $handle);
         $request->setSession($session);
@@ -144,16 +170,45 @@ final class AgentConsentControllerFixture
         return $request;
     }
 
+    /** A POST with an empty session — nothing stashed the way a real GET would have. */
+    public static function emptySessionGrantRequest(bool $grant, string $requestUriInBody = ''): Request
+    {
+        $body = ['grant' => $grant ? '1' : '0'];
+
+        if ($requestUriInBody !== '') {
+            // A decoy: grant() must never read this — the handle comes only
+            // from the session, which this request deliberately has none of.
+            $body['request_uri'] = $requestUriInBody;
+        }
+
+        $request = Request::create('/quote-agent/authorize', 'POST', $body);
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        return $request;
+    }
+
+    /** A GET, optionally carrying `?request_uri=` the way the agent's authorization_url does on the first hit. */
+    public static function authorizeRequest(string $queryHandle = ''): Request
+    {
+        $query = $queryHandle === '' ? [] : ['request_uri' => $queryHandle];
+        $request = Request::create('/quote-agent/authorize', 'GET', $query);
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        return $request;
+    }
+
     /**
      * Stubs the three methods grant()/matchesChannel() actually call onto a
      * mock the test builds with `$this->createMock()` (a TestCase-only
-     * method, so the mock itself can't be built in here).
+     * method, so the mock itself can't be built in here). `$signedIn = false`
+     * gives the guest case authorize()'s login redirect needs.
      */
     public static function customerContext(
         MockObject&SalesChannelContext $context,
         string $salesChannelId = self::SALES_CHANNEL_ID,
+        bool $signedIn = true,
     ): SalesChannelContext {
-        $context->method('getCustomer')->willReturn(new CustomerEntity());
+        $context->method('getCustomer')->willReturn($signedIn ? new CustomerEntity() : null);
         $context->method('getSalesChannelId')->willReturn($salesChannelId);
         $context->method('getToken')->willReturn('customer-context-token');
 
@@ -161,10 +216,13 @@ final class AgentConsentControllerFixture
     }
 
     /**
-     * A container that lets `renderStorefront()` actually run, so a test can
-     * observe a real Response rather than only "it didn't redirect". `twig`
-     * returns empty content — nothing here asserts on markup, only on which
-     * kind of Response comes back.
+     * A container that lets `renderStorefront()` (and, for the login
+     * redirect, `redirectToRoute()`) actually run, so a test can observe a
+     * real Response rather than only "it didn't render/redirect". `twig`
+     * captures the parameters it was called with on `$lastParameters` (fetch
+     * it back via `$container->get('twig')`) so a render-path test can assert
+     * on them; the returned content is always empty — nothing here asserts on
+     * markup.
      */
     public static function renderableContainer(
         Request $request,
@@ -183,10 +241,22 @@ final class AgentConsentControllerFixture
         $container->set('event_dispatcher', new EventDispatcher());
         $container->set(SystemConfigService::class, $systemConfig);
         $container->set(TemplateFinder::class, $templateFinder);
+        $container->set('router', new class {
+            /** @param array<string, mixed> $parameters */
+            public function generate(string $name, array $parameters = [], int $referenceType = 1): string
+            {
+                return '/account/login';
+            }
+        });
         $container->set('twig', new class {
+            /** @var array<string, mixed> */
+            public array $lastParameters = [];
+
             /** @param array<string, mixed> $parameters */
             public function render(string $view, array $parameters = []): string
             {
+                $this->lastParameters = $parameters;
+
                 return '';
             }
         });

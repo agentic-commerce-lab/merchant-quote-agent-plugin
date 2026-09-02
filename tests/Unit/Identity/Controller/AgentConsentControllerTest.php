@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Identity\Controller;
 
 use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentRequestGuard;
-use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorization;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -14,81 +13,10 @@ use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 
+/** grant()'s behavior; the pure static delegates live in AgentConsentControllerPresentationTest, GET's in AgentConsentControllerAuthorizeTest. */
 #[CoversClass(AgentConsentController::class)]
 final class AgentConsentControllerTest extends TestCase
 {
-    public function testItNamesTheAgentByHostRatherThanTheFullProfileUri(): void
-    {
-        $pending = new PendingAuthorization(
-            '0191d3d0a0b071bd9c1a0d9d1a3f9f01',
-            'https://agent.example/.well-known/ucp?run=1788265660',
-            [],
-            'https://agent.example/callback',
-            'dev.ucp.shopping.order:read dev.ucp.shopping.cart:manage',
-            'state-value',
-            'challenge-value',
-            'S256',
-        );
-
-        self::assertSame('agent.example', AgentConsentController::agentHost($pending));
-        self::assertSame(
-            ['dev.ucp.shopping.order:read', 'dev.ucp.shopping.cart:manage'],
-            AgentConsentController::scopeList($pending),
-        );
-    }
-
-    public function testAnEmptyScopeListsNothingRatherThanOneBlankEntry(): void
-    {
-        $pending = new PendingAuthorization(
-            '0191d3d0a0b071bd9c1a0d9d1a3f9f01',
-            'https://agent.example/.well-known/ucp',
-            [],
-            'https://agent.example/callback',
-            '',
-            'state-value',
-            'challenge-value',
-            'S256',
-        );
-
-        self::assertSame([], AgentConsentController::scopeList($pending));
-    }
-
-    public function testDenialRedirectsToTheStoredRedirectUriWithTheOriginalState(): void
-    {
-        $pending = new PendingAuthorization(
-            '0191d3d0a0b071bd9c1a0d9d1a3f9f01',
-            'https://agent.example/.well-known/ucp',
-            [],
-            'https://agent.example/callback',
-            '',
-            'state value/with?chars',
-            'challenge-value',
-            'S256',
-        );
-
-        $url = AgentConsentController::denialUrl($pending);
-
-        self::assertStringStartsWith('https://agent.example/callback?', $url);
-        self::assertStringContainsString('error=access_denied', $url);
-        self::assertStringContainsString('state=' . urlencode('state value/with?chars'), $url);
-    }
-
-    public function testDenialAppendsToARedirectUriThatAlreadyHasAQuery(): void
-    {
-        $pending = new PendingAuthorization(
-            '0191d3d0a0b071bd9c1a0d9d1a3f9f01',
-            'https://agent.example/.well-known/ucp',
-            [],
-            'https://agent.example/callback?existing=1',
-            '',
-            'state-value',
-            'challenge-value',
-            'S256',
-        );
-
-        self::assertStringContainsString('?existing=1&', AgentConsentController::denialUrl($pending));
-    }
-
     /** The single-use rule itself: granting must claim the record, not just look it up. */
     public function testGrantConsumesTheRecordAtGrantTime(): void
     {
@@ -159,10 +87,16 @@ final class AgentConsentControllerTest extends TestCase
         self::assertSame(1, $store->consumeCalls);
     }
 
-    /** A stale link (expired, unknown, or already consumed) must render, never redirect — it cannot become a redirector. */
+    /**
+     * A stale link (expired, unknown, or already consumed) must render, never
+     * redirect — it cannot become a redirector. Configuring the store FOR
+     * 'the-handle' while submitting a different one is what makes this
+     * "unknown handle", not just "a store that always says no".
+     */
     public function testAnExpiredOrUnknownHandleRendersRatherThanRedirects(): void
     {
-        $store = AgentConsentControllerFixture::store(null, null);
+        $pending = AgentConsentControllerFixture::pending();
+        $store = AgentConsentControllerFixture::store($pending, $pending);
         $controller = new AgentConsentController(
             $store,
             new ConsentRequestGuard($store),
@@ -183,7 +117,13 @@ final class AgentConsentControllerTest extends TestCase
         self::assertSame(0, $store->consumeCalls);
     }
 
-    /** The docblock's promise: nothing but the stored record's own fields reach AC. */
+    /**
+     * The docblock's promise: nothing but the stored record's own fields
+     * reach AC. Planting DIFFERENT values for the same field names in the
+     * POST body is what makes this a real pin — grant() never reads
+     * redirect_uri/scope/state from the request at all, so the stored ones
+     * winning is not a coincidence of the body being empty.
+     */
     public function testOnlyStoredFieldsReachTheAuthorizationRequest(): void
     {
         $pending = AgentConsentControllerFixture::pending();
@@ -194,7 +134,11 @@ final class AgentConsentControllerTest extends TestCase
             new ConsentRequestGuard($store),
             AgentConsentControllerFixture::completer($identityLinking),
         );
-        $request = AgentConsentControllerFixture::grantRequest('the-handle', grant: true);
+        $request = AgentConsentControllerFixture::grantRequest('the-handle', grant: true, extraBody: [
+            'redirect_uri' => 'https://evil.example/callback',
+            'scope' => 'evil.scope',
+            'state' => 'evil-state',
+        ]);
         $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
 
         $controller->grant($request, $context);
@@ -206,5 +150,60 @@ final class AgentConsentControllerTest extends TestCase
         self::assertSame($pending->state, $identityLinking->received->state);
         self::assertSame($pending->codeChallenge, $identityLinking->received->codeChallenge);
         self::assertSame($pending->codeChallengeMethod, $identityLinking->received->codeChallengeMethod);
+    }
+
+    /** The fix for the CSRF finding must have a test that fails if it is undone. */
+    public function testGrantIgnoresARequestUriSuppliedInThePostBody(): void
+    {
+        $pending = AgentConsentControllerFixture::pending();
+        $store = AgentConsentControllerFixture::store($pending, $pending);
+        $controller = new AgentConsentController(
+            $store,
+            new ConsentRequestGuard($store),
+            AgentConsentControllerFixture::completer(AgentConsentControllerFixture::identityLinking()),
+        );
+        $request = AgentConsentControllerFixture::emptySessionGrantRequest(grant: true, requestUriInBody: 'the-handle');
+        $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
+        $controller->setContainer(AgentConsentControllerFixture::renderableContainer(
+            $request,
+            $context,
+            $this->createMock(SystemConfigService::class),
+            $this->createMock(TemplateFinder::class),
+        ));
+
+        $response = $controller->grant($request, $context);
+
+        self::assertNotInstanceOf(RedirectResponse::class, $response);
+        self::assertSame(0, $store->consumeCalls, 'the body-supplied handle must never reach the store');
+    }
+
+    /**
+     * Closes the swap the CSRF fix opened: a handle overwritten in the
+     * session by another tab after this page was rendered must invalidate
+     * the still-displayed page's Allow click, not silently grant the swap.
+     */
+    public function testGrantRefusesOnTokenMismatchWithoutConsuming(): void
+    {
+        $pending = AgentConsentControllerFixture::pending();
+        $store = AgentConsentControllerFixture::store($pending, $pending);
+        $controller = new AgentConsentController(
+            $store,
+            new ConsentRequestGuard($store),
+            AgentConsentControllerFixture::completer(AgentConsentControllerFixture::identityLinking()),
+        );
+        $mismatchedToken = hash('sha256', 'a-different-handle');
+        $request = AgentConsentControllerFixture::grantRequest('the-handle', grant: true, token: $mismatchedToken);
+        $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
+        $controller->setContainer(AgentConsentControllerFixture::renderableContainer(
+            $request,
+            $context,
+            $this->createMock(SystemConfigService::class),
+            $this->createMock(TemplateFinder::class),
+        ));
+
+        $response = $controller->grant($request, $context);
+
+        self::assertNotInstanceOf(RedirectResponse::class, $response);
+        self::assertSame(0, $store->consumeCalls);
     }
 }

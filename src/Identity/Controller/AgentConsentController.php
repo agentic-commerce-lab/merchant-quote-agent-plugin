@@ -36,6 +36,13 @@ use Symfony\Component\Routing\Attribute\Route;
  * redirect, sidestepping Shopware's login/guest-login pages disagreeing on
  * whether `redirectParameters` is an array or a JSON string.
  *
+ * The session being the only source is not by itself enough: it can still be
+ * overwritten mid-flow by a top-level GET to `?request_uri=` in another tab
+ * (`SameSite=lax` permits that), swapping which request a still-displayed
+ * page's Allow click would grant. The `formToken` rendered into the page and
+ * re-checked in `grant()` (see `authorize()`) closes that: it binds the page
+ * to the handle the session held at RENDER time, not at submit time.
+ *
  * This is the plugin's only controller that renders a themed storefront page
  * rather than JSON, so — unlike UcpQuoteController, QuoteContractController
  * and AgentAuthorizationRequestController — it deliberately extends
@@ -83,7 +90,7 @@ final class AgentConsentController extends StorefrontController
         $pending = $handle === '' ? null : $this->store->find($handle);
 
         if ($pending === null) {
-            return $this->expiredResponse();
+            return $this->expiredResponse($request);
         }
 
         if ($context->getCustomer() === null) {
@@ -96,7 +103,7 @@ final class AgentConsentController extends StorefrontController
         }
 
         if (!$this->guard->matchesChannel($pending, $context)) {
-            return $this->expiredResponse();
+            return $this->expiredResponse($request);
         }
 
         return $this->renderStorefront(self::TEMPLATE, [
@@ -104,6 +111,17 @@ final class AgentConsentController extends StorefrontController
             'agentHost' => PendingAuthorizationPresenter::agentHost($pending),
             'scopes' => PendingAuthorizationPresenter::scopeList($pending),
             'expiresInMinutes' => (int) (AgentAuthorizationRegistrar::TTL_SECONDS / 60),
+            // Binds the page the customer read to the request their Allow
+            // click submits. The handle itself is 256 bits of random_bytes(),
+            // so this token cannot be reversed to it and is not a secret — it
+            // only has to prove the form was rendered from the same handle
+            // the session currently holds. grant() checks the token against
+            // the SESSION's current handle, not the token's own origin: a
+            // handle swapped into the session by another tab (SameSite=lax
+            // permits a top-level GET to do that) makes this page's token
+            // stop matching, so an unwitting Allow can no longer grant a
+            // different request than the one displayed.
+            'formToken' => $this->guard->formToken($handle),
         ]);
     }
 
@@ -112,10 +130,10 @@ final class AgentConsentController extends StorefrontController
     public function grant(Request $request, SalesChannelContext $context): Response
     {
         $handle = $this->sessionHandle($request);
-        $pending = $this->guard->verifiedPending($handle, $context);
+        $pending = $this->guard->verifiedPending($handle, $context, $request->request->getString('token'));
 
         if ($pending === null) {
-            return $this->expiredResponse();
+            return $this->expiredResponse($request);
         }
 
         // Single-use either way: a denial that left the record live could
@@ -123,7 +141,7 @@ final class AgentConsentController extends StorefrontController
         $claimed = $this->store->consume($handle);
 
         if ($claimed === null) {
-            return $this->expiredResponse();
+            return $this->expiredResponse($request);
         }
 
         $request->getSession()->remove(self::SESSION_KEY);
@@ -137,8 +155,11 @@ final class AgentConsentController extends StorefrontController
         return new RedirectResponse($redirectTo);
     }
 
-    private function expiredResponse(): Response
+    /** Clears the stale handle before rendering — every "expired" outcome is terminal. */
+    private function expiredResponse(Request $request): Response
     {
+        $request->getSession()->remove(self::SESSION_KEY);
+
         return $this->renderStorefront(self::TEMPLATE, ['expired' => true]);
     }
 
