@@ -16,6 +16,10 @@ return static function (RoutingConfigurator $routes): void {
     // commercial quote backend.
     $routes->import(__DIR__ . '/../../Identity/Controller/AgentAuthorizationRequestController.php', 'attribute');
 
+    // The consent page the registered request's storefront URL points at.
+    // Imported unconditionally for the same reason as the route above.
+    $routes->import(__DIR__ . '/../../Identity/Controller/AgentConsentController.php', 'attribute');
+
     // The runtime endpoints only exist where the commercial backend does,
     // matching the service-graph gate in services.php — otherwise the routes
     // would resolve to a service the container never built.

@@ -41,11 +41,14 @@ use MerchantQuoteAgentPlugin\Identity\AcOAuthAccessTokenReader;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationContextFactory;
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationRegistrar;
+use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentGrantCompleter;
+use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentRequestGuard;
 use MerchantQuoteAgentPlugin\Identity\Authorization\DbalPendingAuthorizationStore;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PayloadFields;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorizationStoreInterface;
 use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
+use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -130,7 +133,20 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(AgentAuthorizationRegistrar::class);
     $services->set(AgentAuthorizationContextFactory::class);
     $services->set(SalesChannelDomainUrlReader::class);
+    $services->set(ConsentRequestGuard::class);
+    $services->set(ConsentGrantCompleter::class);
     $services->set(AgentAuthorizationRequestController::class)->tag('controller.service_arguments');
+
+    // The consent page. Unlike the plain controllers above, this one extends
+    // StorefrontController (a Symfony AbstractController), which needs the
+    // container injected via setContainer() and the service made public —
+    // matching how shopware/storefront registers its own controllers (see
+    // AccountProfileController in vendor/shopware/storefront/DependencyInjection/controller.php).
+    $services
+        ->set(AgentConsentController::class)
+        ->public()
+        ->tag('controller.service_arguments')
+        ->call('setContainer', [service('service_container')]);
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the
