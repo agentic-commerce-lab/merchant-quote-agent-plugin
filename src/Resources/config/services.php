@@ -33,14 +33,17 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
 use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialBuyerQuoteGateway;
+use MerchantQuoteAgentPlugin\Command\AgentGrantsCommand;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Identity\AccessTokenSubjectReaderInterface;
 use MerchantQuoteAgentPlugin\Identity\AcOAuthAccessTokenReader;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
+use MerchantQuoteAgentPlugin\Identity\Authorization\AcAgentGrantReader;
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationContextFactory;
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationRegistrar;
+use MerchantQuoteAgentPlugin\Identity\Authorization\AgentGrantReaderInterface;
 use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentGrantCompleter;
 use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentRequestGuard;
 use MerchantQuoteAgentPlugin\Identity\Authorization\DbalPendingAuthorizationStore;
@@ -126,6 +129,14 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(AcOAuthAccessTokenReader::class);
     $services->alias(AccessTokenSubjectReaderInterface::class, AcOAuthAccessTokenReader::class);
     $services->set(AgentCustomerAuthenticator::class);
+
+    // The operational off-switch (issue #49-adjacent): list and revoke grants
+    // from the console. No storefront self-service page exists yet, so this is
+    // the only way to revoke — registered unconditionally, like the reader
+    // above, since it does not depend on SwagCommercial.
+    $services->set(AcAgentGrantReader::class);
+    $services->alias(AgentGrantReaderInterface::class, AcAgentGrantReader::class);
+    $services->set(AgentGrantsCommand::class)->tag('console.command');
 
     $services->set(DbalPendingAuthorizationStore::class);
     $services->alias(PendingAuthorizationStoreInterface::class, DbalPendingAuthorizationStore::class);
