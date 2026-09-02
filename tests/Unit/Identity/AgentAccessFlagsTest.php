@@ -44,6 +44,9 @@ final class AgentAccessFlagsTest extends TestCase
         // system_config round-trips JSON, so a stale string must not read as on.
         self::assertFalse($this->flags('true')->allowAnyAgent(self::SALES_CHANNEL_ID));
         self::assertFalse($this->flags(1)->allowAnyAgent(self::SALES_CHANNEL_ID));
+        // `system:config:set key false` without -j stores the string, and
+        // (bool) 'false' is true -- so a hand-set value must fail closed.
+        self::assertFalse($this->flags('false')->allowAnyAgent(self::SALES_CHANNEL_ID));
         self::assertTrue($this->flags(true)->allowAnyAgent(self::SALES_CHANNEL_ID));
     }
 
