@@ -178,7 +178,13 @@ final class AgentConsentControllerFixture
         if ($requestUriInBody !== '') {
             // A decoy: grant() must never read this — the handle comes only
             // from the session, which this request deliberately has none of.
+            // The token is included too, computed for this same handle: the
+            // token mixes in no secret, so the agent that registered the
+            // handle can compute it itself. A wrong-but-absent token would
+            // stop a reinstated body fallback for the wrong reason and mask
+            // the regression this fixture exists to catch.
             $body['request_uri'] = $requestUriInBody;
+            $body['token'] = hash('sha256', $requestUriInBody);
         }
 
         $request = Request::create('/quote-agent/authorize', 'POST', $body);
