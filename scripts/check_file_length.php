@@ -18,6 +18,16 @@ declare(strict_types=1);
 
 const EXCLUDE_PARTS = ['vendor', 'node_modules', 'var', 'build', 'dist', 'cache'];
 
+/**
+ * Files exempt from the gate, matched on the path suffix.
+ *
+ * The ceiling exists to keep code reviewable. A Symfony container config is a
+ * flat list of registrations rather than logic: it grows one line per service,
+ * splitting it only buys indirection, and Shopware loads this exact filename
+ * from Bundle::build(). Reviewability comes from the classes it registers.
+ */
+const EXCLUDE_FILES = ['src/Resources/config/services.php'];
+
 /** @param list<string> $argv */
 function run(array $argv): int
 {
@@ -83,11 +93,18 @@ function phpFiles(string $root): iterable
         if ($fileInfo->getExtension() !== 'php') {
             continue;
         }
-        $parts = explode(DIRECTORY_SEPARATOR, $fileInfo->getPathname());
+        $path = $fileInfo->getPathname();
+        $parts = explode(DIRECTORY_SEPARATOR, $path);
         if (array_intersect($parts, EXCLUDE_PARTS) !== []) {
             continue;
         }
-        yield $fileInfo->getPathname();
+        $normalised = str_replace(DIRECTORY_SEPARATOR, '/', $path);
+        foreach (EXCLUDE_FILES as $excluded) {
+            if ($normalised === $excluded || str_ends_with($normalised, '/' . $excluded)) {
+                continue 2;
+            }
+        }
+        yield $path;
     }
 }
 

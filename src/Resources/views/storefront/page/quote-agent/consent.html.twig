@@ -1,0 +1,46 @@
+{% sw_extends '@Storefront/storefront/base.html.twig' %}
+
+{% block base_main_inner %}
+    <div class="container">
+        {% if expired %}
+            <div class="alert alert-warning" role="alert">
+                {{ "merchantQuoteAgent.consent.expired"|trans }}
+            </div>
+        {% else %}
+            <h1>{{ "merchantQuoteAgent.consent.headline"|trans }}</h1>
+
+            <p>{{ "merchantQuoteAgent.consent.intro"|trans({'%host%': agentHost}) }}</p>
+
+            {% if scopes is not empty %}
+                <ul>
+                    {% for scope in scopes %}
+                        <li><code>{{ scope }}</code></li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+
+            <p>{{ "merchantQuoteAgent.consent.effect"|trans }}</p>
+
+            <p class="text-muted">
+                {{ "merchantQuoteAgent.consent.expiry"|trans({'%minutes%': expiresInMinutes}) }}
+            </p>
+
+            {# The handle itself lives only in the session (see
+               AgentConsentController's docblock) - never a hidden field, so
+               no form here can be replayed cross-site with a different
+               handle. formToken is not a secret (it is not the handle, just
+               its hash) - it binds this submission to the page rendered for
+               THIS handle, so a handle swapped into the session by another
+               tab after this page was rendered invalidates the Allow click. #}
+            <form method="post" action="{{ path('frontend.merchant_quote_agent.authorize.grant') }}">
+                <input type="hidden" name="token" value="{{ formToken }}">
+                <button type="submit" name="grant" value="1" class="btn btn-primary">
+                    {{ "merchantQuoteAgent.consent.allow"|trans }}
+                </button>
+                <button type="submit" name="grant" value="0" class="btn btn-link">
+                    {{ "merchantQuoteAgent.consent.deny"|trans }}
+                </button>
+            </form>
+        {% endif %}
+    </div>
+{% endblock %}

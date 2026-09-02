@@ -1,0 +1,13 @@
+{
+    "merchantQuoteAgent": {
+        "consent": {
+            "headline": "Authorize this agent",
+            "intro": "The agent at %host% is asking to act for you at this shop.",
+            "effect": "If you allow this, the agent can request and negotiate quotes on your behalf. You can have the merchant revoke it at any time.",
+            "allow": "Allow",
+            "deny": "Deny",
+            "expiry": "This request can only be answered once, and expires %minutes% minutes after the agent asked.",
+            "expired": "This authorization link has expired or has already been used. Ask the agent for a new one."
+        }
+    }
+}

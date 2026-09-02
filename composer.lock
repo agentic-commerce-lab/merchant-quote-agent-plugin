@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "fd7031c924a1c6244a5f3c3c82f168bf",
+    "content-hash": "a21a122b9ce94ef010dd4d16d90a88e0",
     "packages": [
         {
             "name": "brick/math",
@@ -3464,6 +3464,60 @@
             "time": "2026-08-10T20:09:23+00:00"
         },
         {
+            "name": "meyfa/php-svg",
+            "version": "v0.16.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/meyfa/php-svg.git",
+                "reference": "a62c2b9842826e83ea51f9b9e6ed28d2bdb1033c"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/meyfa/php-svg/zipball/a62c2b9842826e83ea51f9b9e6ed28d2bdb1033c",
+                "reference": "a62c2b9842826e83ea51f9b9e6ed28d2bdb1033c",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=7.4.0"
+            },
+            "require-dev": {
+                "meyfa/phpunit-assert-gd": "^v3.0.0",
+                "phpmd/phpmd": "^2.15.0",
+                "phpunit/phpunit": "^9.6.16",
+                "rector/rector": "^1.0"
+            },
+            "suggest": {
+                "ext-gd": "Needed to rasterize images",
+                "ext-simplexml": "Needed to read SVG strings and files"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "SVG\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Fabian Meyer",
+                    "homepage": "https://meyfa.net"
+                }
+            ],
+            "description": "Read, edit, write, and render SVG files with PHP",
+            "homepage": "https://github.com/meyfa/php-svg",
+            "keywords": [
+                "svg"
+            ],
+            "support": {
+                "issues": "https://github.com/meyfa/php-svg/issues",
+                "source": "https://github.com/meyfa/php-svg/tree/v0.16.1"
+            },
+            "time": "2025-03-10T22:28:37+00:00"
+        },
+        {
             "name": "monolog/monolog",
             "version": "3.10.0",
             "source": {
@@ -5298,6 +5352,86 @@
             "time": "2026-06-18T15:10:53+00:00"
         },
         {
+            "name": "scssphp/scssphp",
+            "version": "v1.12.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/scssphp/scssphp.git",
+                "reference": "a6b20c170ddb95f116b3d148a466a7bed1e85c35"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/scssphp/scssphp/zipball/a6b20c170ddb95f116b3d148a466a7bed1e85c35",
+                "reference": "a6b20c170ddb95f116b3d148a466a7bed1e85c35",
+                "shasum": ""
+            },
+            "require": {
+                "ext-ctype": "*",
+                "ext-json": "*",
+                "php": ">=5.6.0"
+            },
+            "require-dev": {
+                "bamarni/composer-bin-plugin": "^1.4",
+                "phpunit/phpunit": "^5.7 || ^6.5 || ^7.5 || ^8.3 || ^9.4",
+                "sass/sass-spec": "*",
+                "squizlabs/php_codesniffer": "~3.5",
+                "symfony/phpunit-bridge": "^5.1",
+                "thoughtbot/bourbon": "^7.0",
+                "twbs/bootstrap": "~5.0",
+                "twbs/bootstrap4": "4.6.1",
+                "zurb/foundation": "~6.7.0"
+            },
+            "suggest": {
+                "ext-iconv": "Can be used as fallback when ext-mbstring is not available",
+                "ext-mbstring": "For best performance, mbstring should be installed as it is faster than ext-iconv"
+            },
+            "bin": [
+                "bin/pscss"
+            ],
+            "type": "library",
+            "extra": {
+                "bamarni-bin": {
+                    "bin-links": false,
+                    "forward-command": false
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "ScssPhp\\ScssPhp\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Anthon Pang",
+                    "email": "apang@softwaredevelopment.ca",
+                    "homepage": "https://github.com/robocoder"
+                },
+                {
+                    "name": "Cédric Morin",
+                    "email": "cedric@yterium.com",
+                    "homepage": "https://github.com/Cerdic"
+                }
+            ],
+            "description": "scssphp is a compiler for SCSS written in PHP.",
+            "homepage": "http://scssphp.github.io/scssphp/",
+            "keywords": [
+                "css",
+                "less",
+                "sass",
+                "scss",
+                "stylesheet"
+            ],
+            "support": {
+                "issues": "https://github.com/scssphp/scssphp/issues",
+                "source": "https://github.com/scssphp/scssphp/tree/v1.12.0"
+            },
+            "time": "2023-11-14T14:56:09+00:00"
+        },
+        {
             "name": "seld/jsonlint",
             "version": "1.12.1",
             "source": {
@@ -5874,6 +6008,93 @@
                 "wiki": "https://developer.shopware.com"
             },
             "time": "2026-08-17T09:31:28+00:00"
+        },
+        {
+            "name": "shopware/storefront",
+            "version": "v6.7.13.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/shopware/storefront.git",
+                "reference": "9817285ecfe6085230e12acda6cf3836e584c6ea"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/shopware/storefront/zipball/9817285ecfe6085230e12acda6cf3836e584c6ea",
+                "reference": "9817285ecfe6085230e12acda6cf3836e584c6ea",
+                "shasum": ""
+            },
+            "require": {
+                "cocur/slugify": "^4.7.0",
+                "doctrine/dbal": "~4.4.0",
+                "guzzlehttp/guzzle": "^7.5.0",
+                "guzzlehttp/psr7": "^2.4",
+                "league/flysystem": "^3.13.0",
+                "mcp/sdk": "^0.7.0",
+                "meyfa/php-svg": "^0.16.1",
+                "php": "~8.2.0 || ~8.3.0 || ~8.4.0 || ~8.5.0",
+                "psr/clock": "^1.0.0",
+                "psr/http-client": "^1.0.3",
+                "psr/log": "^3.0.0",
+                "scssphp/scssphp": "v1.12.0",
+                "shopware/core": "v6.7.13.1",
+                "symfony/asset": "~7.4.0",
+                "symfony/cache": "~7.4.12",
+                "symfony/cache-contracts": "~3.6.0",
+                "symfony/clock": "~7.4.0",
+                "symfony/config": "~7.4.0",
+                "symfony/console": "~7.4.0",
+                "symfony/dependency-injection": "~7.4.0",
+                "symfony/event-dispatcher": "~7.4.0",
+                "symfony/event-dispatcher-contracts": "~3.6.0",
+                "symfony/filesystem": "~7.4.0",
+                "symfony/finder": "~7.4.0",
+                "symfony/framework-bundle": "~7.4.0",
+                "symfony/http-foundation": "~7.4.0",
+                "symfony/http-kernel": "~7.4.12",
+                "symfony/messenger": "~7.4.12",
+                "symfony/mime": "~7.4.12",
+                "symfony/routing": "~7.4.12",
+                "symfony/security-core": "~7.4.12",
+                "symfony/serializer": "~7.4.0",
+                "symfony/service-contracts": "~3.6.0",
+                "symfony/string": "~7.4.0",
+                "symfony/translation-contracts": "~3.6.0",
+                "symfony/twig-bridge": "~7.4.12",
+                "symfony/ux-twig-component": "~2.35.0",
+                "symfony/validator": "~7.4.0",
+                "twig/intl-extra": "^3.26.0",
+                "twig/string-extra": "^3.24.0",
+                "twig/twig": "^3.26.0"
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-trunk": "6.7.x-dev",
+                    "dev-master": "6.7.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Shopware\\Storefront\\": ""
+                },
+                "exclude-from-classmap": [
+                    "Resources/app/storefront/node_modules/"
+                ]
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "Storefront for Shopware",
+            "support": {
+                "chat": "https://chat.shopware.com/",
+                "docs": "https://developer.shopware.com",
+                "forum": "https://forum.shopware.com",
+                "issues": "https://github.com/shopware/shopware/issues",
+                "source": "https://github.com/shopware/storefront/tree/v6.7.13.1",
+                "wiki": "https://developer.shopware.com"
+            },
+            "time": "2026-08-25T08:37:58+00:00"
         },
         {
             "name": "smalot/pdfparser",

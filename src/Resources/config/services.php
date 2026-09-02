@@ -33,6 +33,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
 use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialBuyerQuoteGateway;
+use MerchantQuoteAgentPlugin\Command\AgentGrantsCommand;
 use MerchantQuoteAgentPlugin\Command\AllowAnyAgentCommand;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
@@ -43,6 +44,20 @@ use MerchantQuoteAgentPlugin\Identity\AgentAccessFlags;
 use MerchantQuoteAgentPlugin\Identity\AgentAdmittingRuntimeConfigurationResolver;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
 use MerchantQuoteAgentPlugin\Identity\AgentProfileHostValidatorFactory;
+use MerchantQuoteAgentPlugin\Identity\Authorization\AcAgentGrantReader;
+use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationContextFactory;
+use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationRegistrar;
+use MerchantQuoteAgentPlugin\Identity\Authorization\AgentGrantReaderInterface;
+use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentGrantCompleter;
+use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentRequestGuard;
+use MerchantQuoteAgentPlugin\Identity\Authorization\DbalPendingAuthorizationStore;
+use MerchantQuoteAgentPlugin\Identity\Authorization\PayloadFields;
+use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorizationStoreInterface;
+use MerchantQuoteAgentPlugin\Identity\Authorization\RedirectUriRule;
+use MerchantQuoteAgentPlugin\Identity\Authorization\RequestRuntimeConfigurationReader;
+use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
+use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
+use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -156,6 +171,44 @@ return static function (ContainerConfigurator $configurator): void {
         ->set(UrlSafetyValidator::class)
         ->factory([service(AgentProfileHostValidatorFactory::class), 'create'])
         ->share(false);
+
+    // The operational off-switch (issue #49-adjacent): list and revoke grants
+    // from the console. No storefront self-service page exists yet, so this is
+    // the only way to revoke — registered unconditionally, like the reader
+    // above, since it does not depend on SwagCommercial.
+    $services->set(AcAgentGrantReader::class);
+    $services->alias(AgentGrantReaderInterface::class, AcAgentGrantReader::class);
+    $services->set(AgentGrantsCommand::class)->tag('console.command');
+
+    $services->set(DbalPendingAuthorizationStore::class);
+    $services->alias(PendingAuthorizationStoreInterface::class, DbalPendingAuthorizationStore::class);
+    $services->set(PayloadFields::class);
+    $services->set(RedirectUriRule::class);
+    $services->set(AgentAuthorizationRegistrar::class);
+    $services->set(AgentAuthorizationContextFactory::class);
+    $services->set(SalesChannelDomainUrlReader::class);
+    $services->set(ConsentRequestGuard::class);
+    // Agentic Commerce aliases RuntimeConfigurationResolverInterface to its own
+    // ShopwareRuntimeConfigurationResolver (its services.php:342) — the same
+    // property that makes IdentityLinkingCapabilityInterface injectable above,
+    // so this needs no implementation of ours. Consent cannot work without it:
+    // see AgentAuthorizationContextFactory on why a null runtimeConfiguration
+    // makes AC refuse every grant.
+    $services->set(RequestRuntimeConfigurationReader::class);
+    // LoggerInterface is autowired, as it is for TerminalOutcomeSubscriber.
+    $services->set(ConsentGrantCompleter::class);
+    $services->set(AgentAuthorizationRequestController::class)->tag('controller.service_arguments');
+
+    // The consent page. Unlike the plain controllers above, this one extends
+    // StorefrontController (a Symfony AbstractController), which needs the
+    // container injected via setContainer() and the service made public —
+    // matching how shopware/storefront registers its own controllers (see
+    // AccountProfileController in vendor/shopware/storefront/DependencyInjection/controller.php).
+    $services
+        ->set(AgentConsentController::class)
+        ->public()
+        ->tag('controller.service_arguments')
+        ->call('setContainer', [service('service_container')]);
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the
