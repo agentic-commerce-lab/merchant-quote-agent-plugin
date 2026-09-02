@@ -39,6 +39,8 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Identity\AccessTokenSubjectReaderInterface;
 use MerchantQuoteAgentPlugin\Identity\AcOAuthAccessTokenReader;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
+use MerchantQuoteAgentPlugin\Identity\Authorization\DbalPendingAuthorizationStore;
+use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorizationStoreInterface;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -116,6 +118,9 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(AcOAuthAccessTokenReader::class);
     $services->alias(AccessTokenSubjectReaderInterface::class, AcOAuthAccessTokenReader::class);
     $services->set(AgentCustomerAuthenticator::class);
+
+    $services->set(DbalPendingAuthorizationStore::class);
+    $services->alias(PendingAuthorizationStoreInterface::class, DbalPendingAuthorizationStore::class);
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the
