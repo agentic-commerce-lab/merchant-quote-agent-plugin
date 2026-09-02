@@ -25,6 +25,7 @@ final class PayloadFields
     public function requiredString(array $payload, string $key): string
     {
         $value = $payload[$key] ?? null;
+        $value = \is_string($value) ? trim($value) : $value;
 
         if (!\is_string($value) || $value === '') {
             throw new ValidationException(\sprintf('"%s" is required.', $key), [\sprintf(

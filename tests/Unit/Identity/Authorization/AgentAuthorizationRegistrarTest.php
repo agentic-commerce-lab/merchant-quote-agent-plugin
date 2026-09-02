@@ -45,41 +45,53 @@ final class AgentAuthorizationRegistrarTest extends TestCase
      */
     public function testItRefusesWhenTheRequestSignatureDidNotVerify(): void
     {
-        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+        $store = AgentAuthorizationRegistrarFixture::store();
+        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
 
-        $this->expectException(UnverifiedAgentException::class);
-
-        $registrar->register(
-            AgentAuthorizationRegistrarFixture::payload(),
-            AgentAuthorizationRegistrarFixture::unverifiedContext(),
-            self::SALES_CHANNEL_ID,
-        );
+        try {
+            $registrar->register(
+                AgentAuthorizationRegistrarFixture::payload(),
+                AgentAuthorizationRegistrarFixture::unverifiedContext(),
+                self::SALES_CHANNEL_ID,
+            );
+            self::fail('An unverified agent must not be able to register an authorization request.');
+        } catch (UnverifiedAgentException) {
+            self::assertSame([], $store->stored, 'nothing may be persisted when the agent is unverified');
+        }
     }
 
     public function testItRefusesWhenTheClientIdIsNotTheVerifiedProfileUri(): void
     {
-        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+        $store = AgentAuthorizationRegistrarFixture::store();
+        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
 
-        $this->expectException(UnverifiedAgentException::class);
-
-        $registrar->register(
-            AgentAuthorizationRegistrarFixture::payload(),
-            AgentAuthorizationRegistrarFixture::contextWithProfileUri('https://other.example/.well-known/ucp'),
-            self::SALES_CHANNEL_ID,
-        );
+        try {
+            $registrar->register(
+                AgentAuthorizationRegistrarFixture::payload(),
+                AgentAuthorizationRegistrarFixture::contextWithProfileUri('https://other.example/.well-known/ucp'),
+                self::SALES_CHANNEL_ID,
+            );
+            self::fail('A client_id not matching the verified profile URI must not be able to register.');
+        } catch (UnverifiedAgentException) {
+            self::assertSame([], $store->stored, 'nothing may be persisted when client_id does not match');
+        }
     }
 
     public function testItRefusesWhenNoProfileWasFetched(): void
     {
-        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+        $store = AgentAuthorizationRegistrarFixture::store();
+        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
 
-        $this->expectException(UnverifiedAgentException::class);
-
-        $registrar->register(
-            AgentAuthorizationRegistrarFixture::payload(),
-            AgentAuthorizationRegistrarFixture::contextWithoutProfile(),
-            self::SALES_CHANNEL_ID,
-        );
+        try {
+            $registrar->register(
+                AgentAuthorizationRegistrarFixture::payload(),
+                AgentAuthorizationRegistrarFixture::contextWithoutProfile(),
+                self::SALES_CHANNEL_ID,
+            );
+            self::fail('A request with no verified profile must not be able to register.');
+        } catch (UnverifiedAgentException) {
+            self::assertSame([], $store->stored, 'nothing may be persisted when no profile was fetched');
+        }
     }
 
     public function testItRefusesAnythingButS256(): void
@@ -109,6 +121,17 @@ final class AgentAuthorizationRegistrarTest extends TestCase
         $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
         $payload = AgentAuthorizationRegistrarFixture::payload();
         unset($payload['state']);
+
+        $this->expectException(ValidationException::class);
+
+        $registrar->register($payload, AgentAuthorizationRegistrarFixture::verifiedContext(), self::SALES_CHANNEL_ID);
+    }
+
+    public function testItRefusesAWhitespaceOnlyState(): void
+    {
+        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+        $payload = AgentAuthorizationRegistrarFixture::payload();
+        $payload['state'] = '   ';
 
         $this->expectException(ValidationException::class);
 
