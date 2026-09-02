@@ -52,8 +52,9 @@ final class AgentAuthorizationRequestController
         $context = $this->requestContext($request);
         $resolution = $this->contextResolver->resolveSalesChannel($context);
 
-        $handle = $this->registrar->register($this->payload($request), $context, $resolution->salesChannelId);
-
+        // Resolved and checked BEFORE register() writes anything: a
+        // misconfigured channel must fail loudly without persisting a row a
+        // human can never be sent to answer.
         $base = $this->domains->urlFor($resolution->domainId);
 
         if ($base === null) {
@@ -61,6 +62,8 @@ final class AgentAuthorizationRequestController
                 'The sales channel has no domain URL, so no consent page can be addressed.',
             );
         }
+
+        $handle = $this->registrar->register($this->payload($request), $context, $resolution->salesChannelId);
 
         return new JsonResponse([
             'request_uri' => $handle,

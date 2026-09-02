@@ -4,16 +4,47 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Identity\Controller;
 
+use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationRegistrar;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Ucp\Sdk\Exception\ConfigurationException;
 use Ucp\Sdk\Exception\ValidationException;
 
 #[CoversClass(AgentAuthorizationRequestController::class)]
 final class AgentAuthorizationRequestControllerTest extends TestCase
 {
+    public function testItRegistersAVerifiedRequest(): void
+    {
+        $store = AgentAuthorizationRequestControllerFixture::store();
+        $controller = AgentAuthorizationRequestControllerFixture::build($store);
+        $request = Request::create(
+            '/ucp/quote-agent/authorization-requests',
+            'POST',
+            content: json_encode(AgentAuthorizationRequestControllerFixture::payload(), \JSON_THROW_ON_ERROR),
+        );
+        $request->attributes->set('ucp_request_context', AgentAuthorizationRequestControllerFixture::context());
+
+        $response = $controller->register($request);
+
+        self::assertSame(Response::HTTP_CREATED, $response->getStatusCode());
+
+        /** @var array{request_uri: string, expires_in: int, authorization_url: string} $body */
+        $body = json_decode((string) $response->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        self::assertSame(AgentAuthorizationRegistrar::TTL_SECONDS, $body['expires_in']);
+        self::assertSame(
+            AgentAuthorizationRequestControllerFixture::DOMAIN_BASE
+            . '/quote-agent/authorize?request_uri='
+            . $body['request_uri'],
+            $body['authorization_url'],
+        );
+        self::assertCount(1, $store->stored);
+        self::assertSame(AgentAuthorizationRequestControllerFixture::CLIENT_ID, $store->stored[0]->clientId);
+    }
+
     public function testItRejectsABodyThatIsNotAJsonObject(): void
     {
         $store = AgentAuthorizationRequestControllerFixture::store();

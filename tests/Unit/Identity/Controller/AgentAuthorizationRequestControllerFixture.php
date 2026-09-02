@@ -26,6 +26,11 @@ final class AgentAuthorizationRequestControllerFixture
 {
     public const SALES_CHANNEL_ID = '0191d3d0a0b071bd9c1a0d9d1a3f9f01';
 
+    public const CLIENT_ID = 'https://agent.example/.well-known/ucp';
+
+    /** The base {@see build()}'s domain reader stub returns, whatever domainId it is asked for. */
+    public const DOMAIN_BASE = 'https://shop.example';
+
     private function __construct() {}
 
     public static function context(): RequestContext
@@ -33,11 +38,28 @@ final class AgentAuthorizationRequestControllerFixture
         return new RequestContext(
             'shop.example',
             [],
-            'https://agent.example/.well-known/ucp',
+            self::CLIENT_ID,
             new PlatformProfile('2026-04-08', [], [], []),
             [],
             true,
         );
+    }
+
+    /**
+     * A payload the registrar accepts, matching {@see context()}'s verified client_id.
+     *
+     * @return array<string, mixed>
+     */
+    public static function payload(): array
+    {
+        return [
+            'client_id' => self::CLIENT_ID,
+            'redirect_uri' => 'https://agent.example/callback',
+            'scope' => 'dev.ucp.shopping.order:read',
+            'state' => 'state-value',
+            'code_challenge' => 'challenge-value',
+            'code_challenge_method' => 'S256',
+        ];
     }
 
     /** A recording double, so a refusal test can assert nothing was persisted. */
@@ -99,7 +121,7 @@ final class AgentAuthorizationRequestControllerFixture
             #[\Override]
             public function urlFor(?string $domainId): ?string
             {
-                return 'https://shop.example';
+                return AgentAuthorizationRequestControllerFixture::DOMAIN_BASE;
             }
         };
 
