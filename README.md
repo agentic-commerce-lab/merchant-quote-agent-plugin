@@ -209,9 +209,9 @@ addresses, blocked metadata hosts). It is deliberately absent from
 `config.xml` and from any settings screen a merchant can reach — widening
 which agents are even checked is not a decision for a settings form.
 
-**A key of this name once existed in an Agentic Commerce fork, and a leftover
-row carrying it breaks the shop.** The installed 1.2.0 knows nothing about
-`allowAnyAgent` — the name appears nowhere in its source, and
+**If every `/ucp/*` request on the shop is failing, check Agentic Commerce's
+config row for a fork-era `allowAnyAgent` key.** The installed 1.2.0 knows
+nothing about `allowAnyAgent` — the name appears nowhere in its source, and
 `UcpConfig::CONFIG_KEYS` (sixteen entries) does not list it, so its config
 model rejects it as an unsupported field and throws on *every* read of that
 row. That is not hypothetical: a fork-era row on the dev shop made every
