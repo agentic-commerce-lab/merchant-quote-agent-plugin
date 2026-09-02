@@ -2522,6 +2522,32 @@ appears untracked in `git status`, which is exactly how a key gets swept into a
 (`os.path.dirname(os.path.abspath(__file__))`), so if you ever relocate the
 script, the ignore rule has to move with it.
 
+- [ ] **Step 1b: Commit the verbatim import as its own commit, before editing anything**
+
+Two commits for this task, not one. Commit the script exactly as copied,
+unchanged, then rewrite `login()` in a second commit.
+
+Why it is worth the extra commit:
+- History keeps a version that actually works against the shop as it stands
+  today. After the rewrite the script depends on this feature's endpoints, so
+  between this task and a deployed #66 there would otherwise be no working test
+  client anywhere in history.
+- The rewrite becomes a reviewable ~80-line diff instead of being buried in a
+  912-line whole-file addition, where a reviewer cannot see what the new flow
+  removed.
+
+```bash
+git add scripts/ucp-quote-agent.py
+# commit message: "test: import the UCP buyer agent for end-to-end shop testing"
+```
+
+Note: the script must enter history exactly ONCE, on this branch. A local
+`safety/ucp-quote-agent` branch (`b8e54b8`, unpushed) holds a copy purely so the
+work survives a `git clean`; do NOT merge it, and do not let the script land on
+`main` separately — this branch is based at `10d479e`, so a separate landing
+plus this task's add would produce an add/add conflict on a 912-line file.
+Delete that safety branch once #66 is merged.
+
 - [ ] **Step 2: Replace the local sign-in page with the shop's flow**
 
 Delete `LOGIN_PAGE`, the `/login` and `/logged-in` handlers, `seed_context_token()`, the `context_token` argument of `call()`, and the `--access-key` plumbing (argument, prompt, and both `run()`/`login()` parameters). Restore a `/callback` GET handler on the tunnel:
