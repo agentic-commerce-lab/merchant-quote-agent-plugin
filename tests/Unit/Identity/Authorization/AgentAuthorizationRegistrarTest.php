@@ -96,35 +96,59 @@ final class AgentAuthorizationRegistrarTest extends TestCase
 
     public function testItRefusesAnythingButS256(): void
     {
-        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+        $store = AgentAuthorizationRegistrarFixture::store();
+        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
         $payload = AgentAuthorizationRegistrarFixture::payload();
         $payload['code_challenge_method'] = 'plain';
 
-        $this->expectException(ValidationException::class);
-
-        $registrar->register($payload, AgentAuthorizationRegistrarFixture::verifiedContext(), self::SALES_CHANNEL_ID);
+        try {
+            $registrar->register(
+                $payload,
+                AgentAuthorizationRegistrarFixture::verifiedContext(),
+                self::SALES_CHANNEL_ID,
+            );
+            self::fail('A non-S256 code_challenge_method must not be able to register.');
+        } catch (ValidationException) {
+            self::assertSame([], $store->stored, 'nothing may be persisted when the challenge method is not S256');
+        }
     }
 
     public function testItRefusesAMissingCodeChallenge(): void
     {
-        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+        $store = AgentAuthorizationRegistrarFixture::store();
+        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
         $payload = AgentAuthorizationRegistrarFixture::payload();
         unset($payload['code_challenge']);
 
-        $this->expectException(ValidationException::class);
-
-        $registrar->register($payload, AgentAuthorizationRegistrarFixture::verifiedContext(), self::SALES_CHANNEL_ID);
+        try {
+            $registrar->register(
+                $payload,
+                AgentAuthorizationRegistrarFixture::verifiedContext(),
+                self::SALES_CHANNEL_ID,
+            );
+            self::fail('A missing code_challenge must not be able to register.');
+        } catch (ValidationException) {
+            self::assertSame([], $store->stored, 'nothing may be persisted when code_challenge is missing');
+        }
     }
 
     public function testItRefusesAMissingState(): void
     {
-        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+        $store = AgentAuthorizationRegistrarFixture::store();
+        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
         $payload = AgentAuthorizationRegistrarFixture::payload();
         unset($payload['state']);
 
-        $this->expectException(ValidationException::class);
-
-        $registrar->register($payload, AgentAuthorizationRegistrarFixture::verifiedContext(), self::SALES_CHANNEL_ID);
+        try {
+            $registrar->register(
+                $payload,
+                AgentAuthorizationRegistrarFixture::verifiedContext(),
+                self::SALES_CHANNEL_ID,
+            );
+            self::fail('A missing state must not be able to register.');
+        } catch (ValidationException) {
+            self::assertSame([], $store->stored, 'nothing may be persisted when state is missing');
+        }
     }
 
     public function testItRefusesAWhitespaceOnlyState(): void
