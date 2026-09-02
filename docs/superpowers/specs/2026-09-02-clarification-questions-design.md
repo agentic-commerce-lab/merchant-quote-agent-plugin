@@ -32,6 +32,8 @@ Read out of this repository, not assumed:
 - **There is no round counter to consume.** #49's cap is discount drift measured against a persisted baseline, not a count of passes. "Not a negotiation round" therefore means not touching the offer machinery — no proposal, no baseline write, no negotiate call — rather than decrementing anything.
 - **There is a marker precedent.** `QuoteEscalator` owns a `customFields` key and exposes `releaseFor(NegotiationOutcome): array<string, null>`, which `ServiceQuoteHandler` spreads into the pass's stamp. Only a pass that `answeredTheBuyer()` clears it.
 - **`OfferRound` is at its budget.** Its own docblock says the constructor and class sit at the complexity and constructor-size limits deliberately. New behaviour goes beside it, not inside it.
+- **`NegotiationPipeline` is at the parameter limit.** It has exactly five constructor parameters, and `mago.toml:25` sets `excessive-parameter-list` to `error` at threshold 5. Nothing new may be injected into it, which is why the new collaborator is stateless and takes its arguments per call.
+- **Comments cannot re-trigger servicing.** `QuoteEscalator`'s docblock records that a comment written through the gateway carries `AgentContext::STATE`, so the clarification comment cannot start another pass. It must go through the gateway for that reason, not merely for convenience.
 
 ## Components
 
@@ -50,20 +52,35 @@ Joins `isStructural()` and `hasNonPriceAsk()` on the same object, so the pipelin
 
 Placed **after** the structural and non-price guards and **before** the decider. Order is load-bearing: an ask that is both structural and ambiguous escalates as structural, because changing what is being sold is outside the mandate whether or not it is clear.
 
-```
+```php
 if ($ask->needsClarification()) {
-    if (ClarificationMarker::alreadyAsked($snapshot)) {
-        → escalate (NeedsHumanReview), like its two neighbours
-    }
-    → ask the buyer, mark the quote, return
+    return ClarificationRound::handle($gateway, $snapshot, $ask, $this->round, $this->logger);
 }
 ```
+
+One branch in the pipeline, exactly like the two guards above it. Which of the two things happens — ask, or escalate because we already asked — is `ClarificationRound`'s decision, not the pipeline's, because the marker is what settles it and `ClarificationRound` owns the marker.
 
 Both branches return before `OfferRound::play()`, so an ambiguous pass pays for the extract call only and skips the two model calls that class exists to spend — the same economy the two guards above it were written for.
 
 ### 3. The ask — `ClarificationRound`
 
-Its own small collaborator rather than a method on `OfferRound`, which is at its stated budget. It takes the gateway, posts the questions as a comment **verbatim**, writes the marker, and returns a `NegotiationPass`. No proposal, no offer, no baseline write, no reply prompt — so `NegotiationPass::$negotiateHash` and `$replyHash` are both null and `$extractHash` carries the prompt that produced the questions, which is exactly what #19's audit trail needs to attribute the ask.
+Its own small collaborator rather than a method on `OfferRound`, which is at its stated budget — and **stateless, with no constructor**, because `NegotiationPipeline` already has exactly five constructor parameters and `mago.toml` sets `excessive-parameter-list` to `error` at threshold 5. A sixth injected collaborator would fail the gate, and this repo restructures rather than suppresses.
+
+It therefore owns **both** branches of the decision, taking what it needs as arguments:
+
+```php
+public static function handle(
+    QuoteGatewayInterface $gateway,
+    QuoteSnapshot $snapshot,
+    InterpretedAsk $ask,
+    OfferRound $round,
+    LoggerInterface $logger,
+): NegotiationPass
+```
+
+`$round` is the collaborator the pipeline already injects, so the escalating branch reuses `OfferRound::escalated()` without the pipeline learning a new dependency. This keeps the pipeline's third guard a single `if` returning a pass, uniform with the two above it, and keeps the ask-versus-escalate decision in the class that owns the marker.
+
+On the asking branch it posts the questions as a comment **verbatim**, writes the marker, and returns a `NegotiationPass`. No proposal, no offer, no baseline write, no reply prompt — so `NegotiationPass::$negotiateHash` and `$replyHash` are both null and `$extractHash` carries the prompt that produced the questions, which is exactly what #19's audit trail needs to attribute the ask.
 
 Formatting: one question per line, in the order the model returned them, with no preamble the model did not write. Nothing is appended, so nothing can leak past what the extract prompt produced.
 
