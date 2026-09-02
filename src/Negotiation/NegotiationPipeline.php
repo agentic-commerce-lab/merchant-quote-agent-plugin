@@ -185,6 +185,17 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             );
         }
 
+        if ($ask->needsClarification()) {
+            // The model could not place the ask, so answering it means picking
+            // a line at random. Before this gate the pass fell through with an
+            // empty ask, landed in the grant band at roughly 0% and sent a
+            // generic reply that advanced hasNewBuyerAsk() — so the buyer's
+            // real question was answered with a no-op and then never asked
+            // again. Which of ask-or-escalate happens is ClarificationRound's
+            // call: the marker settles it, and it owns the marker.
+            return ClarificationRound::handle($gateway, $snapshot, $ask, $this->round, $this->logger);
+        }
+
         // `overall` IS the price band here: nothing composes a non-price ask
         // into the proposal, so NegotiationDecider aggregates the price band
         // with a bandless (granting) non-price decision. Reading its own

@@ -45,4 +45,15 @@ final readonly class InterpretedAsk
     {
         return $this->interpretation->negotiation?->hasAny() === true;
     }
+
+    /**
+     * True when the model asked the buyer something instead of guessing. The
+     * extract prompt reserves this for asks that are clear in intent but
+     * ambiguous in reference — "10% off" on a five-line quote — so answering
+     * one by picking a line is exactly the wrong move.
+     */
+    public function needsClarification(): bool
+    {
+        return $this->interpretation->clarificationQuestions !== [];
+    }
 }
