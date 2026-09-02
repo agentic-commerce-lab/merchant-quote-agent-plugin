@@ -82,7 +82,11 @@ With a customer present it renders a consent page: a Twig template extending the
 
 ### 3. Recording the grant — `POST /quote-agent/authorize`
 
-CSRF-protected by Shopware's storefront form handling. Re-loads and re-validates the record, then builds the `RequestContext`: `host` from the request; `headers` carrying the logged-in customer's `sw-context-token`; `platformProfileUri` and `platformProfile` replayed from the record; `signatureVerified: true`; `runtimeConfiguration` from AC's resolver.
+**not** CSRF-protected by the framework: Shopware removed CSRF tokens in 6.5, so nothing in `shopware/core` or `shopware/storefront` guards this POST. A cross-site submission is stopped only by `cookie_samesite: lax` (`framework.yaml:22`), which is a shop-overridable default — a shop setting `none` reopens silent CSRF, and nothing in code asserts that dependency.
+
+The form carries `hash('sha256', $handle)` and the handler requires it to match the hash of the session's *current* handle. That is **not** a CSRF defence and must not be read as one: the token mixes in no secret and no session material, so an agent that registered a handle can compute the token for it. What it does is bind the rendered page to the request its Allow authorises — without it, a top-level navigation carrying `?request_uri=` in another tab rewrites the session while the page still names the original agent, so informed consent for one agent authorises another.
+
+Re-loads and re-validates the record, then builds the `RequestContext`: `host` from the request; `headers` carrying the logged-in customer's `sw-context-token`; `platformProfileUri` and `platformProfile` replayed from the record; `signatureVerified: true`; `runtimeConfiguration` from AC's resolver.
 
 Calls `IdentityLinkingCapabilityInterface::authorize()`. AC re-checks the client binding, resolves the customer, mints a real authorization code through its own store, and returns `redirect_to` already carrying `code`, `state` and `iss`. We mark the record consumed and `302` there.
 
