@@ -25,7 +25,15 @@ An agent that wants to negotiate for a customer needs an access token issued by 
 
 The wall is `OAuthClientBindingValidator::assertClientId()`, which requires all of: `client_id` is an `https` URI; `$context->platformProfileUri` and `$context->platformProfile` are both non-null; the request signature verified; and `$context->platformProfileUri === $clientId` exactly. A browser sends neither a `UCP-Agent` header nor an RFC 9421 signature, so **no browser request can ever satisfy this**. Adding a `302` to the existing endpoint would not help.
 
-`authorize()` additionally requires a logged-in customer's `sw-context-token` (`contextToken()`, ~line 226) and throws when the resolved context carries no customer. Nothing in the shop renders a consent screen: neither released AC 1.2.0 nor the unreleased fork at `~/projects/agentic-commerce` has a storefront controller for it — both ship only `Storefront/Robots/ReferringSalesChannelRobotsSubscriber.php`.
+`authorize()` additionally requires a logged-in customer's `sw-context-token` (`contextToken()`, ~line 226) and throws when the resolved context carries no customer.
+
+**Correction, 2026-09-02 — the original premise here was wrong.** This section previously claimed that "nothing in the shop renders a consent screen: neither released AC 1.2.0 nor the unreleased fork has a storefront controller for it — both ship only `Storefront/Robots/`". That is a true statement about `src/Storefront/`, which was the only directory searched, presented as a claim about the whole tree.
+
+Released AC 1.2.0 — what the target shops run — genuinely has no consent page, so the feature below is needed there. But **the unreleased fork does ship one**: `src/Ucp/Identity/Consent/Controller/OAuthConsentController.php`, storefront-scoped, GET and POST at `frontend.ucp.consent`, with a login redirect and a translated scope list, on `quote-management` and sibling branches. It was missed because it lives under `src/Ucp/Identity/Consent/` rather than `src/Storefront/`.
+
+It also solves the problem differently, and in one respect better: its `signatureVerified` occurrence count is zero. It authenticates the **customer**, allowlists the client host, and lets the token endpoint's own signature bind the client — so it never synthesizes a verified-signature claim at all. The design below does synthesize one, which is why "The security boundary" exists and why `AgentAuthorizationContextFactory` is the one class that does not port upstream cleanly.
+
+**Decision, taken with the plugin owner:** build this in the plugin anyway. That fork branch is not heading for AC `main` in the near future, and the shops this must run against are on 1.2.0, which has no consent page. If the fork's flow ever does land in `main`, both routes would exist and this feature becomes dead weight carrying a forgeable claim the AC one avoids — at which point the honest move is to delete the consent controller and the context factory and keep the storage, registrar and console command, which port unchanged.
 
 The insight this design turns on: **the browser hop does not need to authenticate the agent, because the agent can be authenticated one step earlier.** Split the flow in two — a signed machine request that registers the intent, and an unsigned browser visit that carries only an opaque handle to it.
 
