@@ -1415,18 +1415,18 @@ print('snippets valid, %d keys each' % len(a))
 ```bash
 scripts/sync-to-shop.sh
 docker exec -u www-data -w /var/www/html merchant-quote-shop php bin/console cache:clear -n
-docker exec -u www-data -w /var/www/html merchant-quote-shop php bin/console administration:build
+docker exec -u www-data -w /var/www/html merchant-quote-shop php bin/build-administration.sh
 ```
 
 Then in the Administration: open the new **Agent access** entry, pick the storefront sales channel, add `agent.example` to Agent domains, save, and confirm with:
 
 ```bash
-docker exec -u www-data -w /var/www/html merchant-quote-shop php bin/console ucp:config:get --sales-channel-id=<id>
+docker exec -u www-data -w /var/www/html merchant-quote-shop php bin/console ucp:config:show --sales-channel=<id>
 ```
 
 Expected: `agentAllowlist` contains `agent.example`, and `signaturePolicy`, `enabledCapabilities` and the other console-managed keys are unchanged — that is the merge behaviour the design relies on. **Then remove the entry again** so the shop is left as you found it, and report both outputs.
 
-If `administration:build` is unavailable or fails in this container, say so in your report rather than skipping the manual check silently.
+If `bin/build-administration.sh` is unavailable or fails in this container, say so in your report rather than skipping the manual check silently.
 
 - [ ] **Step 6: Commit**
 

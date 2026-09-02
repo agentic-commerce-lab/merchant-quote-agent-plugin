@@ -209,13 +209,16 @@ addresses, blocked metadata hosts). It is deliberately absent from
 `config.xml` and from any settings screen a merchant can reach — widening
 which agents are even checked is not a decision for a settings form.
 
-**Agentic Commerce has its own, differently-scoped `allowAnyAgent`.** Its
-config API's key list carries a key of the same name, returned in that
-plugin's own config response. Ours is a different key in a different store —
-`MerchantQuoteAgentPlugin.config.allowAnyAgent` in `system_config` — and
-setting one does nothing for the other. Reading Agentic Commerce's key list
-and assuming this plugin's console command sets that key is the natural
-mistake; it does not.
+**A key of this name once existed in an Agentic Commerce fork, and a leftover
+row carrying it breaks the shop.** The installed 1.2.0 knows nothing about
+`allowAnyAgent` — the name appears nowhere in its source, and
+`UcpConfig::CONFIG_KEYS` (sixteen entries) does not list it, so its config
+model rejects it as an unsupported field and throws on *every* read of that
+row. That is not hypothetical: a fork-era row on the dev shop made every
+`/ucp/*` request fail. The switch documented here is ours alone —
+`MerchantQuoteAgentPlugin.config.allowAnyAgent` in `system_config`, set only
+by the console command above — and it must never be added to Agentic
+Commerce's config row.
 
 **On FrankenPHP or RoadRunner — Shopware's other supported runtime, alongside
 php-fpm — the switch widens the installation-wide list for exactly one request
@@ -232,9 +235,8 @@ which is exactly what this switch exists to prevent. Under php-fpm, one
 request per process, this is invisible. It is not fixed: making the two
 middle definitions in that chain non-shared is about six lines and would be
 safe — the fetcher's cache is a repository, not in-memory state — but buys
-nothing while the listener above them is shared regardless, and Agentic
-Commerce's own decorator on `AgentProfileFetcherInterface` is a fourth shared
-holder in the same chain. The per-sales-channel gates are unaffected by any of
+nothing while the listener above them is shared regardless — the listener is
+what the kernel actually holds. The per-sales-channel gates are unaffected by any of
 this: that decorator reads the presented header fresh on every request,
 worker or not.
 
