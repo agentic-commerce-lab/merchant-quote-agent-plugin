@@ -2,22 +2,18 @@
 """Interactive UCP buyer agent for testing the merchant quote agent end to end.
 
 Plays the role of an autonomous B2B buying agent against a live shop:
-discovers the shop's UCP profile, finds a product, has the human sign in from
-a browser, files an RFQ, then follows the negotiation until it settles.
+discovers the shop's UCP profile, finds a product, sends the human through the
+shop's own sign-in and consent page, files an RFQ, then follows the
+negotiation until it settles.
 
-No credential is ever typed at this script. It publishes its own signed UCP
-profile on an ngrok tunnel and serves a sign-in page there; the email and
-password go from that page straight to the shop's Store API, and the agent
-only ever holds the anonymous context token it created itself, which the
-sign-in attaches a customer to. The OAuth access token it exchanges that for
-lives in this process's memory and nowhere else.
-
-Note on the flow: the shop's identity-linking capability has no browser-facing
-authorize page. /ucp/v1/oauth/authorize answers with JSON and requires both a
-signed UCP-Agent request and a logged-in customer's sw-context-token, so the
-redirect-style flow an OAuth client would normally use does not exist here.
-PKCE and the authorization-code exchange are still real; only the consent step
-is served locally. See login() for the detail.
+No credential is ever typed at or seen by this script. It publishes its own
+signed UCP profile on an ngrok tunnel, registers a PKCE authorization request
+with the shop, and opens the shop's own `authorization_url` in the browser —
+the shop authenticates the customer through its storefront login and renders
+the consent page itself. This agent never needs a Store API access key: it
+only gets back an authorization code on the tunnel's /callback, which it
+exchanges for an OAuth access token that lives in this process's memory and
+nowhere else.
 
 Requires: python3 (stdlib only), `openssl`, `ngrok` on PATH.
 Run `--selftest` for the offline checks.
@@ -54,7 +50,7 @@ POLL_SECONDS = 5
 ACTIONABLE = "replied"
 TERMINAL = {"accepted", "declined", "expired", "withdrawn", "cancelled"}
 
-STATE = {"caps": {}, "jwk": None, "key": None, "context_token": None}
+STATE = {"caps": {}, "jwk": None, "key": None}
 SIGNED_IN = threading.Event()
 
 
@@ -225,7 +221,6 @@ def call(
     agent=None,
     label="",
     quiet=False,
-    context_token=None,
 ):
     url = canonical_uri(url)
     if form is not None:
@@ -247,8 +242,6 @@ def call(
         headers["UCP-Agent"] = f'profile="{agent}"'
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    if context_token:
-        headers["sw-context-token"] = context_token
 
     request = urllib.request.Request(url, data=raw or None, headers=headers, method=method)
     try:
@@ -280,61 +273,6 @@ def get_json(url: str) -> dict:
 # --------------------------------------------------------------------------
 # the agent's own profile + OAuth redirect, served on the tunnel
 # --------------------------------------------------------------------------
-LOGIN_PAGE = """<!doctype html>
-<title>Authorize the buying agent</title>
-<style>
- body{font:15px/1.5 system-ui,sans-serif;max-width:26rem;margin:12vh auto;padding:0 1.5rem;color:#111}
- h1{font-size:1.2rem;margin:0 0 .25rem}
- p.sub{color:#666;margin:0 0 1.5rem}
- label{display:block;margin:.9rem 0 .2rem;font-weight:600;font-size:.85rem}
- input{width:100%%;padding:.55rem .6rem;border:1px solid #bbb;border-radius:6px;font-size:1rem}
- button{margin-top:1.3rem;width:100%%;padding:.6rem;border:0;border-radius:6px;
-        background:#0b7285;color:#fff;font-size:1rem;font-weight:600;cursor:pointer}
- button:disabled{background:#8fa8ad}
- #msg{margin-top:1rem;padding:.6rem .7rem;border-radius:6px;display:none;font-size:.9rem}
- .err{background:#fde8e8;color:#8a1c1c;display:block!important}
- .ok{background:#e6f4ea;color:#14532d;display:block!important}
- code{background:#f1f3f5;padding:.1rem .3rem;border-radius:3px;font-size:.85em}
-</style>
-<h1>Authorize the buying agent</h1>
-<p class="sub">Sign in as the customer the agent should negotiate for. Your credentials
-go straight from this browser to <code>%(shop)s</code> — the agent never sees them.</p>
-<form id="f">
- <label for="e">Email</label><input id="e" type="email" autocomplete="username" required autofocus>
- <label for="p">Password</label><input id="p" type="password" autocomplete="current-password" required>
- <button id="b" type="submit">Sign in and authorize</button>
-</form>
-<div id="msg"></div>
-<script>
-const SHOP=%(shop_json)s, KEY=%(key_json)s, SEED=%(seed_json)s;
-const msg=document.getElementById('msg'), btn=document.getElementById('b');
-function say(t,cls){msg.textContent=t;msg.className=cls;}
-document.getElementById('f').addEventListener('submit',async e=>{
-  e.preventDefault(); btn.disabled=true; say('Signing in…','');
-  try{
-    const r=await fetch(SHOP+'/store-api/account/login',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Accept':'application/json',
-               'sw-access-key':KEY,'sw-context-token':SEED},
-      body:JSON.stringify({username:document.getElementById('e').value,
-                           password:document.getElementById('p').value})});
-    const d=await r.json().catch(()=>({}));
-    if(!r.ok){
-      const m=(d.errors&&d.errors[0]&&(d.errors[0].detail||d.errors[0].title))||('HTTP '+r.status);
-      say(m,'err'); btn.disabled=false; return;
-    }
-    // Shopware regenerates the context token on login; prefer the new one.
-    const tok=d.contextToken||r.headers.get('sw-context-token')||SEED;
-    await fetch('/logged-in',{method:'POST',headers:{'Content-Type':'application/json'},
-                              body:JSON.stringify({contextToken:tok})});
-    say('Authorized. You can close this tab and go back to the terminal.','ok');
-    document.getElementById('f').remove();
-  }catch(err){ say('Could not reach the shop: '+err,'err'); btn.disabled=false; }
-});
-</script>
-"""
-
-
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         print(f"[tunnel] {self.command} {self.path}", flush=True)
@@ -360,43 +298,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 ).encode(),
                 "application/json",
             )
-        elif parsed.path == "/login":
-            self._send(
-                (
-                    LOGIN_PAGE
-                    % {
-                        "shop": STATE["shop"],
-                        "shop_json": json.dumps(STATE["shop"]),
-                        "key_json": json.dumps(STATE["access_key"]),
-                        "seed_json": json.dumps(STATE["seed_token"]),
-                    }
-                ).encode(),
-                "text/html; charset=utf-8",
-            )
         elif parsed.path == "/callback":
-            # Unused by the shop (authorize answers with JSON, not a redirect),
-            # but redirect_uri is a required parameter and must share the
-            # profile origin, so the path exists rather than 404s.
-            self._send(b"<h1>Authorized.</h1>", "text/html")
+            STATE["callback"] = dict(urllib.parse.parse_qsl(parsed.query))
+            SIGNED_IN.set()
+            self._send(b"<h1>Authorized.</h1><p>Back to the terminal.</p>", "text/html")
         else:
             self._send(b"not found", "text/plain", 404)
-
-    def do_POST(self):
-        if urllib.parse.urlparse(self.path).path != "/logged-in":
-            self._send(b"not found", "text/plain", 404)
-            return
-        length = int(self.headers.get("Content-Length") or 0)
-        try:
-            payload = json.loads(self.rfile.read(length).decode() or "{}")
-        except ValueError:
-            payload = {}
-        token = payload.get("contextToken")
-        if not isinstance(token, str) or not token:
-            self._send(b'{"error":"no contextToken"}', "application/json", 400)
-            return
-        STATE["context_token"] = token
-        SIGNED_IN.set()
-        self._send(b'{"ok":true}', "application/json")
 
 
 def start_server() -> int:
@@ -568,87 +475,54 @@ def pick_product(rest: str, agent: str) -> tuple:
 # --------------------------------------------------------------------------
 # 4. login
 # --------------------------------------------------------------------------
-def seed_context_token(shop: str, access_key: str) -> str:
-    """A fresh, anonymous Store API context token for the browser to log in.
+def login(shop: str, meta: dict, agent: str, redirect: str) -> str:
+    """Register the request, send the human to the shop, exchange the code.
 
-    The agent creates it, so the only thing it ever learns from the browser is
-    this same token with a customer attached to it — never a credential.
+    The consent page is the shop's own now: it signs the customer in through
+    the storefront login and renders the grant. This agent never sees a
+    credential, and no longer needs a Store API access key to get one.
     """
-    request = urllib.request.Request(
-        f"{shop}/store-api/context",
-        headers={"sw-access-key": access_key, "Accept": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            token = json.loads(response.read().decode()).get("token")
-    except urllib.error.HTTPError as error:
-        sys.exit(
-            f"[fatal] Store API refused the access key (HTTP {error.code}).\n"
-            f"        {error.read().decode()[:300]}\n"
-            "        Admin -> Sales Channels -> your channel -> API access -> Access key."
-        )
-    if not token:
-        sys.exit("[fatal] the Store API returned no context token")
-    return token
-
-
-def login(shop: str, meta: dict, agent: str, redirect: str, tunnel: str, access_key: str) -> str:
-    """Browser sign-in, then the signed authorization-code exchange.
-
-    The shop's identity-linking capability has no browser-facing authorize
-    page: /ucp/v1/oauth/authorize answers with JSON and demands both a signed
-    UCP-Agent request and a logged-in customer's sw-context-token. So the human
-    half happens on a page this agent serves, which posts the credentials
-    straight to the shop's Store API from the browser, and the machine half is
-    this signed call. PKCE and the code exchange are unchanged.
-    """
-    STATE["shop"] = shop
-    STATE["access_key"] = access_key
-    STATE["seed_token"] = seed_context_token(shop, access_key)
-
-    page = f"{tunnel}/login"
-    print(f"\n[login] opening the sign-in page: {page}")
-    print("[login] your email and password go from the browser straight to the shop;")
-    print("[login] this script only ever holds the context token it created itself.")
-    webbrowser.open(page)
-
-    print("[login] waiting for you to sign in (10 min)...")
-    if not SIGNED_IN.wait(600):
-        sys.exit("[fatal] nobody signed in within 10 minutes")
-    context_token = STATE["context_token"]
-    print("[login] customer session linked")
-
     verifier = b64u(secrets.token_bytes(32))
     challenge = b64u(hashlib.sha256(verifier.encode()).digest())
     expected_state = b64u(secrets.token_bytes(16))
-    authorized = call(
-        "GET",
-        meta["authorization_endpoint"]
-        + "?"
-        + urllib.parse.urlencode(
-            {
-                "response_type": "code",
-                "client_id": agent,
-                "redirect_uri": redirect,
-                "scope": " ".join(meta.get("scopes_supported", [])),
-                "state": expected_state,
-                "code_challenge": challenge,
-                "code_challenge_method": "S256",
-            }
-        ),
+
+    registered = call(
+        "POST",
+        f"{shop}/ucp/quote-agent/authorization-requests",
+        {
+            "client_id": agent,
+            "redirect_uri": redirect,
+            "scope": " ".join(meta.get("scopes_supported", [])),
+            "state": expected_state,
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
         agent=agent,
-        context_token=context_token,
-        label="oauth.authorize",
+        label="authorization-request",
         quiet=True,
     )
-    if "__error__" in authorized:
-        sys.exit("[fatal] the shop refused to authorize this agent — see the response above.")
-    if authorized.get("state") != expected_state:
-        sys.exit(f"[fatal] OAuth state mismatch — discarding. got {authorized.get('state')!r}")
-    code = authorized.get("code")
+    if "__error__" in registered:
+        sys.exit("[fatal] the shop refused to register the authorization request - see above.")
+
+    url = registered.get("authorization_url")
+    if not url:
+        sys.exit(f"[fatal] no authorization_url in the response: {registered}")
+
+    print(f"\n[login] opening the shop's own sign-in and consent page:\n        {url}\n")
+    webbrowser.open(url)
+
+    print("[login] waiting for consent to come back over the tunnel (10 min)...")
+    if not SIGNED_IN.wait(600):
+        sys.exit("[fatal] no consent callback within 10 minutes")
+
+    callback = STATE["callback"]
+    if callback.get("error"):
+        sys.exit(f"[fatal] consent was refused: {callback['error']}")
+    if callback.get("state") != expected_state:
+        sys.exit(f"[fatal] OAuth state mismatch - discarding. got {callback.get('state')!r}")
+    code = callback.get("code")
     if not code:
-        sys.exit(f"[fatal] no authorization code in the authorize response: {authorized}")
-    print(f"[login] authorized for customer {authorized.get('subject')}")
+        sys.exit(f"[fatal] no authorization code in the callback: {callback}")
 
     granted = call(
         "POST",
@@ -667,7 +541,7 @@ def login(shop: str, meta: dict, agent: str, redirect: str, tunnel: str, access_
     token = granted.get("access_token")
     if not token:
         sys.exit(f"[fatal] no access_token in the token response: {granted}")
-    print(f"[login] token acquired (scope: {granted.get('scope') or '(none)'}) — stays in memory only")
+    print(f"[login] token acquired (scope: {granted.get('scope') or '(none)'}) - memory only")
     return token
 
 
@@ -788,7 +662,7 @@ def negotiate(quotes: str, quote: dict, token: str, agent: str, currency: str) -
 
 
 # --------------------------------------------------------------------------
-def run(shop: str, access_key: str) -> None:
+def run(shop: str) -> None:
     STATE["key"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".ucp-agent-key.pem")
     STATE["jwk"] = make_key(STATE["key"])
     print(f"[agent] ephemeral ES256 key, kid {KID}")
@@ -816,7 +690,7 @@ def run(shop: str, access_key: str) -> None:
             f"({percent:g}% off), {money(round(asking * quantity, 2), currency)} total"
         )
 
-        token = login(shop, oauth, agent, redirect, tunnel, access_key)
+        token = login(shop, oauth, agent, redirect)
 
         created = call(
             "POST",
@@ -890,12 +764,6 @@ def selftest() -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--shop", help="shop base URL; prompted for if omitted")
-    parser.add_argument(
-        "--access-key",
-        default=os.environ.get("SW_ACCESS_KEY", ""),
-        help="sales channel Store API access key (public; also read from $SW_ACCESS_KEY). "
-        "Admin -> Sales Channels -> your channel -> API access.",
-    )
     parser.add_argument("--selftest", action="store_true", help="run the offline checks and exit")
     args = parser.parse_args()
 
@@ -904,9 +772,6 @@ if __name__ == "__main__":
         sys.exit(0)
 
     try:
-        run(
-            (args.shop or ask("Shop address", DEFAULT_SHOP)).rstrip("/"),
-            args.access_key or ask("Store API access key"),
-        )
+        run((args.shop or ask("Shop address", DEFAULT_SHOP)).rstrip("/"))
     except KeyboardInterrupt:
         print("\n[abort]")
