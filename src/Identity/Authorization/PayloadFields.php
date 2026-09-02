@@ -14,6 +14,11 @@ use Ucp\Sdk\Exception\ValidationException;
  * registrar needs the value back, and it lives in `Ucp\Quote`, which would
  * couple identity linking to quotes — the design doc for this flow never
  * mentions quotes, so a sibling here keeps that seam clean.
+ *
+ * `redirect_uri` is NOT here: its rules mirror Agentic Commerce's client
+ * binding and are a security check in their own right, so they live in
+ * {@see RedirectUriRule} — together the two exceed the class-level
+ * cyclomatic-complexity gate anyway.
  */
 final class PayloadFields
 {
@@ -38,36 +43,26 @@ final class PayloadFields
     }
 
     /**
-     * A `redirect_uri` gets no signature-verification pass of its own: the
-     * grant path is saved by AC re-checking it inside authorize(), but denial
-     * never reaches AC, so a bad value stored here makes the shop redirect a
-     * browser wherever a verified agent asked — this is that fail-fast check,
-     * against exactly what OAuth requires of a redirect URI: an http(s) scheme
-     * and no fragment (a fragment is never sent to a server, so a query string
-     * appended after one — as the denial redirect does — never reaches the
-     * agent, and the shop reports success against a URL nobody receives).
+     * An S256 PKCE challenge is the base64url encoding of a SHA-256 digest, so
+     * it is always exactly 43 unpadded base64url characters (RFC 7636 §4.2).
+     * Anything else cannot be a challenge the agent will be able to answer, and
+     * the mismatch would surface at the token endpoint minutes later, after a
+     * human has already consented. AC's own consent path checks the shape for
+     * the same reason; the registrar is the earliest place we can.
      *
      * @param array<string, mixed> $payload
      *
      * @throws ValidationException
      */
-    public function requiredRedirectUri(array $payload, string $key): string
+    public function requiredCodeChallenge(array $payload, string $key): string
     {
         $value = $this->requiredString($payload, $key);
-        $parts = parse_url($value);
 
-        if (!\is_array($parts) || !\in_array($parts['scheme'] ?? null, ['http', 'https'], strict: true)) {
-            throw new ValidationException(\sprintf('"%s" must use the http or https scheme.', $key), [\sprintf(
-                '$.%s must be an http(s) URL',
-                $key,
-            )]);
-        }
-
-        if (\array_key_exists('fragment', $parts)) {
-            throw new ValidationException(\sprintf('"%s" must not include a fragment.', $key), [\sprintf(
-                '$.%s must not include a fragment',
-                $key,
-            )]);
+        if (preg_match('/^[A-Za-z0-9_-]{43}$/', $value) !== 1) {
+            throw new ValidationException(
+                \sprintf('"%s" must be a 43-character base64url-encoded S256 challenge.', $key),
+                [\sprintf('$.%s must be 43 base64url characters', $key)],
+            );
         }
 
         return $value;

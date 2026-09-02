@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Identity\Controller;
 
-use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentRequestGuard;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -24,11 +23,7 @@ final class AgentConsentControllerAuthorizeTest extends TestCase
     {
         $pending = AgentConsentControllerFixture::pending();
         $store = AgentConsentControllerFixture::store($pending, $pending);
-        $controller = new AgentConsentController(
-            $store,
-            new ConsentRequestGuard($store),
-            AgentConsentControllerFixture::completer(AgentConsentControllerFixture::identityLinking()),
-        );
+        $controller = AgentConsentControllerFixture::controller($store);
         $request = AgentConsentControllerFixture::authorizeRequest('the-handle');
         $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
         $container = AgentConsentControllerFixture::renderableContainer(
@@ -52,11 +47,7 @@ final class AgentConsentControllerAuthorizeTest extends TestCase
     {
         $pending = AgentConsentControllerFixture::pending();
         $store = AgentConsentControllerFixture::store($pending, $pending);
-        $controller = new AgentConsentController(
-            $store,
-            new ConsentRequestGuard($store),
-            AgentConsentControllerFixture::completer(AgentConsentControllerFixture::identityLinking()),
-        );
+        $controller = AgentConsentControllerFixture::controller($store);
         $request = AgentConsentControllerFixture::authorizeRequest('the-handle');
         $context = AgentConsentControllerFixture::customerContext(
             $this->createMock(SalesChannelContext::class),
@@ -82,11 +73,7 @@ final class AgentConsentControllerAuthorizeTest extends TestCase
     {
         $pending = AgentConsentControllerFixture::pending();
         $store = AgentConsentControllerFixture::store($pending, $pending);
-        $controller = new AgentConsentController(
-            $store,
-            new ConsentRequestGuard($store),
-            AgentConsentControllerFixture::completer(AgentConsentControllerFixture::identityLinking()),
-        );
+        $controller = AgentConsentControllerFixture::controller($store);
         $request = AgentConsentControllerFixture::authorizeRequest('the-handle');
         $context = AgentConsentControllerFixture::customerContext(
             $this->createMock(SalesChannelContext::class),

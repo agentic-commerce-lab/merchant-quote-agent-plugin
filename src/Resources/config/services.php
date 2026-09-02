@@ -49,6 +49,8 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentRequestGuard;
 use MerchantQuoteAgentPlugin\Identity\Authorization\DbalPendingAuthorizationStore;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PayloadFields;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorizationStoreInterface;
+use MerchantQuoteAgentPlugin\Identity\Authorization\RedirectUriRule;
+use MerchantQuoteAgentPlugin\Identity\Authorization\RequestRuntimeConfigurationReader;
 use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
@@ -141,10 +143,19 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(DbalPendingAuthorizationStore::class);
     $services->alias(PendingAuthorizationStoreInterface::class, DbalPendingAuthorizationStore::class);
     $services->set(PayloadFields::class);
+    $services->set(RedirectUriRule::class);
     $services->set(AgentAuthorizationRegistrar::class);
     $services->set(AgentAuthorizationContextFactory::class);
     $services->set(SalesChannelDomainUrlReader::class);
     $services->set(ConsentRequestGuard::class);
+    // Agentic Commerce aliases RuntimeConfigurationResolverInterface to its own
+    // ShopwareRuntimeConfigurationResolver (its services.php:342) — the same
+    // property that makes IdentityLinkingCapabilityInterface injectable above,
+    // so this needs no implementation of ours. Consent cannot work without it:
+    // see AgentAuthorizationContextFactory on why a null runtimeConfiguration
+    // makes AC refuse every grant.
+    $services->set(RequestRuntimeConfigurationReader::class);
+    // LoggerInterface is autowired, as it is for TerminalOutcomeSubscriber.
     $services->set(ConsentGrantCompleter::class);
     $services->set(AgentAuthorizationRequestController::class)->tag('controller.service_arguments');
 

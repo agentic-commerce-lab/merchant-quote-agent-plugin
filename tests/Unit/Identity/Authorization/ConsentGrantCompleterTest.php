@@ -9,24 +9,27 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentGrantCompleter;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorization;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use Ucp\Sdk\Contract\IdentityLinkingCapabilityInterface;
-use Ucp\Sdk\Model\Identity\OAuthAuthorizationRequest;
-use Ucp\Sdk\Model\Identity\OAuthMetadata;
-use Ucp\Sdk\Model\Identity\OAuthTokenRequest;
-use Ucp\Sdk\Model\Identity\OAuthTokenResponse;
-use Ucp\Sdk\Model\Profile\CapabilityDescriptor;
+use Ucp\Sdk\Exception\OAuthException;
 use Ucp\Sdk\Model\Profile\PlatformProfile;
-use Ucp\Sdk\Model\RequestContext;
 
 #[CoversClass(ConsentGrantCompleter::class)]
 final class ConsentGrantCompleterTest extends TestCase
 {
     public function testItSendsOnlyTheClaimedRecordsFieldsAndReturnsTheRedirectTarget(): void
     {
-        $identityLinking = $this->identityLinking(['redirect_to' => 'https://agent.example/callback?code=abc']);
-        $completer = new ConsentGrantCompleter(new AgentAuthorizationContextFactory(), $identityLinking);
+        $identityLinking = IdentityLinkingCapabilityFixture::guarded([
+            'redirect_to' => 'https://agent.example/callback?code=abc',
+        ]);
+        $completer = $this->completer($identityLinking);
 
-        $redirectTo = $completer->redirectTarget($this->claimed(), 'shop.example', 'ctx-token');
+        $redirectTo = $completer->redirectTarget(
+            $this->claimed(),
+            'shop.example',
+            'ctx-token',
+            IdentityLinkingCapabilityFixture::runtimeConfiguration(),
+        );
 
         self::assertSame('https://agent.example/callback?code=abc', $redirectTo);
         self::assertNotNull($identityLinking->received);
@@ -38,24 +41,98 @@ final class ConsentGrantCompleterTest extends TestCase
         self::assertSame('S256', $identityLinking->received->codeChallengeMethod);
     }
 
+    /**
+     * The context reaching AC must carry the runtime configuration, because
+     * AC reads it before anything else. Asserted directly rather than only
+     * through the double's guard, so the reason a regression fails is legible.
+     */
+    public function testTheContextItBuildsCarriesTheRuntimeConfigurationAcChecksFirst(): void
+    {
+        $identityLinking = IdentityLinkingCapabilityFixture::guarded();
+
+        $this->completer($identityLinking)->redirectTarget(
+            $this->claimed(),
+            'shop.example',
+            'ctx-token',
+            IdentityLinkingCapabilityFixture::runtimeConfiguration(),
+        );
+
+        self::assertNotNull($identityLinking->receivedContext);
+        self::assertNotNull(
+            $identityLinking->receivedContext->runtimeConfiguration,
+            'a null runtimeConfiguration makes AC refuse every grant',
+        );
+        self::assertContains(
+            IdentityLinkingCapabilityFixture::DESCRIPTOR,
+            $identityLinking->receivedContext->runtimeConfiguration->enabledCapabilities,
+        );
+    }
+
+    /**
+     * AC's checks are the authoritative ones and the handle is already spent
+     * by the time this runs, so a refusal must come back as null for the
+     * caller to render — not escape a storefront controller as a 500.
+     */
+    public function testAnAgenticCommerceRefusalComesBackAsNull(): void
+    {
+        $identityLinking = IdentityLinkingCapabilityFixture::guarded(
+            refusal: new OAuthException('OAuth redirect URI must use the signed platform profile origin.'),
+        );
+
+        $redirectTo = $this->completer($identityLinking)->redirectTarget(
+            $this->claimed(),
+            'shop.example',
+            'ctx-token',
+            IdentityLinkingCapabilityFixture::runtimeConfiguration(),
+        );
+
+        self::assertNull($redirectTo);
+    }
+
+    /** A channel with the capability switched off is a refusal too, not a crash. */
+    public function testACapabilityDisabledForTheChannelComesBackAsNull(): void
+    {
+        $redirectTo = $this->completer(IdentityLinkingCapabilityFixture::guarded())->redirectTarget(
+            $this->claimed(),
+            'shop.example',
+            'ctx-token',
+            IdentityLinkingCapabilityFixture::capabilityDisabledConfiguration(),
+        );
+
+        self::assertNull($redirectTo);
+    }
+
     public function testItThrowsWhenNoRedirectTargetComesBack(): void
     {
-        $completer = new ConsentGrantCompleter(new AgentAuthorizationContextFactory(), $this->identityLinking([]));
+        $completer = $this->completer(IdentityLinkingCapabilityFixture::guarded([]));
 
         $this->expectException(\RuntimeException::class);
 
-        $completer->redirectTarget($this->claimed(), 'shop.example', 'ctx-token');
+        $completer->redirectTarget(
+            $this->claimed(),
+            'shop.example',
+            'ctx-token',
+            IdentityLinkingCapabilityFixture::runtimeConfiguration(),
+        );
     }
 
     public function testItThrowsWhenTheRedirectTargetIsAnEmptyString(): void
     {
-        $completer = new ConsentGrantCompleter(new AgentAuthorizationContextFactory(), $this->identityLinking([
-            'redirect_to' => '',
-        ]));
+        $completer = $this->completer(IdentityLinkingCapabilityFixture::guarded(['redirect_to' => '']));
 
         $this->expectException(\RuntimeException::class);
 
-        $completer->redirectTarget($this->claimed(), 'shop.example', 'ctx-token');
+        $completer->redirectTarget(
+            $this->claimed(),
+            'shop.example',
+            'ctx-token',
+            IdentityLinkingCapabilityFixture::runtimeConfiguration(),
+        );
+    }
+
+    private function completer(IdentityLinkingCapabilityInterface $identityLinking): ConsentGrantCompleter
+    {
+        return new ConsentGrantCompleter(new AgentAuthorizationContextFactory(), $identityLinking, new NullLogger());
     }
 
     private function claimed(): PendingAuthorization
@@ -72,40 +149,5 @@ final class ConsentGrantCompleterTest extends TestCase
             'challenge-value',
             'S256',
         );
-    }
-
-    /** @param array<string, mixed> $authorizeResult */
-    private function identityLinking(array $authorizeResult): IdentityLinkingCapabilityInterface
-    {
-        return new class($authorizeResult) implements IdentityLinkingCapabilityInterface {
-            public ?OAuthAuthorizationRequest $received = null;
-
-            /** @param array<string, mixed> $authorizeResult */
-            public function __construct(
-                private readonly array $authorizeResult,
-            ) {}
-
-            public function describe(): CapabilityDescriptor
-            {
-                throw new \LogicException('Not needed by this test.');
-            }
-
-            public function getMetadata(RequestContext $context): OAuthMetadata
-            {
-                throw new \LogicException('Not needed by this test.');
-            }
-
-            public function authorize(OAuthAuthorizationRequest $request, RequestContext $context): array
-            {
-                $this->received = $request;
-
-                return $this->authorizeResult;
-            }
-
-            public function issueToken(OAuthTokenRequest $request, RequestContext $context): OAuthTokenResponse
-            {
-                throw new \LogicException('Not needed by this test.');
-            }
-        };
     }
 }

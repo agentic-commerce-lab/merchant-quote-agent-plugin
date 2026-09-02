@@ -12,6 +12,7 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorization;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorizationStoreInterface;
 use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
+use MerchantQuoteAgentPlugin\Tests\Unit\Identity\Authorization\AgentAuthorizationRegistrarFixture;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Ucp\Sdk\Model\Profile\PlatformProfile;
 use Ucp\Sdk\Model\RequestContext;
@@ -28,8 +29,11 @@ final class AgentAuthorizationRequestControllerFixture
 
     public const CLIENT_ID = 'https://agent.example/.well-known/ucp';
 
-    /** The base {@see build()}'s domain reader stub returns, whatever domainId it is asked for. */
+    /** The base {@see domains()} returns for the domain it is asked about. */
     public const DOMAIN_BASE = 'https://shop.example';
+
+    /** The domain id {@see build()}'s context resolver reports for SALES_CHANNEL_ID. */
+    public const DOMAIN_ID = '0191d3d0a0b071bd9c1a0d9d1a3f9f0c';
 
     private function __construct() {}
 
@@ -57,7 +61,7 @@ final class AgentAuthorizationRequestControllerFixture
             'redirect_uri' => 'https://agent.example/callback',
             'scope' => 'dev.ucp.shopping.order:read',
             'state' => 'state-value',
-            'code_challenge' => 'challenge-value',
+            'code_challenge' => AgentAuthorizationRegistrarFixture::CODE_CHALLENGE,
             'code_challenge_method' => 'S256',
         ];
     }
@@ -91,8 +95,10 @@ final class AgentAuthorizationRequestControllerFixture
         };
     }
 
-    public static function build(PendingAuthorizationStoreInterface $store): AgentAuthorizationRequestController
-    {
+    public static function build(
+        PendingAuthorizationStoreInterface $store,
+        ?SalesChannelDomainUrlReader $domains = null,
+    ): AgentAuthorizationRequestController {
         $resolver = new class implements CustomerContextResolverInterface {
             #[\Override]
             public function resolveSalesChannel(RequestContext $context): SalesChannelResolution
@@ -101,7 +107,7 @@ final class AgentAuthorizationRequestControllerFixture
                     AgentAuthorizationRequestControllerFixture::SALES_CHANNEL_ID,
                     '0191d3d0a0b071bd9c1a0d9d1a3f9f0a',
                     '0191d3d0a0b071bd9c1a0d9d1a3f9f0b',
-                    '0191d3d0a0b071bd9c1a0d9d1a3f9f0c',
+                    AgentAuthorizationRequestControllerFixture::DOMAIN_ID,
                 );
             }
 
@@ -115,20 +121,38 @@ final class AgentAuthorizationRequestControllerFixture
             }
         };
 
-        $domains = new class extends SalesChannelDomainUrlReader {
+        return new AgentAuthorizationRequestController(
+            AgentAuthorizationRegistrarFixture::registrar($store),
+            $resolver,
+            $domains ?? self::domains(),
+        );
+    }
+
+    /**
+     * A RECORDING double. The argument matters as much as the return value:
+     * asking for the right domain id IS the sales-channel binding — the
+     * consent URL has to be built on the domain the agent registered against,
+     * not on whatever host the storefront answers on. A double that ignored
+     * its argument let the success test prove only that the base came from
+     * `urlFor()`, never that the right domain was asked for.
+     *
+     * @return SalesChannelDomainUrlReader&object{askedFor: list<?string>}
+     */
+    public static function domains(): object
+    {
+        return new class extends SalesChannelDomainUrlReader {
+            /** @var list<?string> */
+            public array $askedFor = [];
+
             public function __construct() {}
 
             #[\Override]
             public function urlFor(?string $domainId): ?string
             {
+                $this->askedFor[] = $domainId;
+
                 return AgentAuthorizationRequestControllerFixture::DOMAIN_BASE;
             }
         };
-
-        return new AgentAuthorizationRequestController(
-            new AgentAuthorizationRegistrar($store, new PayloadFields()),
-            $resolver,
-            $domains,
-        );
     }
 }

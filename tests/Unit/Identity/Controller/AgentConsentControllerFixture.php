@@ -6,10 +6,14 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Identity\Controller;
 
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationContextFactory;
 use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentGrantCompleter;
+use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentRequestGuard;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorization;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorizationStoreInterface;
+use MerchantQuoteAgentPlugin\Identity\Authorization\RequestRuntimeConfigurationReader;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
+use MerchantQuoteAgentPlugin\Tests\Unit\Identity\Authorization\IdentityLinkingCapabilityFixture;
 use PHPUnit\Framework\MockObject\MockObject;
+use Psr\Log\NullLogger;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\Content\Media\MediaUrlPlaceholderHandlerInterface;
 use Shopware\Core\Content\Seo\SeoUrlPlaceholderHandlerInterface;
@@ -25,13 +29,10 @@ use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 use Ucp\Sdk\Contract\IdentityLinkingCapabilityInterface;
-use Ucp\Sdk\Model\Identity\OAuthAuthorizationRequest;
-use Ucp\Sdk\Model\Identity\OAuthMetadata;
-use Ucp\Sdk\Model\Identity\OAuthTokenRequest;
-use Ucp\Sdk\Model\Identity\OAuthTokenResponse;
-use Ucp\Sdk\Model\Profile\CapabilityDescriptor;
+use Ucp\Sdk\Model\Config\RuntimeConfiguration;
+use Ucp\Sdk\Model\Http\HttpRequest;
 use Ucp\Sdk\Model\Profile\PlatformProfile;
-use Ucp\Sdk\Model\RequestContext;
+use Ucp\Sdk\Service\RuntimeConfigurationResolverInterface;
 
 /**
  * Collaborators for AgentConsentControllerTest's grant() coverage — fakes,
@@ -106,40 +107,52 @@ final class AgentConsentControllerFixture
         };
     }
 
-    /** A completer wired to a real AgentAuthorizationContextFactory and the given AC stub. */
-    public static function completer(IdentityLinkingCapabilityInterface $identityLinking): ConsentGrantCompleter
-    {
-        return new ConsentGrantCompleter(new AgentAuthorizationContextFactory(), $identityLinking);
+    /**
+     * The controller under test, wired to REAL collaborators throughout —
+     * only the store, the Agentic Commerce capability and the SDK's runtime
+     * configuration resolver are doubled.
+     *
+     * The capability double is {@see IdentityLinkingCapabilityFixture::guarded()},
+     * which replicates AC's real first statement, so every test that reaches
+     * a grant also proves the synthesized context would satisfy AC. Read that
+     * class before replacing it with something more permissive.
+     */
+    public static function controller(
+        PendingAuthorizationStoreInterface $store,
+        ?IdentityLinkingCapabilityInterface $identityLinking = null,
+        ?RuntimeConfiguration $runtimeConfiguration = null,
+    ): AgentConsentController {
+        return new AgentConsentController(
+            $store,
+            new ConsentRequestGuard($store),
+            new ConsentGrantCompleter(
+                new AgentAuthorizationContextFactory(),
+                $identityLinking ?? IdentityLinkingCapabilityFixture::guarded(),
+                new NullLogger(),
+            ),
+            self::runtimeConfigurationReader($runtimeConfiguration),
+        );
     }
 
-    /** @return IdentityLinkingCapabilityInterface&object{received: ?OAuthAuthorizationRequest} */
-    public static function identityLinking(): object
+    /**
+     * The REAL reader over a doubled SDK resolver: the Symfony-request-to-
+     * HttpRequest adaptation is exercised rather than stubbed away, and what
+     * comes back is a RuntimeConfiguration the capability double will accept.
+     */
+    public static function runtimeConfigurationReader(?RuntimeConfiguration $runtimeConfiguration = null): RequestRuntimeConfigurationReader
     {
-        return new class implements IdentityLinkingCapabilityInterface {
-            public ?OAuthAuthorizationRequest $received = null;
+        return new RequestRuntimeConfigurationReader(new class(
+            $runtimeConfiguration ?? IdentityLinkingCapabilityFixture::runtimeConfiguration(),
+        ) implements RuntimeConfigurationResolverInterface {
+            public function __construct(
+                private readonly RuntimeConfiguration $runtimeConfiguration,
+            ) {}
 
-            public function describe(): CapabilityDescriptor
+            public function resolve(HttpRequest $request): RuntimeConfiguration
             {
-                throw new \LogicException('Not needed by this fixture.');
+                return $this->runtimeConfiguration;
             }
-
-            public function getMetadata(RequestContext $context): OAuthMetadata
-            {
-                throw new \LogicException('Not needed by this fixture.');
-            }
-
-            public function authorize(OAuthAuthorizationRequest $request, RequestContext $context): array
-            {
-                $this->received = $request;
-
-                return ['redirect_to' => 'https://agent.example/callback?code=granted'];
-            }
-
-            public function issueToken(OAuthTokenRequest $request, RequestContext $context): OAuthTokenResponse
-            {
-                throw new \LogicException('Not needed by this fixture.');
-            }
-        };
+        });
     }
 
     /**

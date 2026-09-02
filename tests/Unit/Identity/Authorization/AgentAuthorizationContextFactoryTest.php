@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorization;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Ucp\Sdk\Model\Profile\PlatformProfile;
+use Ucp\Sdk\Model\RequestContext;
 
 #[CoversClass(AgentAuthorizationContextFactory::class)]
 final class AgentAuthorizationContextFactoryTest extends TestCase
@@ -36,9 +37,19 @@ final class AgentAuthorizationContextFactoryTest extends TestCase
         );
     }
 
+    private function forConsent(PendingAuthorization $pending): RequestContext
+    {
+        return (new AgentAuthorizationContextFactory())->forConsent(
+            $pending,
+            'shop.example',
+            'ctx-token',
+            IdentityLinkingCapabilityFixture::runtimeConfiguration(),
+        );
+    }
+
     public function testItReplaysTheVerifiedAgentAndCarriesTheCustomerContextToken(): void
     {
-        $context = (new AgentAuthorizationContextFactory())->forConsent($this->pending(), 'shop.example', 'ctx-token');
+        $context = $this->forConsent($this->pending());
 
         self::assertSame('shop.example', $context->host);
         self::assertSame('https://agent.example/.well-known/ucp', $context->platformProfileUri);
@@ -52,11 +63,32 @@ final class AgentAuthorizationContextFactoryTest extends TestCase
     {
         $pending = $this->pending();
 
-        $context = (new AgentAuthorizationContextFactory())->forConsent($pending, 'shop.example', 'ctx-token');
+        $context = $this->forConsent($pending);
 
         // These are exactly the three things AC's assertClientId() checks.
         self::assertTrue($context->signatureVerified);
         self::assertNotNull($context->platformProfile);
         self::assertSame($pending->clientId, $context->platformProfileUri);
+    }
+
+    /**
+     * assertClientId() is NOT the first thing AC runs — assertEnabled() is,
+     * and it reads a different field entirely. This test exists because the
+     * one above passed while the feature was dead: the factory left
+     * `runtimeConfiguration` null, so
+     * `UcpCapabilityCatalog::isEnabled(null, …)` returned false and
+     * authorize() threw 'Identity linking capability is disabled for this
+     * sales channel.' on every grant, before any of the three assertions
+     * above were ever consulted.
+     */
+    public function testItCarriesTheRuntimeConfigurationAcChecksBeforeTheClientBinding(): void
+    {
+        $context = $this->forConsent($this->pending());
+
+        self::assertNotNull($context->runtimeConfiguration);
+        self::assertContains(
+            IdentityLinkingCapabilityFixture::DESCRIPTOR,
+            $context->runtimeConfiguration->enabledCapabilities,
+        );
     }
 }

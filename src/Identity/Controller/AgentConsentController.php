@@ -7,8 +7,8 @@ namespace MerchantQuoteAgentPlugin\Identity\Controller;
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationRegistrar;
 use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentGrantCompleter;
 use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentRequestGuard;
-use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorization;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorizationStoreInterface;
+use MerchantQuoteAgentPlugin\Identity\Authorization\RequestRuntimeConfigurationReader;
 use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Controller\StorefrontController;
@@ -75,6 +75,7 @@ final class AgentConsentController extends StorefrontController
         private readonly PendingAuthorizationStoreInterface $store,
         private readonly ConsentRequestGuard $guard,
         private readonly ConsentGrantCompleter $completer,
+        private readonly RequestRuntimeConfigurationReader $runtimeConfiguration,
     ) {}
 
     /** @throws \Doctrine\DBAL\Exception */
@@ -125,7 +126,10 @@ final class AgentConsentController extends StorefrontController
         ]);
     }
 
-    /** @throws \Doctrine\DBAL\Exception */
+    /**
+     * @throws \Doctrine\DBAL\Exception
+     * @throws \JsonException
+     */
     #[Route(path: '/quote-agent/authorize', name: 'frontend.merchant_quote_agent.authorize.grant', methods: ['POST'])]
     public function grant(Request $request, SalesChannelContext $context): Response
     {
@@ -150,9 +154,18 @@ final class AgentConsentController extends StorefrontController
             return new RedirectResponse(PendingAuthorizationPresenter::denialUrl($claimed));
         }
 
-        $redirectTo = $this->completer->redirectTarget($claimed, $request->getHost(), $context->getToken());
+        $redirectTo = $this->completer->redirectTarget(
+            $claimed,
+            $request->getHost(),
+            $context->getToken(),
+            $this->runtimeConfiguration->forRequest($request),
+        );
 
-        return new RedirectResponse($redirectTo);
+        // Agentic Commerce refused (see ConsentGrantCompleter). Its checks are
+        // the authoritative ones, and the handle is already spent, so the only
+        // honest outcome left is the terminal page — never a 500 out of a
+        // storefront controller.
+        return $redirectTo === null ? $this->expiredResponse($request) : new RedirectResponse($redirectTo);
     }
 
     /** Clears the stale handle before rendering — every "expired" outcome is terminal. */
@@ -169,9 +182,12 @@ final class AgentConsentController extends StorefrontController
      */
     private function handle(Request $request): string
     {
-        $fromQuery = $request->query->get('request_uri');
+        // getString(), as grant() already uses for the form token: a
+        // non-scalar `?request_uri[]=` is a malformed request, answered with
+        // a 400 rather than silently read as "no handle".
+        $fromQuery = $request->query->getString('request_uri');
 
-        if (\is_string($fromQuery) && $fromQuery !== '') {
+        if ($fromQuery !== '') {
             $request->getSession()->set(self::SESSION_KEY, $fromQuery);
 
             return $fromQuery;
@@ -190,21 +206,5 @@ final class AgentConsentController extends StorefrontController
         $stashed = $request->getSession()->get(self::SESSION_KEY);
 
         return \is_string($stashed) ? $stashed : '';
-    }
-
-    public static function agentHost(PendingAuthorization $pending): string
-    {
-        return PendingAuthorizationPresenter::agentHost($pending);
-    }
-
-    /** @return list<string> */
-    public static function scopeList(PendingAuthorization $pending): array
-    {
-        return PendingAuthorizationPresenter::scopeList($pending);
-    }
-
-    public static function denialUrl(PendingAuthorization $pending): string
-    {
-        return PendingAuthorizationPresenter::denialUrl($pending);
     }
 }

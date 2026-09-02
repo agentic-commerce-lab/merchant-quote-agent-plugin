@@ -21,9 +21,12 @@ use Ucp\Sdk\Model\RequestContext;
  * unauthenticated agent into a verified context. `AgentAuthorizationRegistrarTest`
  * pins both directions; neither test should be deleted.
  *
- * The payload-field primitives live in {@see PayloadFields} to keep this
- * class within the project's maintainability gates — the same reason
- * src/Ucp/Quote/QuoteFieldAssertions.php exists.
+ * The payload-field primitives live in {@see PayloadFields}, and the
+ * `redirect_uri` rules — which mirror Agentic Commerce's client binding, and
+ * are the only gate on the DENIAL redirect AC never sees — in
+ * {@see RedirectUriRule}, to keep this class within the project's
+ * maintainability gates. The same reason src/Ucp/Quote/QuoteFieldAssertions.php
+ * exists.
  */
 final readonly class AgentAuthorizationRegistrar
 {
@@ -34,6 +37,7 @@ final readonly class AgentAuthorizationRegistrar
     public function __construct(
         private PendingAuthorizationStoreInterface $store,
         private PayloadFields $fields,
+        private RedirectUriRule $redirectUri,
     ) {}
 
     /**
@@ -62,10 +66,10 @@ final readonly class AgentAuthorizationRegistrar
                 $salesChannelId,
                 $clientId,
                 $context->platformProfile?->toArray() ?? [],
-                $this->fields->requiredRedirectUri($payload, 'redirect_uri'),
+                $this->redirectUri->required($payload, 'redirect_uri', $clientId),
                 $this->fields->optionalString($payload, 'scope'),
                 $this->fields->requiredString($payload, 'state'),
-                $this->fields->requiredString($payload, 'code_challenge'),
+                $this->fields->requiredCodeChallenge($payload, 'code_challenge'),
                 $challengeMethod,
             ),
             self::TTL_SECONDS,

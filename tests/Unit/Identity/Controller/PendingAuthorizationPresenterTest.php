@@ -5,17 +5,21 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Identity\Controller;
 
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorization;
-use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
+use MerchantQuoteAgentPlugin\Identity\Controller\PendingAuthorizationPresenter;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The pure static delegates (agentHost/scopeList/denialUrl) — split out of
- * AgentConsentControllerTest (which covers grant()) to stay under mago's
- * too-many-methods ceiling.
+ * The read-only projections a consent page and an OAuth denial are built
+ * from: agentHost/scopeList/denialUrl.
+ *
+ * These used to be reached through static pass-throughs on
+ * AgentConsentController; those were a leftover from the split that created
+ * this class and had no callers in `src/`, so they are gone and the tests
+ * call the presenter directly.
  */
-#[CoversClass(AgentConsentController::class)]
-final class AgentConsentControllerPresentationTest extends TestCase
+#[CoversClass(PendingAuthorizationPresenter::class)]
+final class PendingAuthorizationPresenterTest extends TestCase
 {
     public function testItNamesTheAgentByHostRatherThanTheFullProfileUri(): void
     {
@@ -30,10 +34,10 @@ final class AgentConsentControllerPresentationTest extends TestCase
             'S256',
         );
 
-        self::assertSame('agent.example', AgentConsentController::agentHost($pending));
+        self::assertSame('agent.example', PendingAuthorizationPresenter::agentHost($pending));
         self::assertSame(
             ['dev.ucp.shopping.order:read', 'dev.ucp.shopping.cart:manage'],
-            AgentConsentController::scopeList($pending),
+            PendingAuthorizationPresenter::scopeList($pending),
         );
     }
 
@@ -50,7 +54,7 @@ final class AgentConsentControllerPresentationTest extends TestCase
             'S256',
         );
 
-        self::assertSame([], AgentConsentController::scopeList($pending));
+        self::assertSame([], PendingAuthorizationPresenter::scopeList($pending));
     }
 
     public function testDenialRedirectsToTheStoredRedirectUriWithTheOriginalState(): void
@@ -66,7 +70,7 @@ final class AgentConsentControllerPresentationTest extends TestCase
             'S256',
         );
 
-        $url = AgentConsentController::denialUrl($pending);
+        $url = PendingAuthorizationPresenter::denialUrl($pending);
 
         self::assertStringStartsWith('https://agent.example/callback?', $url);
         self::assertStringContainsString('error=access_denied', $url);
@@ -86,6 +90,6 @@ final class AgentConsentControllerPresentationTest extends TestCase
             'S256',
         );
 
-        self::assertStringContainsString('?existing=1&', AgentConsentController::denialUrl($pending));
+        self::assertStringContainsString('?existing=1&', PendingAuthorizationPresenter::denialUrl($pending));
     }
 }

@@ -19,7 +19,8 @@ final class AgentAuthorizationRequestControllerTest extends TestCase
     public function testItRegistersAVerifiedRequest(): void
     {
         $store = AgentAuthorizationRequestControllerFixture::store();
-        $controller = AgentAuthorizationRequestControllerFixture::build($store);
+        $domains = AgentAuthorizationRequestControllerFixture::domains();
+        $controller = AgentAuthorizationRequestControllerFixture::build($store, $domains);
         $request = Request::create(
             '/ucp/quote-agent/authorization-requests',
             'POST',
@@ -43,6 +44,10 @@ final class AgentAuthorizationRequestControllerTest extends TestCase
         );
         self::assertCount(1, $store->stored);
         self::assertSame(AgentAuthorizationRequestControllerFixture::CLIENT_ID, $store->stored[0]->clientId);
+        // The sales-channel binding: the consent URL must be built on the
+        // domain of the channel the agent registered against, so asking for
+        // the right domain id is the assertion, not just using the answer.
+        self::assertSame([AgentAuthorizationRequestControllerFixture::DOMAIN_ID], $domains->askedFor);
     }
 
     public function testItRejectsABodyThatIsNotAJsonObject(): void

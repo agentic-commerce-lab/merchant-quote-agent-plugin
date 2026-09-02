@@ -10,6 +10,8 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\PayloadFields;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorization;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorizationStoreInterface;
 use MerchantQuoteAgentPlugin\Identity\Authorization\UnverifiedAgentException;
+use MerchantQuoteAgentPlugin\Tests\Unit\Identity\Authorization\AgentAuthorizationRegistrarFixture;
+use MerchantQuoteAgentPlugin\Tests\Unit\Identity\Authorization\IdentityLinkingCapabilityFixture;
 use Ucp\Sdk\Model\Profile\PlatformProfile;
 use Ucp\Sdk\Model\RequestContext;
 
@@ -97,7 +99,7 @@ final class BrowserIdentityLinkingTest extends IntegrationTestCase
      */
     public function testTheRegistrarRefusesAnUnverifiedAgentAndPersistsNothing(): void
     {
-        $registrar = new AgentAuthorizationRegistrar($this->store(), new PayloadFields());
+        $registrar = AgentAuthorizationRegistrarFixture::registrar($this->store());
         $connection = static::getContainer()->get('Doctrine\DBAL\Connection');
         self::assertNotNull($connection);
         $before = (int) $connection->fetchOne('SELECT COUNT(*) FROM merchant_quote_agent_pending_authorization');
@@ -119,7 +121,7 @@ final class BrowserIdentityLinkingTest extends IntegrationTestCase
                 'redirect_uri' => 'https://agent.example/callback',
                 'scope' => '',
                 'state' => 'state-value',
-                'code_challenge' => 'challenge-value',
+                'code_challenge' => AgentAuthorizationRegistrarFixture::CODE_CHALLENGE,
                 'code_challenge_method' => 'S256',
             ],
             new RequestContext(
@@ -166,7 +168,12 @@ final class BrowserIdentityLinkingTest extends IntegrationTestCase
         $found = $store->find($handle);
         self::assertNotNull($found);
 
-        $context = (new AgentAuthorizationContextFactory())->forConsent($found, 'shop.example', 'ctx-token');
+        $context = (new AgentAuthorizationContextFactory())->forConsent(
+            $found,
+            'shop.example',
+            'ctx-token',
+            IdentityLinkingCapabilityFixture::runtimeConfiguration(),
+        );
 
         self::assertNotNull($context->platformProfile);
         self::assertSame('2026-04-08', $context->platformProfile->version);

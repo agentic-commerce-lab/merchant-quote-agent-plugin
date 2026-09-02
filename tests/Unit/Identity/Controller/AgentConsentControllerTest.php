@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Identity\Controller;
 
-use MerchantQuoteAgentPlugin\Identity\Authorization\ConsentRequestGuard;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
+use MerchantQuoteAgentPlugin\Identity\Controller\PendingAuthorizationPresenter;
+use MerchantQuoteAgentPlugin\Tests\Unit\Identity\Authorization\IdentityLinkingCapabilityFixture;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\Adapter\Twig\TemplateFinder;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Component\HttpFoundation\RedirectResponse;
+use Ucp\Sdk\Exception\OAuthException;
 
-/** grant()'s behavior; the pure static delegates live in AgentConsentControllerPresentationTest, GET's in AgentConsentControllerAuthorizeTest. */
+/** grant()'s behavior; GET's lives in AgentConsentControllerAuthorizeTest and the page projections in PendingAuthorizationPresenterTest. */
 #[CoversClass(AgentConsentController::class)]
 final class AgentConsentControllerTest extends TestCase
 {
@@ -22,11 +24,7 @@ final class AgentConsentControllerTest extends TestCase
     {
         $pending = AgentConsentControllerFixture::pending();
         $store = AgentConsentControllerFixture::store($pending, $pending);
-        $controller = new AgentConsentController(
-            $store,
-            new ConsentRequestGuard($store),
-            AgentConsentControllerFixture::completer(AgentConsentControllerFixture::identityLinking()),
-        );
+        $controller = AgentConsentControllerFixture::controller($store);
         $request = AgentConsentControllerFixture::grantRequest('the-handle', grant: true);
         $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
 
@@ -46,12 +44,8 @@ final class AgentConsentControllerTest extends TestCase
     {
         $pending = AgentConsentControllerFixture::pending();
         $store = AgentConsentControllerFixture::store($pending, null);
-        $identityLinking = AgentConsentControllerFixture::identityLinking();
-        $controller = new AgentConsentController(
-            $store,
-            new ConsentRequestGuard($store),
-            AgentConsentControllerFixture::completer($identityLinking),
-        );
+        $identityLinking = IdentityLinkingCapabilityFixture::guarded();
+        $controller = AgentConsentControllerFixture::controller($store, $identityLinking);
         $request = AgentConsentControllerFixture::grantRequest('the-handle', grant: true);
         $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
         $controller->setContainer(AgentConsentControllerFixture::renderableContainer(
@@ -72,18 +66,14 @@ final class AgentConsentControllerTest extends TestCase
     {
         $pending = AgentConsentControllerFixture::pending();
         $store = AgentConsentControllerFixture::store($pending, $pending);
-        $controller = new AgentConsentController(
-            $store,
-            new ConsentRequestGuard($store),
-            AgentConsentControllerFixture::completer(AgentConsentControllerFixture::identityLinking()),
-        );
+        $controller = AgentConsentControllerFixture::controller($store);
         $request = AgentConsentControllerFixture::grantRequest('the-handle', grant: false);
         $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
 
         $response = $controller->grant($request, $context);
 
         self::assertInstanceOf(RedirectResponse::class, $response);
-        self::assertSame(AgentConsentController::denialUrl($pending), $response->getTargetUrl());
+        self::assertSame(PendingAuthorizationPresenter::denialUrl($pending), $response->getTargetUrl());
         self::assertSame(1, $store->consumeCalls);
     }
 
@@ -97,11 +87,7 @@ final class AgentConsentControllerTest extends TestCase
     {
         $pending = AgentConsentControllerFixture::pending();
         $store = AgentConsentControllerFixture::store($pending, $pending);
-        $controller = new AgentConsentController(
-            $store,
-            new ConsentRequestGuard($store),
-            AgentConsentControllerFixture::completer(AgentConsentControllerFixture::identityLinking()),
-        );
+        $controller = AgentConsentControllerFixture::controller($store);
         $request = AgentConsentControllerFixture::grantRequest('unknown-handle', grant: true);
         $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
         $controller->setContainer(AgentConsentControllerFixture::renderableContainer(
@@ -128,12 +114,8 @@ final class AgentConsentControllerTest extends TestCase
     {
         $pending = AgentConsentControllerFixture::pending();
         $store = AgentConsentControllerFixture::store($pending, $pending);
-        $identityLinking = AgentConsentControllerFixture::identityLinking();
-        $controller = new AgentConsentController(
-            $store,
-            new ConsentRequestGuard($store),
-            AgentConsentControllerFixture::completer($identityLinking),
-        );
+        $identityLinking = IdentityLinkingCapabilityFixture::guarded();
+        $controller = AgentConsentControllerFixture::controller($store, $identityLinking);
         $request = AgentConsentControllerFixture::grantRequest('the-handle', grant: true, extraBody: [
             'redirect_uri' => 'https://evil.example/callback',
             'scope' => 'evil.scope',
@@ -157,11 +139,7 @@ final class AgentConsentControllerTest extends TestCase
     {
         $pending = AgentConsentControllerFixture::pending();
         $store = AgentConsentControllerFixture::store($pending, $pending);
-        $controller = new AgentConsentController(
-            $store,
-            new ConsentRequestGuard($store),
-            AgentConsentControllerFixture::completer(AgentConsentControllerFixture::identityLinking()),
-        );
+        $controller = AgentConsentControllerFixture::controller($store);
         $request = AgentConsentControllerFixture::emptySessionGrantRequest(grant: true, requestUriInBody: 'the-handle');
         $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
         $controller->setContainer(AgentConsentControllerFixture::renderableContainer(
@@ -186,11 +164,7 @@ final class AgentConsentControllerTest extends TestCase
     {
         $pending = AgentConsentControllerFixture::pending();
         $store = AgentConsentControllerFixture::store($pending, $pending);
-        $controller = new AgentConsentController(
-            $store,
-            new ConsentRequestGuard($store),
-            AgentConsentControllerFixture::completer(AgentConsentControllerFixture::identityLinking()),
-        );
+        $controller = AgentConsentControllerFixture::controller($store);
         $mismatchedToken = hash('sha256', 'a-different-handle');
         $request = AgentConsentControllerFixture::grantRequest('the-handle', grant: true, token: $mismatchedToken);
         $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
@@ -205,5 +179,77 @@ final class AgentConsentControllerTest extends TestCase
 
         self::assertNotInstanceOf(RedirectResponse::class, $response);
         self::assertSame(0, $store->consumeCalls);
+    }
+
+    /**
+     * Critical, and the reason IdentityLinkingCapabilityFixture replicates
+     * AC's guard: the context this controller builds must carry the sales
+     * channel's RuntimeConfiguration. AC's authorize() reads it in its FIRST
+     * statement and treats null as "capability disabled", so a context without
+     * one is refused on every grant — the whole feature dead, behind an error
+     * message that blames configuration. Asserted here, at the controller,
+     * because this is where the Symfony request becomes that configuration.
+     */
+    public function testTheContextHandedToAgenticCommerceCarriesTheRuntimeConfiguration(): void
+    {
+        $pending = AgentConsentControllerFixture::pending();
+        $store = AgentConsentControllerFixture::store($pending, $pending);
+        $identityLinking = IdentityLinkingCapabilityFixture::guarded();
+        $controller = AgentConsentControllerFixture::controller($store, $identityLinking);
+        $request = AgentConsentControllerFixture::grantRequest('the-handle', grant: true);
+        $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
+        // Only so a regression fails on the assertion below rather than on an
+        // uninitialised container: without a runtime configuration the double
+        // refuses and grant() takes the render path.
+        $controller->setContainer(AgentConsentControllerFixture::renderableContainer(
+            $request,
+            $context,
+            $this->createMock(SystemConfigService::class),
+            $this->createMock(TemplateFinder::class),
+        ));
+
+        $controller->grant($request, $context);
+
+        self::assertNotNull($identityLinking->receivedContext, 'AC must have been reached at all');
+        self::assertNotNull(
+            $identityLinking->receivedContext->runtimeConfiguration,
+            'a null runtimeConfiguration makes AC refuse every grant',
+        );
+        self::assertContains(
+            IdentityLinkingCapabilityFixture::DESCRIPTOR,
+            $identityLinking->receivedContext->runtimeConfiguration->enabledCapabilities,
+        );
+    }
+
+    /**
+     * AC's checks are the authoritative ones and the handle is already spent
+     * by the time they run, so a refusal must render the terminal page. An
+     * unhandled UcpException here was a 500 out of a storefront controller,
+     * with the customer's handle already burnt.
+     */
+    public function testAnAgenticCommerceRefusalRendersTheErrorPageRatherThan500(): void
+    {
+        $pending = AgentConsentControllerFixture::pending();
+        $store = AgentConsentControllerFixture::store($pending, $pending);
+        $controller = AgentConsentControllerFixture::controller(
+            $store,
+            IdentityLinkingCapabilityFixture::guarded(
+                refusal: new OAuthException('OAuth redirect URI must use the signed platform profile origin.'),
+            ),
+        );
+        $request = AgentConsentControllerFixture::grantRequest('the-handle', grant: true);
+        $context = AgentConsentControllerFixture::customerContext($this->createMock(SalesChannelContext::class));
+        $container = AgentConsentControllerFixture::renderableContainer(
+            $request,
+            $context,
+            $this->createMock(SystemConfigService::class),
+            $this->createMock(TemplateFinder::class),
+        );
+        $controller->setContainer($container);
+
+        $response = $controller->grant($request, $context);
+
+        self::assertNotInstanceOf(RedirectResponse::class, $response);
+        self::assertTrue($container->get('twig')->lastParameters['expired']);
     }
 }

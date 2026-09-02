@@ -16,6 +16,14 @@ use Shopware\Core\Framework\Uuid\Uuid;
  * `consume()` is a conditional UPDATE rather than a read-then-write: two
  * concurrent consent submissions must not both mint an authorization code, and
  * the affected-row count is the only thing that settles that without a lock.
+ *
+ * `expires_at` is formatted with `gmdate()`, not `date()`. The row mixes a
+ * PHP-rendered `expires_at` with SQL's own `NOW(3)` for `created_at`, so the
+ * two must agree on a timezone. Shopware pins the DBAL session to `+00:00`
+ * and PHP's default timezone to UTC, which made `date()` work — but if either
+ * ever drifts, every handle is born already expired and the whole flow dies
+ * with an "expired" page nobody can explain. `gmdate()` removes the
+ * dependency instead of documenting it.
  */
 final readonly class DbalPendingAuthorizationStore implements PendingAuthorizationStoreInterface
 {
@@ -57,7 +65,7 @@ final readonly class DbalPendingAuthorizationStore implements PendingAuthorizati
                 'state' => $pending->state,
                 'codeChallenge' => $pending->codeChallenge,
                 'codeChallengeMethod' => $pending->codeChallengeMethod,
-                'expiresAt' => date('Y-m-d H:i:s', time() + $ttlSeconds),
+                'expiresAt' => gmdate('Y-m-d H:i:s', time() + $ttlSeconds),
             ],
         );
 
@@ -76,7 +84,7 @@ final readonly class DbalPendingAuthorizationStore implements PendingAuthorizati
                 'SELECT LOWER(HEX(`sales_channel_id`)) AS sales_channel_id, `client_id`, `agent_profile`,'
                 . ' `redirect_uri`, `scope`, `state`, `code_challenge`, `code_challenge_method`'
                 . ' FROM `%s`'
-                . ' WHERE `handle_hash` = :handleHash AND consumed_at IS NULL AND `expires_at` > NOW(3)',
+                . ' WHERE `handle_hash` = :handleHash AND `consumed_at` IS NULL AND `expires_at` > NOW(3)',
                 self::TABLE,
             ),
             ['handleHash' => hash('sha256', $handle, true)],
@@ -100,8 +108,8 @@ final readonly class DbalPendingAuthorizationStore implements PendingAuthorizati
 
         $claimed = $this->connection->executeStatement(
             \sprintf(
-                'UPDATE `%s` SET consumed_at = NOW(3)'
-                . ' WHERE `handle_hash` = :handleHash AND consumed_at IS NULL AND `expires_at` > NOW(3)',
+                'UPDATE `%s` SET `consumed_at` = NOW(3)'
+                . ' WHERE `handle_hash` = :handleHash AND `consumed_at` IS NULL AND `expires_at` > NOW(3)',
                 self::TABLE,
             ),
             ['handleHash' => hash('sha256', $handle, true)],
@@ -119,7 +127,7 @@ final readonly class DbalPendingAuthorizationStore implements PendingAuthorizati
     private function deleteSpent(): void
     {
         $this->connection->executeStatement(\sprintf(
-            'DELETE FROM `%s` WHERE `expires_at` <= NOW(3) OR consumed_at IS NOT NULL',
+            'DELETE FROM `%s` WHERE `expires_at` <= NOW(3) OR `consumed_at` IS NOT NULL',
             self::TABLE,
         ));
     }

@@ -69,7 +69,7 @@ final class DbalPendingAuthorizationStoreTest extends TestCase
                 self::callback(
                     static fn(string $sql): bool => (
                         str_contains($sql, 'merchant_quote_agent_pending_authorization')
-                        && str_contains($sql, 'consumed_at IS NULL')
+                        && str_contains($sql, '`consumed_at` IS NULL')
                         && str_contains($sql, 'expires_at')
                     ),
                 ),

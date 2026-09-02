@@ -22,7 +22,7 @@ final class AgentAuthorizationRegistrarTest extends TestCase
     public function testItRegistersAVerifiedRequest(): void
     {
         $store = AgentAuthorizationRegistrarFixture::store();
-        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
+        $registrar = AgentAuthorizationRegistrarFixture::registrar($store);
 
         $handle = $registrar->register(
             AgentAuthorizationRegistrarFixture::payload(),
@@ -46,7 +46,7 @@ final class AgentAuthorizationRegistrarTest extends TestCase
     public function testItRefusesWhenTheRequestSignatureDidNotVerify(): void
     {
         $store = AgentAuthorizationRegistrarFixture::store();
-        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
+        $registrar = AgentAuthorizationRegistrarFixture::registrar($store);
 
         try {
             $registrar->register(
@@ -63,7 +63,7 @@ final class AgentAuthorizationRegistrarTest extends TestCase
     public function testItRefusesWhenTheClientIdIsNotTheVerifiedProfileUri(): void
     {
         $store = AgentAuthorizationRegistrarFixture::store();
-        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
+        $registrar = AgentAuthorizationRegistrarFixture::registrar($store);
 
         try {
             $registrar->register(
@@ -80,7 +80,7 @@ final class AgentAuthorizationRegistrarTest extends TestCase
     public function testItRefusesWhenNoProfileWasFetched(): void
     {
         $store = AgentAuthorizationRegistrarFixture::store();
-        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
+        $registrar = AgentAuthorizationRegistrarFixture::registrar($store);
 
         try {
             $registrar->register(
@@ -97,7 +97,7 @@ final class AgentAuthorizationRegistrarTest extends TestCase
     public function testItRefusesAnythingButS256(): void
     {
         $store = AgentAuthorizationRegistrarFixture::store();
-        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
+        $registrar = AgentAuthorizationRegistrarFixture::registrar($store);
         $payload = AgentAuthorizationRegistrarFixture::payload();
         $payload['code_challenge_method'] = 'plain';
 
@@ -116,7 +116,7 @@ final class AgentAuthorizationRegistrarTest extends TestCase
     public function testItRefusesAMissingCodeChallenge(): void
     {
         $store = AgentAuthorizationRegistrarFixture::store();
-        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
+        $registrar = AgentAuthorizationRegistrarFixture::registrar($store);
         $payload = AgentAuthorizationRegistrarFixture::payload();
         unset($payload['code_challenge']);
 
@@ -135,7 +135,7 @@ final class AgentAuthorizationRegistrarTest extends TestCase
     public function testItRefusesAMissingState(): void
     {
         $store = AgentAuthorizationRegistrarFixture::store();
-        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
+        $registrar = AgentAuthorizationRegistrarFixture::registrar($store);
         $payload = AgentAuthorizationRegistrarFixture::payload();
         unset($payload['state']);
 
@@ -153,61 +153,20 @@ final class AgentAuthorizationRegistrarTest extends TestCase
 
     public function testItRefusesAWhitespaceOnlyState(): void
     {
-        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+        $store = AgentAuthorizationRegistrarFixture::store();
+        $registrar = AgentAuthorizationRegistrarFixture::registrar($store);
         $payload = AgentAuthorizationRegistrarFixture::payload();
         $payload['state'] = '   ';
 
-        $this->expectException(ValidationException::class);
-
-        $registrar->register($payload, AgentAuthorizationRegistrarFixture::verifiedContext(), self::SALES_CHANNEL_ID);
-    }
-
-    /**
-     * Denial never reaches AC's own redirect_uri check (grant does, inside
-     * authorize()), so a non-http(s) scheme stored here would make the shop a
-     * redirector — e.g. to `javascript:` — for anything a verified agent asked.
-     */
-    public function testItRefusesARedirectUriThatIsNotHttpOrHttps(): void
-    {
-        $store = AgentAuthorizationRegistrarFixture::store();
-        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
-        $payload = AgentAuthorizationRegistrarFixture::payload();
-        $payload['redirect_uri'] = 'javascript:alert(1)';
-
         try {
             $registrar->register(
                 $payload,
                 AgentAuthorizationRegistrarFixture::verifiedContext(),
                 self::SALES_CHANNEL_ID,
             );
-            self::fail('A non-http(s) redirect_uri must not be able to register.');
+            self::fail('A whitespace-only state must not be able to register.');
         } catch (ValidationException) {
-            self::assertSame([], $store->stored, 'nothing may be persisted when redirect_uri has no http(s) scheme');
-        }
-    }
-
-    /**
-     * A fragment is never sent to a server, so denialUrl()'s appended query
-     * string would land inside it (or, if the fragment itself contains a `?`,
-     * corrupt the separator) — the agent never receives the denial, and the
-     * shop reports success against a URL nobody receives.
-     */
-    public function testItRefusesARedirectUriCarryingAFragment(): void
-    {
-        $store = AgentAuthorizationRegistrarFixture::store();
-        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
-        $payload = AgentAuthorizationRegistrarFixture::payload();
-        $payload['redirect_uri'] = 'https://agent.example/callback#fragment';
-
-        try {
-            $registrar->register(
-                $payload,
-                AgentAuthorizationRegistrarFixture::verifiedContext(),
-                self::SALES_CHANNEL_ID,
-            );
-            self::fail('A redirect_uri carrying a fragment must not be able to register.');
-        } catch (ValidationException) {
-            self::assertSame([], $store->stored, 'nothing may be persisted when redirect_uri carries a fragment');
+            self::assertSame([], $store->stored, 'nothing may be persisted when state is whitespace only');
         }
     }
 }
