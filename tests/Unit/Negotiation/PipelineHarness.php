@@ -22,6 +22,8 @@ use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 /** A fully wired pipeline over a scripted model and a fake gateway. */
 final class PipelineHarness
 {
+    public OfferRound $round;
+
     private function __construct(
         public NegotiationPipeline $pipeline,
         public FakeQuoteGateway $gateway,
@@ -49,20 +51,25 @@ final class PipelineHarness
             NegotiationFixture::snapshot(state: 'in_review', totalNet: $reReadTotalNet),
         ]);
 
+        $round = new OfferRound(
+            new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder),
+            new OfferApplier(new OfferVerifier(), $logger, $recorder),
+            new ReplyComposer($client, $prompts, $logger, $recorder),
+            $escalator,
+            $logger,
+        );
+
         $pipeline = new NegotiationPipeline(
             new AskInterpreter($client, $prompts, $recorder),
             new NegotiationDecider(),
-            new OfferRound(
-                new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder),
-                new OfferApplier(new OfferVerifier(), $logger, $recorder),
-                new ReplyComposer($client, $prompts, $logger, $recorder),
-                $escalator,
-                $logger,
-            ),
+            $round,
             $recorder,
             $logger,
         );
 
-        return new self($pipeline, $gateway, $spy, $logger, $writer);
+        $harness = new self($pipeline, $gateway, $spy, $logger, $writer);
+        $harness->round = $round;
+
+        return $harness;
     }
 }
