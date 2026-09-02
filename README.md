@@ -173,6 +173,77 @@ Scope is read but not enforced: Agentic Commerce cannot yet issue
 so any valid token for the customer is accepted and authorization is by quote
 ownership. Enforcement lands with the upstream scope change.
 
+## Deciding which agents may transact
+
+The three UCP allowlists — agent platforms, profile hosts, agent domains — are
+edited per sales channel under **Agent access** in this plugin's admin module
+(its own route and navigation entry, not a section bolted onto the audit
+pages). They are Agentic Commerce's data, not ours: this page reads and writes
+that plugin's own config API, so loading it needs `ucp.viewer` and saving
+needs `ucp.editor` — both separate from this plugin's own ACL. A user without
+`ucp.editor` gets that plugin's 403 on save, surfaced verbatim rather than
+reported as success. An empty list allows nothing, and an entry also covers
+its subdomains.
+
+**The allowlists are an SSRF and abuse control, not an authenticity check.**
+They gate which hosts the shop will make an outbound profile-fetch request to
+at all; an allowlisted agent still has to publish a fetchable, signed profile,
+and whether that profile's signature must actually verify is governed by the
+channel's `signaturePolicy`, not by anything here — see "Buyer-facing quote
+endpoints" above, and note this plugin's own endpoint tests run under
+`signaturePolicy: log`, so a fetched profile's signature does not have to
+verify there either.
+
+For a throwaway agent host that changes between sessions, editing three lists
+is more ceremony than the job needs, so there is also a console-only switch:
+
+    bin/console merchant-quote-agent:allow-any-agent                     # where is it on?
+    bin/console merchant-quote-agent:allow-any-agent <salesChannelId> --on
+    bin/console merchant-quote-agent:allow-any-agent <salesChannelId> --off
+
+While it is on, that sales channel admits whichever agent a request presents —
+in its own gates and in the installation-wide profile-fetch list. It widens an
+identity allowlist and nothing else: every other safety check still runs
+(https only, ports 443/8443, no redirects, no private or link-local
+addresses, blocked metadata hosts). It is deliberately absent from
+`config.xml` and from any settings screen a merchant can reach — widening
+which agents are even checked is not a decision for a settings form.
+
+**Agentic Commerce has its own, differently-scoped `allowAnyAgent`.** Its
+config API's key list carries a key of the same name, returned in that
+plugin's own config response. Ours is a different key in a different store —
+`MerchantQuoteAgentPlugin.config.allowAnyAgent` in `system_config` — and
+setting one does nothing for the other. Reading Agentic Commerce's key list
+and assuming this plugin's console command sets that key is the natural
+mistake; it does not.
+
+**On FrankenPHP or RoadRunner — Shopware's other supported runtime, alongside
+php-fpm — the switch widens the installation-wide list for exactly one request
+per worker process, then silently stops.** The SDK's `RequestContextListener`
+is a kernel event listener the container builds once per process; it holds the
+request-context factory, which holds the agent profile fetcher, which holds
+the validator our factory builds — all shared services, so the validator
+actually consulted is whichever one got built for the first request that
+worker served. The failure is silent in both directions: turn the switch on,
+test once, see it work, and have every later request on that worker refused;
+or test only after the worker has already served a request, conclude the
+switch does nothing, and start widening the permanent allowlists instead —
+which is exactly what this switch exists to prevent. Under php-fpm, one
+request per process, this is invisible. It is not fixed: making the two
+middle definitions in that chain non-shared is about six lines and would be
+safe — the fetcher's cache is a repository, not in-memory state — but buys
+nothing while the listener above them is shared regardless, and Agentic
+Commerce's own decorator on `AgentProfileFetcherInterface` is a fourth shared
+holder in the same chain. The per-sales-channel gates are unaffected by any of
+this: that decorator reads the presented header fresh on every request,
+worker or not.
+
+To exercise the switch as a real external agent rather than trusting the unit
+tests, `scripts/ucp-quote-agent.py` (kept out of this repo; ask a colleague if
+you don't have it) drives one over an ngrok tunnel. It sends `UCP-Agent:
+profile="<uri>"`, which is what the switch needs — a request whose header
+carries no `profile=` parameter produces no widening, by design.
+
 ## Configuring the agent
 
 Everything is in the plugin's own settings, per sales channel:

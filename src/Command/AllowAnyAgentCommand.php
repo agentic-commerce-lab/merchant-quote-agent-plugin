@@ -94,7 +94,12 @@ final class AllowAnyAgentCommand extends Command
 
         if ($on) {
             $io->warning(\sprintf(
-                'Sales channel "%s" now admits any agent that presents a fetchable, signed profile. Turn it off when you are done: --off',
+                'Sales channel "%s" now admits any agent that presents a fetchable, signed profile. Turn it off when'
+                . ' you are done: --off.'
+                . ' On a long-running worker (FrankenPHP, RoadRunner) this only takes effect for the first request'
+                . ' that worker serves and then silently stops applying to later ones -- restart the worker after'
+                . ' changing this flag, and do not conclude from one working request that every later one is'
+                . ' covered.',
                 $channels[$salesChannelId],
             ));
 
