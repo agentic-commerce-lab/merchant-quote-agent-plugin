@@ -107,7 +107,7 @@ final readonly class DbalPendingAuthorizationStore implements PendingAuthorizati
             ['handleHash' => hash('sha256', $handle, true)],
         );
 
-        return $claimed === 1 ? $pending : null;
+        return (int) $claimed === 1 ? $pending : null;
     }
 
     /**
