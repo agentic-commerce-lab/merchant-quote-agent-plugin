@@ -2314,6 +2314,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationContextFactory;
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationRegistrar;
+use MerchantQuoteAgentPlugin\Identity\Authorization\PayloadFields;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorization;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorizationStoreInterface;
 use MerchantQuoteAgentPlugin\Identity\Authorization\UnverifiedAgentException;
