@@ -21,8 +21,16 @@ KEEP="/tmp/mqa-built-public"
 docker exec "$CONTAINER" sh -c "rm -rf '$KEEP'; [ -d '$BUILT' ] && mv '$BUILT' '$KEEP' || true"
 docker exec "$CONTAINER" rm -rf "$DEST"
 docker exec "$CONTAINER" mkdir -p "$DEST"
+# -m on extract: stamp the files with the time of the sync rather than keeping
+# the source mtimes. Symfony decides a compiled container is still fresh by
+# comparing its tracked resources' mtimes against its own, so a file whose
+# mtime predates the container is treated as unchanged. Git checkouts and
+# worktrees routinely produce such files, and with several sessions syncing
+# their own checkouts into this one shop the result was a test run silently
+# executing against a container compiled from someone else's source -- services
+# missing, decorators absent, and no error to explain it.
 COPYFILE_DISABLE=1 tar --exclude=vendor --exclude=.git --exclude=report --exclude=node_modules -cf - . \
-  | docker exec -i "$CONTAINER" tar -xf - -C "$DEST"
+  | docker exec -i "$CONTAINER" tar -xmf - -C "$DEST"
 docker exec "$CONTAINER" sh -c "[ -d '$KEEP' ] && mkdir -p '$DEST/src/Resources' && mv '$KEEP' '$BUILT' || true"
 
 # In merchant-quote-shop the plugin IS installed (shop-setup.sh requires it
