@@ -173,6 +173,111 @@ Scope is read but not enforced: Agentic Commerce cannot yet issue
 so any valid token for the customer is accepted and authorization is by quote
 ownership. Enforcement lands with the upstream scope change.
 
+## Deciding which agents may transact
+
+The three UCP allowlists — agent platforms, profile hosts, agent domains — are
+edited per sales channel under **Agent access** in this plugin's admin module
+(its own route and navigation entry, not a section bolted onto the audit
+pages). They are Agentic Commerce's data, not ours: this page reads and writes
+that plugin's own config API, so loading it needs `ucp.viewer` and saving
+needs `ucp.editor` — both separate from this plugin's own ACL. A user without
+`ucp.editor` gets that plugin's 403 on save, surfaced verbatim rather than
+reported as success. An entry also covers its subdomains.
+
+**An empty list here is not a deny-all.** Agentic Commerce substitutes rather
+than passes through: emptying *Profile hosts* falls back to *Agent platforms*,
+and emptying *Agent platforms* too falls back to the sales channel's own
+domain host (`UcpConfig::toRuntimeConfiguration()`). So clearing *Profile
+hosts* to stop the shop fetching profiles does not stop it — it keeps fetching
+for every host still listed under *Agent platforms*. Clearing all three is
+what denies every remote agent. The deny-on-empty rule does hold for the
+SDK-level lists, which is where the expectation comes from, and not for the
+per-channel lists this page edits.
+
+**The allowlists are an SSRF and abuse control, not an authenticity check.**
+They gate which hosts the shop will make an outbound profile-fetch request to
+at all; an allowlisted agent still has to publish a fetchable, signed profile,
+and whether that profile's signature must actually verify is governed by the
+channel's `signaturePolicy`, not by anything here — see "Buyer-facing quote
+endpoints" above, and note this plugin's own endpoint tests run under
+`signaturePolicy: log`, so a fetched profile's signature does not have to
+verify there either.
+
+For a throwaway agent host that changes between sessions, editing three lists
+is more ceremony than the job needs, so there is also a console-only switch:
+
+    bin/console merchant-quote-agent:allow-any-agent                     # where is it on?
+    bin/console merchant-quote-agent:allow-any-agent <salesChannelId> --on
+    bin/console merchant-quote-agent:allow-any-agent <salesChannelId> --off
+
+While it is on, that sales channel admits whichever agent a request presents —
+in its own gates and in the installation-wide profile-fetch list. It widens an
+identity allowlist and nothing else: every other safety check still runs
+(https only, ports 443/8443, no redirects, no private or link-local
+addresses, blocked metadata hosts). It is deliberately absent from
+`config.xml` and from any settings screen a merchant can reach — widening
+which agents are even checked is not a decision for a settings form.
+
+**A `system_config` row written without a sales channel applies to every
+channel.** Shopware's config loader falls back to rows with a null
+`sales_channel_id`, so `system:config:set
+MerchantQuoteAgentPlugin.config.allowAnyAgent -j true` with no `--sales-channel-id`
+turns the switch on shop-wide. The console command here only ever writes
+per-channel, and running it with no arguments reads through the same loader, so
+an inherited row shows up as every channel reporting `on` — which is the
+quickest way to spot one.
+
+**If every `/ucp/*` request on the shop is failing, check Agentic Commerce's
+config row for a fork-era `allowAnyAgent` key.** The installed 1.2.0 knows
+nothing about `allowAnyAgent` — the name appears nowhere in its source, and
+`UcpConfig::CONFIG_KEYS` (sixteen entries) does not list it, so its config
+model rejects it as an unsupported field and throws on *every* read of that
+row. That is not hypothetical: a fork-era row on the dev shop made every
+`/ucp/*` request fail. The switch documented here is ours alone —
+`MerchantQuoteAgentPlugin.config.allowAnyAgent` in `system_config`, set only
+by the console command above — and it must never be added to Agentic
+Commerce's config row.
+
+**On FrankenPHP or RoadRunner — Shopware's other supported runtime, alongside
+php-fpm — this switch is effectively inoperative, and restarting the worker
+does not help.** The SDK's `RequestContextListener` is a kernel event listener
+the container builds once per process; it holds the request-context factory,
+which holds the agent profile fetcher, which holds the validator our factory
+builds — all shared services. So the installation-wide list *freezes* at
+whatever the worker's **first request of any kind** produced, and it is not
+only UCP requests that instantiate the listener.
+
+The practical consequence is that the first request is almost never the
+agent's — any storefront GET will do — so the list freezes unwidened and the
+switch never appears to work at all. Restarting the worker only re-runs the
+same lottery. The temptation then is to conclude the switch is broken and
+start widening the permanent allowlists instead, which is exactly what it
+exists to prevent.
+
+If the first request *was* a flagged agent's, the opposite holds: that host
+stays in the installation-wide list for the worker's whole lifetime, so that
+agent keeps working — and the frozen host applies to requests on sales
+channels where the flag is **off**. That is contained rather than exploitable,
+and by design: the per-sales-channel gate is evaluated per request, since the
+decorator takes the request as an argument and caches nothing, so an agent on
+an unflagged channel is still refused there. The residual exposure is narrow —
+a host a merchant listed per channel, which the installation-wide list was
+meant to block, can slip through on a later request in the same worker.
+
+Under php-fpm, one request per process, none of this is visible. It is not
+fixed: making the two middle definitions non-shared is about six lines and
+would be safe — the fetcher's cache is a repository, not in-memory state —
+but buys nothing while the listener above them is shared regardless, and the
+listener is what the kernel actually holds. Breaking that means changing
+another package's instantiation semantics for every installation of this
+plugin, to serve a development switch.
+
+To exercise the switch as a real external agent rather than trusting the unit
+tests, `scripts/ucp-quote-agent.py` (kept out of this repo; ask a colleague if
+you don't have it) drives one over an ngrok tunnel. It sends `UCP-Agent:
+profile="<uri>"`, which is what the switch needs — a request whose header
+carries no `profile=` parameter produces no widening, by design.
+
 ## Configuring the agent
 
 Everything is in the plugin's own settings, per sales channel:

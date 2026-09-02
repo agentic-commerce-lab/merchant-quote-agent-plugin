@@ -42,10 +42,23 @@ final readonly class SalesChannelContextResolver implements CustomerContextResol
     #[Override]
     public function resolveSalesChannel(RequestContext $context): SalesChannelResolution
     {
-        $host = strtolower(trim($context->host));
+        $resolution = $this->resolveByHost($context->host);
 
-        if ($host === '') {
-            throw new ConfigurationException('The UCP request carries no host, so no sales channel can be resolved.');
+        if ($resolution === null) {
+            throw new ConfigurationException(\sprintf('No active sales channel serves the host "%s".', $context->host));
+        }
+
+        return $resolution;
+    }
+
+    /** @throws \Doctrine\DBAL\Exception */
+    #[Override]
+    public function resolveByHost(?string $host): ?SalesChannelResolution
+    {
+        $normalized = strtolower(trim($host ?? ''));
+
+        if ($normalized === '') {
+            return null;
         }
 
         $row = $this->connection->fetchAssociative('SELECT LOWER(HEX(d.id)) AS id, LOWER(HEX(d.sales_channel_id)) AS sales_channel_id,'
@@ -53,10 +66,10 @@ final readonly class SalesChannelContextResolver implements CustomerContextResol
         . ' FROM sales_channel_domain d'
         . ' INNER JOIN sales_channel s ON s.id = d.sales_channel_id AND s.active = 1'
         . ' WHERE LOWER(SUBSTRING_INDEX(SUBSTRING_INDEX(SUBSTRING_INDEX(d.url, "://", -1), "/", 1), ":", 1)) = :host'
-        . ' ORDER BY CHAR_LENGTH(d.url) ASC LIMIT 1', ['host' => strtolower(explode(':', $host)[0])]);
+        . ' ORDER BY CHAR_LENGTH(d.url) ASC LIMIT 1', ['host' => explode(':', $normalized)[0]]);
 
         if ($row === false) {
-            throw new ConfigurationException(\sprintf('No active sales channel serves the host "%s".', $host));
+            return null;
         }
 
         return new SalesChannelResolution(

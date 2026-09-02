@@ -22,6 +22,15 @@ interface CustomerContextResolverInterface
     public function resolveSalesChannel(RequestContext $context): SalesChannelResolution;
 
     /**
+     * The sales channel serving a bare host, or null when none does.
+     *
+     * Null rather than an exception because both runtime hooks use this to
+     * decide whether to widen an allowlist, and an unattributable request is
+     * never a reason to widen one.
+     */
+    public function resolveByHost(?string $host): ?SalesChannelResolution;
+
+    /**
      * Materialises the customer's own context, so contract prices, customer
      * group and rules apply exactly as they would if the customer acted. The
      * caller must already have proven the authorization.

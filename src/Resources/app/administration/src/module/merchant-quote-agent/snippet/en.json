@@ -67,6 +67,21 @@
                 "cancelled": "Cancelled",
                 "withdrawn": "Withdrawn"
             }
+        },
+        "access": {
+            "mainMenuItem": "Agent access",
+            "cardTitle": "Agent access",
+            "hint": "One host per line. An entry also covers its subdomains, so example.com admits agent.example.com. An empty list is not a deny-all: Profile hosts falls back to Agent platforms, and an empty Agent platforms falls back to this sales channel's own domain — clearing all three is what denies every remote agent. Saving needs the Agentic Commerce ucp.editor privilege.",
+            "salesChannelLabel": "Sales channel",
+            "platformAllowlistLabel": "Agent platforms",
+            "platformAllowlistHelp": "Hosts allowed to act as an agent platform when identity linking is used.",
+            "remoteProfileAllowlistLabel": "Profile hosts",
+            "remoteProfileAllowlistHelp": "Hosts whose agent profile this shop may fetch. Profiles are fetched over HTTPS only.",
+            "agentAllowlistLabel": "Agent domains",
+            "agentAllowlistHelp": "Domains whose agents may transact with this sales channel.",
+            "save": "Save allowlists",
+            "forbidden": "Saving needs the Agentic Commerce ucp.editor privilege.",
+            "failed": "The request failed."
         }
     }
 }
