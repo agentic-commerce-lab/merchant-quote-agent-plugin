@@ -43,13 +43,23 @@ final readonly class RedirectUriRule
      * - only `http`/`https` — `javascript:` and friends cannot match;
      * - the host class excludes `@`, so userinfo is refused, as AC's
      *   `urlParts()` refuses it via `isset($parts['user'])`;
-     * - `[^#]*` with a closing `$` means no fragment, anywhere;
+     * - `[^#\s]*` with a closing `$` means no fragment anywhere, and no
+     *   whitespace or control byte either. `\s` covers space, tab, CR, LF,
+     *   form feed and vertical tab, none of which belongs unencoded in a URI —
+     *   a legitimate one percent-encodes them. CR and LF are the ones that
+     *   matter: `requiredString()`'s `trim()` strips edges only, the stored
+     *   string reaches `PendingAuthorizationPresenter::denialUrl()` by raw
+     *   concatenation, and `RedirectResponse` puts it into the `Location`
+     *   header unvalidated. PHP's `header()` has refused `\r`/`\n` since
+     *   5.1.2, so the realistic outcome was a broken denial rather than a
+     *   split response — but denial is the one path AC never re-validates, so
+     *   this rule should not lean on a guard in the SAPI beneath it;
      * - the host class also excludes `[`, so an IPv6 literal is refused where
      *   AC would parse it. No agent callback is an IPv6 literal, and refusing
      *   one fails fast with a readable message rather than widening what the
      *   shop will redirect to.
      */
-    private const ORIGIN = '~^(https?)://([A-Za-z0-9.\-]+)(?::(\d+))?(?:[/?][^#]*)?$~';
+    private const ORIGIN = '~^(https?)://([A-Za-z0-9.\-]+)(?::(\d+))?(?:[/?][^#\s]*)?$~';
 
     public function __construct(
         private PayloadFields $fields,

@@ -84,6 +84,27 @@ final class AgentAuthorizationRegistrarRedirectTest extends TestCase
     }
 
     /**
+     * A CRLF in the stored URI reaches the `Location` header untouched:
+     * `requiredString()`'s `trim()` strips edges only, `denialUrl()`
+     * concatenates raw, and `RedirectResponse` does not validate. PHP's
+     * `header()` has refused `\r`/`\n` since 5.1.2, so the realistic outcome
+     * was a broken denial rather than a split response — but denial is the one
+     * path Agentic Commerce never re-validates, so this rule must stand on its
+     * own rather than on a guard in the SAPI beneath it.
+     *
+     * Note the double-quoted string: the assertion is about real CR and LF
+     * bytes, not the two-character sequence `\r\n`, which the pattern would
+     * reject for the unrelated reason of being ordinary text.
+     */
+    public function testItRefusesARedirectUriCarryingACrlf(): void
+    {
+        $this->assertRefused(
+            $this->payloadWithRedirectUri("https://agent.example/cb\r\nSet-Cookie: a=b"),
+            'a redirect_uri carrying a CRLF must not be able to register',
+        );
+    }
+
+    /**
      * AC's `assertRedirectUri()` requires https except for localhost. Plain
      * http on a real host would put the authorization code — and the customer
      * — on the wire in clear.
