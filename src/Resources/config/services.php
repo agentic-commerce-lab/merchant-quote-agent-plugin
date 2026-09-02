@@ -39,6 +39,7 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Identity\AccessTokenSubjectReaderInterface;
 use MerchantQuoteAgentPlugin\Identity\AcOAuthAccessTokenReader;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
+use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationContextFactory;
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationRegistrar;
 use MerchantQuoteAgentPlugin\Identity\Authorization\DbalPendingAuthorizationStore;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PayloadFields;
@@ -127,6 +128,7 @@ return static function (ContainerConfigurator $configurator): void {
     $services->alias(PendingAuthorizationStoreInterface::class, DbalPendingAuthorizationStore::class);
     $services->set(PayloadFields::class);
     $services->set(AgentAuthorizationRegistrar::class);
+    $services->set(AgentAuthorizationContextFactory::class);
     $services->set(SalesChannelDomainUrlReader::class);
     $services->set(AgentAuthorizationRequestController::class)->tag('controller.service_arguments');
 
