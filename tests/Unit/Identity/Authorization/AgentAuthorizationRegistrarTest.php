@@ -1,0 +1,117 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Tests\Unit\Identity\Authorization;
+
+use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationRegistrar;
+use MerchantQuoteAgentPlugin\Identity\Authorization\PayloadFields;
+use MerchantQuoteAgentPlugin\Identity\Authorization\UnverifiedAgentException;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\TestCase;
+use Ucp\Sdk\Exception\ValidationException;
+
+#[CoversClass(AgentAuthorizationRegistrar::class)]
+#[CoversClass(UnverifiedAgentException::class)]
+final class AgentAuthorizationRegistrarTest extends TestCase
+{
+    private const SALES_CHANNEL_ID = '0191d3d0a0b071bd9c1a0d9d1a3f9f01';
+
+    private const CLIENT_ID = 'https://agent.example/.well-known/ucp?run=1';
+
+    public function testItRegistersAVerifiedRequest(): void
+    {
+        $store = AgentAuthorizationRegistrarFixture::store();
+        $registrar = new AgentAuthorizationRegistrar($store, new PayloadFields());
+
+        $handle = $registrar->register(
+            AgentAuthorizationRegistrarFixture::payload(),
+            AgentAuthorizationRegistrarFixture::verifiedContext(),
+            self::SALES_CHANNEL_ID,
+        );
+
+        self::assertSame('handle-value', $handle);
+        self::assertCount(1, $store->stored);
+        self::assertSame(self::CLIENT_ID, $store->stored[0]->clientId);
+        self::assertSame(self::SALES_CHANNEL_ID, $store->stored[0]->salesChannelId);
+        self::assertSame('2026-04-08', $store->stored[0]->agentProfile['ucp']['version']);
+    }
+
+    /**
+     * The reason this check cannot be dropped: under signaturePolicy "log" the
+     * SDK proceeds on an unverified signature, so reaching a /ucp/ route proves
+     * nothing. Without this, consent would stamp signatureVerified: true on an
+     * agent nobody authenticated.
+     */
+    public function testItRefusesWhenTheRequestSignatureDidNotVerify(): void
+    {
+        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+
+        $this->expectException(UnverifiedAgentException::class);
+
+        $registrar->register(
+            AgentAuthorizationRegistrarFixture::payload(),
+            AgentAuthorizationRegistrarFixture::unverifiedContext(),
+            self::SALES_CHANNEL_ID,
+        );
+    }
+
+    public function testItRefusesWhenTheClientIdIsNotTheVerifiedProfileUri(): void
+    {
+        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+
+        $this->expectException(UnverifiedAgentException::class);
+
+        $registrar->register(
+            AgentAuthorizationRegistrarFixture::payload(),
+            AgentAuthorizationRegistrarFixture::contextWithProfileUri('https://other.example/.well-known/ucp'),
+            self::SALES_CHANNEL_ID,
+        );
+    }
+
+    public function testItRefusesWhenNoProfileWasFetched(): void
+    {
+        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+
+        $this->expectException(UnverifiedAgentException::class);
+
+        $registrar->register(
+            AgentAuthorizationRegistrarFixture::payload(),
+            AgentAuthorizationRegistrarFixture::contextWithoutProfile(),
+            self::SALES_CHANNEL_ID,
+        );
+    }
+
+    public function testItRefusesAnythingButS256(): void
+    {
+        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+        $payload = AgentAuthorizationRegistrarFixture::payload();
+        $payload['code_challenge_method'] = 'plain';
+
+        $this->expectException(ValidationException::class);
+
+        $registrar->register($payload, AgentAuthorizationRegistrarFixture::verifiedContext(), self::SALES_CHANNEL_ID);
+    }
+
+    public function testItRefusesAMissingCodeChallenge(): void
+    {
+        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+        $payload = AgentAuthorizationRegistrarFixture::payload();
+        unset($payload['code_challenge']);
+
+        $this->expectException(ValidationException::class);
+
+        $registrar->register($payload, AgentAuthorizationRegistrarFixture::verifiedContext(), self::SALES_CHANNEL_ID);
+    }
+
+    public function testItRefusesAMissingState(): void
+    {
+        $registrar = new AgentAuthorizationRegistrar(AgentAuthorizationRegistrarFixture::store(), new PayloadFields());
+        $payload = AgentAuthorizationRegistrarFixture::payload();
+        unset($payload['state']);
+
+        $this->expectException(ValidationException::class);
+
+        $registrar->register($payload, AgentAuthorizationRegistrarFixture::verifiedContext(), self::SALES_CHANNEL_ID);
+    }
+}
