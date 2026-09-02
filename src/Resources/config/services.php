@@ -43,6 +43,8 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationRegistrar;
 use MerchantQuoteAgentPlugin\Identity\Authorization\DbalPendingAuthorizationStore;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PayloadFields;
 use MerchantQuoteAgentPlugin\Identity\Authorization\PendingAuthorizationStoreInterface;
+use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
+use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -125,6 +127,8 @@ return static function (ContainerConfigurator $configurator): void {
     $services->alias(PendingAuthorizationStoreInterface::class, DbalPendingAuthorizationStore::class);
     $services->set(PayloadFields::class);
     $services->set(AgentAuthorizationRegistrar::class);
+    $services->set(SalesChannelDomainUrlReader::class);
+    $services->set(AgentAuthorizationRequestController::class)->tag('controller.service_arguments');
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the

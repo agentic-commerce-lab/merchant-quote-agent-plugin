@@ -11,6 +11,11 @@ use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
 return static function (RoutingConfigurator $routes): void {
     $routes->import(__DIR__ . '/../../Ucp/Quote/QuoteContractController.php', 'attribute');
 
+    // Where an agent registers an authorization request before sending a
+    // human to the shop. Imported unconditionally — it does not depend on the
+    // commercial quote backend.
+    $routes->import(__DIR__ . '/../../Identity/Controller/AgentAuthorizationRequestController.php', 'attribute');
+
     // The runtime endpoints only exist where the commercial backend does,
     // matching the service-graph gate in services.php — otherwise the routes
     // would resolve to a service the container never built.
