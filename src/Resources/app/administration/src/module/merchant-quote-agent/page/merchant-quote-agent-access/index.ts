@@ -62,15 +62,28 @@ Shopware.Component.register('merchant-quote-agent-access', {
             }
         },
 
+        /**
+         * Switching channels starts a request per switch, and they can resolve
+         * out of order. Anything that comes back for a channel the user has
+         * since navigated away from is dropped, so the fields always describe
+         * the channel the select is showing.
+         */
         async loadConfig() {
+            const requested = this.salesChannelId;
+
             this.isLoading = true;
             this.error = null;
 
             try {
                 const { data } = await this.httpClient.get(
-                    `_admin/ucp/sales-channels/${this.salesChannelId}/config`,
+                    `_admin/ucp/sales-channels/${requested}/config`,
                     { headers: this.headers() },
                 );
+
+                if (this.salesChannelId !== requested) {
+                    return;
+                }
+
                 const config = data?.data ?? data ?? {};
 
                 this.lists = {
@@ -79,19 +92,25 @@ Shopware.Component.register('merchant-quote-agent-access', {
                     agentAllowlist: this.toText(config.agentAllowlist),
                 };
             } catch (error) {
-                this.error = this.messageFor(error);
+                if (this.salesChannelId === requested) {
+                    this.error = this.messageFor(error);
+                }
             } finally {
-                this.isLoading = false;
+                if (this.salesChannelId === requested) {
+                    this.isLoading = false;
+                }
             }
         },
 
         async save() {
+            const salesChannelId = this.salesChannelId;
+
             this.isSaving = true;
             this.error = null;
 
             try {
                 await this.httpClient.put(
-                    `_admin/ucp/sales-channels/${this.salesChannelId}/config`,
+                    `_admin/ucp/sales-channels/${salesChannelId}/config`,
                     {
                         platformAllowlist: this.fromText(this.lists.platformAllowlist),
                         remoteProfileAllowlist: this.fromText(this.lists.remoteProfileAllowlist),

@@ -56,7 +56,7 @@
 
                 <mt-button
                     variant="primary"
-                    :disabled="!canEdit || isSaving || !salesChannelId"
+                    :disabled="!canEdit || isLoading || isSaving || !salesChannelId"
                     @click="save"
                 >
                     {{ $tc('merchant-quote-agent.access.save') }}
