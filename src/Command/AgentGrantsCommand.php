@@ -56,7 +56,8 @@ final class AgentGrantsCommand extends Command
             }
 
             $count = $this->grants->revoke($customerId, $revoke);
-            $io->success(\sprintf('Revoked %d grant(s) for %s.', $count, $revoke));
+            $message = \sprintf('Revoked %d grant(s) for %s.', $count, $revoke);
+            $count === 0 ? $io->warning($message) : $io->success($message);
 
             return Command::SUCCESS;
         }
