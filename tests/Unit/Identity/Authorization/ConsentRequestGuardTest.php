@@ -55,6 +55,29 @@ final class ConsentRequestGuardTest extends TestCase
         )));
     }
 
+    /**
+     * matchesChannel() is exposed on its own so the GET route can bind the
+     * channel too, without re-`find()`-ing or repeating the customer check.
+     */
+    public function testMatchesChannelAcceptsTheRegisteredChannel(): void
+    {
+        $guard = new ConsentRequestGuard($this->store(null));
+        $pending = $this->pending(self::SALES_CHANNEL_ID);
+
+        self::assertTrue($guard->matchesChannel($pending, $this->context(self::SALES_CHANNEL_ID, signedIn: true)));
+    }
+
+    public function testMatchesChannelRefusesAnyOtherChannel(): void
+    {
+        $guard = new ConsentRequestGuard($this->store(null));
+        $pending = $this->pending(self::SALES_CHANNEL_ID);
+
+        self::assertFalse($guard->matchesChannel($pending, $this->context(
+            '0191d3d0a0b071bd9c1a0d9d1a3f9fff',
+            signedIn: true,
+        )));
+    }
+
     private function pending(string $salesChannelId): PendingAuthorization
     {
         return new PendingAuthorization(

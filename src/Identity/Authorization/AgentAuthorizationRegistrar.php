@@ -62,7 +62,7 @@ final readonly class AgentAuthorizationRegistrar
                 $salesChannelId,
                 $clientId,
                 $context->platformProfile?->toArray() ?? [],
-                $this->fields->requiredString($payload, 'redirect_uri'),
+                $this->fields->requiredRedirectUri($payload, 'redirect_uri'),
                 $this->fields->optionalString($payload, 'scope'),
                 $this->fields->requiredString($payload, 'state'),
                 $this->fields->requiredString($payload, 'code_challenge'),

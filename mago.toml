@@ -41,6 +41,22 @@ check-throws = true
 unchecked-exceptions = ["RuntimeException", "LogicException"]
 ignore = [
   { code = "check-throws", in = "tests/" },
+  # AbstractController::$container (Symfony) is a typed property with no
+  # default, set via setContainer() through DI rather than the constructor —
+  # Symfony's own convention, not a bug (see MerchantQuoteAgentPlugin.php for
+  # the same pattern against Shopware's Plugin base class). This diagnostic's
+  # PRIMARY span is $container's own declaration in vendor/symfony code, not
+  # the subclass in src/ — so an inline `@mago-expect` in the subclass cannot
+  # suppress it (`in` here matches the primary span's file; the subclass only
+  # appears as a secondary annotation), and `mago-expect` is doubly unusable
+  # since matching a pragma against a foreign-file span was observed to be
+  # nondeterministic (identical content passing roughly half of repeated
+  # `mago analyze` runs). Scoped to the exact vendor file rather than the
+  # whole `framework-bundle` directory: every AbstractController subclass
+  # built this way hits the same false positive, so this is the general fix,
+  # not a per-controller one — AgentConsentController is simply the plugin's
+  # first (only) such subclass.
+  { code = "uninitialized-property", in = "vendor/symfony/framework-bundle/Controller/AbstractController.php" },
 ]
 
 [guard]

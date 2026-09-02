@@ -16,9 +16,11 @@ use Shopware\Core\System\SalesChannel\SalesChannelContext;
  * AC's authorize() cannot catch a cross-channel grant on its own: it compares
  * the customer's channel against the channel it resolves from the
  * RequestContext we hand it, i.e. against itself, so it always agrees.
- * hash_equals() rather than `===` because this is a secret-bearing comparison
- * even though sales channel ids are not themselves secret — consistency with
- * the rest of this namespace's handle comparisons.
+ *
+ * `matchesChannel()` is exposed separately from `verifiedPending()` so the
+ * GET route can bind the channel too, without re-`find()`-ing the record or
+ * duplicating the customer check GET already does its own way (an anonymous
+ * visitor there goes to login, not straight to "expired").
  */
 final readonly class ConsentRequestGuard
 {
@@ -34,6 +36,17 @@ final readonly class ConsentRequestGuard
             return null;
         }
 
-        return hash_equals($pending->salesChannelId, $context->getSalesChannelId()) ? $pending : null;
+        return $this->matchesChannel($pending, $context) ? $pending : null;
+    }
+
+    /**
+     * `hash_equals()` rather than `===`: not for timing — sales channel ids
+     * are not secrets — but because it is an exact string comparison that
+     * cannot silently loosen into type juggling, and it matches how the rest
+     * of this namespace compares identifiers.
+     */
+    public function matchesChannel(PendingAuthorization $pending, SalesChannelContext $context): bool
+    {
+        return hash_equals($pending->salesChannelId, $context->getSalesChannelId());
     }
 }

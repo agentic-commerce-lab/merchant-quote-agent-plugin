@@ -25,8 +25,10 @@
                 {{ "merchantQuoteAgent.consent.expiry"|trans({'%minutes%': expiresInMinutes}) }}
             </p>
 
+            {# The handle lives only in the session (see AgentConsentController's
+               docblock) - never a hidden field, so no form here can be
+               replayed cross-site with a different handle. #}
             <form method="post" action="{{ path('frontend.merchant_quote_agent.authorize.grant') }}">
-                <input type="hidden" name="request_uri" value="{{ handle }}">
                 <button type="submit" name="grant" value="1" class="btn btn-primary">
                     {{ "merchantQuoteAgent.consent.allow"|trans }}
                 </button>

@@ -26,28 +26,36 @@ use Symfony\Component\Routing\Attribute\Route;
  * do is trust anything the browser supplies beyond the handle: the redirect
  * target, scope and PKCE challenge all come from the stored record.
  *
- * The handle is stashed in the session before the login redirect rather than
- * passed through Shopware's `redirectParameters`, which the login page and the
- * guest-login page type differently (array vs. JSON string). It also keeps the
- * handle out of the post-login URL.
+ * The handle lives ONLY in the session, never in the request body or a
+ * rendered form field, and never in the query string past the first hit.
+ * Shopware's storefront forms carry no CSRF protection (removed in 6.5), so a
+ * hidden `request_uri` field would let a third-party page induce a signed-in
+ * victim into POSTing an attacker-registered handle. An attacker cannot plant
+ * a value in a victim's session, so there is nothing for such a forgery to
+ * act on. The same session entry also carries the handle across the login
+ * redirect, sidestepping Shopware's login/guest-login pages disagreeing on
+ * whether `redirectParameters` is an array or a JSON string.
  *
  * This is the plugin's only controller that renders a themed storefront page
  * rather than JSON, so — unlike UcpQuoteController, QuoteContractController
  * and AgentAuthorizationRequestController — it deliberately extends
  * StorefrontController instead of standing alone as a plain final class.
  *
- * The branchy parts of grant() (find the record, require a customer, bind the
- * sales channel) live in ConsentRequestGuard, the Agentic Commerce exchange
- * lives in ConsentGrantCompleter, and the pure presentation logic lives in
+ * The sales-channel binding both hops need (see ConsentRequestGuard) lives
+ * there rather than here, the Agentic Commerce exchange lives in
+ * ConsentGrantCompleter, and the pure presentation logic lives in
  * PendingAuthorizationPresenter — all split out to keep this class under the
  * class-level cyclomatic-complexity gate.
  *
- * @mago-expect analysis:uninitialized-property
  * Symfony's AbstractController declares `$container` as a typed property with
  * no default and sets it via setContainer(), called by the service
- * registration in services.php — not by this class's constructor. The same
- * pattern is already accepted in MerchantQuoteAgentPlugin.php for Shopware's
- * own Plugin base class.
+ * registration in services.php — not by this class's constructor. mago.toml
+ * carries the analyzer ignore for this (an inline `@mago-expect` cannot
+ * suppress it reliably: the diagnostic's primary span is in vendor code, and
+ * pragma matching against a foreign-file span was observed to be
+ * nondeterministic). The same pattern is accepted for Shopware's own Plugin
+ * base class in MerchantQuoteAgentPlugin.php, via a regular @mago-expect
+ * there since that diagnostic's span IS in-file.
  */
 #[Route(defaults: [PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => ['storefront']])]
 final class AgentConsentController extends StorefrontController
@@ -63,30 +71,38 @@ final class AgentConsentController extends StorefrontController
     ) {}
 
     /** @throws \Doctrine\DBAL\Exception */
-    #[Route(path: '/quote-agent/authorize', name: 'frontend.merchant_quote_agent.authorize', methods: ['GET'])]
+    #[Route(
+        path: '/quote-agent/authorize',
+        name: 'frontend.merchant_quote_agent.authorize',
+        defaults: [PlatformRequest::ATTRIBUTE_NO_STORE => true],
+        methods: ['GET'],
+    )]
     public function authorize(Request $request, SalesChannelContext $context): Response
     {
         $handle = $this->handle($request);
-        $pending = $handle === null ? null : $this->store->find($handle);
+        $pending = $handle === '' ? null : $this->store->find($handle);
 
         if ($pending === null) {
             return $this->expiredResponse();
         }
 
         if ($context->getCustomer() === null) {
-            // Stash and hand over to the shop's own login page.
-            $request->getSession()->set(self::SESSION_KEY, $handle);
-
+            // Hand over to the shop's own login page; the handle is already
+            // in the session. Channel binding waits until there is a
+            // customer to bind against.
             return $this->redirectToRoute('frontend.account.login.page', [
                 'redirectTo' => 'frontend.merchant_quote_agent.authorize',
             ]);
+        }
+
+        if (!$this->guard->matchesChannel($pending, $context)) {
+            return $this->expiredResponse();
         }
 
         return $this->renderStorefront(self::TEMPLATE, [
             'expired' => false,
             'agentHost' => PendingAuthorizationPresenter::agentHost($pending),
             'scopes' => PendingAuthorizationPresenter::scopeList($pending),
-            'handle' => $handle,
             'expiresInMinutes' => (int) (AgentAuthorizationRegistrar::TTL_SECONDS / 60),
         ]);
     }
@@ -95,21 +111,25 @@ final class AgentConsentController extends StorefrontController
     #[Route(path: '/quote-agent/authorize', name: 'frontend.merchant_quote_agent.authorize.grant', methods: ['POST'])]
     public function grant(Request $request, SalesChannelContext $context): Response
     {
-        $handle = (string) $request->request->get('request_uri', '');
+        $handle = $this->sessionHandle($request);
         $pending = $this->guard->verifiedPending($handle, $context);
 
         if ($pending === null) {
             return $this->expiredResponse();
         }
 
-        if (!$request->request->getBoolean('grant')) {
-            return new RedirectResponse(PendingAuthorizationPresenter::denialUrl($pending));
-        }
-
+        // Single-use either way: a denial that left the record live could
+        // still be granted later, contradicting the page the customer just read.
         $claimed = $this->store->consume($handle);
 
         if ($claimed === null) {
             return $this->expiredResponse();
+        }
+
+        $request->getSession()->remove(self::SESSION_KEY);
+
+        if (!$request->request->getBoolean('grant')) {
+            return new RedirectResponse(PendingAuthorizationPresenter::denialUrl($claimed));
         }
 
         $redirectTo = $this->completer->redirectTarget($claimed, $request->getHost(), $context->getToken());
@@ -122,20 +142,33 @@ final class AgentConsentController extends StorefrontController
         return $this->renderStorefront(self::TEMPLATE, ['expired' => true]);
     }
 
-    private function handle(Request $request): ?string
+    /**
+     * The first hit from the agent's authorization_url; stashed for every hop
+     * after. An empty string means "no handle" throughout this class.
+     */
+    private function handle(Request $request): string
     {
         $fromQuery = $request->query->get('request_uri');
 
         if (\is_string($fromQuery) && $fromQuery !== '') {
+            $request->getSession()->set(self::SESSION_KEY, $fromQuery);
+
             return $fromQuery;
         }
 
-        // Returning from the shop's login page.
-        $session = $request->getSession();
-        $stashed = $session->get(self::SESSION_KEY);
-        $session->remove(self::SESSION_KEY);
+        // Returning from the shop's login page, or a later GET on this page.
+        return $this->sessionHandle($request);
+    }
 
-        return \is_string($stashed) && $stashed !== '' ? $stashed : null;
+    /**
+     * The session is the ONLY source for the POST handle — never the request
+     * body, so a forged cross-site submission has nothing to supply.
+     */
+    private function sessionHandle(Request $request): string
+    {
+        $stashed = $request->getSession()->get(self::SESSION_KEY);
+
+        return \is_string($stashed) ? $stashed : '';
     }
 
     public static function agentHost(PendingAuthorization $pending): string
