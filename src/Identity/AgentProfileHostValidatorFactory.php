@@ -31,7 +31,7 @@ use Ucp\Sdk\Symfony\UcpSdkConfiguration;
  *
  * The SDK's own `UrlSafetyValidator::class` definition (services.php) is
  * non-shared so THIS factory rebuilds it per request. `HttpAgentProfileFetcher`,
- * the one consumer that matters, is itself a shared SDK service and holds
+ * the consumer this exists for, is itself a shared SDK service and holds
  * whichever validator it was built with for the life of the container --
  * under a long-running worker (FrankenPHP, RoadRunner) that is whichever
  * request was in scope the first time that fetcher was resolved. Non-shared
@@ -39,6 +39,16 @@ use Ucp\Sdk\Symfony\UcpSdkConfiguration;
  * the id directly, always reflects the current request), and redefining the
  * fetcher too to chase full per-request accuracy is more coupling to the SDK
  * than a dev-oriented toggle is worth.
+ */
+/**
+ * Second consumer, deliberately accepted: the SDK injects this same service id
+ * into DefaultOrderWebhookDispatcher, which validates the OUTBOUND order
+ * webhook target with it. So while a flagged agent's request is in scope, the
+ * announced host also clears this installation-wide list for that dispatch.
+ * Not an escalation an agent can drive: the target is the merchant-set
+ * webhookUrlOverride, never agent-supplied, and Agentic Commerce gates it
+ * independently through CheckoutWebhookUrlGuard against the persisted
+ * per-channel allowlist. Every other check in the validator still runs.
  */
 final class AgentProfileHostValidatorFactory
 {

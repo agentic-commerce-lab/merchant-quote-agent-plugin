@@ -7,7 +7,10 @@ import template from './merchant-quote-agent-access.html.twig';
  * plugin's own admin API rather than writing its table: the PUT goes through its
  * UcpConfigService, which validates every host and merges the payload over the
  * stored config. We therefore send only the three keys we edit, and anything set
- * by console survives untouched.
+ * by console survives untouched. Saving is not otherwise inert, though: on an
+ * active channel that same method also provisions a signing key and enables
+ * the agentic-files bridge. Both are idempotent and identical to what Agentic
+ * Commerce's own settings screen does on save.
  *
  * Saving needs that plugin's `ucp.editor` privilege, which is separate from this
  * plugin's own. A 403 from it is shown as-is rather than reported as success.

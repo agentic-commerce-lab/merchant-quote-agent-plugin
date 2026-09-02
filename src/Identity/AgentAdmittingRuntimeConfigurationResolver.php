@@ -17,7 +17,18 @@ use Ucp\Sdk\Service\RuntimeConfigurationResolverInterface;
  * The SDK takes the profile-host and agent-domain gates from whatever this
  * interface returns (see DefaultHttpRequestContextFactory), and the Agentic
  * Commerce plugin aliases the interface to its own resolver, so decorating it
- * widens both gates without touching that plugin. What it does not touch is the
+ * widens both gates without touching that plugin.
+ *
+ * "Both gates" means the two in DefaultHttpRequestContextFactory, but
+ * allowedAgentDomains has a further consumer worth knowing about:
+ * EmbeddedController feeds it to OriginMatcher, so on a flagged channel an
+ * announced host also becomes an allowed CORS origin and
+ * Content-Security-Policy frame-ancestors value for /ucp/embedded/*. Not
+ * reachable from a browser -- the preflight allows only Content-Type and
+ * Accept, so no cross-origin fetch may carry a UCP-Agent header, and a framing
+ * navigation carries none either.
+ *
+ * What it does not touch is the
  * installation-wide list the SDK's UrlSafetyValidator enforces — that is
  * {@see AgentProfileHostValidatorFactory}.
  *

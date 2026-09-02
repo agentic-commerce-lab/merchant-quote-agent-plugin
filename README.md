@@ -218,6 +218,15 @@ addresses, blocked metadata hosts). It is deliberately absent from
 `config.xml` and from any settings screen a merchant can reach — widening
 which agents are even checked is not a decision for a settings form.
 
+**A `system_config` row written without a sales channel applies to every
+channel.** Shopware's config loader falls back to rows with a null
+`sales_channel_id`, so `system:config:set
+MerchantQuoteAgentPlugin.config.allowAnyAgent -j true` with no `--sales-channel-id`
+turns the switch on shop-wide. The console command here only ever writes
+per-channel, and running it with no arguments reads through the same loader, so
+an inherited row shows up as every channel reporting `on` — which is the
+quickest way to spot one.
+
 **If every `/ucp/*` request on the shop is failing, check Agentic Commerce's
 config row for a fork-era `allowAnyAgent` key.** The installed 1.2.0 knows
 nothing about `allowAnyAgent` — the name appears nowhere in its source, and

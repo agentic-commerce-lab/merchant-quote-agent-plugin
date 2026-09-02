@@ -142,6 +142,10 @@ return static function (ContainerConfigurator $configurator): void {
     // stops being us.
     //
     // Non-shared: a shared instance would be built once from whichever request
+    // NOTE: this does not make the widening per-request in production -- the
+    // shared consumers above it bake in the first instance. See
+    // AgentProfileHostValidatorFactory's docblock and the README.
+    //
     // was in scope at the first fetch and then reused for every later request
     // on that worker (FrankenPHP, RoadRunner), so the widening would stick to
     // the first agent that happened to ask. Private, like the bundle's own
