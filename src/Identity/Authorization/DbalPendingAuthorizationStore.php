@@ -69,7 +69,7 @@ final readonly class DbalPendingAuthorizationStore implements PendingAuthorizati
      * @throws \JsonException
      */
     #[Override]
-    public function find(string $handle): ?PendingAuthorization
+    public function find(#[\SensitiveParameter] string $handle): ?PendingAuthorization
     {
         $row = $this->connection->fetchAssociative(
             \sprintf(
@@ -90,7 +90,7 @@ final readonly class DbalPendingAuthorizationStore implements PendingAuthorizati
      * @throws \JsonException
      */
     #[Override]
-    public function consume(string $handle): ?PendingAuthorization
+    public function consume(#[\SensitiveParameter] string $handle): ?PendingAuthorization
     {
         $pending = $this->find($handle);
 

@@ -15,8 +15,8 @@ interface PendingAuthorizationStoreInterface
     /** @return string the plaintext handle; only its hash is persisted */
     public function store(PendingAuthorization $pending, int $ttlSeconds): string;
 
-    public function find(string $handle): ?PendingAuthorization;
+    public function find(#[\SensitiveParameter] string $handle): ?PendingAuthorization;
 
     /** Atomically marks the record used. Null when unknown, expired or already consumed. */
-    public function consume(string $handle): ?PendingAuthorization;
+    public function consume(#[\SensitiveParameter] string $handle): ?PendingAuthorization;
 }
