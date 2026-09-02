@@ -1,17 +1,24 @@
 {
   "config": {
-    "fail-on-first-error": true
+    "fail-on-first-error": true,
+    "run": {
+      "path": "scripts/captainhook"
+    }
   },
   "pre-commit": {
     "enabled": true,
     "actions": [
       {
         "action": "vendor/bin/mago fmt --check {$STAGED_FILES|of-type:php|separated-by: }",
-        "config": { "label": "Mago format check (staged)" }
+        "config": {
+          "label": "Mago format check (staged)"
+        }
       },
       {
         "action": "vendor/bin/mago lint {$STAGED_FILES|of-type:php|separated-by: }",
-        "config": { "label": "Mago lint (staged)" }
+        "config": {
+          "label": "Mago lint (staged)"
+        }
       }
     ]
   },
@@ -20,7 +27,9 @@
     "actions": [
       {
         "action": "vendor/bin/mago analyze",
-        "config": { "label": "Mago analyze (whole program)" }
+        "config": {
+          "label": "Mago analyze (whole program)"
+        }
       }
     ]
   }

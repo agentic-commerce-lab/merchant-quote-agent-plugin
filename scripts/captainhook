@@ -1,0 +1,14 @@
+#!/bin/sh
+#
+# CaptainHook entry point for the Git hooks in .git/hooks (see captainhook.json
+# "config.run.path"). Hooks are shared by every worktree, but vendor/ is
+# git-ignored — so a fresh worktree runs post-checkout with no CaptainHook and
+# no Mago installed. Install the dependencies before handing over.
+set -e
+
+if [ ! -x vendor/bin/captainhook ]; then
+    echo "captainhook: vendor/ is missing, running composer install..." >&2
+    composer install --no-interaction --no-progress >&2
+fi
+
+exec vendor/bin/captainhook "$@"
