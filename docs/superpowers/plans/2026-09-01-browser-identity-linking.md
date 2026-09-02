@@ -1089,6 +1089,8 @@ final class AgentAuthorizationRequestControllerFixture
 
 > Note for the implementer: `CustomerContextResolverInterface`'s exact method signatures are in `src/Bridge/CustomerContextResolverInterface.php`. Read it and match the fixture to it before running the test — if `resolveForCustomer` differs, fix the fixture, not the interface.
 
+> **Also required (plan amendment):** have `build()` return the store double alongside the controller, or expose it from the fixture, and add `self::assertSame([], $store->stored)` inside each of the three refusal tests. Use try/catch with a trailing `self::fail(...)` rather than `expectException()`, which returns control on throw so trailing assertions never run. Rationale: every refusal test in this plan originally asserted only the exception class, which would pass an implementation that persisted first and then threw. The invariant is that nothing is recorded unless the agent is verified, so the tests must pin the write, not just the throw.
+
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `vendor/bin/phpunit tests/Unit/Identity/Controller/AgentAuthorizationRequestControllerTest.php`
@@ -2319,12 +2321,37 @@ final class BrowserIdentityLinkingTest extends IntegrationTestCase
         self::assertNull($store->consume($handle));
     }
 
-    public function testTheRegistrarRefusesAnUnverifiedAgentAgainstRealStorage(): void
+    /**
+     * The refusal is the lesser half of this test. The valuable assertion is
+     * that the table is UNCHANGED: this is the only place the write-side of
+     * the boundary rule is exercised against a real database rather than a
+     * double, so it is the only place a persist-then-throw ordering bug would
+     * actually be caught. `expectException()` cannot be used here — it returns
+     * control the moment the exception is thrown, so any assertion written
+     * after the call never runs. Hence try/catch with an explicit fail().
+     */
+    public function testTheRegistrarRefusesAnUnverifiedAgentAndPersistsNothing(): void
     {
-        $registrar = new AgentAuthorizationRegistrar($this->store());
+        $registrar = new AgentAuthorizationRegistrar($this->store(), new PayloadFields());
+        $connection = static::getContainer()->get('Doctrine\DBAL\Connection');
+        self::assertNotNull($connection);
+        $before = (int) $connection->fetchOne(
+            'SELECT COUNT(*) FROM merchant_quote_agent_pending_authorization',
+        );
 
-        $this->expectException(UnverifiedAgentException::class);
+        try {
+            $this->registerUnverified($registrar);
+            self::fail('An unverified agent must not be able to register an authorization request.');
+        } catch (UnverifiedAgentException) {
+            $after = (int) $connection->fetchOne(
+                'SELECT COUNT(*) FROM merchant_quote_agent_pending_authorization',
+            );
+            self::assertSame($before, $after, 'no row may be written when the agent is unverified');
+        }
+    }
 
+    private function registerUnverified(AgentAuthorizationRegistrar $registrar): void
+    {
         $registrar->register(
             [
                 'client_id' => 'https://agent.example/.well-known/ucp',
