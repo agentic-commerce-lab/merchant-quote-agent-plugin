@@ -34,7 +34,16 @@ final class UcpAgentHeader
             return null;
         }
 
-        return rtrim(strtolower($host), characters: '.');
+        // Deliberately NOT stripping a trailing dot. Both gates this host is fed
+        // to compare the host exactly as parse_url returned it -- the SDK's
+        // UrlSafetyValidator and DefaultHttpRequestContextFactory both only
+        // lowercase it -- so stripping here would put `agent.example` in the
+        // allowlist while the gate compared `agent.example.`, and the request
+        // an operator had just allowed would be refused with nothing logged to
+        // say why. Stripping also turned `https://.` and `https://...` into the
+        // empty string, which is not null and so was inserted as an allowlist
+        // entry that matched every trailing-dot host.
+        return strtolower($host);
     }
 
     /**

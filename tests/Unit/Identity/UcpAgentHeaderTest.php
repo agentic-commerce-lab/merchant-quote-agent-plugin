@@ -28,7 +28,10 @@ final class UcpAgentHeaderTest extends TestCase
             'agent.example',
         ];
         yield 'lowercased' => ['profile="https://Agent.Example/.well-known/ucp"', 'agent.example'];
-        yield 'trailing dot stripped' => ['profile="https://agent.example./.well-known/ucp"', 'agent.example'];
+        // Kept as-is rather than stripped: the gates compare the unstripped host.
+        yield 'trailing dot kept' => ['profile="https://agent.example./.well-known/ucp"', 'agent.example.'];
+        yield 'a bare dot is not widened to the empty string' => ['profile="https://./ucp"', '.'];
+        yield 'all dots is not widened to the empty string' => ['profile="https://.../ucp"', '...'];
         yield 'port is not part of the host' => ['profile="https://agent.example:8443/p"', 'agent.example'];
         yield 'null header' => [null, null];
         yield 'blank header' => ['   ', null];
