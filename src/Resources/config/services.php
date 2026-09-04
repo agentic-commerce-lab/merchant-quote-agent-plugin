@@ -78,6 +78,8 @@ use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ActSigner;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ChainMirror;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteHandler;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\OfferVisibleStateSubscriber;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
@@ -452,6 +454,11 @@ return static function (ContainerConfigurator $configurator): void {
     $services->alias(EscalationNotifierInterface::class, ShopwareEscalationNotifier::class);
     $services->set(EscalationFlowEventSubscriber::class)->args([service(BusinessEventCollector::class)]);
 
+    // The A2CN trigger (Task 17): same core event, inside this same guard for
+    // the same reason as QuoteServicingTrigger above — a shop without
+    // SwagCommercial has no `quote.state` state machine to fire it on.
+    $services->set(OfferVisibleStateSubscriber::class)->args([service('messenger.default_bus')]);
+
     // Whether a quote may be serviced at all, and with which settings (#5).
     $services->set(QuoteEscalator::class)->args([service(EscalationNotifierInterface::class)]);
     $services->set(ServicingPreflight::class)->args([
@@ -534,5 +541,17 @@ return static function (ContainerConfigurator $configurator): void {
         service(ChainMirror::class),
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
         service('logger'),
+    ]);
+
+    // The trigger's handler (Task 17): same lock as servicing, same
+    // ignoreOnInvalid() gateway as ServiceQuoteHandler above. SellerActEmitter
+    // is registered unconditionally within this guard (just above), so it is
+    // never invalid here — only the gateway degrades to null when
+    // SwagCommercial is present but unlicensed.
+    $services->set(ObserveQuoteHandler::class)->args([
+        service(QuoteServicingLock::class),
+        service('logger'),
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+        service(SellerActEmitter::class)->ignoreOnInvalid(),
     ]);
 };

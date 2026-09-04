@@ -34,7 +34,7 @@ use Psr\Log\LoggerInterface;
  *
  * Fail-open throughout: an evidence failure never stops commerce.
  */
-final readonly class SellerActEmitter
+readonly class SellerActEmitter
 {
     /** The only state in which an offer is visible to the buyer. */
     private const OFFER_VISIBLE_STATES = ['replied'];
