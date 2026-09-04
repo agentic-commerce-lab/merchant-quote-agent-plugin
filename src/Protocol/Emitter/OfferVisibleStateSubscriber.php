@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Protocol\Emitter;
 
 use Override;
+use Shopware\Core\Defaults;
 use Shopware\Core\System\StateMachine\Event\StateMachineStateChangeEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Messenger\Exception\ExceptionInterface;
@@ -18,6 +19,14 @@ use Symfony\Component\Messenger\MessageBusInterface;
  * buyer produces an offer too, and that offer must be signed like any other.
  * `QuoteServicingTrigger` excludes `replied` for the opposite reason — that is
  * the state its own servicing drives — so the two subscriptions do not overlap.
+ *
+ * Only the LIVE-version half of QuoteServicingTrigger::isNotOurBusiness() is
+ * mirrored here, deliberately not the STATE half. That other half exists to
+ * suppress the agent's own writes — but this subscriber's entire purpose is to
+ * sign the offer the agent itself just produced, so filtering out the agent's
+ * own context stamp would silence the one transition this class exists to
+ * observe. A state change in a draft/mirror version is still filtered: it would
+ * have us sign terms that are not the live quote's.
  */
 final readonly class OfferVisibleStateSubscriber implements EventSubscriberInterface
 {
@@ -37,6 +46,10 @@ final readonly class OfferVisibleStateSubscriber implements EventSubscriberInter
     /** @throws ExceptionInterface */
     public function onQuoteStateChanged(StateMachineStateChangeEvent $event): void
     {
+        if ($event->getContext()->getVersionId() !== Defaults::LIVE_VERSION) {
+            return;
+        }
+
         // Fires twice per transition, leave then enter. Only entering is news.
         if ($event->getTransitionSide() !== StateMachineStateChangeEvent::STATE_MACHINE_TRANSITION_SIDE_ENTER) {
             return;

@@ -56,11 +56,48 @@ final class AuditLogTest extends TestCase
         self::assertCount(1, $with['audit_metadata']['human_approval_receipts']);
     }
 
-    /** @return array<string, mixed> */
-    private static function build(AuditEvidence $evidence): array
+    /**
+     * A chain with no acts at all: an escalated-then-declined session before
+     * any emission reached the mirror, say. OfferSelection, SessionTimeline
+     * and NegotiationLog all read `$acts[0]` / `$acts[count-1]` through
+     * `?->`/`??`, and this is what proves that null-dereference never
+     * happens rather than merely reading the code and trusting it.
+     */
+    public function testAnEmptyChainDegradesWithoutANullDereference(): void
+    {
+        $log = self::build(new AuditEvidence([], []), []);
+
+        self::assertSame('a2cn_audit_log', $log['log_type']);
+        self::assertSame([], $log['negotiation_log']);
+        self::assertSame(0, $log['session_timeline']['total_duration_seconds']);
+        self::assertGreaterThanOrEqual(0, $log['session_timeline']['total_duration_seconds']);
+        self::assertNull($log['session_timeline']['first_offer_at']);
+    }
+
+    /**
+     * One act only: no acceptance, no counteroffer to measure a round trip
+     * against. The duration is still non-negative — a single timestamp
+     * measured against itself/generatedAt, never a negative span.
+     */
+    public function testASingleActDegradesWithoutANegativeDuration(): void
+    {
+        $acts = [self::act(ProtocolFixtures::buyerAct(1, self::SESSION))];
+
+        $log = self::build(new AuditEvidence([], []), $acts);
+
+        self::assertCount(1, $log['negotiation_log']);
+        self::assertGreaterThanOrEqual(0, $log['session_timeline']['total_duration_seconds']);
+    }
+
+    /**
+     * @param list<Act>|null $acts
+     *
+     * @return array<string, mixed>
+     */
+    private static function build(AuditEvidence $evidence, ?array $acts = null): array
     {
         $hash = new ProtocolHash(new DefaultJsonCanonicalization());
-        $acts = [
+        $acts ??= [
             self::act(ProtocolFixtures::buyerAct(1, self::SESSION)),
             self::act(ProtocolFixtures::sellerAct(2, self::SESSION)),
         ];

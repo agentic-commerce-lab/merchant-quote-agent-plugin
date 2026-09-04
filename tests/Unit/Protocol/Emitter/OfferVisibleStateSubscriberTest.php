@@ -7,7 +7,10 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Emitter;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteMessage;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\OfferVisibleStateSubscriber;
 use PHPUnit\Framework\TestCase;
+use Shopware\Core\Defaults;
+use Shopware\Core\Framework\Api\Context\SystemSource;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\StateMachine\Aggregation\StateMachineState\StateMachineStateEntity;
 use Shopware\Core\System\StateMachine\Event\StateMachineStateChangeEvent;
 use Shopware\Core\System\StateMachine\StateMachineEntity;
@@ -56,6 +59,24 @@ final class OfferVisibleStateSubscriberTest extends TestCase
     }
 
     /**
+     * A state change in a non-live (draft/mirror) version must not be signed
+     * into the chain — it is not the live quote's terms.
+     */
+    public function testItIgnoresATransitionOutsideTheLiveVersion(): void
+    {
+        $bus = self::bus();
+        $subscriber = new OfferVisibleStateSubscriber($bus);
+
+        $subscriber->onQuoteStateChanged(self::event(
+            'replied',
+            StateMachineStateChangeEvent::STATE_MACHINE_TRANSITION_SIDE_ENTER,
+            Uuid::randomHex(),
+        ));
+
+        self::assertSame([], $bus->messages);
+    }
+
+    /**
      * The real StateMachineStateChangeEvent constructor (verified against
      * vendor/shopware/core) takes a Transition value object plus a
      * StateMachineEntity and two StateMachineStateEntity instances — not a
@@ -64,7 +85,7 @@ final class OfferVisibleStateSubscriberTest extends TestCase
      * and the previous state's on LEAVE, so the fixture sets both to the same
      * name and lets the side under test pick the one that matters.
      */
-    private static function event(string $state, string $side): StateMachineStateChangeEvent
+    private static function event(string $state, string $side, ?string $versionId = null): StateMachineStateChangeEvent
     {
         $transition = new Transition('quote', 'quote-1', 'reply', 'stateId');
 
@@ -77,7 +98,7 @@ final class OfferVisibleStateSubscriberTest extends TestCase
         $stateEntity->setTechnicalName($state);
 
         return new StateMachineStateChangeEvent(
-            Context::createDefaultContext(),
+            new Context(new SystemSource(), versionId: $versionId ?? Defaults::LIVE_VERSION),
             $side,
             $transition,
             $stateMachine,

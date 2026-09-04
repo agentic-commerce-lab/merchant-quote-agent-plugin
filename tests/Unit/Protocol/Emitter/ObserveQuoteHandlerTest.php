@@ -11,12 +11,26 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\RecordingQuoteGateway;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\AbstractLogger;
 use Psr\Log\NullLogger;
+use Stringable;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\Store\InMemoryStore;
 
 final class ObserveQuoteHandlerTest extends TestCase
 {
+    /**
+     * Proven by mutation: with the null-gateway guard replaced by `if
+     * (false)`, all three tests in this class still passed, because
+     * `$gateway->fetchSnapshot()` on a null gateway throws \Error, which the
+     * handler's own catch-all swallows — the emitter is never reached either
+     * way, so asserting only "the emitter was not called" cannot tell a
+     * working guard from a broken one. Asserting on the actual skip line
+     * closes that gap: the broken guard logs "observation failed outside the
+     * emitter" instead of "observation skipped: no commercial quote gateway",
+     * so this test fails under the mutation (verified locally, then
+     * reverted).
+     */
     public function testItDoesNothingWithoutTheCommercialGateway(): void
     {
         // Same posture as ServiceQuoteHandler: no gateway means SwagCommercial
@@ -30,11 +44,17 @@ final class ObserveQuoteHandlerTest extends TestCase
         // ever weakened to check only one of the two collaborators, this would
         // catch it by observing the emitter got called anyway.
         $emitter = self::emitter();
-        $handler = new ObserveQuoteHandler(self::locks(free: true), new NullLogger(), null, $emitter);
+        $logger = self::recordingLogger();
+        $handler = new ObserveQuoteHandler(self::locks(free: true), $logger, null, $emitter);
 
         $handler(new ObserveQuoteMessage('quote-1'));
 
         self::assertSame(0, $emitter->spy->calls, 'no gateway means the emitter must never be observed');
+        self::assertContains(
+            'A2CN observation skipped: no commercial quote gateway.',
+            $logger->messages,
+            'the guard must log the skip, not fall through to fetchSnapshot() on a null gateway',
+        );
     }
 
     public function testItSkipsAQuoteAnotherProcessHasClaimed(): void
@@ -92,6 +112,30 @@ final class ObserveQuoteHandlerTest extends TestCase
                 ++$this->spy->calls;
 
                 return EmissionOutcome::unchanged();
+            }
+        };
+    }
+
+    /**
+     * Records every log message verbatim, so a test can assert which line
+     * fired.
+     *
+     * @return AbstractLogger&object{messages: list<string>}
+     */
+    private static function recordingLogger(): object
+    {
+        return new class extends AbstractLogger {
+            /** @var list<string> */
+            public array $messages = [];
+
+            /**
+             * @param mixed $level
+             * @param array<array-key, mixed> $context
+             */
+            #[\Override]
+            public function log($level, string|Stringable $message, array $context = []): void
+            {
+                $this->messages[] = (string) $message;
             }
         };
     }

@@ -40,6 +40,8 @@ use Psr\Log\LoggerInterface;
  * raise a TypeError on construction — before observe()'s try/catch exists to
  * catch anything. An unlicensed shop is a configuration state, not our bug,
  * so SellerActPublisher::publish() handles it by returning null, not throwing.
+ *
+ * Not `final`: the tests substitute it (see ObserveQuoteHandlerTest).
  */
 readonly class SellerActEmitter
 {
