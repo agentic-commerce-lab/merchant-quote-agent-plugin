@@ -76,6 +76,8 @@ use MerchantQuoteAgentPlugin\Protocol\Check\EvidenceInspector;
 use MerchantQuoteAgentPlugin\Protocol\Check\SessionIdCheck;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
+use MerchantQuoteAgentPlugin\Protocol\Store\ActStoreInterface;
+use MerchantQuoteAgentPlugin\Protocol\Store\DbalActStore;
 use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
 use MerchantQuoteAgentPlugin\Servicing\EscalationFlowEventSubscriber;
 use MerchantQuoteAgentPlugin\Servicing\EscalationNotifierInterface;
@@ -255,6 +257,11 @@ return static function (ContainerConfigurator $configurator): void {
     // A2CN tasks append their services to this same block.
     $services->set(ProtocolHash::class);
     $services->set(TermsFactory::class);
+
+    // The evidence mirror (Task 13): our own copy of the act chain, plus the
+    // violations and human approval receipts that are only ours.
+    $services->set(DbalActStore::class);
+    $services->alias(ActStoreInterface::class, DbalActStore::class);
 
     // Counterparty did:web verification-key resolution. Guzzle wired
     // explicitly and under our own service id: this block runs unconditionally

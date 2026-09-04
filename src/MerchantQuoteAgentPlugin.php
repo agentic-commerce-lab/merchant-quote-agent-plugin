@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin;
 
+use Doctrine\DBAL\Connection;
+use Override;
 use Shopware\Core\Framework\Plugin;
+use Shopware\Core\Framework\Plugin\Context\UninstallContext;
 
 /**
  * Merchant-side quote agent: reacts to B2B quote lifecycle events, negotiates
@@ -48,9 +51,36 @@ class MerchantQuoteAgentPlugin extends Plugin
      * build, not the running shop, owns the lock file. That is core's rule and
      * the right one: nothing here needs to be conditional on it.
      */
-    #[\Override]
+    #[Override]
     public function executeComposerCommands(): bool
     {
         return true;
+    }
+
+    /** @throws \Doctrine\DBAL\Exception */
+    #[Override]
+    public function uninstall(UninstallContext $uninstallContext): void
+    {
+        parent::uninstall($uninstallContext);
+
+        if ($uninstallContext->keepUserData()) {
+            return;
+        }
+
+        $connection = $this->container?->get(Connection::class);
+        if (!$connection instanceof Connection) {
+            return;
+        }
+
+        // #59 records that uninstall used to leave the decision table
+        // behind. All three A2CN evidence tables are dropped here so this
+        // does not become a fourth instance of that bug.
+        foreach ([
+            'merchant_quote_agent_a2cn_receipt',
+            'merchant_quote_agent_a2cn_violation',
+            'merchant_quote_agent_a2cn_act',
+        ] as $table) {
+            $connection->executeStatement(\sprintf('DROP TABLE IF EXISTS `%s`', $table));
+        }
     }
 }
