@@ -94,13 +94,14 @@ final class ProtocolFixtures
         string $state = 'replied',
         array $customFields = [],
         int $quantity = 10,
+        string $salesChannelId = self::SALES_CHANNEL_ID,
     ): QuoteSnapshot {
         return new QuoteSnapshot(
             identity: new QuoteIdentity(
                 quoteId: $quoteId,
                 quoteNumber: 'Q-1001',
                 currencyIso: 'EUR',
-                salesChannelId: self::SALES_CHANNEL_ID,
+                salesChannelId: $salesChannelId,
             ),
             revision: new QuoteRevision('rev-1', new \DateTimeImmutable('2026-09-04T09:00:00+00:00')),
             totals: new QuoteTotals(totalNet: 7600.0),

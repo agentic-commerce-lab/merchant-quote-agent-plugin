@@ -5,16 +5,9 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Protocol\Emitter;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
-use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
-use MerchantQuoteAgentPlugin\Protocol\Act\Act;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActChain;
-use MerchantQuoteAgentPlugin\Protocol\Act\ActKey;
-use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
 use MerchantQuoteAgentPlugin\Protocol\Check\EvidenceInspector;
-use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
-use MerchantQuoteAgentPlugin\Protocol\Store\ApprovalReceipt;
-use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -33,6 +26,20 @@ use Psr\Log\LoggerInterface;
  * different signed payloads onto the same wire key.
  *
  * Fail-open throughout: an evidence failure never stops commerce.
+ *
+ * `run()` is the gate chain — decide whether to publish at all — and delegates
+ * the actual build/mirror/wire/receipt work to SellerActPublisher, a real seam
+ * split from this class (see that class's docblock) rather than a workaround
+ * for the per-class complexity gate.
+ *
+ * `$gateway` is nullable, defaulted, and last — matching ServiceQuoteHandler:
+ * the container's only definition of QuoteGatewayInterface is
+ * QuoteGatewayFactory::create(), which returns null when SwagCommercial's
+ * classes exist but the shop is unlicensed. A non-nullable parameter here
+ * would make the container pass null into a typed constructor argument and
+ * raise a TypeError on construction — before observe()'s try/catch exists to
+ * catch anything. An unlicensed shop is a configuration state, not our bug,
+ * so SellerActPublisher::publish() handles it by returning null, not throwing.
  */
 readonly class SellerActEmitter
 {
@@ -43,8 +50,8 @@ readonly class SellerActEmitter
         private SellerActFactory $acts,
         private EvidenceInspector $inspector,
         private ChainMirror $mirror,
-        private QuoteGatewayInterface $gateway,
         private LoggerInterface $logger,
+        private ?QuoteGatewayInterface $gateway = null,
     ) {}
 
     public function observe(QuoteSnapshot $snapshot, \DateTimeImmutable $now): EmissionOutcome
@@ -86,6 +93,13 @@ readonly class SellerActEmitter
             return EmissionOutcome::inert();
         }
 
+        // See ChainMirror: the whole chain, before any OTHER gate — including
+        // identity resolution below — because a buyer act that never triggers
+        // an emission must still reach our own copy. Identity failing to
+        // resolve is exactly that case: real acts on the quote, nothing we can
+        // sign into them yet.
+        $this->mirror->mirror($quoteId, $chain);
+
         $identity = $this->acts->identityFor($snapshot);
         if ($identity === null) {
             $this->logger->warning('A2CN cannot identify this installation for a quote; no act emitted.', [
@@ -95,10 +109,6 @@ readonly class SellerActEmitter
 
             return EmissionOutcome::inert();
         }
-
-        // See ChainMirror: the whole chain, before any gate, because a buyer act
-        // that never triggers an emission must still reach our own copy.
-        $this->mirror->mirror($quoteId, $chain);
 
         if (!\in_array($snapshot->lifecycle->stateTechnicalName, self::OFFER_VISIBLE_STATES, strict: true)) {
             return EmissionOutcome::unchanged();
@@ -121,67 +131,15 @@ readonly class SellerActEmitter
             return EmissionOutcome::violation($violation);
         }
 
-        return $this->emit($snapshot, $chain, $identity, $now);
+        $act = $this->publisher()->publish($snapshot, $chain, $identity, $now);
+
+        // publish() returns null only for an unlicensed shop (no gateway) —
+        // a configuration state, not our bug, so inert() rather than failed().
+        return $act === null ? EmissionOutcome::inert() : EmissionOutcome::emitted($act);
     }
 
-    private function emit(
-        QuoteSnapshot $snapshot,
-        ActChain $chain,
-        A2cnIdentity $identity,
-        \DateTimeImmutable $now,
-    ): EmissionOutcome {
-        $quoteId = $snapshot->identity->quoteId;
-        $act = $this->acts->build($snapshot, $chain, $identity, $now);
-
-        // Mirror before wire. If the write below fails, our mirror already
-        // reflects the changed terms, so the next observation sees the terms as
-        // changed and retries the append — instead of the wire holding one act,
-        // the mirror another, and offer_chain_hash diverging permanently.
-        $this->mirror->mirrorOne($quoteId, $act);
-
-        $this->gateway->updateQuote($quoteId, new QuoteUpdate(customFields: [
-            ActKey::for($act->sequenceNumber(), ActRole::Seller) => $act->raw(),
-        ]));
-
-        $this->recordApproval($snapshot, $act, $now);
-
-        return EmissionOutcome::emitted($act);
-    }
-
-    /**
-     * A receipt records that a HUMAN stood behind terms the agent itself would
-     * have escalated. An unreleased escalation marker is exactly that state:
-     * the agent escalated and has not answered since (QuoteEscalator releases
-     * the marker only on a pass that answered), so the offer now on the quote
-     * is a person's.
-     *
-     * Own try/catch, deliberately separate from observe()'s: the act is already
-     * mirrored AND on the wire, so a receipt failure must not turn this into a
-     * failed emission — that would lie about whether the offer went out. The
-     * receipt is genuinely lost for this call; logged, not silently swallowed.
-     */
-    private function recordApproval(QuoteSnapshot $snapshot, Act $act, \DateTimeImmutable $now): void
+    private function publisher(): SellerActPublisher
     {
-        $marker = $snapshot->lifecycle->customFields[QuoteEscalator::MARKER_KEY] ?? null;
-        if (!\is_string($marker) || $marker === '') {
-            return;
-        }
-
-        try {
-            $this->mirror->recordReceipt(
-                $snapshot->identity->quoteId,
-                new ApprovalReceipt(
-                    receiptId: $act->sessionId() . ':' . $act->hash(),
-                    offerHash: $act->hash(),
-                    thresholdCrossed: $marker,
-                    approvedAt: $now->format(\DATE_ATOM),
-                ),
-            );
-        } catch (\Throwable $error) {
-            $this->logger->error('A2CN approval receipt lost; the act was already emitted.', [
-                'quoteId' => $snapshot->identity->quoteId,
-                'exception' => $error,
-            ]);
-        }
+        return new SellerActPublisher($this->acts, $this->mirror, $this->logger, $this->gateway);
     }
 }

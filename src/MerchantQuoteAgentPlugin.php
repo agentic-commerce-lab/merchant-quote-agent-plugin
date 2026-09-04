@@ -89,6 +89,17 @@ class MerchantQuoteAgentPlugin extends Plugin
             return;
         }
 
+        // Independent of one another: neither may skip because the other's
+        // service failed to resolve. A merchant who asked to wipe data must
+        // not keep a live private key in system_config just because the
+        // table drop below could not fetch a Connection, or vice versa.
+        $this->dropEvidenceTables();
+        $this->deleteSigningKey();
+    }
+
+    /** @throws \Doctrine\DBAL\Exception */
+    private function dropEvidenceTables(): void
+    {
         $connection = $this->container?->get(Connection::class);
         if (!$connection instanceof Connection) {
             return;
@@ -104,10 +115,15 @@ class MerchantQuoteAgentPlugin extends Plugin
         ] as $table) {
             $connection->executeStatement(\sprintf('DROP TABLE IF EXISTS `%s`', $table));
         }
+    }
 
-        // A merchant who uninstalls to remove data must not keep a live
-        // private key in system_config: left behind, a later reinstall's
-        // generateIfAbsent() would find and reuse it instead of rotating.
+    /**
+     * A merchant who uninstalls to remove data must not keep a live private
+     * key in system_config: left behind, a later reinstall's
+     * generateIfAbsent() would find and reuse it instead of rotating.
+     */
+    private function deleteSigningKey(): void
+    {
         $systemConfig = $this->container?->get(SystemConfigService::class);
         if ($systemConfig instanceof SystemConfigService) {
             $systemConfig->delete(A2cnKeyStore::CONFIG_KEY);

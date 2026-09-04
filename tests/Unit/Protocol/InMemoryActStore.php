@@ -23,6 +23,14 @@ final class InMemoryActStore implements ActStoreInterface
     /** @var list<ApprovalReceipt> */
     public array $receipts = [];
 
+    /**
+     * Bookkeeping for appendReceipt()'s idempotency only — not part of the
+     * double's public shape, which tests read through `$receipts`.
+     *
+     * @var array<string, true> keyed by "sessionId:offerHash"
+     */
+    private array $receiptKeys = [];
+
     /** @var array<string, string> */
     public array $quotes = [];
 
@@ -39,9 +47,20 @@ final class InMemoryActStore implements ActStoreInterface
         $this->violations[] = $violation;
     }
 
+    /**
+     * Idempotent on (session, offer hash), matching ReceiptTableStore's
+     * `ON DUPLICATE KEY UPDATE session_id = session_id` — a no-op update, so
+     * the FIRST receipt for a key wins and a repeat append is dropped.
+     */
     #[Override]
     public function appendReceipt(string $sessionId, ApprovalReceipt $receipt): void
     {
+        $key = $sessionId . ':' . $receipt->offerHash;
+        if (isset($this->receiptKeys[$key])) {
+            return;
+        }
+
+        $this->receiptKeys[$key] = true;
         $this->receipts[] = $receipt;
     }
 

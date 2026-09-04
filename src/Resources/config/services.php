@@ -544,13 +544,17 @@ return static function (ContainerConfigurator $configurator): void {
     // The emitter (Task 16) depends on QuoteGatewayInterface, which only
     // exists where SwagCommercial does — registered here, inside the same
     // gate as the other gateway consumers above, rather than in the
-    // unconditional A2CN block.
+    // unconditional A2CN block. `ignoreOnInvalid()` kept for consistency with
+    // ServiceQuoteHandler above even though this reference never actually goes
+    // invalid (QuoteGatewayInterface is always defined, factory-backed); the
+    // null case that matters for this shop is the factory's return value, which
+    // SellerActEmitter's nullable, defaulted `$gateway` now handles itself.
     $services->set(SellerActEmitter::class)->args([
         service(SellerActFactory::class),
         service(EvidenceInspector::class),
         service(ChainMirror::class),
-        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
         service('logger'),
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
     ]);
 
     // The trigger's handler (Task 17): same lock as servicing, same
