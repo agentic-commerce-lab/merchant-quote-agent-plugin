@@ -50,6 +50,10 @@ final class CompactJws
         }
 
         try {
+            // The `count($segments) !== 3` guard above already proves $header,
+            // $payload and $signature are all set; the analyzer cannot follow
+            // that through the list-destructure, so it sees `string|null`.
+            /** @mago-expect analysis:possibly-null-argument */
             $der = Es256Signature::toDer(Base64Url::decode($signature));
         } catch (MalformedSignature) {
             return null;
@@ -59,6 +63,7 @@ final class CompactJws
             return null;
         }
 
+        /** @mago-expect analysis:possibly-null-argument */
         return Base64Url::decode($payload);
     }
 }

@@ -40,6 +40,12 @@ final readonly class ProtocolHash
      */
     public function canonical(array $value): string
     {
+        // The SDK interface documents `array<string, mixed>`, but its own
+        // canonicalizer handles both JSON objects and JSON arrays (see
+        // ProtocolHashTest::testItHashesAListForTheOfferChain, which hashes a
+        // plain int-keyed list) — the interface's phpdoc is narrower than
+        // what it actually accepts.
+        /** @mago-expect analysis:less-specific-argument */
         return $this->json->canonicalize($value);
     }
 }
