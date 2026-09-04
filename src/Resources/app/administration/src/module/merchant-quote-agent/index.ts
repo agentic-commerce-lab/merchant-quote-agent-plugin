@@ -1,4 +1,5 @@
 import { privileges } from './acl';
+import './merchant-quote-agent.scss';
 import './page/merchant-quote-agent-list';
 import './page/merchant-quote-agent-detail';
 import './page/merchant-quote-agent-access';

@@ -6,60 +6,108 @@
     </template>
     {% endblock %}
 
+    {# The period scopes the whole page — both the figures and the grid — so it
+       belongs in the smart bar rather than in a card of its own labelled the
+       same as its one field. The width lives on a wrapper: set on the select
+       itself it loses to the component's own rule and the chevron lands on the
+       text. #}
+    {% block merchant_quote_agent_list_smart_bar_actions %}
+    <template #smart-bar-actions>
+        <div class="mqa-page__range">
+            <sw-single-select
+                v-model:value="rangeDays"
+                :options="rangeOptions"
+                :show-clearable-button="false"
+            />
+        </div>
+    </template>
+    {% endblock %}
+
     {% block merchant_quote_agent_list_content %}
     <template #content>
         <sw-card-view>
-            {% block merchant_quote_agent_list_range %}
-            <sw-card :title="$tc('merchant-quote-agent.range.label')">
-                <sw-single-select
-                    v-model:value="rangeDays"
-                    :options="rangeOptions"
-                    :label="$tc('merchant-quote-agent.range.label')"
-                />
-            </sw-card>
-            {% endblock %}
-
             {% block merchant_quote_agent_list_figures %}
             <sw-card
                 v-if="figures"
                 :title="$tc('merchant-quote-agent.figures.title')"
                 class="merchant-quote-agent-figures"
             >
-                <sw-description-list>
-                    <dt>{{ $tc('merchant-quote-agent.figures.received') }}</dt>
-                    <dd>{{ figures.received }}</dd>
+                <div class="mqa-figures">
+                    <div v-if="figures.received !== null" class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.received') }}</span>
+                        <span class="mqa-figure__value">{{ figures.received }}</span>
+                    </div>
 
-                    <dt>{{ $tc('merchant-quote-agent.figures.handled') }}</dt>
-                    <dd>{{ figures.handled }} <template v-if="share(figures.handled) !== null">({{ share(figures.handled) }}%)</template></dd>
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.handled') }}</span>
+                        <span class="mqa-figure__value">{{ figures.handled }}</span>
+                    </div>
 
-                    <dt>{{ $tc('merchant-quote-agent.figures.autoAnswered') }}</dt>
-                    <dd>{{ figures.autoAnswered }} <template v-if="share(figures.autoAnswered) !== null">({{ share(figures.autoAnswered) }}%)</template></dd>
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.autoAnswered') }}</span>
+                        <span class="mqa-figure__value">{{ figures.answered }}</span>
+                        <span v-if="share(figures.answered) !== null" class="mqa-figure__aside">
+                            {{ share(figures.answered) }}%
+                        </span>
+                    </div>
 
-                    <dt>{{ $tc('merchant-quote-agent.figures.escalated') }}</dt>
-                    <dd>{{ figures.escalated }} <template v-if="share(figures.escalated) !== null">({{ share(figures.escalated) }}%)</template></dd>
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.escalated') }}</span>
+                        <span class="mqa-figure__value">{{ figures.escalated }}</span>
+                        <span v-if="share(figures.escalated) !== null" class="mqa-figure__aside">
+                            {{ share(figures.escalated) }}%
+                        </span>
+                    </div>
 
-                    <dt>{{ $tc('merchant-quote-agent.figures.expiredUnanswered') }}</dt>
-                    <dd>{{ figures.expiredUnanswered }}</dd>
+                    <div v-if="figures.expiredUnanswered !== null" class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.expiredUnanswered') }}</span>
+                        <span class="mqa-figure__value">{{ figures.expiredUnanswered }}</span>
+                    </div>
 
-                    <dt>{{ $tc('merchant-quote-agent.figures.valueHandled') }}</dt>
-                    <dd>{{ figures.valueHandled }}</dd>
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.valueHandled') }}</span>
+                        <span class="mqa-figure__value">
+                            <template v-if="figures.valueCurrency">
+                                {{ formatCurrency(figures.valueHandled, figures.valueCurrency) }}
+                            </template>
+                            <template v-else>{{ figures.valueHandled.toFixed(2) }}</template>
+                        </span>
+                        <span v-if="!figures.valueCurrency" class="mqa-figure__aside">
+                            {{ $tc('merchant-quote-agent.figures.mixedCurrencies') }}
+                        </span>
+                    </div>
 
-                    <dt>{{ $tc('merchant-quote-agent.figures.granted') }}</dt>
-                    <dd v-if="figures.granted !== null">
-                        {{ $tc('merchant-quote-agent.figures.grantedAgainstCap', 0, {
-                            granted: figures.granted.toFixed(1),
-                            cap: (figures.cap ?? 0).toFixed(1),
-                        }) }}
-                    </dd>
-                    <dd v-else>&ndash;</dd>
-                </sw-description-list>
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.granted') }}</span>
+                        <span class="mqa-figure__value">{{ formatPercent(figures.granted) }}</span>
+                        <span v-if="figures.cap !== null" class="mqa-figure__aside">
+                            {{ $t('merchant-quote-agent.figures.againstCap', { cap: formatPercent(figures.cap) }) }}
+                        </span>
+                    </div>
+                </div>
+
+                {# Answered and escalated can both apply to one quote across its
+                   rounds, so they are shares, not a split. Saying so beats
+                   letting the merchant read them as a broken sum. #}
+                <p class="mqa-figures__note">
+                    {{ $t('merchant-quote-agent.figures.shareNote', { handled: figures.handled }) }}
+                </p>
             </sw-card>
             {% endblock %}
 
             {% block merchant_quote_agent_list_grid %}
-            <sw-card :title="$tc('merchant-quote-agent.general.mainMenuItemGeneral')">
+            <sw-card :title="$tc('merchant-quote-agent.list.gridTitle')">
+                <div class="mqa-list__toolbar">
+                    <sw-single-select
+                        v-model:value="outcomeFilter"
+                        :options="outcomeFilterOptions"
+                        :label="$tc('merchant-quote-agent.list.filterLabel')"
+                        :show-clearable-button="false"
+                    />
+                </div>
+
                 <sw-entity-listing
-                    v-if="decisions"
+                    v-if="decisions && decisions.length"
                     :repository="decisionRepository"
                     :data-source="decisions"
                     :columns="columns"
@@ -76,44 +124,47 @@
                     :allow-delete="acl.can('merchant_quote_agent.deleter')"
                     detail-route="merchant.quote.agent.detail"
                 >
+                    {# One row is one servicing pass, so a three-round
+                       negotiation is three rows. The round count says so
+                       instead of leaving the repetition to be puzzled out. #}
                     <template #column-quoteNumber="{ item }">
-                        <router-link :to="{ name: 'merchant.quote.agent.detail', params: { id: item.id } }">
-                            <strong>#{{ item.quoteNumber || '–' }}</strong>
-                        </router-link>
+                        <div class="mqa-cell">
+                            <router-link :to="{ name: 'merchant.quote.agent.detail', params: { id: item.id } }">
+                                <strong>#{{ item.quoteNumber || '–' }}</strong>
+                            </router-link>
+                            <span v-if="rounds(item) > 1" class="mqa-cell__aside">
+                                {{ $t('merchant-quote-agent.list.roundCount', { count: rounds(item) }) }}
+                            </span>
+                        </div>
                     </template>
 
+                    {# The reason explains the outcome, so it sits with it. It
+                       used to sit in the offer column, which then had no room
+                       left to say what was offered. #}
                     <template #column-outcome="{ item }">
-                        <mt-badge :variant="outcomeVariant(item.outcome)">
-                            {{ outcomeLabel(item.outcome) }}
-                        </mt-badge>
+                        <div class="mqa-cell">
+                            <mt-badge :variant="outcomeVariant(item.outcome)">
+                                {{ outcomeLabel(item.outcome) }}
+                            </mt-badge>
+                            <span v-if="item.escalationReason" class="mqa-cell__aside">
+                                {{ escalationLabel(item.escalationReason) }}
+                            </span>
+                        </div>
                     </template>
 
-                    <template #column-buyerComment="{ item }">
-                        <span :title="item.buyerComment">
-                            {{ truncate(item.buyerComment, 55) }}
+                    <template #column-interpretedAsks="{ item }">
+                        <span :title="askSummary(item.interpretedAsks)">
+                            {{ askSummary(item.interpretedAsks) }}
                         </span>
                     </template>
 
                     <template #column-discountPercentGranted="{ item }">
-                        <template v-if="item.outcome === 'replied'">
-                            <strong>{{ formatDiscount(item) }}</strong>
-                            <small v-if="item.totalNetAfter" style="color: #6b7280; display: block;">
-                                ({{ formatCurrency(item.totalNetAfter, item.currencyIso) }})
-                            </small>
-                        </template>
-                        <template v-else-if="item.escalationReason">
-                            <span style="color: #d97706; font-size: 12px;">
-                                {{ item.escalationReason }}
+                        <div class="mqa-cell">
+                            <span class="mqa-cell__value">{{ grantedLabel(item) }}</span>
+                            <span v-if="answeredTheBuyer(item.outcome) && item.totalNetAfter !== null" class="mqa-cell__aside">
+                                {{ formatCurrency(item.totalNetAfter, item.currencyIso) }}
                             </span>
-                        </template>
-                        <span v-else>&ndash;</span>
-                    </template>
-
-                    <template #column-band="{ item }">
-                        <mt-badge v-if="item.band" variant="neutral">
-                            {{ item.band }}
-                        </mt-badge>
-                        <span v-else>&ndash;</span>
+                        </div>
                     </template>
 
                     <template #column-createdAt="{ item }">
@@ -122,7 +173,8 @@
                 </sw-entity-listing>
 
                 <sw-empty-state
-                    v-else
+                    v-else-if="!isLoading"
+                    :absolute="false"
                     :title="$tc('merchant-quote-agent.list.emptyStateTitle')"
                     :subline="$tc('merchant-quote-agent.list.emptyStateSubline')"
                 />

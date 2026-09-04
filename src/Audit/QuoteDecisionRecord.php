@@ -190,7 +190,13 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?array $errorChain = null;
 
+    /**
+     * The agent's message TO the buyer, written by
+     * DecisionRecorder::recordReply() and by nothing else. Named `buyer_comment`
+     * until 2026-09-04, which read as the buyer speaking; the buyer's own words
+     * are not recorded here at all, only their interpreted ask.
+     */
     #[Field(type: FieldType::TEXT, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
-    public ?string $buyerComment = null;
+    public ?string $replyToBuyer = null;
 }

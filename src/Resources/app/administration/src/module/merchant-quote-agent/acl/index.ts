@@ -4,7 +4,11 @@ export const privileges = {
     key: 'merchant_quote_agent',
     roles: {
         viewer: {
-            privileges: ['merchant_quote_agent_decision:read'],
+            // `quote:read` because the overview's intake figures — quotes
+            // received, expired unanswered — aggregate the quote entity. Without
+            // it the aggregation 403s and the whole figures card disappears with
+            // no explanation.
+            privileges: ['merchant_quote_agent_decision:read', 'quote:read'],
             dependencies: [],
         },
         deleter: {

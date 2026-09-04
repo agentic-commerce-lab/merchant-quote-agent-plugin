@@ -14,9 +14,17 @@
                 :title="$tc('merchant-quote-agent.access.cardTitle')"
                 :is-loading="isLoading"
             >
-                <p class="merchant-quote-agent-access__hint">
-                    {{ $tc('merchant-quote-agent.access.hint') }}
-                </p>
+                {# The 140-word wall this replaces explained all three fields'
+                   fallback rules before the reader had seen a field, and got
+                   the deny-all case wrong. The per-field help below carries the
+                   rules; the privilege note only matters when it bites. #}
+                <mt-banner v-if="!canEdit" variant="attention">
+                    {{ $tc('merchant-quote-agent.access.forbidden') }}
+                </mt-banner>
+
+                <mt-banner v-if="error" variant="critical">
+                    {{ error }}
+                </mt-banner>
 
                 <mt-select
                     :label="$tc('merchant-quote-agent.access.salesChannelLabel')"
@@ -26,33 +34,34 @@
                     @update:model-value="(value) => { salesChannelId = value; loadConfig(); }"
                 />
 
-                <mt-banner v-if="error" variant="critical">
-                    {{ error }}
-                </mt-banner>
+                <div class="mqa-access__lists">
+                    <mt-textarea
+                        :label="$tc('merchant-quote-agent.access.platformAllowlistLabel')"
+                        :help-text="$tc('merchant-quote-agent.access.platformAllowlistHelp')"
+                        :placeholder="$tc('merchant-quote-agent.access.hostPlaceholder')"
+                        :disabled="!canEdit || isLoading"
+                        :model-value="lists.platformAllowlist"
+                        @update:model-value="(value) => { lists.platformAllowlist = value; }"
+                    />
 
-                <mt-textarea
-                    :label="$tc('merchant-quote-agent.access.platformAllowlistLabel')"
-                    :help-text="$tc('merchant-quote-agent.access.platformAllowlistHelp')"
-                    :disabled="!canEdit || isLoading"
-                    :model-value="lists.platformAllowlist"
-                    @update:model-value="(value) => { lists.platformAllowlist = value; }"
-                />
+                    <mt-textarea
+                        :label="$tc('merchant-quote-agent.access.remoteProfileAllowlistLabel')"
+                        :help-text="$tc('merchant-quote-agent.access.remoteProfileAllowlistHelp')"
+                        :placeholder="$tc('merchant-quote-agent.access.hostPlaceholder')"
+                        :disabled="!canEdit || isLoading"
+                        :model-value="lists.remoteProfileAllowlist"
+                        @update:model-value="(value) => { lists.remoteProfileAllowlist = value; }"
+                    />
 
-                <mt-textarea
-                    :label="$tc('merchant-quote-agent.access.remoteProfileAllowlistLabel')"
-                    :help-text="$tc('merchant-quote-agent.access.remoteProfileAllowlistHelp')"
-                    :disabled="!canEdit || isLoading"
-                    :model-value="lists.remoteProfileAllowlist"
-                    @update:model-value="(value) => { lists.remoteProfileAllowlist = value; }"
-                />
-
-                <mt-textarea
-                    :label="$tc('merchant-quote-agent.access.agentAllowlistLabel')"
-                    :help-text="$tc('merchant-quote-agent.access.agentAllowlistHelp')"
-                    :disabled="!canEdit || isLoading"
-                    :model-value="lists.agentAllowlist"
-                    @update:model-value="(value) => { lists.agentAllowlist = value; }"
-                />
+                    <mt-textarea
+                        :label="$tc('merchant-quote-agent.access.agentAllowlistLabel')"
+                        :help-text="$tc('merchant-quote-agent.access.agentAllowlistHelp')"
+                        :placeholder="$tc('merchant-quote-agent.access.hostPlaceholder')"
+                        :disabled="!canEdit || isLoading"
+                        :model-value="lists.agentAllowlist"
+                        @update:model-value="(value) => { lists.agentAllowlist = value; }"
+                    />
+                </div>
 
                 <mt-button
                     variant="primary"
@@ -61,6 +70,44 @@
                 >
                     {{ $tc('merchant-quote-agent.access.save') }}
                 </mt-button>
+            </mt-card>
+            {% endblock %}
+
+            {# Three empty boxes cannot tell a merchant whether the shop is open
+               or shut. This says what the fields above actually come to. #}
+            {% block merchant_quote_agent_access_effective %}
+            <mt-card
+                v-if="salesChannelId"
+                :title="$tc('merchant-quote-agent.access.effectiveTitle')"
+                :is-loading="isLoading"
+            >
+                <dl class="mqa-run__facts">
+                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.access.remoteProfileAllowlistLabel') }}</dt>
+                    <dd class="mqa-run__fact-value">
+                        <span v-if="effective.profile.hosts.length" class="mqa-access__hosts">
+                            {{ effective.profile.hosts.join(', ') }}
+                        </span>
+                        <span v-else class="mqa-access__none">{{ $tc('merchant-quote-agent.access.resolvesToNothing') }}</span>
+                        <span class="mqa-run__quiet">{{ $tc(`merchant-quote-agent.access.source.${effective.profile.source}`) }}</span>
+                    </dd>
+
+                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.access.agentAllowlistLabel') }}</dt>
+                    <dd class="mqa-run__fact-value">
+                        <span v-if="effective.agent.hosts.length" class="mqa-access__hosts">
+                            {{ effective.agent.hosts.join(', ') }}
+                        </span>
+                        <span v-else class="mqa-access__none">{{ $tc('merchant-quote-agent.access.resolvesToNothing') }}</span>
+                        <span class="mqa-run__quiet">{{ $tc(`merchant-quote-agent.access.source.${effective.agent.source}`) }}</span>
+                    </dd>
+
+                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.access.fallbackHost') }}</dt>
+                    <dd class="mqa-run__fact-value">
+                        <span v-if="channelHost" class="mqa-access__hosts">{{ channelHost }}</span>
+                        <span v-else class="mqa-access__none">{{ $tc('merchant-quote-agent.access.noDomain') }}</span>
+                    </dd>
+                </dl>
+
+                <p class="mqa-figures__note">{{ $tc('merchant-quote-agent.access.effectiveNote') }}</p>
             </mt-card>
             {% endblock %}
         </sw-card-view>
