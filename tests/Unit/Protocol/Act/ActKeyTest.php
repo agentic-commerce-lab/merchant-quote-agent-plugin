@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Act;
 
 use MerchantQuoteAgentPlugin\Protocol\Act\ActKey;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
+use MerchantQuoteAgentPlugin\Protocol\Act\OutOfRangeSequence;
 use PHPUnit\Framework\TestCase;
 
 final class ActKeyTest extends TestCase
@@ -31,5 +32,19 @@ final class ActKeyTest extends TestCase
         self::assertTrue(ActKey::isActKey('a2cn_act_0001_b'));
         self::assertFalse(ActKey::isActKey(ActKey::SESSION_KEY));
         self::assertFalse(ActKey::isActKey('merchant_quote_agent_serviced'));
+    }
+
+    public function testItRefusesToEmitAnUnsortableKeyBelowTheRange(): void
+    {
+        $this->expectException(OutOfRangeSequence::class);
+
+        ActKey::for(0, ActRole::Buyer);
+    }
+
+    public function testItRefusesToEmitAnUnsortableKeyAboveTheRange(): void
+    {
+        $this->expectException(OutOfRangeSequence::class);
+
+        ActKey::for(ActKey::MAX_SEQUENCE + 1, ActRole::Buyer);
     }
 }

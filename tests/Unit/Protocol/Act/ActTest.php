@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Act;
 
 use MerchantQuoteAgentPlugin\Protocol\Act\Act;
+use MerchantQuoteAgentPlugin\Protocol\Act\ActKey;
 use PHPUnit\Framework\TestCase;
 
 final class ActTest extends TestCase
@@ -49,6 +50,34 @@ final class ActTest extends TestCase
     {
         $raw = self::buyerAct();
         $raw['terms']['custom_terms']['padding'] = str_repeat('x', Act::MAX_ENCODED_BYTES);
+
+        self::assertNull(Act::fromArray($raw));
+    }
+
+    public function testItRefusesASequenceNumberBelowTheRange(): void
+    {
+        $raw = self::buyerAct();
+        $raw['sequence_number'] = 0;
+
+        self::assertNull(Act::fromArray($raw));
+
+        $raw['sequence_number'] = -1;
+
+        self::assertNull(Act::fromArray($raw));
+    }
+
+    public function testItRefusesASequenceNumberAboveTheRange(): void
+    {
+        $raw = self::buyerAct();
+        $raw['sequence_number'] = ActKey::MAX_SEQUENCE + 1;
+
+        self::assertNull(Act::fromArray($raw));
+    }
+
+    public function testItRefusesAStringSequenceNumberRatherThanCoercingIt(): void
+    {
+        $raw = self::buyerAct();
+        $raw['sequence_number'] = '3';
 
         self::assertNull(Act::fromArray($raw));
     }

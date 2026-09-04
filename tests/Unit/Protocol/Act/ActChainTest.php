@@ -94,6 +94,21 @@ final class ActChainTest extends TestCase
         self::assertCount(2, $chain->acts());
     }
 
+    public function testItSkipsAnActWithAnOutOfRangeSequenceWithoutLosingTheRest(): void
+    {
+        $chain = ActChain::read([
+            ActKey::SESSION_KEY => self::SESSION,
+            // Not emitted via ActKey::for() — that now refuses this sequence.
+            // A hand-crafted or foreign write could still land such a key on
+            // the quote, and the chain must not choke on it.
+            'a2cn_act_10000_b' => self::act(10000, 'did:web:buyer.example', 'offer'),
+            ActKey::for(1, ActRole::Buyer) => self::act(1, 'did:web:buyer.example', 'offer'),
+        ]);
+
+        self::assertCount(1, $chain->acts());
+        self::assertSame(1, $chain->acts()[0]->sequenceNumber());
+    }
+
     public function testItStopsAtTheLengthCap(): void
     {
         $fields = [ActKey::SESSION_KEY => self::SESSION];

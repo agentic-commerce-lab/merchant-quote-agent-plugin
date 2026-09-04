@@ -25,12 +25,25 @@ final class ActKey
     public const PREFIX = 'a2cn_act_';
     public const SESSION_KEY = 'a2cn_session';
 
+    /**
+     * The widest value a 4-digit zero-padded index can represent. This bound is
+     * what makes the fixed pad width safe: past it, `str_pad` stops padding and
+     * a 5-digit index (`10000`) sorts lexically BEFORE `9999`, breaking the
+     * "lexical order equals chronological order" invariant this class promises.
+     */
+    public const MAX_SEQUENCE = 9999;
+
     private const INDEX_WIDTH = 4;
 
     private function __construct() {}
 
+    /** @throws OutOfRangeSequence if the sequence would not sort correctly at this pad width. */
     public static function for(int $sequence, ActRole $role): string
     {
+        if ($sequence < 1 || $sequence > self::MAX_SEQUENCE) {
+            throw new OutOfRangeSequence(\sprintf('A2CN act sequence out of range: %d', $sequence));
+        }
+
         return self::PREFIX . str_pad((string) $sequence, self::INDEX_WIDTH, '0', \STR_PAD_LEFT) . '_' . $role->value;
     }
 

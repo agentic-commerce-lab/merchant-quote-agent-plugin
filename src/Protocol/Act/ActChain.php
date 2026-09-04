@@ -15,15 +15,14 @@ namespace MerchantQuoteAgentPlugin\Protocol\Act;
  *
  * @mago-expect lint:too-many-methods
  * @mago-expect lint:cyclomatic-complexity
- * @mago-expect lint:kan-defect
  * This task's interface is one query per read this plugin needs over the
  * ordered chain (last act, last of ours, first of theirs, buyer-only acts,
  * duplicate sequences, next sequence/round, length-cap and offer presence).
- * Each is a single short loop or a one-line derivation; the three rules all
- * aggregate those loops per class (thresholds 10 / method-count / phpmetrics'
- * kan-defect heuristic). Splitting the queries across classes would not
- * remove a single branch, only relocate it — see SwagCommercialBuyerQuoteGateway
- * for the same precedent (many small methods over one bounded interface).
+ * Each is a single short loop or a one-line derivation; the two rules both
+ * aggregate those loops per class (thresholds 10 / method-count). Splitting
+ * the queries across classes would not remove a single branch, only relocate
+ * it — see SwagCommercialBuyerQuoteGateway for the same precedent (many small
+ * methods over one bounded interface).
  */
 final readonly class ActChain
 {
@@ -103,24 +102,18 @@ final readonly class ActChain
 
     public function nextSequence(): int
     {
-        $highest = 0;
-        foreach ($this->acts as $act) {
-            $highest = max($highest, $act->sequenceNumber());
-        }
+        $highest = array_reduce(
+            $this->acts,
+            static fn(int $carry, Act $act): int => max($carry, $act->sequenceNumber()),
+            0,
+        );
 
         return $highest + 1;
     }
 
     public function nextRound(): int
     {
-        $offers = 0;
-        foreach ($this->acts as $act) {
-            if ($act->isOffer()) {
-                ++$offers;
-            }
-        }
-
-        return $offers + 1;
+        return \count(array_filter($this->acts, static fn(Act $act): bool => $act->isOffer())) + 1;
     }
 
     public function last(): ?Act
@@ -130,26 +123,15 @@ final readonly class ActChain
 
     public function lastSellerAct(string $sellerDid): ?Act
     {
-        $found = null;
-        foreach ($this->acts as $act) {
-            if ($act->senderDid() === $sellerDid) {
-                $found = $act;
-            }
-        }
+        $ours = array_values(array_filter($this->acts, static fn(Act $act): bool => $act->senderDid() === $sellerDid));
 
-        return $found;
+        return $ours === [] ? null : $ours[\count($ours) - 1];
     }
 
     /** The counterparty's first act — whoever we did not sign for. */
     public function firstForeignAct(string $sellerDid): ?Act
     {
-        foreach ($this->acts as $act) {
-            if ($act->senderDid() !== $sellerDid) {
-                return $act;
-            }
-        }
-
-        return null;
+        return $this->buyerActs($sellerDid)[0] ?? null;
     }
 
     /** @return list<Act> */
@@ -176,12 +158,6 @@ final readonly class ActChain
 
     public function hasOffer(): bool
     {
-        foreach ($this->acts as $act) {
-            if ($act->isOffer()) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_filter($this->acts, static fn(Act $act): bool => $act->isOffer()) !== [];
     }
 }

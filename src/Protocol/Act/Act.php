@@ -76,7 +76,8 @@ final readonly class Act
             }
         }
 
-        if (!\is_int($raw['sequence_number'] ?? null)) {
+        $sequence = $raw['sequence_number'] ?? null;
+        if (!\is_int($sequence) || $sequence < 1 || $sequence > ActKey::MAX_SEQUENCE) {
             return null;
         }
 
