@@ -33,6 +33,7 @@ final class A2cnKeyStoreTest extends IntegrationTestCase
         $cacheInvalidator->invalidate([CachedSystemConfigLoader::CACHE_TAG], true);
     }
 
+    #[\Override]
     protected function tearDown(): void
     {
         self::config()->delete(A2cnKeyStore::CONFIG_KEY);

@@ -11,6 +11,7 @@ use Shopware\Core\Framework\Plugin;
 use Shopware\Core\Framework\Plugin\Context\ActivateContext;
 use Shopware\Core\Framework\Plugin\Context\InstallContext;
 use Shopware\Core\Framework\Plugin\Context\UninstallContext;
+use Shopware\Core\System\SystemConfig\SystemConfigService;
 
 /**
  * Merchant-side quote agent: reacts to B2B quote lifecycle events, negotiates
@@ -102,6 +103,14 @@ class MerchantQuoteAgentPlugin extends Plugin
             'merchant_quote_agent_a2cn_act',
         ] as $table) {
             $connection->executeStatement(\sprintf('DROP TABLE IF EXISTS `%s`', $table));
+        }
+
+        // A merchant who uninstalls to remove data must not keep a live
+        // private key in system_config: left behind, a later reinstall's
+        // generateIfAbsent() would find and reuse it instead of rotating.
+        $systemConfig = $this->container?->get(SystemConfigService::class);
+        if ($systemConfig instanceof SystemConfigService) {
+            $systemConfig->delete(A2cnKeyStore::CONFIG_KEY);
         }
     }
 
