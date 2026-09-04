@@ -113,7 +113,7 @@ final class DecisionRecorder
             return;
         }
 
-        $this->draft->buyerComment = $comment;
+        $this->draft->replyToBuyer = $comment;
         $this->draft->replyPromptHash = $promptHash;
     }
 

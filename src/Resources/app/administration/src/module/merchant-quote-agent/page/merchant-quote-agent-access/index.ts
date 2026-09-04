@@ -25,6 +25,7 @@ Shopware.Component.register('merchant-quote-agent-access', {
             salesChannels: [],
             salesChannelId: null,
             lists: { platformAllowlist: '', remoteProfileAllowlist: '', agentAllowlist: '' },
+            profileDomain: null,
             isLoading: false,
             isSaving: false,
             error: null,
@@ -38,6 +39,52 @@ Shopware.Component.register('merchant-quote-agent-access', {
 
         httpClient() {
             return this.syncService.httpClient;
+        },
+
+        selectedChannel() {
+            return this.salesChannels.find((channel) => channel.id === this.salesChannelId) ?? null;
+        },
+
+        /**
+         * The host every empty list ultimately falls back to.
+         *
+         * `hostname`, not `host`: PHP's `parse_url($uri, PHP_URL_HOST)` drops the
+         * port, so `localhost:8095` resolves to `localhost` at runtime and
+         * showing the port here would misstate the rule.
+         */
+        channelHost() {
+            const base = this.profileDomain || this.selectedChannel?.domains?.[0]?.url || '';
+
+            try {
+                return new URL(base).hostname || null;
+            } catch {
+                return null;
+            }
+        },
+
+        /**
+         * What the three lists resolve to for real.
+         *
+         * Mirrors `UcpConfig::toRuntimeConfiguration()` and `::resolveBaseUri()`
+         * in the Agentic Commerce plugin. That is a copy of someone else's rule
+         * and can drift, which is a real cost — but three empty fields tell a
+         * merchant nothing about whether the shop is open or shut, and the hint
+         * text this replaces got the answer wrong: empty lists do not deny every
+         * remote agent, they narrow access to the shop's own host.
+         */
+        effective() {
+            const platform = this.fromText(this.lists.platformAllowlist);
+            const profile = this.fromText(this.lists.remoteProfileAllowlist);
+            const agent = this.fromText(this.lists.agentAllowlist);
+
+            const fallback = platform.length > 0
+                ? { hosts: platform, source: 'platform' }
+                : { hosts: this.channelHost ? [this.channelHost] : [], source: 'channel' };
+
+            return {
+                profile: profile.length > 0 ? { hosts: profile, source: 'explicit' } : fallback,
+                agent: agent.length > 0 ? { hosts: agent, source: 'explicit' } : fallback,
+            };
         },
     },
 
@@ -92,6 +139,10 @@ Shopware.Component.register('merchant-quote-agent-access', {
                 }
 
                 const config = data?.data ?? data ?? {};
+
+                // Overrides the channel domain as the fallback host, so the
+                // effective lists cannot be read without it.
+                this.profileDomain = config.profileDomain ?? null;
 
                 this.lists = {
                     platformAllowlist: this.toText(config.platformAllowlist),

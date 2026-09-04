@@ -45,8 +45,8 @@ final class DecisionRecorderTest extends TestCase
         $recorder->finish(new NegotiationPass(NegotiationOutcome::NothingToDo));
 
         self::assertCount(2, $writer->drafts);
-        self::assertSame('We can do 5%.', $writer->drafts[0]->buyerComment);
-        self::assertNull($writer->drafts[1]->buyerComment, 'Pass one leaked into pass two.');
+        self::assertSame('We can do 5%.', $writer->drafts[0]->replyToBuyer);
+        self::assertNull($writer->drafts[1]->replyToBuyer, 'Pass one leaked into pass two.');
         self::assertNull($writer->drafts[1]->replyPromptHash);
     }
 

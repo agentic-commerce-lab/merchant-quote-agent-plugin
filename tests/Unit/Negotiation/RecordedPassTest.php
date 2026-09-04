@@ -76,8 +76,8 @@ final class RecordedPassTest extends TestCase
         self::assertNotNull($draft->writes, 'OfferApplier did not record what it wrote.');
         self::assertContains('recalculate', $draft->writes);
         self::assertSame(950.0, $draft->totalNetAfter);
-        self::assertNotNull($draft->buyerComment);
-        self::assertStringContainsString('%', $draft->buyerComment);
+        self::assertNotNull($draft->replyToBuyer);
+        self::assertStringContainsString('%', $draft->replyToBuyer);
     }
 
     public function testAModelOutageAtTheNegotiateCallStillCarriesTheExtractHash(): void

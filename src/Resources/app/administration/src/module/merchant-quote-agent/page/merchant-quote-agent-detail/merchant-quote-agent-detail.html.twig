@@ -2,182 +2,157 @@
 <sw-page class="merchant-quote-agent-detail">
     {% block merchant_quote_agent_detail_smart_bar_header %}
     <template #smart-bar-header>
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <h2>Quote #{{ quoteNumber }}</h2>
-            <mt-badge v-if="finalTerminalState" variant="success">
-                {{ terminalLabel(finalTerminalState) }}
-            </mt-badge>
-            <mt-badge v-else-if="finalOutcome" :variant="outcomeVariant(finalOutcome)">
-                {{ outcomeLabel(finalOutcome) }}
-            </mt-badge>
-        </div>
+        <h2>{{ $t('merchant-quote-agent.detail.pageTitle', { quoteNumber: quoteNumber }) }}</h2>
+    </template>
+    {% endblock %}
+
+    {% block merchant_quote_agent_detail_smart_bar_actions %}
+    <template #smart-bar-actions>
+        {# A button that navigates, not an anchor wrapping a button: nesting the
+           two gives a keyboard user two tab stops for one action. mt-button
+           takes no router-link prop, so the push is explicit. #}
+        <mt-button
+            v-if="quoteRoute"
+            variant="primary"
+            size="small"
+            @click="$router.push(quoteRoute)"
+        >
+            {{ $tc('merchant-quote-agent.detail.openQuote') }}
+        </mt-button>
     </template>
     {% endblock %}
 
     {% block merchant_quote_agent_detail_content %}
     <template #content>
-        <sw-card-view v-if="record">
+        <sw-card-view>
             {% block merchant_quote_agent_detail_overview %}
             <sw-card :title="$tc('merchant-quote-agent.detail.summaryTitle')" :is-loading="isLoading">
-                <sw-container columns="1fr 1fr 1fr 1fr" gap="16px">
-                    <div>
-                        <small style="color: #6b7280; display: block; margin-bottom: 4px;">{{ $tc('merchant-quote-agent.detail.finalStatus') }}</small>
-                        <mt-badge v-if="finalTerminalState" variant="success">
-                            {{ terminalLabel(finalTerminalState) }}
-                        </mt-badge>
-                        <mt-badge v-else-if="finalOutcome" :variant="outcomeVariant(finalOutcome)">
-                            {{ outcomeLabel(finalOutcome) }}
-                        </mt-badge>
-                        <small v-if="finalTerminalAt" style="color: #6b7280; display: block; margin-top: 4px;">
-                            {{ formatDate(finalTerminalAt) }}
-                        </small>
+                <div v-if="record" class="mqa-figures">
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.detail.status') }}</span>
+                        <span class="mqa-figure__value">
+                            <mt-badge :variant="statusVariant">{{ statusLabel }}</mt-badge>
+                        </span>
+                        {# A quote with no terminal state has not ended, whatever
+                           its last pass did. Calling that a final status was
+                           simply wrong. #}
+                        <span class="mqa-figure__aside">
+                            <template v-if="isInFlight">{{ $tc('merchant-quote-agent.detail.stillOpen') }}</template>
+                            <template v-else>{{ formatDate(terminalAt) }}</template>
+                        </span>
                     </div>
 
-                    <div>
-                        <small style="color: #6b7280; display: block; margin-bottom: 4px;">{{ $tc('merchant-quote-agent.detail.roundsTotal') }}</small>
-                        <strong style="font-size: 16px;">{{ totalRounds }}</strong>
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.detail.passes') }}</span>
+                        <span class="mqa-figure__value">{{ totalRounds }}</span>
+                        <span class="mqa-figure__aside">
+                            {{ $t('merchant-quote-agent.detail.passesAnswered', { count: answeredRounds }) }}
+                        </span>
                     </div>
 
-                    <div>
-                        <small style="color: #6b7280; display: block; margin-bottom: 4px;">{{ $tc('merchant-quote-agent.detail.offeredNet') }}</small>
-                        <strong style="font-size: 16px;">{{ latestRound && latestRound.totalNetAfter !== null ? formatCurrency(latestRound.totalNetAfter, latestRound.currencyIso) : '–' }}</strong>
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.detail.offeredNet') }}</span>
+                        <span class="mqa-figure__value">
+                            {{ latestOffer ? formatCurrency(latestOffer.raw.totalNetAfter, latestOffer.raw.currencyIso) : '–' }}
+                        </span>
                     </div>
 
-                    <div>
-                        <small style="color: #6b7280; display: block; margin-bottom: 4px;">{{ $tc('merchant-quote-agent.detail.offeredDiscount') }}</small>
-                        <strong style="font-size: 16px;">{{ latestRound && latestRound.discountPercentGranted !== null ? latestRound.discountPercentGranted + '%' : '–' }}</strong>
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.detail.offeredDiscount') }}</span>
+                        <span class="mqa-figure__value">{{ latestOffer ? latestOffer.granted : '–' }}</span>
+                        <span v-if="latestOffer" class="mqa-figure__aside">
+                            {{ $t('merchant-quote-agent.figures.againstCap', { cap: latestOffer.cap }) }}
+                        </span>
                     </div>
-                </sw-container>
+
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.detail.lastActivity') }}</span>
+                        <span class="mqa-figure__value mqa-figure__value--text">{{ formatDate(lastActivity) }}</span>
+                    </div>
+                </div>
+
+                <sw-empty-state
+                    v-else-if="!isLoading"
+                    :absolute="false"
+                    :title="$tc('merchant-quote-agent.detail.missingTitle')"
+                    :subline="$tc('merchant-quote-agent.detail.missingSubline')"
+                />
             </sw-card>
             {% endblock %}
 
+            {# One card holding one sequence. Every run used to be its own card,
+               which gave a pass that did nothing the same weight as the round
+               that made the offer. #}
             {% block merchant_quote_agent_detail_timeline %}
-            <div style="margin: 24px 0 12px 0;">
-                <h3 style="font-size: 18px; margin-bottom: 4px;">{{ $tc('merchant-quote-agent.detail.flowTitle') }}</h3>
-                <p style="color: #6b7280; margin: 0;">{{ $tc('merchant-quote-agent.detail.flowSubtitle') }}</p>
-            </div>
-
-            <div v-for="round in formattedRounds" :key="round.id" style="margin-bottom: 24px;">
-                <sw-card :title="`${round.title} (${round.badgeLabel})`">
-                    <template #headerRight>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="color: #6b7280; font-size: 13px;">{{ round.timestamp }}</span>
-                            <mt-badge :variant="round.outcomeVariant">
-                                {{ round.outcomeLabel }}
-                            </mt-badge>
+            <sw-card v-if="record" :title="$tc('merchant-quote-agent.detail.flowTitle')">
+                <ol class="mqa-timeline">
+                    <li
+                        v-for="run in runs"
+                        :key="run.id"
+                        class="mqa-run"
+                        :class="`mqa-run--${run.outcomeVariant}`"
+                    >
+                        <div class="mqa-run__header">
+                            <span class="mqa-run__index">{{ run.index }}</span>
+                            <h4 class="mqa-run__title">{{ run.title }}</h4>
+                            <mt-badge :variant="run.outcomeVariant">{{ run.outcomeLabel }}</mt-badge>
+                            <span class="mqa-run__time">{{ run.timestamp }}</span>
                         </div>
-                    </template>
 
-                    <!-- STEP 1: BUYER -->
-                    <div style="margin-bottom: 20px;">
-                        <h4 style="font-size: 14px; font-weight: 600; color: #1e3a8a; margin-bottom: 8px;">
-                            {{ $tc('merchant-quote-agent.detail.buyerSection') }}
-                        </h4>
-                        <div v-if="round.buyerComment" style="background: #f0f9ff; border-left: 4px solid #0284c7; padding: 12px 16px; border-radius: 4px; margin-bottom: 12px;">
-                            <span style="display: block; font-size: 12px; color: #0369a1; font-weight: 600; margin-bottom: 4px;">
-                                {{ $tc('merchant-quote-agent.detail.buyerCommentLabel') }}
-                            </span>
-                            <span style="font-size: 14px; color: #0f172a;">{{ round.buyerComment }}</span>
-                        </div>
-                        <div v-else style="color: #94a3b8; font-style: italic;">–</div>
-
-                        <sw-description-list v-if="round.interpretedAsks.length" style="margin-top: 8px;">
-                            <template v-for="ask in round.interpretedAsks" :key="ask.label">
-                                <dt>{{ ask.label }}</dt>
-                                <dd><strong>{{ ask.value }}</strong></dd>
+                        <dl v-if="!run.isNoop" class="mqa-run__facts">
+                            {# What the buyer asked for. Only ever recorded in
+                               structured form, so this is all of it. #}
+                            <template v-if="run.asks.length">
+                                <template v-for="ask in run.asks" :key="ask.label">
+                                    <dt class="mqa-run__fact-label">{{ ask.label }}</dt>
+                                    <dd class="mqa-run__fact-value mqa-run__fact-value--numeric">{{ ask.value }}</dd>
+                                </template>
                             </template>
-                        </sw-description-list>
-                    </div>
 
-                    <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
-
-                    <!-- STEP 2 & 3: POLICY & AI -->
-                    <sw-container columns="1fr 1fr" gap="24px" style="margin-bottom: 20px;">
-                        <div>
-                            <h4 style="font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px;">
-                                {{ $tc('merchant-quote-agent.detail.policySection') }}
-                            </h4>
-                            <sw-description-list>
-                                <dt>{{ $tc('merchant-quote-agent.detail.bandLabel') }}</dt>
-                                <dd>
-                                    <mt-badge :variant="bandVariant(round.band)">
-                                        {{ round.band }}
-                                    </mt-badge>
+                            <template v-if="run.band">
+                                <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.bandLabel') }}</dt>
+                                <dd class="mqa-run__fact-value">
+                                    <mt-badge :variant="run.bandVariant">{{ run.band }}</mt-badge>
+                                    <span class="mqa-run__quiet">
+                                        {{ $t('merchant-quote-agent.figures.againstCap', { cap: run.cap }) }}
+                                    </span>
                                 </dd>
+                            </template>
 
-                                <dt>{{ $tc('merchant-quote-agent.detail.capLabel') }}</dt>
-                                <dd>{{ round.maxDiscountPercent }}</dd>
+                            <template v-if="run.granted">
+                                <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.granted') }}</dt>
+                                <dd class="mqa-run__fact-value mqa-run__fact-value--numeric">
+                                    <span class="mqa-run__granted">{{ run.granted }}</span>
+                                    <span v-if="run.totals" class="mqa-run__quiet">{{ run.totals }}</span>
+                                </dd>
+                            </template>
 
-                                <template v-if="round.escalationReason">
-                                    <dt>{{ $tc('merchant-quote-agent.detail.escalationReason') }}</dt>
-                                    <dd style="color: #d97706; font-weight: 600;">{{ round.escalationReason }}</dd>
-                                </template>
-                            </sw-description-list>
-                        </div>
+                            <template v-if="run.escalationReason">
+                                <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.escalationReason') }}</dt>
+                                <dd class="mqa-run__fact-value">{{ run.escalationReason }}</dd>
+                            </template>
 
-                        <div>
-                            <h4 style="font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px;">
-                                {{ $tc('merchant-quote-agent.detail.aiSection') }}
-                            </h4>
-                            <sw-description-list>
-                                <dt>{{ $tc('merchant-quote-agent.detail.modelLabel') }}</dt>
-                                <dd>{{ round.model }}</dd>
+                            <template v-if="run.reply">
+                                <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.replyLabel') }}</dt>
+                                <dd class="mqa-run__fact-value mqa-run__message">{{ run.reply }}</dd>
+                            </template>
+                        </dl>
 
-                                <template v-if="round.tokens">
-                                    <dt>{{ $tc('merchant-quote-agent.detail.tokensLabel') }}</dt>
-                                    <dd>{{ round.tokens }}</dd>
-                                </template>
-
-                                <template v-if="round.modelLatencyMs">
-                                    <dt>{{ $tc('merchant-quote-agent.detail.latencyLabel') }}</dt>
-                                    <dd>{{ round.modelLatencyMs }}</dd>
-                                </template>
-                            </sw-description-list>
-                        </div>
-                    </sw-container>
-
-                    <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
-
-                    <!-- STEP 4: MERCHANT ACTION & REPLY -->
-                    <div>
-                        <h4 style="font-size: 14px; font-weight: 600; color: #065f46; margin-bottom: 8px;">
-                            {{ $tc('merchant-quote-agent.detail.merchantSection') }}
-                        </h4>
-
-                        <div v-if="round.outcome === 'replied'" style="margin-bottom: 12px;">
-                            <sw-description-list style="margin-bottom: 12px;">
-                                <dt>{{ $tc('merchant-quote-agent.detail.before') }} &rarr; {{ $tc('merchant-quote-agent.detail.after') }}</dt>
-                                <dd><strong>{{ round.totalNetBefore }} &rarr; {{ round.totalNetAfter }}</strong></dd>
-
-                                <template v-if="round.discountPercentGranted">
-                                    <dt>{{ $tc('merchant-quote-agent.detail.offeredDiscount') }}</dt>
-                                    <dd><strong style="color: #059669;">{{ round.discountPercentGranted }}</strong></dd>
-                                </template>
-                            </sw-description-list>
-
-                            <div v-if="round.messageToBuyer" style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 12px 16px; border-radius: 4px;">
-                                <span style="display: block; font-size: 12px; color: #047857; font-weight: 600; margin-bottom: 4px;">
-                                    {{ $tc('merchant-quote-agent.detail.merchantMessageLabel') }}
-                                </span>
-                                <span style="font-size: 14px; color: #064e3b; font-weight: 500;">{{ round.messageToBuyer }}</span>
+                        <details class="mqa-tech">
+                            <summary>{{ $tc('merchant-quote-agent.detail.technicalDetails') }}</summary>
+                            <div class="mqa-tech__grid">
+                                <div v-for="row in run.technical" :key="row.label">
+                                    <span class="mqa-tech__label">{{ row.label }}</span>
+                                    <span
+                                        class="mqa-tech__value"
+                                        :class="{ 'mqa-tech__value--mono': row.mono }"
+                                    >{{ row.value }}</span>
+                                </div>
                             </div>
-                        </div>
-
-                        <div v-else-if="round.outcome === 'escalated'" style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 4px;">
-                            <span style="display: block; font-size: 12px; color: #b45309; font-weight: 600; margin-bottom: 4px;">
-                                {{ $tc('merchant-quote-agent.detail.outcomeLabel') }}: {{ round.outcomeLabel }}
-                            </span>
-                            <span style="font-size: 14px; color: #78350f;">
-                                Reason: <strong>{{ round.escalationReason || 'Needs human review' }}</strong>
-                            </span>
-                        </div>
-
-                        <div v-else style="color: #6b7280; font-style: italic;">
-                            {{ round.outcomeLabel }}
-                        </div>
-                    </div>
-                </sw-card>
-            </div>
+                        </details>
+                    </li>
+                </ol>
+            </sw-card>
             {% endblock %}
         </sw-card-view>
     </template>

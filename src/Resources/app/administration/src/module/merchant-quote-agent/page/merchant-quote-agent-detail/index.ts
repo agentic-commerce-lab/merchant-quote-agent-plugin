@@ -1,4 +1,18 @@
 import template from './merchant-quote-agent-detail.html.twig';
+import {
+    answeredTheBuyer,
+    askItems,
+    bandVariant,
+    escalationLabel,
+    formatCurrency,
+    formatDate,
+    formatDuration,
+    formatPercent,
+    outcomeLabel,
+    outcomeVariant,
+    terminalLabel,
+    triggerLabel,
+} from '../../decision';
 
 const { Criteria } = Shopware.Data;
 
@@ -12,7 +26,6 @@ Shopware.Component.register('merchant-quote-agent-detail', {
             record: null,
             rounds: [],
             isLoading: false,
-            activeTab: 'flow',
         };
     },
 
@@ -26,33 +39,79 @@ Shopware.Component.register('merchant-quote-agent-detail', {
         },
 
         totalRounds() {
-            return this.rounds?.length ?? (this.record ? 1 : 0);
+            return this.runs.length;
         },
 
-        latestRound() {
-            if (this.rounds && this.rounds.length > 0) {
-                return this.rounds[this.rounds.length - 1];
+        /** Passes that put something in front of the buyer. */
+        answeredRounds() {
+            return this.runs.filter((run) => run.answered).length;
+        },
+
+        runs() {
+            const list = this.rounds.length > 0 ? this.rounds : (this.record ? [this.record] : []);
+
+            return list.map((round, index) => this.formatRun(round, index));
+        },
+
+        /**
+         * The last pass that actually made an offer — not simply the last pass.
+         * The summary used to read the latest one, so a negotiation whose most
+         * recent pass escalated reported no offer at all.
+         */
+        latestOffer() {
+            return [...this.runs].reverse().find((run) => run.answered) ?? null;
+        },
+
+        lastActivity() {
+            return this.runs.length > 0 ? this.runs[this.runs.length - 1].raw.createdAt : null;
+        },
+
+        terminalState() {
+            return this.runs.find((run) => run.raw.terminalState)?.raw.terminalState ?? null;
+        },
+
+        terminalAt() {
+            return this.runs.find((run) => run.raw.terminalAt)?.raw.terminalAt ?? null;
+        },
+
+        /** No terminal state means the quote has not finished, whatever the last pass did. */
+        isInFlight() {
+            return this.terminalState === null;
+        },
+
+        statusLabel() {
+            if (this.terminalState !== null) {
+                return terminalLabel(this, this.terminalState);
             }
-            return this.record;
+
+            const last = this.runs[this.runs.length - 1];
+
+            return last ? last.outcomeLabel : '–';
         },
 
-        finalTerminalState() {
-            return this.latestRound?.terminalState ?? this.record?.terminalState ?? null;
+        statusVariant() {
+            if (this.terminalState !== null) {
+                return this.terminalState === 'accepted' ? 'positive' : 'neutral';
+            }
+
+            return this.runs[this.runs.length - 1]?.outcomeVariant ?? 'neutral';
         },
 
-        finalTerminalAt() {
-            return this.latestRound?.terminalAt ?? this.record?.terminalAt ?? null;
-        },
+        /**
+         * The quote this record is about. Reading that a pass needs review is
+         * only useful if you can then go and act on it, and this page had no
+         * way out of itself.
+         *
+         * Route-guarded rather than assumed: `sw.quote.detail` belongs to
+         * Commercial's B2B quote management, which need not be installed for
+         * this plugin's own pages to work.
+         */
+        quoteRoute() {
+            if (!this.record?.quoteId || !this.$router.hasRoute?.('sw.quote.detail')) {
+                return null;
+            }
 
-        finalOutcome() {
-            return this.latestRound?.outcome ?? this.record?.outcome ?? null;
-        },
-
-        formattedRounds() {
-            const list = this.rounds && this.rounds.length > 0 ? this.rounds : (this.record ? [this.record] : []);
-            const total = list.length;
-
-            return list.map((round, idx) => this.formatRound(round, idx, total));
+            return { name: 'sw.quote.detail', params: { id: this.record.quoteId } };
         },
     },
 
@@ -61,22 +120,29 @@ Shopware.Component.register('merchant-quote-agent-detail', {
     },
 
     methods: {
+        formatCurrency,
+        formatDate,
+        formatPercent,
+
         async load() {
             this.isLoading = true;
 
             try {
                 this.record = await this.decisionRepository.get(this.$route.params.id, Shopware.Context.api);
 
-                if (this.record?.quoteNumber) {
+                // Grouped on quoteId, the actual key. quoteNumber is nullable,
+                // and a record without one used to show as a lone round even
+                // when its quote had several.
+                if (this.record?.quoteId) {
                     const criteria = new Criteria(1, 50);
-                    criteria.addFilter(Criteria.equals('quoteNumber', this.record.quoteNumber));
+                    criteria.addFilter(Criteria.equals('quoteId', this.record.quoteId));
                     criteria.addSorting(Criteria.sort('createdAt', 'ASC'));
-                    const result = await this.decisionRepository.search(criteria, Shopware.Context.api);
-                    this.rounds = Array.from(result);
-                } else if (this.record) {
-                    this.rounds = [this.record];
+
+                    this.rounds = Array.from(await this.decisionRepository.search(criteria, Shopware.Context.api));
                 }
             } catch (error) {
+                this.record = null;
+                this.rounds = [];
                 // eslint-disable-next-line no-console
                 console.error('merchant-quote-agent: failed to load decision flow', error);
             } finally {
@@ -84,144 +150,110 @@ Shopware.Component.register('merchant-quote-agent-detail', {
             }
         },
 
-        formatRound(round, index, total) {
-            const isInitial = index === 0;
-            const roundNumber = index + 1;
+        /**
+         * One servicing pass, ready to render.
+         *
+         * The title comes from why the pass ran, not from its position: a pass
+         * numbered three is not therefore a buyer counter-offer, and labelling
+         * it as one described conversations that never happened.
+         */
+        formatRun(round, index) {
+            const answered = answeredTheBuyer(round.outcome);
 
             return {
                 id: round.id,
-                roundNumber,
-                isInitial,
-                badgeLabel: this.$t
-                    ? this.$t('merchant-quote-agent.detail.roundBadge', { index: roundNumber, total })
-                    : `${roundNumber} / ${total}`,
-                title: isInitial
-                    ? this.$tc('merchant-quote-agent.detail.initialRequest')
-                    : this.$tc('merchant-quote-agent.detail.counterRequest'),
-                timestamp: this.formatDate(round.createdAt),
-                buyerComment: round.buyerComment || null,
-                interpretedAsks: this.extractAsks(round.interpretedAsks),
-                band: round.band || '–',
-                maxDiscountPercent: round.maxDiscountPercent !== null ? `${round.maxDiscountPercent}%` : '–',
-                model: round.model || '–',
-                modelLatencyMs: round.modelLatencyMs !== null ? `${round.modelLatencyMs} ms` : null,
-                tokens: round.promptTokens && round.completionTokens
-                    ? `${round.promptTokens} / ${round.completionTokens}`
+                index: index + 1,
+                raw: round,
+                answered,
+                // A state-change pass with nothing to answer carries no ask, no
+                // band and no model. It gets one line instead of the same card
+                // as a round that negotiated.
+                isNoop: !answered && round.outcome === 'nothing_to_do',
+                title: triggerLabel(this, round.triggerReason),
+                timestamp: formatDate(round.createdAt),
+                outcomeLabel: outcomeLabel(this, round.outcome),
+                outcomeVariant: outcomeVariant(round.outcome),
+                asks: askItems(this, round.interpretedAsks),
+                band: round.band,
+                bandVariant: bandVariant(round.band),
+                cap: formatPercent(round.maxDiscountPercent),
+                granted: answered ? formatPercent(round.discountPercentGranted) : null,
+                totals: answered && round.totalNetBefore !== null && round.totalNetAfter !== null
+                    ? `${formatCurrency(round.totalNetBefore, round.currencyIso)} → ${formatCurrency(round.totalNetAfter, round.currencyIso)}`
                     : null,
-                outcome: round.outcome,
-                outcomeVariant: this.outcomeVariant(round.outcome),
-                outcomeLabel: this.outcomeLabel(round.outcome),
-                escalationReason: round.escalationReason || null,
-                discountPercentGranted: round.discountPercentGranted !== null ? `${round.discountPercentGranted}%` : null,
-                totalNetBefore: round.totalNetBefore !== null ? this.formatCurrency(round.totalNetBefore, round.currencyIso) : null,
-                totalNetAfter: round.totalNetAfter !== null ? this.formatCurrency(round.totalNetAfter, round.currencyIso) : null,
-                messageToBuyer: this.extractMessage(round.rawProposal),
-                rawRecord: round,
+                escalationReason: round.escalationReason ? escalationLabel(this, round.escalationReason) : null,
+                // The buyer's own words are not recorded anywhere; their ask
+                // survives only as `interpretedAsks`, rendered above.
+                reply: round.replyToBuyer || null,
+                technical: this.technical(round),
             };
         },
 
-        extractAsks(asks) {
-            if (!asks || typeof asks !== 'object') {
-                return [];
+        /**
+         * Everything recorded for triage rather than for reading: the model
+         * call, the safety assertions, what was written, and what failed. All
+         * of it was already in the table and none of it was on the page.
+         */
+        technical(round) {
+            const rows = [
+                { key: 'trigger', value: triggerLabel(this, round.triggerReason) },
+                { key: 'attempt', value: round.attempt !== null ? String(round.attempt) : '–' },
+                { key: 'model', value: round.model || '–' },
+                { key: 'modelHost', value: round.modelHost || '–' },
+                {
+                    key: 'tokens',
+                    value: round.promptTokens !== null || round.completionTokens !== null
+                        ? `${round.promptTokens ?? '–'} / ${round.completionTokens ?? '–'}`
+                        : '–',
+                },
+                { key: 'modelLatency', value: formatDuration(round.modelLatencyMs) },
+                { key: 'duration', value: formatDuration(round.durationMs) },
+                { key: 'authorized', value: this.bool(round.authorized) },
+                { key: 'verified', value: this.bool(round.verified) },
+                { key: 'writes', value: this.joined(round.writes) },
+                { key: 'violations', value: this.joined(round.violations) },
+                { key: 'revision', value: round.revisionVersionId || '–', mono: true },
+                {
+                    key: 'promptHashes',
+                    value: [round.extractPromptHash, round.negotiatePromptHash, round.replyPromptHash]
+                        .map((hash) => (hash ? hash.slice(0, 12) : '–'))
+                        .join(' / '),
+                    mono: true,
+                },
+            ];
+
+            if (round.errorClass) {
+                rows.push({ key: 'errorClass', value: round.errorClass, mono: true });
             }
 
-            const items = [];
-            if (asks.targetDiscountPercent !== undefined && asks.targetDiscountPercent !== null) {
-                items.push({
-                    label: this.$tc('merchant-quote-agent.detail.discountAsked'),
-                    value: `${asks.targetDiscountPercent}%`,
+            if (Array.isArray(round.errorChain) && round.errorChain.length > 0) {
+                rows.push({
+                    key: 'errorChain',
+                    value: round.errorChain
+                        .map((link) => Object.values(link).filter(Boolean).join(': '))
+                        .join(' ← '),
+                    mono: true,
                 });
             }
 
-            if (asks.lines && Array.isArray(asks.lines)) {
-                asks.lines.forEach((line, idx) => {
-                    if (line.targetUnitPriceNet !== undefined && line.targetUnitPriceNet !== null) {
-                        items.push({
-                            label: `${this.$tc('merchant-quote-agent.detail.targetPrice')} #${idx + 1}`,
-                            value: `${Number(line.targetUnitPriceNet).toFixed(2)}`,
-                        });
-                    }
-                    if (line.quantity !== undefined && line.quantity !== null) {
-                        items.push({
-                            label: `${this.$tc('merchant-quote-agent.detail.quantity')} #${idx + 1}`,
-                            value: `${line.quantity}`,
-                        });
-                    }
-                });
-            }
-
-            return items;
+            return rows.map((row) => ({
+                label: this.$tc(`merchant-quote-agent.tech.${row.key}`),
+                value: row.value,
+                mono: row.mono === true,
+            }));
         },
 
-        extractMessage(rawProposal) {
-            if (!rawProposal) {
-                return null;
-            }
-
-            try {
-                const parsed = typeof rawProposal === 'string' ? JSON.parse(rawProposal) : rawProposal;
-                return parsed.message || parsed.comment || null;
-            } catch {
-                return null;
-            }
-        },
-
-        outcomeVariant(outcome) {
-            if (outcome === 'replied') {
-                return 'success';
-            }
-            if (outcome === 'escalated') {
-                return 'critical';
-            }
-            if (outcome === 'declined') {
-                return 'neutral';
-            }
-            return 'info';
-        },
-
-        outcomeLabel(outcome) {
-            const key = `merchant-quote-agent.list.outcome.${outcome}`;
-            const label = this.$tc(key);
-
-            return label === key ? outcome : label;
-        },
-
-        bandVariant(band) {
-            if (band === 'grant') {
-                return 'success';
-            }
-            if (band === 'counter') {
-                return 'info';
-            }
-            if (band === 'escalate') {
-                return 'critical';
-            }
-            return 'neutral';
-        },
-
-        formatCurrency(value, currencyIso = 'EUR') {
+        /** null is not false here: it means the pass never got far enough to assert. */
+        bool(value) {
             if (value === null || value === undefined) {
                 return '–';
             }
 
-            return `${Number(value).toFixed(2)} ${currencyIso}`;
+            return this.$tc(`merchant-quote-agent.tech.${value ? 'yes' : 'no'}`);
         },
 
-        terminalLabel(state) {
-            const key = `merchant-quote-agent.detail.terminal.${state}`;
-            const label = this.$tc(key);
-
-            return label === key ? state : label;
-        },
-
-        formatDate(value) {
-            const dateFilter = Shopware.Filter?.getByName?.('date');
-
-            return dateFilter ? dateFilter(value) : String(value);
-        },
-
-        dash(value) {
-            return value === null || value === undefined || value === '' ? '–' : value;
+        joined(values) {
+            return Array.isArray(values) && values.length > 0 ? values.join(', ') : '–';
         },
     },
 });

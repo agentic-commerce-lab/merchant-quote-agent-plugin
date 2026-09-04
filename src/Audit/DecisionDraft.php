@@ -94,7 +94,8 @@ final class DecisionDraft
     /** @var list<array<string, string>>|null */
     public ?array $errorChain = null;
 
-    public ?string $buyerComment = null;
+    /** The agent's message TO the buyer — see DecisionRecorder::recordReply(). */
+    public ?string $replyToBuyer = null;
 
     public float $startedAt = 0.0;
 }

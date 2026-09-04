@@ -127,7 +127,7 @@ final class DecisionRecordTest extends IntegrationTestCase
         $draft->violations = ['discount_over_cap'];
         $draft->writes = ['line_item_price_updated'];
         $draft->errorChain = [['class' => 'RuntimeException', 'message' => 'test']];
-        $draft->buyerComment = 'Thanks for the update!';
+        $draft->replyToBuyer = 'Thanks for the update!';
         $draft->startedAt = microtime(true);
 
         $writer->write($draft);
@@ -190,7 +190,7 @@ final class DecisionRecordTest extends IntegrationTestCase
         self::assertSame('offered', $record->outcome);
         self::assertSame('grant', $record->band);
         self::assertSame('comment_written', $record->triggerReason);
-        self::assertNotNull($record->buyerComment);
+        self::assertNotNull($record->replyToBuyer);
         self::assertNotNull($record->interpretedAsks);
         self::assertIsInt($record->durationMs);
         // #21's average-granted-discount readout has no numerator unless a
