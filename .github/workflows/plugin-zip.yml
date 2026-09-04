@@ -64,11 +64,31 @@ jobs:
       # The version keeps composer.json clean: it is stamped into the artifact
       # instead, so every zip is traceable to the run that built it without
       # anyone having to remember to bump a number.
+      #
+      # `1.0.<run>+<sha>` and not a `dev-` version, nor the `0.0.0-main.<run>`
+      # this used to stamp. Composer's VersionParser rejects `0.0.0-main.13`
+      # outright ("Invalid version string"), because `main` is not one of its
+      # stability modifiers -- so every `composer require`/`update` in a shop
+      # holding this plugin through the custom/plugins/* path repo died there,
+      # including the install step this job prints below.
+      #
+      # `dev-main-<sha>` parses but is worse: the shop has to opt into dev
+      # stability to resolve it at all, and Shopware compares plugin versions
+      # with version_compare() on the literal string, so build order would
+      # follow the sha alphabetically (`dev-main-a22...` > `dev-main-f87...`).
+      #
+      # `+<sha>` is semver build metadata. Composer keeps it in the lock and in
+      # the plugin's composer.json, so a shop records the exact commit it runs;
+      # Shopware's VersionSanitizer reduces it to `1.0.<run>`, so its update
+      # detection orders builds by run number. Full sha rather than a short one:
+      # normalisation discards it either way, and it is what identifies the
+      # build. Minor stays 1.0 so a bare `composer require` resolves
+      # `^1.0.<run>`, which later builds still satisfy.
       - name: Package extension
         run: |
           shopware-cli extension package \
             --disable-git \
-            --overwrite-version "0.0.0-main.${{ github.run_number }}" \
+            --overwrite-version "1.0.${{ github.run_number }}+${{ github.sha }}" \
             .
 
       - name: Upload artifact
@@ -85,7 +105,9 @@ jobs:
             echo "### Plugin zip"
             echo
             echo "Artifact: \`MerchantQuoteAgentPlugin-${{ github.run_number }}-${{ github.sha }}\`"
-            echo "Version stamped into composer.json: \`0.0.0-main.${{ github.run_number }}\`"
+            echo "Version stamped into composer.json: \`1.0.${{ github.run_number }}+${{ github.sha }}\`"
+            echo
+            echo "The \`+<sha>\` part is semver build metadata: Composer keeps it in the shop's lock file, Shopware records the version as \`1.0.${{ github.run_number }}\`."
             echo
             echo "The administration bundle is compiled into the zip, so the Quote Agent page appears without building assets in the shop."
             echo
