@@ -168,6 +168,11 @@ document over the network.
 | 3 | `act_terms_mismatch` | A buyer act whose line items disagree with what Shopware actually recorded — line identity and quantity only. Acts are evidence, never a second input path: the engine reads the Shopware snapshot, and an act that disagrees with it is a desync or a forgery attempt. |
 | 4 | `buyer_act_unverified` | A buyer act whose signature does not verify against the key its `sender_verification_method` resolves to. Checked last: it is the only network hop. |
 
+A fifth check, `chain_length_exceeded`, guards our own read cap rather than the
+counterparty's conduct: a chain longer than `ActChain::MAX_ACTS` is read up to
+the cap and refused, because signing into a chain we could only read part of
+would attest a position we cannot compute.
+
 Violations are persisted **only** on this path. An exception thrown by our own
 signing, store or append code is reported as `emission_failed` and is **not**
 persisted as a protocol violation — recording our own bug as evidence against the
@@ -249,8 +254,9 @@ line_items[]  = { id, description, quantity, unit, unit_price, total }
 custom_terms  = { tax_status: 'net', quote_number, shopware_net_total_minor }
 ```
 
-`unit` is the product's unit short code when the line declares one (available on
-`QuoteLineIdentity::unit`), else `'piece'`. `description` falls back to the line
+`unit` is the constant `'piece'`: `Bridge\Data\QuoteLineIdentity` carries no unit
+field (only the Policy DTO does), so a real unit short code needs the bridge to
+read it first, which is out of scope here. `description` falls back to the line
 item id when the line has no label. `shopware_net_total_minor` is the quote's own
 net total, recorded so any divergence from the summed line totals is **visible
 rather than hidden**.
@@ -297,7 +303,9 @@ this installation's own identity.
 
 ## Identity, keys and discovery documents
 
-**Key.** ES256 (P-256), generated at plugin install via the UCP SDK's
+**Key.** ES256 (P-256), generated at plugin install — and again on `activate()`,
+so a shop that updates into this version gets one without being reinstalled —
+via the UCP SDK's
 `SigningKeyManagerInterface::generate()`, stored as a private JWK in
 `system_config` under `MerchantQuoteAgentPlugin.a2cn.signingKeyJwk` — deliberately
 **not** under the `…config.*` prefix the admin UI renders, because a private key
