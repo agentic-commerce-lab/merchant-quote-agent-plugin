@@ -43,7 +43,7 @@ final class CompactJwsTest extends TestCase
         self::assertStringContainsString('"iss":"joe"', $payload);
     }
 
-    public function testItRejectsATamperedSignature(): void
+    public function testItRejectsATamperedPayload(): void
     {
         $pem = PublicSigningKey::fromJwk(self::RFC7515_A3_JWK)->publicKeyPem;
         self::assertIsString($pem);
@@ -52,6 +52,43 @@ final class CompactJwsTest extends TestCase
         $tampered = $header . '.' . $body . 'x.' . $signature;
 
         self::assertNull(CompactJws::verify($tampered, $pem));
+    }
+
+    /**
+     * Only a bare `{"alg":"ES256"}` header is accepted — not `none`, not
+     * another algorithm, not the same alg with extra members. Guessing at any
+     * other header would be the classic JWS algorithm-confusion bug.
+     */
+    public function testItRejectsAHeaderThatIsNotBareEs256(): void
+    {
+        ['private' => $private, 'public' => $public] = self::keyPair();
+        $jws = CompactJws::sign('payload', $private);
+        [, $body, $signature] = explode('.', $jws);
+
+        foreach (['{"alg":"none"}', '{"alg":"HS256"}', '{"alg":"ES256","extra":true}'] as $header) {
+            $tampered = Base64Url::encode($header) . '.' . $body . '.' . $signature;
+
+            self::assertNull(CompactJws::verify($tampered, $public), $header);
+        }
+    }
+
+    /**
+     * `Es256Signature::toDer()` throws on anything that is not exactly 64
+     * bytes, and `Base64Url::decode()` fails closed to '' on input that is not
+     * valid base64url — both must come back as a null verification, not an
+     * uncaught exception.
+     */
+    public function testItRejectsAMalformedSignatureSegment(): void
+    {
+        ['private' => $private, 'public' => $public] = self::keyPair();
+        $jws = CompactJws::sign('payload', $private);
+        [$header, $body] = explode('.', $jws);
+
+        $wrongLength = $header . '.' . $body . '.' . Base64Url::encode('too-short');
+        $notBase64Url = $header . '.' . $body . '.' . '***not-base64url***';
+
+        self::assertNull(CompactJws::verify($wrongLength, $public));
+        self::assertNull(CompactJws::verify($notBase64Url, $public));
     }
 
     public function testItRoundTripsAStringPayload(): void

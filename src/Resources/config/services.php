@@ -68,6 +68,12 @@ use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
+use MerchantQuoteAgentPlugin\Protocol\Check\BuyerSignatureCheck;
+use MerchantQuoteAgentPlugin\Protocol\Check\BuyerTermsCheck;
+use MerchantQuoteAgentPlugin\Protocol\Check\ChainLengthCheck;
+use MerchantQuoteAgentPlugin\Protocol\Check\DuplicateSequenceCheck;
+use MerchantQuoteAgentPlugin\Protocol\Check\EvidenceInspector;
+use MerchantQuoteAgentPlugin\Protocol\Check\SessionIdCheck;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
@@ -262,6 +268,24 @@ return static function (ContainerConfigurator $configurator): void {
         service(SigningKeyManagerInterface::class),
         service('logger'),
     ]);
+
+    // The evidence checks and the inspector that runs them. Order is
+    // normative and spelled out here rather than as a tag priority, so a
+    // reviewer reads the specification in the code that enforces it: every
+    // local comparison before the one check that resolves a did:web document
+    // over the network.
+    $services->set(SessionIdCheck::class);
+    $services->set(DuplicateSequenceCheck::class);
+    $services->set(ChainLengthCheck::class);
+    $services->set(BuyerTermsCheck::class);
+    $services->set(BuyerSignatureCheck::class);
+    $services->set(EvidenceInspector::class)->args([[
+        service(SessionIdCheck::class),
+        service(DuplicateSequenceCheck::class),
+        service(ChainLengthCheck::class),
+        service(BuyerTermsCheck::class),
+        service(BuyerSignatureCheck::class),
+    ]]);
     // --- end A2CN / Protocol ---------------------------------------------
 
     // Stage one of ADR 0001's two-stage gate: class existence decides whether

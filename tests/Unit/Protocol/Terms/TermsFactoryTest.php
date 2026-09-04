@@ -40,6 +40,39 @@ final class TermsFactoryTest extends TestCase
         );
     }
 
+    public function testItSumsTotalValueAcrossMultipleLines(): void
+    {
+        // The single-line fixture leaves the summation path in fromSnapshot()
+        // untested: total_value must be the sum of every line's total, not
+        // just echo the one line it has.
+        $snapshot = new QuoteSnapshot(
+            identity: new QuoteIdentity(quoteId: 'quote-1', quoteNumber: 'Q-1001', currencyIso: 'EUR'),
+            revision: new QuoteRevision('rev-1', new \DateTimeImmutable('2026-09-04T09:00:00+00:00')),
+            totals: new QuoteTotals(totalNet: 11350.0),
+            lifecycle: new QuoteLifecycle(stateTechnicalName: 'replied'),
+            content: new QuoteContent(lines: [
+                new QuoteLineSnapshot(
+                    identity: new QuoteLineIdentity(lineItemId: 'line-1', label: 'FusionGlow Sport'),
+                    quantity: 10,
+                    unitPriceNet: 760.0,
+                    totalNet: 7600.0,
+                ),
+                new QuoteLineSnapshot(
+                    identity: new QuoteLineIdentity(lineItemId: 'line-2', label: 'FusionGlow Pro'),
+                    quantity: 5,
+                    unitPriceNet: 750.0,
+                    totalNet: 3750.0,
+                ),
+            ]),
+        );
+
+        $terms = self::factory()->fromSnapshot($snapshot);
+
+        self::assertSame(760000, $terms['line_items'][0]['total']);
+        self::assertSame(375000, $terms['line_items'][1]['total']);
+        self::assertSame(1135000, $terms['total_value']);
+    }
+
     public function testItRecordsTheReconciliationFiguresInCustomTerms(): void
     {
         $terms = self::factory()->fromSnapshot(self::snapshot());
