@@ -69,6 +69,7 @@ use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
+use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
 use MerchantQuoteAgentPlugin\Servicing\EscalationFlowEventSubscriber;
 use MerchantQuoteAgentPlugin\Servicing\EscalationNotifierInterface;
@@ -93,6 +94,7 @@ use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Ucp\Sdk\Internal\Service\UrlSafetyValidator;
 use Ucp\Sdk\Service\RuntimeConfigurationResolverInterface;
+use Ucp\Sdk\Service\SigningKeyManagerInterface;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
@@ -247,6 +249,19 @@ return static function (ContainerConfigurator $configurator): void {
     // A2CN tasks append their services to this same block.
     $services->set(ProtocolHash::class);
     $services->set(TermsFactory::class);
+
+    // Counterparty did:web verification-key resolution. Guzzle wired
+    // explicitly and under our own service id: this block runs unconditionally
+    // (no SwagCommercial gate), so it cannot reach the GuzzleClient::class
+    // registration further down, which only exists inside that guard.
+    // SigningKeyManagerInterface is a public alias the UCP SDK bundle
+    // registers onto DefaultSigningKeyManager.
+    $services->set('merchant_quote_agent.a2cn.http_client', GuzzleClient::class);
+    $services->set(DidWebResolver::class)->args([
+        service('merchant_quote_agent.a2cn.http_client'),
+        service(SigningKeyManagerInterface::class),
+        service('logger'),
+    ]);
     // --- end A2CN / Protocol ---------------------------------------------
 
     // Stage one of ADR 0001's two-stage gate: class existence decides whether
