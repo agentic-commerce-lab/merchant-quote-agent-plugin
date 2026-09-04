@@ -58,6 +58,19 @@ meant to resolve a plugin's Composer requirements itself.
     bin/console plugin:install --activate MerchantQuoteAgentPlugin
     bin/console cache:clear
 
+Each zip is versioned `1.0.<workflow run number>+<commit sha>`; map a run
+number back to its commit with `gh run list --workflow "Plugin Zip"`. The
+`+<sha>` is semver build metadata, so Composer keeps the full string in the
+shop's `composer.lock` while Shopware records the version as `1.0.<run>` and
+orders builds by run number.
+
+A shop installed before this scheme (zips stamped `0.0.0-main.<run>`, which
+Composer rejects as an invalid version string) has an exact-patch constraint in
+its root `composer.json` that no later build satisfies. Widen it once —
+`composer require "shopware/merchant-quote-agent-plugin:*"` — and every
+subsequent zip installs by dropping it in and running `plugin:refresh` plus
+`plugin:update`.
+
 That `composer require` is the step that is easy to skip and expensive to
 diagnose. `plugin:install` does refuse without it — *Required plugin/package
 "cuyz/valinor ^2.6" is missing or not installed and activated* — but a plugin
