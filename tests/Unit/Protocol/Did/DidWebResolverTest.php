@@ -9,6 +9,7 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use Ucp\Sdk\Internal\Security\DefaultSigningKeyManager;
@@ -34,6 +35,9 @@ final class DidWebResolverTest extends TestCase
             new Client(['handler' => HandlerStack::create($handler)]),
             new DefaultSigningKeyManager(),
             new NullLogger(),
+            // buyer.example (RFC 2606) does not resolve on a real network, so
+            // the safety gate's DNS lookup is stubbed — see resolver() below.
+            static fn(string $host): array => $host === 'buyer.example' ? ['203.0.113.10'] : [],
         );
 
         $resolver->publicKeyPemFor(self::METHOD);
@@ -71,13 +75,50 @@ final class DidWebResolverTest extends TestCase
         self::assertNull($resolver->publicKeyPemFor('did:key:z6Mk#1'));
     }
 
-    /** @param list<Response> $responses */
+    /**
+     * A buyer act naming an internal or blocked host must never make this
+     * shop's server issue that request. The mock queue holds a real, matching
+     * document for each case — if the safety gate is missing, resolution
+     * succeeds with a real PEM instead of null, so the test fails loudly
+     * rather than by accident (an empty queue would also throw, but for the
+     * wrong reason).
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function unsafeHostProvider(): iterable
+    {
+        // Cloud-metadata host UrlSafetyValidator blocks outright.
+        yield 'blocked host' => ['did:web:169.254.169.254#key-1'];
+        // A private-range address.
+        yield 'private-range host' => ['did:web:10.0.0.5#key-1'];
+        // Only 443 and 8443 are allowed; did:web's own port form must not bypass that.
+        yield 'disallowed port' => ['did:web:buyer.example%3A8080#key-1'];
+    }
+
+    #[DataProvider('unsafeHostProvider')]
+    public function testItReturnsNullForAnUnsafeUrl(string $method): void
+    {
+        $resolver = self::resolver([new Response(200, [], self::document(id: $method))]);
+
+        self::assertNull($resolver->publicKeyPemFor($method));
+    }
+
+    /**
+     * `buyer.example` (RFC 2606) does not resolve on a real network, so the
+     * safety gate's DNS lookup is stubbed the same way the UCP SDK's own tests
+     * stub it (see HttpAgentProfileFetcherTest) — a fake resolver mapping the
+     * fixture host to a public-looking, non-reserved address, keeping these
+     * tests hermetic.
+     *
+     * @param list<Response> $responses
+     */
     private static function resolver(array $responses): DidWebResolver
     {
         return new DidWebResolver(
             new Client(['handler' => HandlerStack::create(new MockHandler($responses))]),
             new DefaultSigningKeyManager(),
             new NullLogger(),
+            static fn(string $host): array => $host === 'buyer.example' ? ['203.0.113.10'] : [],
         );
     }
 

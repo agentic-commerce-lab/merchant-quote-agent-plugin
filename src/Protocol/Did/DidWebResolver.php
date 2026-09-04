@@ -17,11 +17,13 @@ use Ucp\Sdk\Service\SigningKeyManagerInterface;
  *
  * JWK → PEM is the SDK's (`PublicSigningKey::fromJwk`), but that method demands
  * `kid`, `alg` and `use`, which real DID documents omit — so the JWK is
- * normalized (DidWebJwk::normalize) before it reaches the SDK, and only P-256
- * is accepted.
+ * normalized (DidWebJwk::normalize) before it reaches the SDK. Curve trust
+ * (P-256 only) is decided inside that same normalization step, alongside the
+ * fields it fills — see DidWebJwk's docblock.
  *
- * The HTTP fetch (DidWebDocumentFetcher) and the document parsing (DidWebJwk)
- * are split out: different concerns from what is left here — orchestration,
+ * The HTTP fetch (DidWebDocumentFetcher, which also gates the URL through the
+ * SDK's host-safety validator) and the document parsing (DidWebJwk) are split
+ * out: different concerns from what is left here — orchestration,
  * memoization, and the one step that needs the SDK's key manager.
  *
  * ponytail: process-lifetime memo, no TTL. Add one if a counterparty starts
@@ -40,8 +42,9 @@ class DidWebResolver
         ClientInterface $client,
         private readonly SigningKeyManagerInterface $keys,
         private readonly LoggerInterface $logger,
+        ?\Closure $dnsResolver = null,
     ) {
-        $this->fetcher = new DidWebDocumentFetcher($client, $logger);
+        $this->fetcher = new DidWebDocumentFetcher($client, $logger, $dnsResolver);
     }
 
     public function publicKeyPemFor(string $verificationMethod): ?string
@@ -62,27 +65,30 @@ class DidWebResolver
         }
 
         $document = $this->fetcher->fetch($url);
-        $jwk = $document === null ? null : DidWebJwk::pick($document, $verificationMethod);
+        $normalized = $document === null ? null : self::normalizedJwk($document, $verificationMethod);
 
-        return $jwk === null ? null : $this->toPem($jwk, $verificationMethod);
+        return $normalized === null ? null : $this->toPem($normalized, $verificationMethod);
     }
 
     /**
-     * @param array<string, mixed> $jwk
+     * @param array<array-key, mixed> $document
+     *
+     * @return array<string, string>|null
      */
-    private function toPem(array $jwk, string $verificationMethod): ?string
+    private static function normalizedJwk(array $document, string $verificationMethod): ?array
     {
-        $curve = $jwk['crv'] ?? null;
-        if ($curve !== 'P-256') {
-            $this->logger->info('A2CN found a did:web key on an unsupported curve.', [
-                'verificationMethod' => $verificationMethod,
-            ]);
+        $jwk = DidWebJwk::pick($document, $verificationMethod);
 
-            return null;
-        }
+        return $jwk === null ? null : DidWebJwk::normalize($jwk, $verificationMethod);
+    }
 
+    /**
+     * @param array<string, string> $normalized
+     */
+    private function toPem(array $normalized, string $verificationMethod): ?string
+    {
         try {
-            return $this->keys->publicKeyFromJwk(DidWebJwk::normalize($jwk, $verificationMethod))->publicKeyPem;
+            return $this->keys->publicKeyFromJwk($normalized)->publicKeyPem;
         } catch (\Throwable $error) {
             $this->logger->info('A2CN could not read a did:web public key.', [
                 'verificationMethod' => $verificationMethod,
