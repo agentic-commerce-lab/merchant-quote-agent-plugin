@@ -13,6 +13,8 @@ use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnSigningKey;
 use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
 use Ucp\Sdk\Internal\Security\DefaultJsonCanonicalization;
+use Ucp\Sdk\Internal\Security\DefaultSigningKeyManager;
+use Ucp\Sdk\Model\Security\ManagedSigningKey;
 
 /**
  * A real ES256 key pair, generated once per process, wired into a real
@@ -75,6 +77,23 @@ final class TestActSigner
             {
                 return $this->key;
             }
+
+            /**
+             * The real implementation reads `$this->keys` (a
+             * SigningKeyManagerInterface), which this double's constructor
+             * never sets — so the public JWK is built directly against a
+             * fresh SDK key manager instead.
+             *
+             * @return array<string, string>
+             */
+            public function publicJwk(A2cnSigningKey $key): array
+            {
+                $managed = new ManagedSigningKey($key->kid, $key->publicKeyPem, $key->privateKeyPem);
+
+                return (new DefaultSigningKeyManager())
+                    ->toPublicKey($managed)
+                    ->toJwk();
+            }
         };
     }
 
@@ -86,6 +105,11 @@ final class TestActSigner
             public function forSalesChannel(string $salesChannelId): ?A2cnIdentity
             {
                 return A2cnIdentity::forHost('shop.example', 'key-1', 'Example Shop');
+            }
+
+            public function forHost(string $host, ?string $salesChannelId = null): A2cnIdentity
+            {
+                return A2cnIdentity::forHost($host, 'key-1', 'Example Shop');
             }
         };
     }

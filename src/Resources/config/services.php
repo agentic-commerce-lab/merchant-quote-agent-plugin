@@ -82,12 +82,16 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteHandler;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\OfferVisibleStateSubscriber;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
+use MerchantQuoteAgentPlugin\Protocol\Http\A2cnDiscoveryController;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnRecordsController;
+use MerchantQuoteAgentPlugin\Protocol\Http\MandateDocumentResponder;
 use MerchantQuoteAgentPlugin\Protocol\Http\QuoteTerminalStateReader;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordPartiesResolver;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
+use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
+use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
 use MerchantQuoteAgentPlugin\Protocol\Record\AuditLog;
 use MerchantQuoteAgentPlugin\Protocol\Record\OfferChainHash;
 use MerchantQuoteAgentPlugin\Protocol\Record\TransactionRecord;
@@ -103,6 +107,7 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
+use MerchantQuoteAgentPlugin\Ucp\Profile\A2cnMandateProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\Controller\UcpQuoteController;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
@@ -331,6 +336,40 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(OfferChainHash::class);
     $services->set(TransactionRecord::class);
     $services->set(AuditLog::class);
+
+    // Configuration (issue #5), moved here from inside the CommercialAvailability
+    // guard below: the signed seller mandate (Task 20) needs a sales channel's
+    // NegotiationPolicy on every installation, not just one with SwagCommercial
+    // licensed — the reader itself touches only SystemConfigService and the
+    // validator, neither of which needs SwagCommercial. Autowired: the factory
+    // takes ValidatorInterface, which Shopware aliases to HappyPathValidator —
+    // harmless, because a validate() call with no explicit constraints
+    // delegates straight to the real Symfony validator.
+    //
+    // The reader stays private: the alias below is what references it, so
+    // RemoveUnusedDefinitionsPass no longer prunes it as dead.
+    $services->set(QuoteAgentSettingsFactory::class);
+    $services->set(QuoteAgentSettingsReader::class);
+    $services->alias(QuoteAgentSettingsSource::class, QuoteAgentSettingsReader::class);
+
+    // The signed seller mandate and its discovery documents (Task 20): pure
+    // derivations over NegotiationPolicy plus this installation's own key and
+    // identity, no SwagCommercial dependency, so registered unconditionally
+    // like the rest of this block. The controller is imported OUTSIDE the
+    // CommercialAvailability gate in routes.php for the same reason.
+    $services->set(SellerMandateFactory::class);
+    $services->set(MandateSigner::class);
+    $services->set(MandateDocumentResponder::class);
+    $services->set(A2cnDiscoveryController::class)->tag('controller.service_arguments');
+
+    // Advertises the mandate capability in the UCP discovery document. Must
+    // run AFTER the Agentic Commerce plugin's capability filter, exactly like
+    // QuoteCapabilityProfileContributor above: its contributor sits at the
+    // default priority, so anything negative lands behind it.
+    // autoconfigure(false) avoids a second tag at the default priority.
+    $services->set(A2cnMandateProfileContributor::class)->autoconfigure(false)->tag('ucp_sdk.profile_contributor', [
+        'priority' => -256,
+    ]);
     // --- end A2CN / Protocol ---------------------------------------------
 
     // Stage one of ADR 0001's two-stage gate: class existence decides whether
@@ -428,17 +467,6 @@ return static function (ContainerConfigurator $configurator): void {
         ->arg('$quoteOrderRoute', service(CommercialAvailability::QUOTE_ORDER_ROUTE)->nullOnInvalid());
 
     $services->alias(BuyerQuoteGatewayInterface::class, SwagCommercialBuyerQuoteGateway::class);
-
-    // Configuration (issue #5). Autowired: the factory takes ValidatorInterface,
-    // which Shopware aliases to HappyPathValidator — harmless, because a
-    // validate() call with no explicit constraints delegates straight to the
-    // real Symfony validator.
-    //
-    // The reader stays private: the alias below is what references it, so
-    // RemoveUnusedDefinitionsPass no longer prunes it as dead.
-    $services->set(QuoteAgentSettingsFactory::class);
-    $services->set(QuoteAgentSettingsReader::class);
-    $services->alias(QuoteAgentSettingsSource::class, QuoteAgentSettingsReader::class);
 
     // Servicing (issue #4): trigger, queue and lock. Inside the guard because
     // a shop without SwagCommercial has no quotes to service.
