@@ -68,6 +68,7 @@ use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
+use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Servicing\EscalationFlowEventSubscriber;
 use MerchantQuoteAgentPlugin\Servicing\EscalationNotifierInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
@@ -237,6 +238,14 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(TerminalOutcomeWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
     $services->alias(TerminalOutcomeWriterInterface::class, TerminalOutcomeWriter::class);
     $services->set(TerminalOutcomeSubscriber::class);
+
+    // --- A2CN / Protocol -----------------------------------------------
+    // The evidence layer (src/Protocol/): signed negotiation acts on a quote.
+    // Registered unconditionally, above the SwagCommercial gate below —
+    // nothing in this block depends on Shopware or SwagCommercial. Later
+    // A2CN tasks append their services to this same block.
+    $services->set(ProtocolHash::class);
+    // --- end A2CN / Protocol ---------------------------------------------
 
     // Stage one of ADR 0001's two-stage gate: class existence decides whether
     // the bridge is REGISTERED at all. Shopware only registers an active
