@@ -25,5 +25,11 @@ return static function (RoutingConfigurator $routes): void {
     // would resolve to a service the container never built.
     if (CommercialAvailability::isAvailableByClass()) {
         $routes->import(__DIR__ . '/../../Ucp/Quote/Controller/UcpQuoteController.php', 'attribute');
+
+        // The act chain and end-of-session records (Task 19): imported here,
+        // not below with the discovery document, because
+        // QuoteTerminalStateReader depends on the quote gateway, which only
+        // exists where the commercial backend does.
+        $routes->import(__DIR__ . '/../../Protocol/Http/A2cnRecordsController.php', 'attribute');
     }
 };

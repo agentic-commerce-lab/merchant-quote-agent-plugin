@@ -82,6 +82,10 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteHandler;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\OfferVisibleStateSubscriber;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
+use MerchantQuoteAgentPlugin\Protocol\Http\A2cnRecordsController;
+use MerchantQuoteAgentPlugin\Protocol\Http\QuoteTerminalStateReader;
+use MerchantQuoteAgentPlugin\Protocol\Http\RecordPartiesResolver;
+use MerchantQuoteAgentPlugin\Protocol\Http\RecordResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Record\AuditLog;
@@ -568,4 +572,21 @@ return static function (ContainerConfigurator $configurator): void {
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
         service(SellerActEmitter::class)->ignoreOnInvalid(),
     ]);
+
+    // The act chain and end-of-session records (Task 19). Same gateway
+    // dependency, same ignoreOnInvalid() posture as SellerActEmitter and
+    // ObserveQuoteHandler above: QuoteTerminalStateReader's own nullable
+    // `$gateway` turns an unlicensed shop into a 502, not a container error.
+    //
+    // RecordResponder has no SwagCommercial dependency of its own — every
+    // collaborator it takes is from the unconditional A2CN block above — but
+    // it exists only to serve A2cnRecordsController, so it is registered here
+    // beside it rather than scattered up with the block it happens to depend
+    // on.
+    $services->set(QuoteTerminalStateReader::class)->args([
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+    ]);
+    $services->set(RecordPartiesResolver::class);
+    $services->set(RecordResponder::class);
+    $services->set(A2cnRecordsController::class)->tag('controller.service_arguments');
 };
