@@ -69,6 +69,7 @@ use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
+use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
 use MerchantQuoteAgentPlugin\Servicing\EscalationFlowEventSubscriber;
 use MerchantQuoteAgentPlugin\Servicing\EscalationNotifierInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
@@ -245,6 +246,7 @@ return static function (ContainerConfigurator $configurator): void {
     // nothing in this block depends on Shopware or SwagCommercial. Later
     // A2CN tasks append their services to this same block.
     $services->set(ProtocolHash::class);
+    $services->set(TermsFactory::class);
     // --- end A2CN / Protocol ---------------------------------------------
 
     // Stage one of ADR 0001's two-stage gate: class existence decides whether
