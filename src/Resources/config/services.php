@@ -84,6 +84,9 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
+use MerchantQuoteAgentPlugin\Protocol\Record\AuditLog;
+use MerchantQuoteAgentPlugin\Protocol\Record\OfferChainHash;
+use MerchantQuoteAgentPlugin\Protocol\Record\TransactionRecord;
 use MerchantQuoteAgentPlugin\Protocol\Store\ActStoreInterface;
 use MerchantQuoteAgentPlugin\Protocol\Store\DbalActStore;
 use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
@@ -317,6 +320,13 @@ return static function (ContainerConfigurator $configurator): void {
     // ActStoreInterface, so — unlike SellerActEmitter below — it belongs in
     // this unconditional block rather than behind the SwagCommercial gate.
     $services->set(ChainMirror::class);
+
+    // The end-of-session records (Task 18): pure derivations over the act
+    // chain, no SwagCommercial dependency, so — like everything else in this
+    // block — registered unconditionally.
+    $services->set(OfferChainHash::class);
+    $services->set(TransactionRecord::class);
+    $services->set(AuditLog::class);
     // --- end A2CN / Protocol ---------------------------------------------
 
     // Stage one of ADR 0001's two-stage gate: class existence decides whether
