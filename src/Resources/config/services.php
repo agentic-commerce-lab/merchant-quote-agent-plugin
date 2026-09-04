@@ -76,6 +76,8 @@ use MerchantQuoteAgentPlugin\Protocol\Check\EvidenceInspector;
 use MerchantQuoteAgentPlugin\Protocol\Check\SessionIdCheck;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
+use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
+use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Store\ActStoreInterface;
 use MerchantQuoteAgentPlugin\Protocol\Store\DbalActStore;
 use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
@@ -262,6 +264,13 @@ return static function (ContainerConfigurator $configurator): void {
     // violations and human approval receipts that are only ours.
     $services->set(DbalActStore::class);
     $services->alias(ActStoreInterface::class, DbalActStore::class);
+
+    // The installation's signing key and published did:web identity (Task 14).
+    // Public: the plugin class fetches A2cnKeyStore from the container during
+    // install()/activate(), before the compiled container's private-service
+    // fence would otherwise apply.
+    $services->set(A2cnKeyStore::class)->public();
+    $services->set(A2cnIdentityResolver::class);
 
     // Counterparty did:web verification-key resolution. Guzzle wired
     // explicitly and under our own service id: this block runs unconditionally

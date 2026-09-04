@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin;
 
 use Doctrine\DBAL\Connection;
+use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use Override;
 use Shopware\Core\Framework\Plugin;
+use Shopware\Core\Framework\Plugin\Context\ActivateContext;
+use Shopware\Core\Framework\Plugin\Context\InstallContext;
 use Shopware\Core\Framework\Plugin\Context\UninstallContext;
 
 /**
@@ -57,6 +60,24 @@ class MerchantQuoteAgentPlugin extends Plugin
         return true;
     }
 
+    /** @throws \Random\RandomException */
+    #[Override]
+    public function install(InstallContext $installContext): void
+    {
+        parent::install($installContext);
+        $this->generateSigningKey();
+    }
+
+    /** @throws \Random\RandomException */
+    #[Override]
+    public function activate(ActivateContext $activateContext): void
+    {
+        parent::activate($activateContext);
+        // Also here, so a shop that updates into this version gets a key
+        // without being reinstalled.
+        $this->generateSigningKey();
+    }
+
     /** @throws \Doctrine\DBAL\Exception */
     #[Override]
     public function uninstall(UninstallContext $uninstallContext): void
@@ -81,6 +102,15 @@ class MerchantQuoteAgentPlugin extends Plugin
             'merchant_quote_agent_a2cn_act',
         ] as $table) {
             $connection->executeStatement(\sprintf('DROP TABLE IF EXISTS `%s`', $table));
+        }
+    }
+
+    /** @throws \Random\RandomException */
+    private function generateSigningKey(): void
+    {
+        $keys = $this->container?->get(A2cnKeyStore::class);
+        if ($keys instanceof A2cnKeyStore) {
+            $keys->generateIfAbsent();
         }
     }
 }
