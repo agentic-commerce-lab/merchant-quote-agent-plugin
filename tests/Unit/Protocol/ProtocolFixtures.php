@@ -23,6 +23,13 @@ final class ProtocolFixtures
     public const SELLER = 'did:web:shop.example';
     public const BUYER = 'did:web:buyer.example';
 
+    /**
+     * A non-empty placeholder: SellerActFactory::identityFor() treats an empty
+     * salesChannelId as "no did:web authority to publish under", so a fixture
+     * snapshot needs a non-empty one to reach the emitter's identity double.
+     */
+    public const SALES_CHANNEL_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
     private function __construct() {}
 
     public static function at(): \DateTimeImmutable
@@ -89,7 +96,12 @@ final class ProtocolFixtures
         int $quantity = 10,
     ): QuoteSnapshot {
         return new QuoteSnapshot(
-            identity: new QuoteIdentity(quoteId: $quoteId, quoteNumber: 'Q-1001', currencyIso: 'EUR'),
+            identity: new QuoteIdentity(
+                quoteId: $quoteId,
+                quoteNumber: 'Q-1001',
+                currencyIso: 'EUR',
+                salesChannelId: self::SALES_CHANNEL_ID,
+            ),
             revision: new QuoteRevision('rev-1', new \DateTimeImmutable('2026-09-04T09:00:00+00:00')),
             totals: new QuoteTotals(totalNet: 7600.0),
             lifecycle: new QuoteLifecycle(

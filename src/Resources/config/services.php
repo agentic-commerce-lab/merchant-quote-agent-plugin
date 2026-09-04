@@ -77,6 +77,8 @@ use MerchantQuoteAgentPlugin\Protocol\Check\SessionIdCheck;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ActSigner;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\ChainMirror;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
@@ -308,6 +310,11 @@ return static function (ContainerConfigurator $configurator): void {
     // Building and signing the seller's own act (Task 15).
     $services->set(ActSigner::class);
     $services->set(SellerActFactory::class);
+
+    // The evidence mirror facade for the emitter (Task 16). Depends only on
+    // ActStoreInterface, so — unlike SellerActEmitter below — it belongs in
+    // this unconditional block rather than behind the SwagCommercial gate.
+    $services->set(ChainMirror::class);
     // --- end A2CN / Protocol ---------------------------------------------
 
     // Stage one of ADR 0001's two-stage gate: class existence decides whether
@@ -515,5 +522,17 @@ return static function (ContainerConfigurator $configurator): void {
         service(ServicingPreflight::class),
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
         service(QuoteServicingPipelineInterface::class)->ignoreOnInvalid(),
+    ]);
+
+    // The emitter (Task 16) depends on QuoteGatewayInterface, which only
+    // exists where SwagCommercial does — registered here, inside the same
+    // gate as the other gateway consumers above, rather than in the
+    // unconditional A2CN block.
+    $services->set(SellerActEmitter::class)->args([
+        service(SellerActFactory::class),
+        service(EvidenceInspector::class),
+        service(ChainMirror::class),
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+        service('logger'),
     ]);
 };
