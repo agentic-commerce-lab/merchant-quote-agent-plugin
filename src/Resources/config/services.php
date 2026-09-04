@@ -76,6 +76,8 @@ use MerchantQuoteAgentPlugin\Protocol\Check\EvidenceInspector;
 use MerchantQuoteAgentPlugin\Protocol\Check\SessionIdCheck;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\ActSigner;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Store\ActStoreInterface;
@@ -302,6 +304,10 @@ return static function (ContainerConfigurator $configurator): void {
         service(BuyerTermsCheck::class),
         service(BuyerSignatureCheck::class),
     ]]);
+
+    // Building and signing the seller's own act (Task 15).
+    $services->set(ActSigner::class);
+    $services->set(SellerActFactory::class);
     // --- end A2CN / Protocol ---------------------------------------------
 
     // Stage one of ADR 0001's two-stage gate: class existence decides whether
