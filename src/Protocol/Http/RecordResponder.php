@@ -78,7 +78,16 @@ final readonly class RecordResponder
             ], 409);
         }
 
-        $currency = $acts[\count($acts) - 1]->terms()['currency'] ?? 'EUR';
+        // $acts is non-empty here ($hasOffer matched an element of it), but
+        // list<Act> carries no such guarantee for static analysis, so the
+        // last element is read through an explicit `?Act`. terms() itself
+        // returns ?array; narrowing that to [] too means the ['currency']
+        // lookup below always indexes a real array, never a `null`, which
+        // would otherwise raise a PHP warning under a strict error handler
+        // even though the `??` swallows the resulting value.
+        $lastAct = $acts === [] ? null : $acts[\count($acts) - 1];
+        $lastTerms = $lastAct?->terms() ?? [];
+        $currency = $lastTerms['currency'] ?? 'EUR';
 
         return JsonEnvelope::noStore($this->transactionRecord->build(
             $parties,
