@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Protocol\Act\SignedView;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\CompactJws;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
+use MerchantQuoteAgentPlugin\Protocol\ProtocolTimestamp;
 use Override;
 
 /**
@@ -42,7 +43,7 @@ final readonly class BuyerSignatureCheck implements EvidenceCheckInterface
             $reason = $this->reasonItDoesNotVerify($act);
             if ($reason !== null) {
                 return new ProtocolViolation(
-                    timestamp: $at->format(\DATE_ATOM),
+                    timestamp: ProtocolTimestamp::of($at),
                     violationType: 'buyer_act_unverified',
                     messageId: $act->messageId(),
                     description: \sprintf('act %s %s', $act->messageId(), $reason),

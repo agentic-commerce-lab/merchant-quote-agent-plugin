@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Protocol\Act\Act;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActChain;
+use MerchantQuoteAgentPlugin\Protocol\ProtocolTimestamp;
 use Override;
 
 /**
@@ -86,7 +87,7 @@ final readonly class BuyerTermsCheck implements EvidenceCheckInterface
     private function violation(Act $act, \DateTimeImmutable $at, string $description): ProtocolViolation
     {
         return new ProtocolViolation(
-            timestamp: $at->format(\DATE_ATOM),
+            timestamp: ProtocolTimestamp::of($at),
             violationType: 'act_terms_mismatch',
             messageId: $act->messageId(),
             description: $description,

@@ -61,8 +61,10 @@ final readonly class A2cnRecordsController
             return JsonEnvelope::noStore(['status' => 'not_found'], 404);
         }
 
+        $now = new \DateTimeImmutable();
+
         try {
-            $quote = $this->quotes->for($quoteId, new \DateTimeImmutable());
+            $quote = $this->quotes->for($quoteId, $now);
         } catch (QuoteStateUnavailable) {
             // A records request must not depend on Shopware being reachable
             // through a generic 500.
@@ -73,6 +75,6 @@ final readonly class A2cnRecordsController
             return JsonEnvelope::noStore(['status' => 'not_found'], 404);
         }
 
-        return $this->responder->respond($sessionId, $acts, $quote);
+        return $this->responder->respond($sessionId, $acts, $quote, $now);
     }
 }

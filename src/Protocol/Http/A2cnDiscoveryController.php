@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Identity\MissingSigningKey;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
+use MerchantQuoteAgentPlugin\Protocol\ProtocolTimestamp;
 use Shopware\Core\PlatformRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -107,7 +108,7 @@ final readonly class A2cnDiscoveryController
             // installation says it is.
             'organization' => ['name' => $identity->organizationName],
             'endpoint' => $base,
-            'updated_at' => $at->format(\DATE_ATOM),
+            'updated_at' => ProtocolTimestamp::of($at),
             'mandate_url' => $base . self::MANDATE_PATH,
             'records_url' => $base . '/a2cn/records/{session_id}',
         ];

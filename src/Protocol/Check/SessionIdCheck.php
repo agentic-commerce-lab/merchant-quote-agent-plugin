@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Protocol\Check;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActChain;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\SessionId;
+use MerchantQuoteAgentPlugin\Protocol\ProtocolTimestamp;
 use Override;
 
 /**
@@ -32,7 +33,7 @@ final readonly class SessionIdCheck implements EvidenceCheckInterface
         }
 
         return new ProtocolViolation(
-            timestamp: $at->format(\DATE_ATOM),
+            timestamp: ProtocolTimestamp::of($at),
             violationType: 'session_id_mismatch',
             messageId: $chain->acts()[0]?->messageId(),
             description: \sprintf(

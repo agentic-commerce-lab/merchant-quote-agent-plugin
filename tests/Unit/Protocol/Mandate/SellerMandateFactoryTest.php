@@ -32,8 +32,8 @@ final class SellerMandateFactoryTest extends TestCase
     {
         $mandate = self::build(new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 15.0)));
 
-        self::assertSame('2026-09-04T10:00:00+00:00', $mandate['valid_from']);
-        self::assertSame('2027-09-04T10:00:00+00:00', $mandate['valid_until']);
+        self::assertSame('2026-09-04T10:00:00Z', $mandate['valid_from']);
+        self::assertSame('2027-09-04T10:00:00Z', $mandate['valid_until']);
     }
 
     public function testMaxCommitmentIsAbsentWithoutAValueCeiling(): void

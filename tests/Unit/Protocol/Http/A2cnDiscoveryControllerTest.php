@@ -41,10 +41,10 @@ final class A2cnDiscoveryControllerTest extends TestCase
         self::assertSame('https://shop.example', $body['endpoint']);
         self::assertSame('https://shop.example/.well-known/a2cn-seller-mandate', $body['mandate_url']);
         self::assertSame('https://shop.example/a2cn/records/{session_id}', $body['records_url']);
-        self::assertInstanceOf(
-            \DateTimeImmutable::class,
-            \DateTimeImmutable::createFromFormat(\DATE_ATOM, (string) $body['updated_at']),
-            'updated_at must be the ATOM timestamp the rest of the module writes',
+        self::assertMatchesRegularExpression(
+            '/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/',
+            (string) $body['updated_at'],
+            'updated_at must be the UTC `Z`-suffixed timestamp the rest of the module writes, per ProtocolTimestamp',
         );
 
         self::assertCount(12, $body, 'the document publishes exactly the enumerated fields');

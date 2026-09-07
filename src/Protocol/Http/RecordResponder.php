@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Protocol\Http;
 
 use MerchantQuoteAgentPlugin\Protocol\Act\Act;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
+use MerchantQuoteAgentPlugin\Protocol\ProtocolTimestamp;
 use MerchantQuoteAgentPlugin\Protocol\Record\AuditEvidence;
 use MerchantQuoteAgentPlugin\Protocol\Record\AuditLog;
 use MerchantQuoteAgentPlugin\Protocol\Record\RecordParties;
@@ -34,13 +35,33 @@ final readonly class RecordResponder
     ) {}
 
     /** @param list<Act> $acts */
-    public function respond(string $sessionId, array $acts, QuoteTerminalState $quote): JsonResponse
-    {
+    public function respond(
+        string $sessionId,
+        array $acts,
+        QuoteTerminalState $quote,
+        \DateTimeImmutable $at,
+    ): JsonResponse {
         $parties = $this->parties->resolve($acts, $quote);
 
         $acceptance = $quote->acceptance;
         if ($acceptance !== null) {
-            return $this->accepted($sessionId, $acts, $acceptance, $parties, $quote);
+            // An acceptance with no prior offer is itself a protocol violation
+            // (the buyer's chain, which we do not fully trust). Reporting that
+            // beats manufacturing a record with empty agreed terms, which
+            // would be indistinguishable from a bug in this code. Checked
+            // here rather than inside accepted() so that method's parameter
+            // list — already at the per-method cap — does not also need
+            // $sessionId.
+            $hasOffer = array_filter($acts, static fn(Act $act): bool => $act->isOffer()) !== [];
+            if (!$hasOffer) {
+                return JsonEnvelope::noStore([
+                    'status' => 'protocol_violation',
+                    'session_id' => $sessionId,
+                    'reason' => 'accepted_without_offer',
+                ], 409);
+            }
+
+            return $this->accepted($acts, $acceptance, $parties, $quote, $at);
         }
 
         $outcome = SessionOutcome::for($quote->state, $quote->expired);
@@ -53,38 +74,26 @@ final readonly class RecordResponder
             $acts,
             $outcome,
             new AuditEvidence($this->store->listViolations($sessionId), $this->store->listReceipts($sessionId)),
-            (new \DateTimeImmutable())->format(\DATE_ATOM),
+            ProtocolTimestamp::of($at),
         ));
     }
 
     /** @param list<Act> $acts */
     private function accepted(
-        string $sessionId,
         array $acts,
         Act $acceptance,
         RecordParties $parties,
         QuoteTerminalState $quote,
+        \DateTimeImmutable $at,
     ): JsonResponse {
-        // An acceptance with no prior offer is itself a protocol violation (the
-        // buyer's chain, which we do not fully trust). Reporting that beats
-        // manufacturing a record with empty agreed terms, which would be
-        // indistinguishable from a bug in this code.
-        $hasOffer = array_filter($acts, static fn(Act $act): bool => $act->isOffer()) !== [];
-        if (!$hasOffer) {
-            return JsonEnvelope::noStore([
-                'status' => 'protocol_violation',
-                'session_id' => $sessionId,
-                'reason' => 'accepted_without_offer',
-            ], 409);
-        }
-
-        // $acts is non-empty here ($hasOffer matched an element of it), but
-        // list<Act> carries no such guarantee for static analysis, so the
-        // last element is read through an explicit `?Act`. terms() itself
-        // returns ?array; narrowing that to [] too means the ['currency']
-        // lookup below always indexes a real array, never a `null`, which
-        // would otherwise raise a PHP warning under a strict error handler
-        // even though the `??` swallows the resulting value.
+        // $acts is non-empty here (the caller only reaches this method after
+        // confirming an offer is present), but list<Act> carries no such
+        // guarantee for static analysis, so the last element is read through
+        // an explicit `?Act`. terms() itself returns ?array; narrowing that
+        // to [] too means the ['currency'] lookup below always indexes a
+        // real array, never a `null`, which would otherwise raise a PHP
+        // warning under a strict error handler even though the `??`
+        // swallows the resulting value.
         $lastAct = $acts === [] ? null : $acts[\count($acts) - 1];
         $lastTerms = $lastAct?->terms() ?? [];
         $currency = $lastTerms['currency'] ?? 'EUR';
@@ -99,7 +108,7 @@ final readonly class RecordResponder
                 subject: $quote->quoteNumber,
                 subjectReference: 'quote:' . $quote->quoteNumber,
             ),
-            (new \DateTimeImmutable())->format(\DATE_ATOM),
+            ProtocolTimestamp::of($at),
         ));
     }
 }

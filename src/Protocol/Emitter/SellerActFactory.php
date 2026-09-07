@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Protocol\Act\SignedView;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\SessionId;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
+use MerchantQuoteAgentPlugin\Protocol\ProtocolTimestamp;
 use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
 
 /**
@@ -78,7 +79,7 @@ final readonly class SellerActFactory
     ): Act {
         $sessionId = SessionId::forQuote($snapshot->identity->quoteId);
         $sequence = $chain->nextSequence();
-        $timestamp = $now->format(\DATE_ATOM);
+        $timestamp = ProtocolTimestamp::of($now);
 
         $wire = [
             'message_type' => self::MESSAGE_TYPE,
@@ -100,7 +101,7 @@ final readonly class SellerActFactory
 
         $expiresAt = $snapshot->lifecycle->expiresAt;
         if ($expiresAt !== null) {
-            $wire['expires_at'] = $expiresAt->format(\DATE_ATOM);
+            $wire['expires_at'] = ProtocolTimestamp::of($expiresAt);
         }
 
         // Sign the view of the act as it will actually stand, then attach the

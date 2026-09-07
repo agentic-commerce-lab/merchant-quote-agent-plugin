@@ -28,7 +28,7 @@ final class MandateSignerTest extends TestCase
 
         self::assertSame('JsonWebSignature2020', $signed['proof']['type']);
         self::assertSame($identity->verificationMethod, $signed['proof']['verification_method']);
-        self::assertSame('2026-09-04T10:00:00+00:00', $signed['proof']['created']);
+        self::assertSame('2026-09-04T10:00:00Z', $signed['proof']['created']);
 
         // Detached: the signature covers the mandate body with no `proof`
         // member — exactly what a verifier reconstructs by removing it.

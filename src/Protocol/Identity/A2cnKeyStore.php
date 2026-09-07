@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Protocol\Identity;
 
+use MerchantQuoteAgentPlugin\Protocol\ProtocolTimestamp;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Ucp\Sdk\Model\Security\ManagedSigningKey;
 use Ucp\Sdk\Service\SigningKeyManagerInterface;
@@ -62,7 +63,7 @@ class A2cnKeyStore
                 kid: $generated->kid,
                 privateKeyPem: $generated->privateKeyPem,
                 publicKeyPem: $generated->publicKeyPem,
-                createdAt: $generated->createdAt ?? (new \DateTimeImmutable())->format(\DATE_ATOM),
+                createdAt: $generated->createdAt ?? ProtocolTimestamp::now(),
             );
 
             $this->systemConfig->set(self::CONFIG_KEY, $key->toArray());

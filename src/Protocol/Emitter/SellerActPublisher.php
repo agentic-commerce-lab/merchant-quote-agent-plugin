@@ -12,6 +12,7 @@ use MerchantQuoteAgentPlugin\Protocol\Act\ActChain;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActKey;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
+use MerchantQuoteAgentPlugin\Protocol\ProtocolTimestamp;
 use MerchantQuoteAgentPlugin\Protocol\Store\ApprovalReceipt;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use Psr\Log\LoggerInterface;
@@ -109,7 +110,7 @@ final readonly class SellerActPublisher
                     receiptId: $act->sessionId() . ':' . $act->hash(),
                     offerHash: $act->hash(),
                     thresholdCrossed: $marker,
-                    approvedAt: $now->format(\DATE_ATOM),
+                    approvedAt: ProtocolTimestamp::of($now),
                 ),
             );
         } catch (\Throwable $error) {

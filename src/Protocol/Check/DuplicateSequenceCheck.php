@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Protocol\Check;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActChain;
+use MerchantQuoteAgentPlugin\Protocol\ProtocolTimestamp;
 use Override;
 
 /**
@@ -30,7 +31,7 @@ final readonly class DuplicateSequenceCheck implements EvidenceCheckInterface
         }
 
         return new ProtocolViolation(
-            timestamp: $at->format(\DATE_ATOM),
+            timestamp: ProtocolTimestamp::of($at),
             violationType: 'duplicate_sequence',
             messageId: null,
             description: \sprintf('sequence number(s) %s claimed more than once', implode(', ', $duplicates)),

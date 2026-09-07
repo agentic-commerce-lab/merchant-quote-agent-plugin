@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Protocol\Mandate;
 
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
+use MerchantQuoteAgentPlugin\Protocol\ProtocolTimestamp;
 use MerchantQuoteAgentPlugin\Protocol\Terms\MinorUnits;
 use MerchantQuoteAgentPlugin\Protocol\Terms\NonFiniteAmount;
 
@@ -40,8 +41,8 @@ final readonly class SellerMandateFactory
             'principal_organization' => $identity->organizationName,
             'principal_did' => $identity->did,
             'authorized_deal_types' => A2cnIdentity::DEAL_TYPES,
-            'valid_from' => $validFrom->format(\DATE_ATOM),
-            'valid_until' => $validFrom->modify('+1 year')->format(\DATE_ATOM),
+            'valid_from' => ProtocolTimestamp::of($validFrom),
+            'valid_until' => ProtocolTimestamp::of($validFrom->modify('+1 year')),
             'negotiation_bands' => NegotiationBands::fromPolicy($policy),
         ];
 

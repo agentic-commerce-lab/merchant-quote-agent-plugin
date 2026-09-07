@@ -54,7 +54,7 @@ final class SellerActFactoryTest extends TestCase
         $act = self::factory()
             ->build(ProtocolFixtures::snapshot(self::QUOTE_ID), $chain, self::identity(), ProtocolFixtures::at());
 
-        self::assertSame('2026-09-18T10:00:00+00:00', $act->expiresAt());
+        self::assertSame('2026-09-18T10:00:00Z', $act->expiresAt());
         self::assertSame(760000, $act->terms()['total_value'] ?? null);
     }
 

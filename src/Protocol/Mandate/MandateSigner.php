@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Identity\MissingSigningKey;
+use MerchantQuoteAgentPlugin\Protocol\ProtocolTimestamp;
 
 /**
  * Attaches a DETACHED proof to a mandate: the signature covers the mandate
@@ -47,7 +48,7 @@ final readonly class MandateSigner
         + ['proof' => [
             'type' => self::PROOF_TYPE,
             'verification_method' => $identity->verificationMethod,
-            'created' => $now->format(\DATE_ATOM),
+            'created' => ProtocolTimestamp::of($now),
             'jws' => $jws,
         ]];
     }
