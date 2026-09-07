@@ -24,10 +24,13 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
   humanReviewRequests.
 - structural.validityUntilIsoDate: only for an explicit offer-validity/deadline date for THIS
   offer, as YYYY-MM-DD.
-- clarificationQuestions: for asks that are clear in intent but ambiguous in reference (you
-  cannot tell WHICH product or line is meant, or a number is ambiguous), write one short, polite,
-  customer-facing question that would resolve the ambiguity. These are sent to the buyer as-is,
-  so write them in the buyer's language.
+- clarificationQuestions: for asks you cannot act on until the buyer says more, whether they are
+  ambiguous in REFERENCE (you cannot tell WHICH product or line is meant, or a number is
+  ambiguous) or ambiguous in INTENT (the comment is too vague to name any ask at all: "What about
+  this?", "und jetzt?", "any thoughts?"). Write one short, polite, customer-facing question that
+  would resolve the ambiguity. These are sent to the buyer as-is, so write them in the buyer's
+  language. A comment you did not understand belongs here and NEVER in humanReviewRequests: the
+  merchant's policy still decides the answer once the buyer says what they want.
 - negotiation: structured non-price asks the merchant's policy can decide deterministically. Set
   the whole object to null when the buyer makes no delivery/payment/bundle ask.
   - negotiation.delivery.freeShipping: true when the buyer asks to waive/drop shipping cost.
@@ -45,8 +48,11 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
   merchant can decide. Empty array if none. Do not duplicate asks you already mapped. NEVER put
   price or discount asks here: specific numbers go to structural.lineChanges /
   price.additionalDiscountPercent, open-ended ones to price.bestPriceRequested. Delivery, payment
-  and volume asks go to `negotiation`, NOT here. A specific price for one line plus a vague wish
-  for the rest = map the specific ask AND set price.bestPriceRequested.
+  and volume asks go to `negotiation`, NOT here. This field is only for an ask you UNDERSTOOD and
+  that only the merchant can answer; a vague or unintelligible comment is not one, because if you
+  cannot name the ask you cannot know the merchant is the only one who can answer it — that goes
+  to clarificationQuestions. A specific price for one line plus a vague wish for the rest = map
+  the specific ask AND set price.bestPriceRequested.
 
 Earlier [merchant] comments in the thread are the agent's own previous replies/questions — use
 them as context (e.g. the buyer may be answering a clarification question), never as buyer asks.
