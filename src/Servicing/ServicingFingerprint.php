@@ -19,7 +19,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
  * discards a buyer comment that lands mid-pass, which is a dropped ask rather
  * than a suppressed duplicate.
  *
- * The three components, and why each is there:
+ * The four components, and why each is there:
  *
  * - **state** — a transition is work. Moves on our own writes too
  *   (open → in_review → replied), which is why the handler stamps a value
@@ -29,6 +29,10 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
  *   which a "newest comment" marker alone would hide.
  * - **newest authored createdAt** — distinguishes an edited or replaced comment
  *   from an appended one at the same count.
+ * - **per-line requested prices** — the one ask that arrives without a comment,
+ *   so none of the three above move when the buyer edits it. Appended rather
+ *   than joined unconditionally, and only when there is an ask at all, so that
+ *   every marker written before it existed stays valid.
  *
  * An agent comment is author-less on createdById, customerId and employeeId
  * alike (#3, pinned by AddCommentTest), so it is excluded from both comment
@@ -43,7 +47,11 @@ final class ServicingFingerprint
 
     public static function of(QuoteSnapshot $snapshot): string
     {
-        return self::compose($snapshot->lifecycle->stateTechnicalName, self::authored($snapshot));
+        return self::compose(
+            $snapshot->lifecycle->stateTechnicalName,
+            self::authored($snapshot),
+            self::asks($snapshot),
+        );
     }
 
     /**
@@ -63,7 +71,7 @@ final class ServicingFingerprint
      */
     public static function stamp(QuoteSnapshot $serviced, string $stateAfter): string
     {
-        return self::compose($stateAfter, self::authored($serviced));
+        return self::compose($stateAfter, self::authored($serviced), self::asks($serviced));
     }
 
     /** @param array<string, mixed> $customFields */
@@ -83,10 +91,53 @@ final class ServicingFingerprint
         );
     }
 
-    /** @param array<int, QuoteComment> $authored */
-    private static function compose(string $state, array $authored): string
+    /**
+     * The structured component is APPENDED, and only when there is one.
+     *
+     * Every marker already written omits it, so a quote with no per-line ask
+     * has to compose the exact string it composed before this component
+     * existed — otherwise deploying it makes every quote in the shop differ
+     * from its own stamp and buys one pass each, and the ones still carrying
+     * an unanswered ask get answered a second time.
+     *
+     * @param array<int, QuoteComment> $authored
+     */
+    private static function compose(string $state, array $authored, string $asks): string
     {
-        return implode('|', [$state, (string) \count($authored), self::newestCreatedAt($authored)]);
+        $marker = implode('|', [$state, (string) \count($authored), self::newestCreatedAt($authored)]);
+
+        return $asks === '' ? $marker : $marker . '|' . $asks;
+    }
+
+    /**
+     * The buyer's per-line targets, the one ask that arrives without a comment:
+     * SwagCommercial writes it to `quote_line_item.requested_price` and the
+     * storefront offers it beside the quoted price, so editing it moves neither
+     * the state nor either comment component. Without this a buyer who changes
+     * their number and types nothing is told nothing has happened.
+     *
+     * Keyed on the ask and not on whether it is still unmet: the agent's own
+     * write moves `unitPriceNet` down to meet it, so a met-only filter would
+     * drop the component exactly when the pass succeeds, differ from itself and
+     * buy one pointless pass per answered quote.
+     *
+     * Sorted, because line order is a read-model detail; and formatted to a
+     * fixed two decimals for `newestCreatedAt()`'s reason — a marker compared
+     * as a string must not depend on how a float prints.
+     */
+    private static function asks(QuoteSnapshot $snapshot): string
+    {
+        $asks = [];
+
+        foreach ($snapshot->content->lines as $line) {
+            if ($line->requestedUnitPrice !== null) {
+                $asks[] = $line->identity->lineItemId . ':' . number_format($line->requestedUnitPrice, 2, '.', '');
+            }
+        }
+
+        sort($asks);
+
+        return implode(',', $asks);
     }
 
     /**
