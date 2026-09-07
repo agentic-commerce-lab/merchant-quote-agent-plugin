@@ -17,7 +17,7 @@ use MerchantQuoteAgentPlugin\Protocol\Check\ProtocolViolation;
  */
 interface ActStoreInterface
 {
-    /** Idempotent on (session, sequence). */
+    /** Idempotent on (session, sequence, role) — see ActRecord for why the role is part of it. */
     public function append(ActRecord $record): void;
 
     public function appendViolation(string $sessionId, ProtocolViolation $violation): void;

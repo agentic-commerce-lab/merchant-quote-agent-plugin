@@ -33,14 +33,19 @@ final readonly class ActChain
      */
     public const MAX_ACTS = 512;
 
+    /** @var list<Act> */
+    private array $acts;
+
     /**
-     * @param list<Act> $acts
+     * @param array<string, Act> $keyedActs in wire (lexical key) order
      */
     private function __construct(
-        private array $acts,
+        private array $keyedActs,
         private ?string $sessionId,
         private bool $exceedsLengthCap,
-    ) {}
+    ) {
+        $this->acts = array_values($keyedActs);
+    }
 
     /**
      * @param array<string, mixed>|null $customFields
@@ -61,7 +66,7 @@ final readonly class ActChain
             $value = $customFields[$key] ?? null;
             $act = \is_array($value) ? Act::fromArray($value) : null;
             if ($act !== null) {
-                $acts[] = $act;
+                $acts[$key] = $act;
             }
         }
 
@@ -72,6 +77,20 @@ final readonly class ActChain
     public function acts(): array
     {
         return $this->acts;
+    }
+
+    /**
+     * The same acts, still keyed by the customFields key they came from — the
+     * only place the WRITER's role survives, since it is part of the key and
+     * not of the signed payload. ChainMirror needs it: two acts at one
+     * sequence are exactly what the role suffix exists to preserve, so the
+     * mirror has to be able to tell them apart too.
+     *
+     * @return array<string, Act> in wire (lexical key) order
+     */
+    public function keyedActs(): array
+    {
+        return $this->keyedActs;
     }
 
     public function isEmpty(): bool

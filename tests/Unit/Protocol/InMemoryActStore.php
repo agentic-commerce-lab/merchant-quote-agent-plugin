@@ -5,16 +5,17 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol;
 
 use MerchantQuoteAgentPlugin\Protocol\Act\Act;
+use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
 use MerchantQuoteAgentPlugin\Protocol\Check\ProtocolViolation;
 use MerchantQuoteAgentPlugin\Protocol\Store\ActRecord;
 use MerchantQuoteAgentPlugin\Protocol\Store\ActStoreInterface;
 use MerchantQuoteAgentPlugin\Protocol\Store\ApprovalReceipt;
 use Override;
 
-/** The mirror, in memory. Idempotent on (session, sequence), like the real one. */
+/** The mirror, in memory. Idempotent on (session, sequence, role), like the real one. */
 final class InMemoryActStore implements ActStoreInterface
 {
-    /** @var array<string, Act> keyed by "session:sequence" */
+    /** @var array<string, Act> keyed by "session:sequence:role" */
     public array $acts = [];
 
     /** @var list<ProtocolViolation> */
@@ -37,8 +38,13 @@ final class InMemoryActStore implements ActStoreInterface
     #[Override]
     public function append(ActRecord $record): void
     {
-        $this->acts[$record->sessionId . ':' . $record->sequence] = $record->act;
+        $this->acts[self::key($record->sessionId, $record->sequence, $record->role)] = $record->act;
         $this->quotes[$record->sessionId] = $record->quoteId;
+    }
+
+    private static function key(string $sessionId, int $sequence, ActRole $role): string
+    {
+        return $sessionId . ':' . $sequence . ':' . $role->value;
     }
 
     #[Override]
@@ -71,13 +77,17 @@ final class InMemoryActStore implements ActStoreInterface
         $acts = [];
         foreach ($this->acts as $key => $act) {
             if (str_starts_with($key, $sessionId . ':')) {
-                $acts[] = $act;
+                // Sequence THEN role, exactly like ActTableStore's `ORDER BY
+                // sequence, role` — a zero-padded sequence plus the role
+                // character makes a plain string sort produce it, and two acts
+                // at one sequence must come back in wire order (b before s).
+                $acts[str_pad((string) $act->sequenceNumber(), 4, '0', \STR_PAD_LEFT) . substr($key, -1)] = $act;
             }
         }
 
-        usort($acts, static fn(Act $a, Act $b): int => $a->sequenceNumber() <=> $b->sequenceNumber());
+        ksort($acts);
 
-        return $acts;
+        return array_values($acts);
     }
 
     /** @return list<ProtocolViolation> */

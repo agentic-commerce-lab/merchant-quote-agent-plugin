@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Protocol\Emitter;
 
 use MerchantQuoteAgentPlugin\Protocol\Act\Act;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActChain;
+use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
 use MerchantQuoteAgentPlugin\Protocol\Check\ProtocolViolation;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\SessionId;
 use MerchantQuoteAgentPlugin\Protocol\Store\ActRecord;
@@ -32,20 +33,25 @@ final readonly class ChainMirror
 
     public function mirror(string $quoteId, ActChain $chain): void
     {
-        foreach ($chain->acts() as $act) {
-            $this->mirrorOne($quoteId, $act);
+        // Keyed, because the writer's ROLE lives in the customFields key and
+        // nowhere in the signed payload — and the mirror row's identity needs
+        // it, or the two acts the role suffix exists to keep apart on the wire
+        // collapse onto one row here.
+        foreach ($chain->keyedActs() as $key => $act) {
+            $this->mirrorOne($quoteId, $act, ActRole::fromKey($key));
         }
     }
 
-    public function mirrorOne(string $quoteId, Act $act): void
+    public function mirrorOne(string $quoteId, Act $act, ActRole $role): void
     {
         // Each act's OWN sequence, not a running counter, so this stays correct
         // however many rounds have already been mirrored. append() is
-        // idempotent, so re-mirroring is free.
+        // idempotent on (session, sequence, role), so re-mirroring is free.
         $this->store->append(new ActRecord(
             sessionId: SessionId::forQuote($quoteId),
             quoteId: $quoteId,
             sequence: $act->sequenceNumber(),
+            role: $role,
             act: $act,
         ));
     }

@@ -71,7 +71,7 @@ final readonly class SellerActPublisher
         // reflects the changed terms, so the next observation sees the terms as
         // changed and retries the append — instead of the wire holding one act,
         // the mirror another, and offer_chain_hash diverging permanently.
-        $this->mirror->mirrorOne($quoteId, $act);
+        $this->mirror->mirrorOne($quoteId, $act, ActRole::Seller);
 
         $gateway->updateQuote($quoteId, new QuoteUpdate(customFields: [
             ActKey::for($act->sequenceNumber(), ActRole::Seller) => $act->raw(),

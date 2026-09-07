@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Http;
 
 use MerchantQuoteAgentPlugin\Protocol\Act\Act;
+use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\SessionId;
 use MerchantQuoteAgentPlugin\Protocol\Http\QuoteStateUnavailable;
 use MerchantQuoteAgentPlugin\Protocol\Http\QuoteTerminalState;
@@ -38,7 +39,8 @@ final class RecordsControllerFixtures
             );
             $act = Act::fromArray($raw);
             \assert($act !== null, description: 'ProtocolFixtures::act() must always be readable as an Act.');
-            $store->append(new ActRecord($session, self::QUOTE_ID, $sequence, $act));
+            $role = $type === 'counteroffer' ? ActRole::Seller : ActRole::Buyer;
+            $store->append(new ActRecord($session, self::QUOTE_ID, $sequence, $role, $act));
         }
 
         return $store;

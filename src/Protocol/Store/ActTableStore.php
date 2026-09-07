@@ -29,14 +29,15 @@ final readonly class ActTableStore
         // is that a re-mirror is free, not an error.
         $this->connection->executeStatement(
             <<<'SQL'
-                INSERT INTO `merchant_quote_agent_a2cn_act` (`session_id`, `quote_id`, `sequence`, `act`, `created_at`)
-                VALUES (:session_id, :quote_id, :sequence, :act, :created_at)
+                INSERT INTO `merchant_quote_agent_a2cn_act` (`session_id`, `quote_id`, `sequence`, `role`, `act`, `created_at`)
+                VALUES (:session_id, :quote_id, :sequence, :role, :act, :created_at)
                 ON DUPLICATE KEY UPDATE `session_id` = `session_id`
                 SQL,
             [
                 'session_id' => $record->sessionId,
                 'quote_id' => $record->quoteId,
                 'sequence' => $record->sequence,
+                'role' => $record->role->value,
                 'act' => json_encode($record->act->raw(), \JSON_THROW_ON_ERROR),
                 'created_at' => (new \DateTimeImmutable())->format(Defaults::STORAGE_DATE_TIME_FORMAT),
             ],
@@ -50,7 +51,12 @@ final readonly class ActTableStore
      */
     public function listBySession(string $sessionId): array
     {
-        $rows = $this->connection->fetchFirstColumn('SELECT `act` FROM `merchant_quote_agent_a2cn_act` WHERE `session_id` = :session_id ORDER BY `sequence` ASC', [
+        // Sequence THEN role, which is the wire chain's own order: the keys
+        // sort lexically, and `a2cn_act_0002_b` precedes `a2cn_act_0002_s`.
+        // A records response and an offer_chain_hash computed from the mirror
+        // have to see the acts in the same order as one computed from the
+        // quote, or the two hashes disagree over nothing but ordering.
+        $rows = $this->connection->fetchFirstColumn('SELECT `act` FROM `merchant_quote_agent_a2cn_act` WHERE `session_id` = :session_id ORDER BY `sequence` ASC, `role` ASC', [
             'session_id' => $sessionId,
         ]);
 
