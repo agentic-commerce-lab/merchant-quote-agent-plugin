@@ -140,62 +140,47 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
     ): NegotiationPass {
         $ask = $this->interpreter->interpret($settings, $snapshot, SnapshotAdapter::conversation($snapshot));
 
-        if ($ask === null) {
+        // A comment is not the only way to ask. The storefront writes a
+        // per-line target into `quote_line_item.requested_price`, and a buyer
+        // who fills it in need not type anything: AskInterpreter then returns
+        // null for want of a comment to interpret, and reading that alone as
+        // "nothing to do" recorded a real price ask as `nothing_to_do`, with
+        // no band and no model call. The policy layer never needed the
+        // comment — `NegotiationProposal::$price` is nullable,
+        // `CommentTargetMerger::merge()` deliberately leaves the line's own
+        // target standing when there is no interpretation, and the appliers
+        // read `requestedUnitPrice` directly — so the ask only ever failed to
+        // reach it, which is what SnapshotAdapter's docblock already promises
+        // it does.
+        if ($ask === null && !StructuredAsk::isUnmet($snapshot)) {
             $this->round->finishStrandedReply($gateway, $snapshot);
 
             return new NegotiationPass(NegotiationOutcome::NothingToDo);
         }
 
-        if ($ask->isStructural($snapshot)) {
-            // Changing WHAT is being sold is outside a price-and-validity
-            // mandate. Nothing downstream acts on these asks either —
-            // CommentLineTargets reads lineChanges only for target prices —
-            // so without this guard the buyer's real ask is silently dropped.
-            $this->logger->info('The buyer asked to change the quote structurally; a human decides that.', [
-                'quoteId' => $snapshot->identity->quoteId,
-            ]);
+        $refusal = $ask === null ? null : AskGate::refuse($gateway, $snapshot, $ask, $this->round, $this->logger);
 
-            return $this->round->escalated(
-                $gateway,
-                $snapshot,
-                QuoteEscalationReason::NeedsHumanReview,
-                $ask->promptHash,
-                null,
-            );
+        if ($refusal !== null) {
+            return $refusal;
         }
 
-        if ($ask->hasNonPriceAsk()) {
-            // Shipping, payment terms and bundles are extracted and then go
-            // nowhere: only `price` is composed into the proposal below, and
-            // QuoteUpdate cannot write a delivery term anyway. Answering the
-            // price half and dropping the rest silently is worse than saying
-            // a human takes it — and promising shipping that never lands is
-            // worse still, which is why this does not route through
-            // NonPriceTermsDecider.
-            $this->logger->info('The buyer asked for a non-price term; a human decides that.', [
-                'quoteId' => $snapshot->identity->quoteId,
-            ]);
+        return $this->answer($ask, $snapshot, $gateway, $settings);
+    }
 
-            return $this->round->escalated(
-                $gateway,
-                $snapshot,
-                QuoteEscalationReason::NeedsHumanReview,
-                $ask->promptHash,
-                null,
-            );
-        }
-
-        if ($ask->needsClarification()) {
-            // The model could not place the ask, so answering it means picking
-            // a line at random. Before this gate the pass fell through with an
-            // empty ask, landed in the grant band at roughly 0% and sent a
-            // generic reply that advanced hasNewBuyerAsk() — so the buyer's
-            // real question was answered with a no-op and then never asked
-            // again. Which of ask-or-escalate happens is ClarificationRound's
-            // call: the marker settles it, and it owns the marker.
-            return ClarificationRound::handle($gateway, $snapshot, $ask, $this->round, $this->logger);
-        }
-
+    /**
+     * Classify the ask, then answer it or hand it over.
+     *
+     * `$ask` is null for a structured-only ask, and every hash it would supply
+     * is nullable for exactly that case: no extraction prompt ran, and
+     * recording one that did not is the kind of claim this plugin's audit trail
+     * exists to avoid.
+     */
+    private function answer(
+        ?InterpretedAsk $ask,
+        QuoteSnapshot $snapshot,
+        QuoteGatewayInterface $gateway,
+        QuoteAgentSettings $settings,
+    ): NegotiationPass {
         // `overall` IS the price band here: nothing composes a non-price ask
         // into the proposal, so NegotiationDecider aggregates the price band
         // with a bandless (granting) non-price decision. Reading its own
@@ -205,16 +190,16 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         $decision = $this->decider->decide(
             SnapshotAdapter::toPolicy($snapshot),
             $settings->policy,
-            new NegotiationProposal(price: $ask->interpretation),
+            new NegotiationProposal(price: $ask?->interpretation),
         );
         $this->recorder->recordDecision($decision, $settings->policy->price->maxDiscountPercent);
 
         if ($decision->overall === Band::Escalate) {
             $reason = $decision->price->escalation->reason ?? QuoteEscalationReason::NeedsHumanReview;
 
-            return $this->round->escalated($gateway, $snapshot, $reason, $ask->promptHash, null);
+            return $this->round->escalated($gateway, $snapshot, $reason, $ask?->promptHash, null);
         }
 
-        return $this->round->play($gateway, $snapshot, $settings, $decision, $ask->promptHash);
+        return $this->round->play($gateway, $snapshot, $settings, $decision, $ask?->promptHash);
     }
 }
