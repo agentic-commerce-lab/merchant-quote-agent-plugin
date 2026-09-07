@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Protocol\Http;
 use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
+use MerchantQuoteAgentPlugin\Protocol\Identity\MissingSigningKey;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -23,6 +24,14 @@ use Symfony\Component\HttpFoundation\JsonResponse;
  * found" a buyer sees for any other mandate this installation cannot serve,
  * rather than surfacing the shop's own configuration state to an
  * unauthenticated fetcher.
+ *
+ * `MandateSigner::sign()` reads `A2cnKeyStore::current()` independently of
+ * whatever `A2cnDiscoveryController::resolveIdentity()` already did — the
+ * 503-on-missing-key guarantee must not rest on "identity resolution happens
+ * to run first and hits the same key store", an implicit coupling that would
+ * silently break if that call order ever changed. Caught here too, so the
+ * mandate route answers 503 regardless of which call discovers the key is
+ * missing.
  */
 final readonly class MandateDocumentResponder
 {
@@ -46,6 +55,12 @@ final readonly class MandateDocumentResponder
 
         $mandate = $this->mandateFactory->build($settings->policy, $identity, $now);
 
-        return JsonEnvelope::cached($this->signer->sign($mandate, $identity, $now));
+        try {
+            $signed = $this->signer->sign($mandate, $identity, $now);
+        } catch (MissingSigningKey) {
+            return JsonEnvelope::noStore(['status' => 'signing_key_missing'], 503);
+        }
+
+        return JsonEnvelope::cached($signed);
     }
 }
