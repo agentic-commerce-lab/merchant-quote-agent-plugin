@@ -67,21 +67,24 @@
             "no": "Nein"
         },
         "list": {
-            "gridTitle": "Bearbeitungsdurchläufe",
-            "columnCreatedAt": "Wann",
+            "gridTitle": "Bearbeitete Angebote",
+            "columnCreatedAt": "Letzte Aktivität",
             "columnQuoteNumber": "Angebot",
             "columnOutcome": "Ergebnis",
             "columnBuyerAsk": "Käuferwunsch",
             "columnMerchantOffer": "Gewährt",
             "filterLabel": "Ergebnis",
             "filterAll": "Alle Ergebnisse",
-            "filterAnswered": "Käufer beantwortet",
             "roundCount": "{count} Runden",
             "emptyStateTitle": "Nichts anzuzeigen",
-            "emptyStateSubline": "Der Agent hat in diesem Zeitraum kein Angebot mit diesem Ergebnis bearbeitet."
+            "emptyStateSubline": "Der Agent hat in diesem Zeitraum kein Angebot mit diesem Ergebnis bearbeitet.",
+            "deleteRows": "Audit-Zeilen löschen",
+            "deleteTitle": "Audit-Zeilen löschen?",
+            "deleteBody": "Damit werden alle {count} erfassten Durchläufe zu Angebot #{quoteNumber} entfernt. Audit-Zeilen lassen sich nicht wiederherstellen.",
+            "deleteConfirm": "Löschen",
+            "truncated": "Es werden die {shown} zuletzt bearbeiteten Angebote von {total} Durchläufen in diesem Zeitraum gezeigt. Verkleinere den Zeitraum, um alle zu sehen."
         },
         "range": {
-            "label": "Zeitraum",
             "last7": "Letzte 7 Tage",
             "last30": "Letzte 30 Tage",
             "last90": "Letzte 90 Tage"
@@ -89,15 +92,13 @@
         "figures": {
             "title": "Dieser Zeitraum",
             "received": "Neu eingegangene Angebote",
-            "handled": "Bearbeitete Angebote",
-            "autoAnswered": "Automatisch beantwortet",
-            "escalated": "An Menschen eskaliert",
             "expiredUnanswered": "Unbeantwortet abgelaufen",
             "valueHandled": "Bearbeiteter Wert (netto)",
             "mixedCurrencies": "über mehrere Währungen",
             "granted": "Durchschnittlich gewährter Rabatt",
-            "againstCap": "bei einem Limit von {cap}",
-            "shareNote": "Anteile beziehen sich auf die {handled} vom Agenten bearbeiteten Angebote. Ein Angebot kann über seine Runden hinweg sowohl beantwortet als auch eskaliert sein."
+            "needsReview": "Wartet auf dich",
+            "ofServiced": "von {total} bearbeiteten Angeboten",
+            "ofCap": "bei einem Limit von {cap}"
         },
         "detail": {
             "pageTitle": "Angebot #{quoteNumber}",
@@ -150,6 +151,13 @@
                 "platform": "aus Agent-Plattformen",
                 "channel": "aus der Domain dieses Kanals"
             }
+        },
+        "disposition": {
+            "needsReview": "Prüfung nötig",
+            "answered": "Beantwortet",
+            "awaitingBuyer": "Rückfrage gestellt",
+            "noAction": "Kein Handlungsbedarf",
+            "other": "Unbekanntes Ergebnis"
         }
     }
 }

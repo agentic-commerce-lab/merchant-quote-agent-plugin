@@ -43,7 +43,8 @@ Shopware.Module.register('merchant-quote-agent', {
             component: 'merchant-quote-agent-access',
             path: 'access',
             meta: {
-                parentPath: 'merchant.quote.agent.index',
+                // Back out to Settings, which is where the page is reached from.
+                parentPath: 'sw.settings.index',
                 // The Agentic Commerce plugin's privileges, deliberately: this
                 // page reads and writes that plugin's config through its API, so
                 // its ACL is the one that actually gates the data.
@@ -51,6 +52,24 @@ Shopware.Module.register('merchant-quote-agent', {
             },
         },
     },
+
+    /**
+     * Agent access is configuration, not a daily order task, so it belongs in
+     * Settings rather than under Orders next to the decision log. `plugins` is
+     * the group an admin looks in for an extension's own configuration.
+     *
+     * sw-settings-index filters items by `privilege`, so it stays hidden from
+     * anyone who cannot read the config it edits.
+     */
+    settingsItem: [
+        {
+            group: 'plugins',
+            to: 'merchant.quote.agent.access',
+            icon: 'regular-shield',
+            label: 'merchant-quote-agent.access.mainMenuItem',
+            privilege: 'ucp.viewer',
+        },
+    ],
 
     navigation: [
         {
@@ -62,14 +81,6 @@ Shopware.Module.register('merchant-quote-agent', {
             parent: 'sw-order',
             position: 30,
             privilege: 'merchant_quote_agent.viewer',
-        },
-        {
-            id: 'merchant-quote-agent-access',
-            label: 'merchant-quote-agent.access.mainMenuItem',
-            path: 'merchant.quote.agent.access',
-            parent: 'sw-order',
-            position: 31,
-            privilege: 'ucp.viewer',
         },
     ],
 });

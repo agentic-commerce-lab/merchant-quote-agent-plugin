@@ -61,7 +61,7 @@
                         <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.detail.offeredDiscount') }}</span>
                         <span class="mqa-figure__value">{{ latestOffer ? latestOffer.granted : '–' }}</span>
                         <span v-if="latestOffer" class="mqa-figure__aside">
-                            {{ $t('merchant-quote-agent.figures.againstCap', { cap: latestOffer.cap }) }}
+                            {{ $t('merchant-quote-agent.figures.ofCap', { cap: latestOffer.cap }) }}
                         </span>
                     </div>
 
@@ -114,7 +114,7 @@
                                 <dd class="mqa-run__fact-value">
                                     <mt-badge :variant="run.bandVariant">{{ run.band }}</mt-badge>
                                     <span class="mqa-run__quiet">
-                                        {{ $t('merchant-quote-agent.figures.againstCap', { cap: run.cap }) }}
+                                        {{ $t('merchant-quote-agent.figures.ofCap', { cap: run.cap }) }}
                                     </span>
                                 </dd>
                             </template>

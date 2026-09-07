@@ -15,6 +15,8 @@ import {
     answeredTheBuyer,
     askItems,
     askSummary,
+    disposition,
+    foldToQuotes,
     formatDuration,
     formatPercent,
     outcomeVariant,
@@ -83,6 +85,45 @@ assert.equal(answeredTheBuyer('replied'), true);
 assert.equal(answeredTheBuyer('escalated'), false);
 assert.equal(answeredTheBuyer('nothing_to_do'), false);
 assert.equal(answeredTheBuyer(null), false);
+
+// Every outcome lands in exactly one disposition, and an unknown one is
+// visible rather than quietly counted as "no action".
+assert.equal(disposition('offered'), 'answered');
+assert.equal(disposition('countered'), 'answered');
+assert.equal(disposition('replied'), 'answered');
+assert.equal(disposition('escalated'), 'needsReview');
+assert.equal(disposition('clarified'), 'awaitingBuyer');
+assert.equal(disposition('nothing_to_do'), 'noAction');
+assert.equal(disposition('some_future_outcome'), 'other');
+assert.equal(disposition(null), 'other');
+
+// #1017 as it sits in the table: three passes, newest first. The fold keeps the
+// newest as the quote's state, counts the rounds, and takes the quote's own
+// starting value rather than the latest pass's already-discounted one.
+const passes = [
+    { quoteId: 'q1', quoteNumber: '1017', outcome: 'offered', totalNetBefore: 84.03 },
+    { quoteId: 'q1', quoteNumber: '1017', outcome: 'escalated', totalNetBefore: 91.34 },
+    { quoteId: 'q1', quoteNumber: '1017', outcome: 'nothing_to_do', totalNetBefore: null },
+    { quoteId: 'q2', quoteNumber: '1018', outcome: 'escalated', totalNetBefore: 50 },
+];
+const folded = foldToQuotes(passes);
+
+assert.equal(folded.length, 2, 'Three passes on one quote must fold to one row.');
+assert.equal(folded[0].quoteNumber, '1017');
+assert.equal(folded[0].rounds, 3);
+assert.equal(folded[0].disposition, 'answered', 'The newest pass decides the state.');
+assert.equal(folded[0].netBefore, 91.34, 'The quote value is the highest seen, not the latest.');
+assert.equal(folded[0].latest.outcome, 'offered');
+assert.equal(folded[1].rounds, 1);
+assert.equal(folded[1].disposition, 'needsReview');
+// Newest-activity-first order survives the fold.
+assert.deepEqual(folded.map((q) => q.quoteNumber), ['1017', '1018']);
+assert.deepEqual(foldToQuotes([]), []);
+
+// The partition is exhaustive: every folded quote counts once, so the parts
+// always sum to the whole. This is the property the old figures broke.
+const counts = folded.reduce((acc, q) => ({ ...acc, [q.disposition]: (acc[q.disposition] ?? 0) + 1 }), {});
+assert.equal(Object.values(counts).reduce((a, b) => a + b, 0), folded.length);
 
 assert.equal(formatPercent(7.9495), '7.9%');
 assert.equal(formatPercent(null), '–');

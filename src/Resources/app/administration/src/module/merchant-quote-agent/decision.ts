@@ -40,6 +40,70 @@ export function answeredTheBuyer(outcome: string | null): boolean {
     return outcome !== null && ANSWERED_OUTCOMES.includes(outcome);
 }
 
+/**
+ * Where a quote stands, from its most recent pass.
+ *
+ * These classes partition the serviced quotes — each quote is in exactly one —
+ * which is the point. Counting "quotes that were ever answered" and "quotes
+ * that ever escalated" put the same quote in both and produced shares summing
+ * past 100%.
+ *
+ * An outcome nobody here knows about becomes `other` rather than folding into
+ * `noAction`: a silent default is how this module twice ended up rendering a
+ * vocabulary the backend had already moved on from.
+ */
+const DISPOSITIONS: Record<string, string> = {
+    offered: 'answered',
+    countered: 'answered',
+    replied: 'answered',
+    escalated: 'needsReview',
+    clarified: 'awaitingBuyer',
+    nothing_to_do: 'noAction',
+};
+
+export const DISPOSITION_CLASSES = ['needsReview', 'answered', 'awaitingBuyer', 'noAction', 'other'];
+
+export function disposition(outcome: string | null): string {
+    return (outcome && DISPOSITIONS[outcome]) || 'other';
+}
+
+/**
+ * Collapses servicing passes into one entry per quote.
+ *
+ * `decisions` must arrive newest-first: the first pass seen for a quote is its
+ * current state, and Map preserves that insertion order so the result is still
+ * newest-activity-first. One row per pass meant a three-round negotiation
+ * appeared as three unrelated rows.
+ */
+export function foldToQuotes(decisions: any[]): any[] {
+    const byQuote = new Map<string, any>();
+
+    decisions.forEach((decision) => {
+        const netBefore = Number(decision.totalNetBefore ?? 0);
+        const seen = byQuote.get(decision.quoteId);
+
+        if (seen) {
+            seen.rounds += 1;
+            // The quote's own value, not the latest pass's: a later pass can
+            // start from an already-discounted total.
+            seen.netBefore = Math.max(seen.netBefore, netBefore);
+
+            return;
+        }
+
+        byQuote.set(decision.quoteId, {
+            quoteId: decision.quoteId,
+            quoteNumber: decision.quoteNumber,
+            latest: decision,
+            rounds: 1,
+            netBefore,
+            disposition: disposition(decision.outcome),
+        });
+    });
+
+    return [...byQuote.values()];
+}
+
 export function outcomeVariant(outcome: string | null): string {
     return (outcome && OUTCOME_VARIANTS[outcome]) || 'neutral';
 }
@@ -116,6 +180,34 @@ export function formatDate(value: string | null): string {
     const filter = globalThis.Shopware?.Filter?.getByName?.('date');
 
     return filter ? filter(value) : String(value);
+}
+
+/**
+ * The same instant in a grid cell's worth of space.
+ *
+ * The default format ("4 September 2026 at 09:09") needs ~220px on one line,
+ * and a data-grid column is sized by its widest unshrinkable content — so the
+ * long form silently pushed the column past the grid's right edge. Still
+ * locale-formatted; only the field widths are pinned.
+ */
+export function formatDateShort(value: string | null): string {
+    if (!value) {
+        return '–';
+    }
+
+    const filter = globalThis.Shopware?.Filter?.getByName?.('date');
+
+    if (!filter) {
+        return String(value);
+    }
+
+    return filter(value, {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
 }
 
 /**
