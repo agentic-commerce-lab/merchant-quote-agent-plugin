@@ -469,7 +469,7 @@ This installation publishes, on the sales channel's own domain:
 
 | Path | Body |
 | --- | --- |
-| `/.well-known/a2cn-agent` | Discovery document: agent DID, verification method, mandate and records URLs, conformance level. |
+| `/.well-known/a2cn-agent` | Discovery document, twelve fields: `a2cn_version`, `agent_id`, `did`, `verification_method`, `mandate_methods`, `authorized_deal_types`, `conformance_level`, `organization`, `endpoint`, `updated_at`, `mandate_url`, `records_url`. |
 | `/.well-known/did.json` | did:web document — one `JsonWebKey2020` verification method carrying the public half of this installation's signing key. |
 | `/.well-known/a2cn-seller-mandate` | The negotiation bands (`maxDiscountPercent`, `counterOfferMaxPercent`, the value ceiling) published declaratively and signed. |
 

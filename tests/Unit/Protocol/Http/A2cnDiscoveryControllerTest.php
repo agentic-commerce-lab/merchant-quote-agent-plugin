@@ -17,7 +17,13 @@ use Ucp\Sdk\Model\Security\PublicSigningKey;
 
 final class A2cnDiscoveryControllerTest extends TestCase
 {
-    public function testTheDiscoveryDocumentCarriesTheRequiredFields(): void
+    /**
+     * All twelve fields the spec's "Documents" section enumerates.
+     * `verification_method` is the one a buyer agent needs in order to pick a
+     * key without parsing the DID document, and the README lists it too, so
+     * publishing seven of the twelve made both wrong.
+     */
+    public function testTheDiscoveryDocumentCarriesAllTwelveFields(): void
     {
         $response = A2cnDiscoveryControllerFixtures::controller()->discovery(
             A2cnDiscoveryControllerFixtures::request(),
@@ -25,10 +31,23 @@ final class A2cnDiscoveryControllerTest extends TestCase
 
         $body = A2cnDiscoveryControllerFixtures::decode($response->getContent());
         self::assertSame('0.2', $body['a2cn_version']);
+        self::assertSame('merchant-quote-agent', $body['agent_id']);
+        self::assertSame('did:web:shop.example', $body['did']);
+        self::assertSame('did:web:shop.example#key-1', $body['verification_method']);
         self::assertSame(['declared'], $body['mandate_methods']);
+        self::assertSame(['goods_procurement'], $body['authorized_deal_types']);
         self::assertSame('acts', $body['conformance_level']);
+        self::assertSame(['name' => 'Example Shop'], $body['organization']);
+        self::assertSame('https://shop.example', $body['endpoint']);
         self::assertSame('https://shop.example/.well-known/a2cn-seller-mandate', $body['mandate_url']);
-        self::assertArrayHasKey('records_url', $body);
+        self::assertSame('https://shop.example/a2cn/records/{session_id}', $body['records_url']);
+        self::assertInstanceOf(
+            \DateTimeImmutable::class,
+            \DateTimeImmutable::createFromFormat(\DATE_ATOM, (string) $body['updated_at']),
+            'updated_at must be the ATOM timestamp the rest of the module writes',
+        );
+
+        self::assertCount(12, $body, 'the document publishes exactly the enumerated fields');
     }
 
     /**

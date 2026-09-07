@@ -72,17 +72,45 @@ final readonly class A2cnDiscoveryController
             return $identity;
         }
 
-        $base = rtrim($request->getSchemeAndHttpHost(), characters: '/');
+        return JsonEnvelope::cached(self::discoveryDocument(
+            $identity,
+            rtrim($request->getSchemeAndHttpHost(), characters: '/'),
+            new \DateTimeImmutable(),
+        ));
+    }
 
-        return JsonEnvelope::cached([
+    /**
+     * The twelve fields the spec enumerates. `verification_method` is what
+     * lets a buyer agent pick a key without parsing the DID document at all;
+     * `endpoint` is the scheme and authority these documents are being served
+     * on, which is also the base every URL below is built from.
+     *
+     * The time arrives as a parameter, as everywhere else in this module —
+     * `mandate()` is the other clock boundary, and both live in this
+     * controller rather than in the units it calls.
+     *
+     * @return array<string, mixed>
+     */
+    private static function discoveryDocument(A2cnIdentity $identity, string $base, \DateTimeImmutable $at): array
+    {
+        return [
             'a2cn_version' => self::A2CN_VERSION,
             'agent_id' => $identity->agentId,
             'did' => $identity->did,
+            'verification_method' => $identity->verificationMethod,
             'mandate_methods' => [SellerMandateFactory::MANDATE_TYPE],
+            'authorized_deal_types' => A2cnIdentity::DEAL_TYPES,
             'conformance_level' => A2cnIdentity::CONFORMANCE_LEVEL,
+            // Named exactly as the signed mandate names it
+            // (`principal_organization` there, `organization.name` here, per
+            // the spec), so the two documents cannot disagree about who this
+            // installation says it is.
+            'organization' => ['name' => $identity->organizationName],
+            'endpoint' => $base,
+            'updated_at' => $at->format(\DATE_ATOM),
             'mandate_url' => $base . self::MANDATE_PATH,
             'records_url' => $base . '/a2cn/records/{session_id}',
-        ]);
+        ];
     }
 
     #[Route(path: self::DID_PATH, name: 'frontend.merchant_quote_agent.a2cn.did', methods: ['GET'])]
