@@ -117,6 +117,7 @@ jobs:
             echo "unzip MerchantQuoteAgentPlugin.zip -d /path/to/shop/custom/plugins/"
             echo "cd /path/to/shop"
             echo "composer require shopware/merchant-quote-agent-plugin"
+            echo "rm -f config/packages/ai_generic_platform.yaml"
             echo "bin/console plugin:refresh"
             echo "bin/console plugin:install --activate MerchantQuoteAgentPlugin"
             echo "bin/console cache:clear"
@@ -124,5 +125,7 @@ jobs:
             echo
             echo "The \`composer require\` step is what pulls the plugin's own dependencies — \`cuyz/valinor\` and \`ucp-php-sdk/core\` — which are deliberately not bundled. Shopware resolves them through the \`custom/plugins/*\` path repository in the shop's root composer.json."
             echo
-            echo "**Prerequisites:** SwagCommercial with the QuoteManagement licence active, and SwagAgenticCommerce. Both are hard requirements of the plugin, not of the zip."
+            echo "The \`rm\` removes a Symfony Flex recipe artifact. \`symfony/ai-generic-platform\` ships a recipe declaring an \`ai:\` config root that belongs to \`symfony/ai-bundle\`, which this plugin does not register — left in place it fails the container build with *There is no extension able to load the configuration for \"ai\"*, taking down every console command and the storefront, not just the plugin."
+            echo
+            echo "**Prerequisites:** Composer >= 2.10.0 in the shop (older versions reject the \`config.audit.ignore\` object form that Shopware 6.7 templates write). Plus SwagCommercial with the QuoteManagement licence active, and SwagAgenticCommerce. All are requirements of the plugin and the shop, not of the zip."
           } >> "$GITHUB_STEP_SUMMARY"

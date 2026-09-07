@@ -51,12 +51,42 @@ workflow). It carries the compiled administration bundle but **no `vendor/`**:
 shopware-cli skips dependency bundling for Shopware >= 6.5, because the shop is
 meant to resolve a plugin's Composer requirements itself.
 
+The shop needs Composer **>= 2.10.0**. Shopware's 6.7 project template writes
+`config.audit.ignore` as keyed objects (`{"apply": ..., "reason": ...}`), a form
+2.9.0 still rejects and 2.10.0 accepts. Anything older fails as *"./composer.json"
+does not match the expected JSON schema — config.audit.ignore: Object value
+found, but an array is required*, on every command that reads the project file,
+before dependencies are considered at all. `composer self-update` fixes it, and
+`composer self-update --rollback` reverses that.
+
     unzip MerchantQuoteAgentPlugin.zip -d /path/to/shop/custom/plugins/
     cd /path/to/shop
     composer require shopware/merchant-quote-agent-plugin   # via the custom/plugins/* path repo
+    rm -f config/packages/ai_generic_platform.yaml          # Flex recipe for a bundle this plugin does not register
     bin/console plugin:refresh
     bin/console plugin:install --activate MerchantQuoteAgentPlugin
     bin/console cache:clear
+
+The `rm` is not cosmetic. Composer's Flex plugin applies a recipe for
+`symfony/ai-generic-platform` that writes `config/packages/ai_generic_platform.yaml`
+declaring an `ai:` config root, but that key belongs to `symfony/ai-bundle`, which
+this plugin does not require: it drives the platform from PHP instead, through
+`Symfony\AI\Platform\Bridge\Generic\Factory` in `src/Negotiation/ModelPlatform.php`.
+Left in place the file takes the whole installation down when the container is
+built — *There is no extension able to load the configuration for "ai"* — which
+is worse than the missing-dependency errors below, because it fails `cache:clear`,
+every other console command and the storefront, not only this plugin. Flex records
+the recipe as applied in `symfony.lock`, so deleting the file once is enough; the
+commented `GENERIC_BASE_URL` stanza the same recipe appends to `.env` is inert and
+can stay.
+
+Nothing in the plugin can prevent this. Flex reads `extra.symfony.*` only from the
+root package, and 2.11 has neither a `dont-discover` option nor a recipe-skipping
+environment variable, so a shop's own `composer.json` is the only place the recipe
+could be suppressed. This is not specific to the generic bridge: all 57
+`symfony/ai-*` bridge recipes write bundle-owned `ai:` config while none of those
+packages require `symfony/ai-bundle`, so the `rm` stops being necessary only if
+that changes upstream.
 
 Each zip is versioned `1.0.<workflow run number>+<commit sha>`; map a run
 number back to its commit with `gh run list --workflow "Plugin Zip"`. The
