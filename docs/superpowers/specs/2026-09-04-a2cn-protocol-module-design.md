@@ -199,7 +199,9 @@ preferences:
    (`custom_terms`) is unconditionally non-empty; optional maps are omitted
    entirely rather than emitted empty.
 5. **The signed field set is normative.** `SignedView` produces exactly
-   `protocol_version` (`'0.1'`), `session_id`, `round_number`, `sequence_number`,
+   `protocol_version` (`'0.2'`, the literal the counterparty's reference
+   `protocol_act_object()` supplies — not our own record version, which stays
+   `0.1`), `session_id`, `round_number`, `sequence_number`,
    `message_type`, `sender_did`, `timestamp`, `expires_at`, `terms` — and nothing
    else. Adding a field changes every hash. Envelope fields (`message_id`,
    `in_reply_to`, `sender_agent_id`, `sender_verification_method`, the proof

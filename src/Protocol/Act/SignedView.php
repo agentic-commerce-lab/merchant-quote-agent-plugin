@@ -19,7 +19,13 @@ namespace MerchantQuoteAgentPlugin\Protocol\Act;
  */
 final class SignedView
 {
-    public const PROTOCOL_VERSION = '0.1';
+    /**
+     * The literal the counterparty's `protocol_act_object()` supplies, and
+     * therefore the only value whose canonical bytes agree with theirs. It is
+     * not read from the act and is never on the wire: the version is a
+     * statement about the signing rules, not about the message.
+     */
+    public const PROTOCOL_VERSION = '0.2';
 
     private function __construct() {}
 

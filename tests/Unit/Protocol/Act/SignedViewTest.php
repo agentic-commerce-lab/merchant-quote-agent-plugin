@@ -17,7 +17,10 @@ final class SignedViewTest extends TestCase
 
         self::assertSame(
             [
-                'protocol_version' => '0.1',
+                // The interop literal, not our own record version: the
+                // counterparty's protocol_act_object() supplies "0.2", and a
+                // different value here is a hash nobody can reproduce.
+                'protocol_version' => '0.2',
                 'session_id' => 'session-1',
                 'round_number' => 2,
                 'sequence_number' => 3,
