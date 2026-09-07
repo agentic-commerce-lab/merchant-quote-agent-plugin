@@ -64,6 +64,64 @@ final class BuyerTermsCheckTest extends TestCase
         ));
     }
 
+    /**
+     * The design change: only the counterparty's MOST RECENT act is
+     * cross-checked. Iterating every historical buyer act meant that the
+     * moment a human edited a line after an escalation — this module's own
+     * headline scenario — an older act mismatched, `act_terms_mismatch`
+     * fired, and no act was ever emitted for that quote again, with the audit
+     * log blaming the buyer for the merchant's own edit on every subsequent
+     * observation, forever.
+     */
+    public function testAStaleMismatchDoesNotBlockEmissionOnceANewerActAgrees(): void
+    {
+        $session = SessionId::forQuote(self::QUOTE_ID);
+
+        $stale = ProtocolFixtures::buyerAct(1, $session);
+        $stale['terms']['line_items'][0]['quantity'] = 25;
+        $current = ProtocolFixtures::buyerAct(3, $session);
+
+        self::assertNull((new BuyerTermsCheck())->check(
+            ActChain::read([
+                ActKey::SESSION_KEY => $session,
+                ActKey::for(1, ActRole::Buyer) => $stale,
+                ActKey::for(2, ActRole::Seller) => ProtocolFixtures::sellerAct(2, $session),
+                ActKey::for(3, ActRole::Buyer) => $current,
+            ]),
+            ProtocolFixtures::snapshot(self::QUOTE_ID),
+            ProtocolFixtures::SELLER,
+            ProtocolFixtures::at(),
+        ));
+    }
+
+    /**
+     * The other half: a mismatch on the LATEST buyer act still fires, however
+     * many older acts agree with the quote. That is the desync-and-forgery
+     * detection the check exists for.
+     */
+    public function testAMismatchOnTheLatestActStillFiresBehindAgreeingOlderOnes(): void
+    {
+        $session = SessionId::forQuote(self::QUOTE_ID);
+
+        $current = ProtocolFixtures::buyerAct(3, $session);
+        $current['terms']['line_items'][0]['quantity'] = 25;
+
+        $violation = (new BuyerTermsCheck())->check(
+            ActChain::read([
+                ActKey::SESSION_KEY => $session,
+                ActKey::for(1, ActRole::Buyer) => ProtocolFixtures::buyerAct(1, $session),
+                ActKey::for(3, ActRole::Buyer) => $current,
+            ]),
+            ProtocolFixtures::snapshot(self::QUOTE_ID),
+            ProtocolFixtures::SELLER,
+            ProtocolFixtures::at(),
+        );
+
+        self::assertNotNull($violation);
+        self::assertSame('act_terms_mismatch', $violation->violationType);
+        self::assertSame($current['message_id'], $violation->messageId);
+    }
+
     public function testItIgnoresPriceDifferences(): void
     {
         $session = SessionId::forQuote(self::QUOTE_ID);

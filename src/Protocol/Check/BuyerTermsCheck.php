@@ -11,11 +11,24 @@ use MerchantQuoteAgentPlugin\Protocol\Act\ActChain;
 use Override;
 
 /**
- * Does the counterparty's act describe the quote Shopware actually recorded?
+ * Does the counterparty's LATEST act describe the quote Shopware actually
+ * recorded?
  *
  * Acts are evidence, never a second input path: the engine reads the Shopware
  * snapshot, and an act that disagrees with it is a desync or a forgery attempt,
  * so we refuse to counter-sign into that chain.
+ *
+ * Only the most recent counterparty act is checked, deliberately — this is
+ * not an oversight to "fix" back into a loop over the whole chain. Older acts
+ * describe SUPERSEDED states that legitimately differ after any structural
+ * edit, and each is already evidenced by its own hash. Checking all of them
+ * meant that the moment a human edited a line after an escalation — this
+ * module's headline scenario, see OfferVisibleStateSubscriber — an older
+ * buyer act mismatched, `act_terms_mismatch` fired, no act was ever emitted
+ * for that quote again, and the audit log blamed the buyer for the merchant's
+ * own edit, on every subsequent observation, forever. The latest act is the
+ * ask we are answering, so checking it preserves the desync-and-forgery
+ * detection without permanently poisoning a quote.
  *
  * Scoped to STRUCTURE — line identity and quantity. Prices are deliberately
  * not compared: the buyer's ask and our offer legitimately differ, and the two
@@ -38,14 +51,10 @@ final readonly class BuyerTermsCheck implements EvidenceCheckInterface
             $recorded[$line->identity->lineItemId] = $line->quantity;
         }
 
-        foreach ($chain->buyerActs($sellerDid) as $act) {
-            $violation = $this->crossCheck($act, $recorded, $at);
-            if ($violation !== null) {
-                return $violation;
-            }
-        }
+        $buyerActs = $chain->buyerActs($sellerDid);
+        $latest = $buyerActs[\count($buyerActs) - 1] ?? null;
 
-        return null;
+        return $latest === null ? null : $this->crossCheck($latest, $recorded, $at);
     }
 
     /**
