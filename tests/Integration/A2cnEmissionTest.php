@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
@@ -37,6 +38,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\NotFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelLifecycleManager;
+use Shopware\Core\Framework\Uuid\Uuid;
 use Symfony\Component\HttpFoundation\Request;
 use Ucp\Sdk\Model\Security\PublicSigningKey;
 
@@ -129,10 +131,13 @@ final class A2cnEmissionTest extends IntegrationTestCase
         $act = $outcome->act;
         self::assertNotNull($act);
 
-        // Fetched IN PROCESS through the real kernel, on the same storefront
-        // domain the emitted act's DID names — no fixture, no stub: this is
-        // the exact document a real counterparty would fetch.
-        $baseUri = BuyerQuoteFixture::storefrontBaseUri(static::getContainer());
+        // Fetched IN PROCESS through the real kernel, on the domain
+        // SalesChannelHostReader itself resolved for this quote's sales
+        // channel — not just "a" storefront domain: a sales channel can carry
+        // more than one active domain, and BuyerQuoteFixture's own domain pick
+        // (ordered by URL) is not guaranteed to be the same row
+        // A2cnIdentityResolver used (ordered by domain id) to build this DID.
+        $baseUri = self::domainUrlFor($snapshot->identity->salesChannelId);
         $response = KernelLifecycleManager::getKernel()->handle(Request::create($baseUri . '/.well-known/did.json'));
         self::assertSame(200, $response->getStatusCode());
 
@@ -357,5 +362,25 @@ final class A2cnEmissionTest extends IntegrationTestCase
             'No "replied" quote with a line item and no existing A2CN session exists on the storefront '
             . 'sales channel. Create one through the storefront or admin first.',
         );
+    }
+
+    /**
+     * The exact domain row `SalesChannelHostReader::hostFor()` resolves for
+     * this sales channel — same table, same filter, same `ORDER BY id ASC
+     * LIMIT 1` — so the kernel fetch below lands on the domain the emitted
+     * act's DID actually names, even when the channel carries more than one
+     * active domain.
+     */
+    private static function domainUrlFor(string $salesChannelId): string
+    {
+        $connection = static::getContainer()->get(Connection::class);
+        self::assertInstanceOf(Connection::class, $connection);
+
+        $url = $connection->fetchOne('SELECT `url` FROM `sales_channel_domain` WHERE `sales_channel_id` = :id ORDER BY `id` ASC LIMIT 1', [
+            'id' => Uuid::fromHexToBytes($salesChannelId),
+        ]);
+        self::assertIsString($url, 'the quote\'s sales channel has no domain to resolve a did:web authority from');
+
+        return rtrim($url, '/');
     }
 }
