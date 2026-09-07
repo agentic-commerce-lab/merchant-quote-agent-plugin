@@ -7,20 +7,29 @@ namespace MerchantQuoteAgentPlugin\Protocol\Emitter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
+use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
 
 /**
  * Runs one observation, under the same per-quote lock quote servicing uses.
  *
  * The lock is the whole reason this is a handler and not an inline call: two
  * overlapping observations would both compute the same next sequence and race
- * two different signed payloads onto the same wire key. A busy lock is not an
- * error — whoever holds it is doing this work — so the message is dropped
- * rather than retried: the next state change or the servicing pass that follows
- * will observe again, and emission is idempotent.
+ * two different signed payloads onto the same wire key.
  *
- * Nothing here throws. Evidence must never park a message or fail a worker.
+ * A busy lock is a RETRY, exactly as ServiceQuoteHandler treats it, at the
+ * same delay. It is not the edge case it looks like: the `replied` transition
+ * that queues this message fires INSIDE ServiceQuoteHandler's own lock, so a
+ * worker that consumes the message before servicing finishes finds the lock
+ * held — and since OfferVisibleStateSubscriber is the only trigger and the
+ * quote stays in `replied`, dropping it meant the act was never emitted at
+ * all, silently, on the agent's own reply.
+ *
+ * That contention is the ONLY throwing path. Every other failure — no
+ * gateway or emitter, a vanished quote, any other \Throwable — is logged and
+ * swallowed: evidence must never park a message because our own code broke.
  */
 #[AsMessageHandler]
 final readonly class ObserveQuoteHandler
@@ -32,6 +41,7 @@ final readonly class ObserveQuoteHandler
         private ?SellerActEmitter $emitter = null,
     ) {}
 
+    /** @throws RecoverableMessageHandlingException when another worker holds the quote */
     public function __invoke(ObserveQuoteMessage $message): void
     {
         $gateway = $this->gateway;
@@ -49,11 +59,10 @@ final readonly class ObserveQuoteHandler
 
         $lock = $this->locks->for($message->quoteId);
         if (!$lock->acquire()) {
-            $this->logger->debug('A2CN observation skipped: the quote is claimed elsewhere.', [
-                'quoteId' => $message->quoteId,
-            ]);
-
-            return;
+            throw new RecoverableMessageHandlingException(
+                \sprintf('Quote %s is claimed elsewhere; the A2CN observation is deferred.', $message->quoteId),
+                retryDelay: ServiceQuoteHandler::BUSY_RETRY_DELAY_MS,
+            );
         }
 
         try {

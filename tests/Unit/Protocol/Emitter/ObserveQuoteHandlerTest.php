@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteHandler;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteMessage;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
+use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\RecordingQuoteGateway;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\AbstractLogger;
@@ -16,6 +17,7 @@ use Psr\Log\NullLogger;
 use Stringable;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\Store\InMemoryStore;
+use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
 
 final class ObserveQuoteHandlerTest extends TestCase
 {
@@ -57,7 +59,17 @@ final class ObserveQuoteHandlerTest extends TestCase
         );
     }
 
-    public function testItSkipsAQuoteAnotherProcessHasClaimed(): void
+    /**
+     * A busy lock is a RETRY, exactly as ServiceQuoteHandler treats it — and
+     * on this module's primary path it is the normal case, not an edge one:
+     * the `replied` transition that queues the observation happens INSIDE
+     * ServiceQuoteHandler's own lock, so a worker that picks the message up
+     * before servicing finishes finds the lock held. Dropping it there meant
+     * the act was never emitted at all for the agent's own reply, silently,
+     * because OfferVisibleStateSubscriber is the only trigger and the quote
+     * stays in `replied`.
+     */
+    public function testABusyLockIsRetriedRatherThanDropped(): void
     {
         $emitter = self::emitter();
         $handler = new ObserveQuoteHandler(
@@ -67,9 +79,34 @@ final class ObserveQuoteHandlerTest extends TestCase
             $emitter,
         );
 
-        $handler(new ObserveQuoteMessage('quote-1'));
+        try {
+            $handler(new ObserveQuoteMessage('quote-1'));
+            self::fail('a busy lock must park the message for a retry, not drop the observation');
+        } catch (RecoverableMessageHandlingException $error) {
+            self::assertSame(ServiceQuoteHandler::BUSY_RETRY_DELAY_MS, $error->getRetryDelay());
+        }
 
         self::assertSame(0, $emitter->spy->calls);
+    }
+
+    /**
+     * The busy lock is the ONLY throwing path. Everything else stays
+     * fail-open: evidence must never park a message because our own signing,
+     * store or gateway code broke.
+     */
+    public function testAFailingEmitterIsLoggedAndSwallowed(): void
+    {
+        $logger = self::recordingLogger();
+        $handler = new ObserveQuoteHandler(
+            self::locks(free: true),
+            $logger,
+            new RecordingQuoteGateway(),
+            self::failingEmitter(),
+        );
+
+        $handler(new ObserveQuoteMessage('quote-1'));
+
+        self::assertContains('A2CN observation failed outside the emitter.', $logger->messages);
     }
 
     public function testItObservesUnderTheLockAndReleasesIt(): void
@@ -112,6 +149,22 @@ final class ObserveQuoteHandlerTest extends TestCase
                 ++$this->spy->calls;
 
                 return EmissionOutcome::unchanged();
+            }
+        };
+    }
+
+    /** An emitter whose own work throws — the fail-open arm, not the lock arm. */
+    private static function failingEmitter(): SellerActEmitter
+    {
+        return new readonly class extends SellerActEmitter {
+            public function __construct() {}
+
+            #[\Override]
+            public function observe(
+                \MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot $snapshot,
+                \DateTimeImmutable $now,
+            ): EmissionOutcome {
+                throw new \RuntimeException('signing blew up');
             }
         };
     }
