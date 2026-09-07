@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 use MerchantQuoteAgentPlugin\Negotiation\LinePriceNormalizer;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineIdentity;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
 use PHPUnit\Framework\TestCase;
@@ -15,25 +16,9 @@ final class LinePriceNormalizerTest extends TestCase
 {
     public function testItNormalizesSlugToRealLineItemId(): void
     {
-        $lines = [
-            new QuoteLineSnapshot(
-                lineItemId: 'uuid-1234',
-                label: 'FusionGlow Sport',
-                quantity: 10,
-                listUnitPriceNet: 799.99,
-                baselineUnitPriceNet: 799.99,
-            ),
-        ];
+        $lines = [self::line('uuid-1234', 'FusionGlow Sport', 10, 799.99)];
 
-        $offer = new ProposedOffer(
-            orderTotalNet: 7600.0,
-            price: new OfferedPrice(discountPercent: null, linePricesNet: [new QuoteLinePrice(
-                'fusionglow_sport',
-                760.0,
-            )]),
-            delivery: null,
-            payment: null,
-        );
+        $offer = self::offerFor(7600.0, new QuoteLinePrice('fusionglow_sport', 760.0));
 
         $normalized = LinePriceNormalizer::normalize($offer, $lines);
 
@@ -42,25 +27,46 @@ final class LinePriceNormalizerTest extends TestCase
 
     public function testItFallsBackToSingleLineIdWhenMismatch(): void
     {
-        $lines = [
-            new QuoteLineSnapshot(
-                lineItemId: 'uuid-5678',
-                label: 'Test Product',
-                quantity: 1,
-                listUnitPriceNet: 100.0,
-                baselineUnitPriceNet: 100.0,
-            ),
-        ];
+        $lines = [self::line('uuid-5678', 'Test Product', 1, 100.0)];
 
-        $offer = new ProposedOffer(
-            orderTotalNet: 90.0,
-            price: new OfferedPrice(discountPercent: null, linePricesNet: [new QuoteLinePrice('unknown-slug', 90.0)]),
-            delivery: null,
-            payment: null,
-        );
+        $offer = self::offerFor(90.0, new QuoteLinePrice('unknown-slug', 90.0));
 
         $normalized = LinePriceNormalizer::normalize($offer, $lines);
 
         self::assertEquals([new QuoteLinePrice('uuid-5678', 90.0)], $normalized->price->linePricesNet);
+    }
+
+    /**
+     * With more than one line there is no single line to fall back to, so an
+     * unresolvable id has to survive unchanged — LinePriceOfferCheck is what
+     * then rejects it as "not on this quote".
+     */
+    public function testItLeavesAnUnresolvableIdAloneWhenSeveralLinesCouldBeMeant(): void
+    {
+        $lines = [
+            self::line('uuid-1', 'First Product', 1, 100.0),
+            self::line('uuid-2', 'Second Product', 1, 200.0),
+        ];
+
+        $offer = self::offerFor(280.0, new QuoteLinePrice('unknown-slug', 90.0));
+
+        $normalized = LinePriceNormalizer::normalize($offer, $lines);
+
+        self::assertEquals([new QuoteLinePrice('unknown-slug', 90.0)], $normalized->price->linePricesNet);
+    }
+
+    private static function line(string $id, string $label, int $quantity, float $unitPriceNet): QuoteLineSnapshot
+    {
+        return new QuoteLineSnapshot(
+            identity: new QuoteLineIdentity(lineItemId: $id, label: $label),
+            quantity: $quantity,
+            unitPriceNet: $unitPriceNet,
+            totalNet: $unitPriceNet * $quantity,
+        );
+    }
+
+    private static function offerFor(float $orderTotalNet, QuoteLinePrice $linePrice): ProposedOffer
+    {
+        return new ProposedOffer(orderTotalNet: $orderTotalNet, price: new OfferedPrice(linePricesNet: [$linePrice]));
     }
 }

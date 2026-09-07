@@ -43,7 +43,7 @@ jobs:
 
       - name: Verify composer scripts
         run: |
-          php -r '$req=["format:check","lint","typecheck","quality:filesize","quality:dupes","quality:depcheck","quality:security"]; $c=json_decode(file_get_contents("composer.json"),true); $s=$c["scripts"]??[]; $m=array_values(array_filter($req, fn($x)=>!isset($s[$x]))); if($m){fwrite(STDERR,"Missing composer scripts: ".implode(", ",$m)."\n"); fwrite(STDERR,"Merge assets/configs/composer-scripts.fragment.json or provide intentional replacements before enabling this workflow.\n"); exit(1);} echo "All required composer scripts present\n";'
+          php -r '$req=["format:check","lint","typecheck","test","quality:filesize","quality:dupes","quality:depcheck","quality:security"]; $c=json_decode(file_get_contents("composer.json"),true); $s=$c["scripts"]??[]; $m=array_values(array_filter($req, fn($x)=>!isset($s[$x]))); if($m){fwrite(STDERR,"Missing composer scripts: ".implode(", ",$m)."\n"); fwrite(STDERR,"Merge assets/configs/composer-scripts.fragment.json or provide intentional replacements before enabling this workflow.\n"); exit(1);} echo "All required composer scripts present\n";'
 
       - name: Format
         run: composer run format:check
@@ -53,6 +53,13 @@ jobs:
 
       - name: Typecheck
         run: composer run typecheck
+
+      # The suite is the only check that reads tests/: mago.toml scopes the
+      # analyzer to src/ deliberately (over tests/ it reports 665 errors, all
+      # of them test idiom — mocks, anonymous-class spies — and no runtime
+      # bug). A drifted fixture therefore only ever fails here.
+      - name: Tests
+        run: composer run test
 
       - name: File length
         run: composer run quality:filesize
