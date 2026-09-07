@@ -32,9 +32,16 @@ final readonly class A2cnIdentity
 
     public static function forHost(string $host, string $kid, string $organizationName): self
     {
+        // Both identity paths funnel through here — the emitter's
+        // SalesChannelHostReader and the controller's Request::getHttpHost() —
+        // so the root dot of a fully qualified name is stripped here, once.
+        // getHttpHost() lower-cases and drops a default port but leaves that
+        // dot, so a request to `shop.example.` would otherwise publish a
+        // did:web the shop's own acts never name.
+        //
         // did:web uses ':' as its own segment separator, so a port has to be
         // percent-encoded or the authority would be read as a path.
-        $authority = str_replace(':', '%3A', $host);
+        $authority = str_replace(':', '%3A', rtrim($host, '.'));
         $did = 'did:web:' . $authority;
 
         return new self($did, $did . '#' . $kid, $organizationName);

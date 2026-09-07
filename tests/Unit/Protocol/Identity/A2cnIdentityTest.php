@@ -29,6 +29,22 @@ final class A2cnIdentityTest extends TestCase
         );
     }
 
+    /**
+     * The other half of the same alignment SalesChannelHostReaderTest pins:
+     * `Request::getHttpHost()` lower-cases the host and drops the scheme's
+     * default port, but it does NOT strip the root dot of a fully qualified
+     * name (verified against vendor/symfony/http-foundation — getHost() only
+     * trims, lower-cases and removes the port). So a buyer agent that fetches
+     * `https://shop.example./.well-known/did.json` would otherwise be served
+     * a document naming `did:web:shop.example.` while the acts on the quote
+     * say `did:web:shop.example`. Both identity paths run through here, so
+     * this is the one place that closes it for both.
+     */
+    public function testItStripsTheRootDotOfAFullyQualifiedAuthority(): void
+    {
+        self::assertSame('did:web:shop.example', A2cnIdentity::forHost('shop.example.', 'key-1', 'Example Shop')->did);
+    }
+
     public function testItPublishesOneDealTypeAndTheActsConformanceLevel(): void
     {
         self::assertSame(['goods_procurement'], A2cnIdentity::DEAL_TYPES);
