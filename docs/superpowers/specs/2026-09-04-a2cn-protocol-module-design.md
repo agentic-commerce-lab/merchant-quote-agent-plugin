@@ -512,10 +512,11 @@ Recorded because they remain true, and a reader of the evidence deserves them:
 | Risk | Handling |
 | --- | --- |
 | Interop divergence with the TypeScript implementation (the "spec-conformant only" choice) | `ProtocolHash` and `MinorUnits` are pinned to fixed vectors, so a *change* is caught; agreement with the TS bytes is not proven. If #10 gets serious about retiring the TS path, generate its vectors then. |
-| `/.well-known/did.json` collision with another plugin on the same domain | The route is ours only if nothing else claims it. The plan verifies against the live shop and, if taken, publishes `did:web:<host>:quote-agent` instead. |
+| `/.well-known/did.json` collision with another plugin on the same domain | **Closed by Task 21's live check.** `grep -rn "well-known/did.json" vendor/ custom/plugins` inside the test shop's container finds only this plugin's own references; no other installed plugin claims the route. `did:web:<host>` stays host-only. |
 | SDK's JCS implementation is `@internal` behind a public alias | We inject the public interface. `ProtocolHash`'s fixed-digest test fails loudly if an SDK upgrade changes the bytes; a replacement canonicalizer is ~40 lines if that ever happens. |
 | #11 (non-price terms) may change the terms mapping | The mapping omits them today rather than signing unpersisted promises; extending it is additive. |
 | #20 (outbound message signing) overlaps this crypto | #20 becomes a consumer of `CompactJws` and `ProtocolHash` instead of adding its own; nothing here blocks it. |
+| **New, found by Task 21's live proof:** on a storefront domain with a non-default port, the emitter's identity and the discovery document's identity diverge | `SalesChannelHostReader::hostFor()` (which builds `SellerActFactory`'s identity, used to sign acts) keeps a non-default port in the host. `A2cnDiscoveryController::resolveIdentity()` builds identity from `$request->getHost()`, which Symfony's `Request` always strips the port from regardless of the incoming `Host` header. On this shop's own test domain (`localhost:8095`), acts are signed under `did:web:localhost%3A8095`, but `/.well-known/did.json` on that exact host names `did:web:localhost`. Plausibly a one-line fix (`$request->getHttpHost()`, which keeps a non-default port, in place of `getHost()`), but it touches `A2cnDiscoveryController`, outside Task 21's touch scope — reported here rather than fixed, the same way the did.json-collision risk above was handled before this task closed it. |
 
 ## Acceptance criteria
 
