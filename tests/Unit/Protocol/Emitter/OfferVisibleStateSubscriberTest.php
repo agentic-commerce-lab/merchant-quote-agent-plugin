@@ -7,6 +7,8 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Emitter;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteMessage;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\OfferVisibleStateSubscriber;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\AbstractLogger;
+use Psr\Log\NullLogger;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Api\Context\SystemSource;
 use Shopware\Core\Framework\Context;
@@ -15,7 +17,9 @@ use Shopware\Core\System\StateMachine\Aggregation\StateMachineState\StateMachine
 use Shopware\Core\System\StateMachine\Event\StateMachineStateChangeEvent;
 use Shopware\Core\System\StateMachine\StateMachineEntity;
 use Shopware\Core\System\StateMachine\Transition;
+use Stringable;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\TransportException;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 final class OfferVisibleStateSubscriberTest extends TestCase
@@ -31,7 +35,7 @@ final class OfferVisibleStateSubscriberTest extends TestCase
     public function testItQueuesAnObservationWhenAQuoteEntersReplied(): void
     {
         $bus = self::bus();
-        (new OfferVisibleStateSubscriber($bus))->onQuoteStateChanged(self::event(
+        (new OfferVisibleStateSubscriber($bus, new NullLogger()))->onQuoteStateChanged(self::event(
             'replied',
             StateMachineStateChangeEvent::STATE_MACHINE_TRANSITION_SIDE_ENTER,
         ));
@@ -44,7 +48,7 @@ final class OfferVisibleStateSubscriberTest extends TestCase
     public function testItIgnoresTheLeaveSideAndOtherStates(): void
     {
         $bus = self::bus();
-        $subscriber = new OfferVisibleStateSubscriber($bus);
+        $subscriber = new OfferVisibleStateSubscriber($bus, new NullLogger());
 
         $subscriber->onQuoteStateChanged(self::event(
             'replied',
@@ -65,7 +69,7 @@ final class OfferVisibleStateSubscriberTest extends TestCase
     public function testItIgnoresATransitionOutsideTheLiveVersion(): void
     {
         $bus = self::bus();
-        $subscriber = new OfferVisibleStateSubscriber($bus);
+        $subscriber = new OfferVisibleStateSubscriber($bus, new NullLogger());
 
         $subscriber->onQuoteStateChanged(self::event(
             'replied',
@@ -74,6 +78,32 @@ final class OfferVisibleStateSubscriberTest extends TestCase
         ));
 
         self::assertSame([], $bus->messages);
+    }
+
+    /**
+     * A broker outage must not fail the transition. On a shop whose
+     * MESSENGER_TRANSPORT_DSN points at a separate broker, an unguarded
+     * dispatch means a merchant's admin reply 500s and the agent's own pass
+     * fails against its crash budget — for an evidence side effect.
+     * QuoteServicingTrigger has the same shape but deliberately excludes
+     * `replied`, so this exposure is only here; ObserveQuoteHandler's own
+     * docblock states the posture ("Servicing parks its message… evidence has
+     * no such duty").
+     */
+    public function testABrokerOutageDoesNotFailTheTransition(): void
+    {
+        $logger = self::recordingLogger();
+        $subscriber = new OfferVisibleStateSubscriber(self::failingBus(), $logger);
+
+        $subscriber->onQuoteStateChanged(self::event(
+            'replied',
+            StateMachineStateChangeEvent::STATE_MACHINE_TRANSITION_SIDE_ENTER,
+        ));
+
+        self::assertCount(1, $logger->records);
+        self::assertSame('error', $logger->records[0]['level']);
+        self::assertSame('quote-1', $logger->records[0]['context']['quoteId'] ?? null);
+        self::assertInstanceOf(\Throwable::class, $logger->records[0]['context']['exception'] ?? null);
     }
 
     /**
@@ -119,6 +149,36 @@ final class OfferVisibleStateSubscriberTest extends TestCase
                 $this->messages[] = $message;
 
                 return new Envelope($message);
+            }
+        };
+    }
+
+    /** A bus that cannot reach its broker, which is a TransportException in production. */
+    private static function failingBus(): MessageBusInterface
+    {
+        return new class implements MessageBusInterface {
+            public function dispatch(object $message, array $stamps = []): Envelope
+            {
+                throw new TransportException('the broker is unreachable');
+            }
+        };
+    }
+
+    /** @return AbstractLogger&object{records: list<array{level: string, context: array<array-key, mixed>}>} */
+    private static function recordingLogger(): AbstractLogger
+    {
+        return new class extends AbstractLogger {
+            /** @var list<array{level: string, context: array<array-key, mixed>}> */
+            public array $records = [];
+
+            /**
+             * @param mixed $level
+             * @param array<array-key, mixed> $context
+             */
+            #[\Override]
+            public function log($level, string|Stringable $message, array $context = []): void
+            {
+                $this->records[] = ['level' => (string) $level, 'context' => $context];
             }
         };
     }

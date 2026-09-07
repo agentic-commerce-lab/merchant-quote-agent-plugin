@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Protocol\Emitter;
 
 use Override;
+use Psr\Log\LoggerInterface;
 use Shopware\Core\Defaults;
 use Shopware\Core\System\StateMachine\Event\StateMachineStateChangeEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
-use Symfony\Component\Messenger\Exception\ExceptionInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
@@ -34,6 +34,7 @@ final readonly class OfferVisibleStateSubscriber implements EventSubscriberInter
 
     public function __construct(
         private MessageBusInterface $bus,
+        private LoggerInterface $logger,
     ) {}
 
     /** @return array<string, string> */
@@ -43,7 +44,6 @@ final readonly class OfferVisibleStateSubscriber implements EventSubscriberInter
         return ['state_machine.quote.state_changed' => 'onQuoteStateChanged'];
     }
 
-    /** @throws ExceptionInterface */
     public function onQuoteStateChanged(StateMachineStateChangeEvent $event): void
     {
         if ($event->getContext()->getVersionId() !== Defaults::LIVE_VERSION) {
@@ -59,6 +59,21 @@ final readonly class OfferVisibleStateSubscriber implements EventSubscriberInter
             return;
         }
 
-        $this->bus->dispatch(new ObserveQuoteMessage($event->getTransition()->getEntityId()));
+        $quoteId = $event->getTransition()->getEntityId();
+
+        try {
+            $this->bus->dispatch(new ObserveQuoteMessage($quoteId));
+        } catch (\Throwable $error) {
+            // The dispatch is a side effect of somebody else's transition. On
+            // a shop whose MESSENGER_TRANSPORT_DSN points at a separate
+            // broker, letting this out would make a merchant's admin reply
+            // 500 and the agent's own pass fail against its crash budget —
+            // for evidence. ObserveQuoteHandler states the same posture:
+            // servicing parks its message, evidence has no such duty.
+            $this->logger->error('A2CN observation could not be queued for a quote entering an offer state.', [
+                'quoteId' => $quoteId,
+                'exception' => $error,
+            ]);
+        }
     }
 }

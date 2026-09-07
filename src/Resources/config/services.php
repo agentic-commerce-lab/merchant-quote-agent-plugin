@@ -503,7 +503,7 @@ return static function (ContainerConfigurator $configurator): void {
     // The A2CN trigger (Task 17): same core event, inside this same guard for
     // the same reason as QuoteServicingTrigger above — a shop without
     // SwagCommercial has no `quote.state` state machine to fire it on.
-    $services->set(OfferVisibleStateSubscriber::class)->args([service('messenger.default_bus')]);
+    $services->set(OfferVisibleStateSubscriber::class)->args([service('messenger.default_bus'), service('logger')]);
 
     // Whether a quote may be serviced at all, and with which settings (#5).
     $services->set(QuoteEscalator::class)->args([service(EscalationNotifierInterface::class)]);
