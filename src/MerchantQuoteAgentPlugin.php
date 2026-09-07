@@ -7,9 +7,9 @@ namespace MerchantQuoteAgentPlugin;
 use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use Override;
+use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Plugin;
 use Shopware\Core\Framework\Plugin\Context\ActivateContext;
-use Shopware\Core\Framework\Plugin\Context\InstallContext;
 use Shopware\Core\Framework\Plugin\Context\UninstallContext;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 
@@ -61,21 +61,34 @@ class MerchantQuoteAgentPlugin extends Plugin
         return true;
     }
 
-    /** @throws \Random\RandomException */
-    #[Override]
-    public function install(InstallContext $installContext): void
-    {
-        parent::install($installContext);
-        $this->generateSigningKey();
-    }
+    /**
+     * `logger` is a private alias in the compiled container, so services.php
+     * re-exposes it under this public id — the only way a lifecycle hook,
+     * which runs outside any request and holds nothing but the container, can
+     * log through PSR-3 at all.
+     */
+    public const LIFECYCLE_LOGGER_ID = 'merchant_quote_agent.lifecycle_logger';
 
-    /** @throws \Random\RandomException */
+    /**
+     * Key generation happens HERE and deliberately not in install(): during
+     * install() the plugin is by definition inactive, so
+     * KernelPluginLoader::getBundles() — which yields only active plugin
+     * instances — never loaded our services.php, and A2cnKeyStore is not a
+     * service id in that container. `?->` guards a null container, not a
+     * missing service, so Container::get() would throw
+     * ServiceNotFoundException, PluginLifecycleService::installPlugin() would
+     * rethrow, and because that lands before runMigrations() the evidence
+     * tables would never be created either. The container is rebuilt before
+     * activate() runs — which is why the live shop works — and a plugin that
+     * is installed but never activated needs no signing key.
+     *
+     * Activating an already-installed shop also lands here, so a shop that
+     * updates into this version gets a key without being reinstalled.
+     */
     #[Override]
     public function activate(ActivateContext $activateContext): void
     {
         parent::activate($activateContext);
-        // Also here, so a shop that updates into this version gets a key
-        // without being reinstalled.
         $this->generateSigningKey();
     }
 
@@ -130,12 +143,41 @@ class MerchantQuoteAgentPlugin extends Plugin
         }
     }
 
-    /** @throws \Random\RandomException */
+    /**
+     * Fail-open, per the module's promise that evidence never blocks commerce
+     * (spec acceptance criterion 7): `DefaultSigningKeyManager::generate()`
+     * throws `SignatureException` on an `openssl_*` failure, and an activation
+     * that dies there would take all quote servicing with it. A2cnKeyStore's
+     * `current()` throws MissingSigningKey loudly wherever a key is actually
+     * needed, and the discovery routes turn that into a 503, so failing soft
+     * here loses nothing but the key itself.
+     */
     private function generateSigningKey(): void
     {
-        $keys = $this->container?->get(A2cnKeyStore::class);
-        if ($keys instanceof A2cnKeyStore) {
-            $keys->generateIfAbsent();
+        try {
+            $keys = $this->container?->get(A2cnKeyStore::class);
+            if ($keys instanceof A2cnKeyStore) {
+                $keys->generateIfAbsent();
+            }
+        } catch (\Throwable $error) {
+            $this->logKeyGenerationFailure($error);
+        }
+    }
+
+    private function logKeyGenerationFailure(\Throwable $error): void
+    {
+        // has() before get(): this method exists precisely because a service
+        // id can be absent, and a logger fetch that throws would defeat the
+        // catch that called us.
+        $container = $this->container;
+        $logger = $container?->has(self::LIFECYCLE_LOGGER_ID) === true
+            ? $container->get(self::LIFECYCLE_LOGGER_ID)
+            : null;
+
+        if ($logger instanceof LoggerInterface) {
+            $logger->error('A2CN signing key generation failed; the plugin is active without one.', [
+                'exception' => $error,
+            ]);
         }
     }
 }

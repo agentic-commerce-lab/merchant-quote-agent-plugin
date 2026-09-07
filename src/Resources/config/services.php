@@ -57,6 +57,7 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\RequestRuntimeConfigurationR
 use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
+use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -285,9 +286,12 @@ return static function (ContainerConfigurator $configurator): void {
 
     // The installation's signing key and published did:web identity (Task 14).
     // Public: the plugin class fetches A2cnKeyStore from the container during
-    // install()/activate(), before the compiled container's private-service
-    // fence would otherwise apply.
+    // activate(), where the compiled container's private-service fence would
+    // otherwise apply. `logger` itself is a private alias Symfony removes when
+    // it compiles, so the same hook reaches PSR-3 through a public alias of
+    // our own — its only user is the fail-open catch in activate().
     $services->set(A2cnKeyStore::class)->public();
+    $services->alias(MerchantQuoteAgentPlugin::LIFECYCLE_LOGGER_ID, 'logger')->public();
     $services->set(A2cnIdentityResolver::class);
 
     // Counterparty did:web verification-key resolution. Guzzle wired
