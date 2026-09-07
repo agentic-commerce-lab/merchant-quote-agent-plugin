@@ -188,9 +188,6 @@ final readonly class OfferProposer
         QuoteDecision $decision,
         BuyerConversation $conversation,
     ): string {
-        $limits = $settings->policy->price;
-        $countered = $decision->autoReply?->counteredRequestPercent;
-
         $lines = array_map(static fn(PolicyQuoteLineSnapshot $l): string => sprintf(
             '%s | %s | %d | %.2f',
             $l->lineItemId(),
@@ -202,19 +199,16 @@ final readonly class OfferProposer
         // The prompt tells the model it is shown its own earlier offers, so it
         // is — and the buyer's LATEST comment is the ask this round answers;
         // the earlier ones were answered by the replies listed above it.
+        //
+        // The authority covers every dimension the response schema allows, not
+        // just the discount cap: see AuthorityBrief for what silence cost.
         return sprintf(
-            "Quote total (net): %.2f %s\n\nLine items (id | label | quantity | unit price net):\n%s\n\nYOUR AUTHORITY:\n- maximum discount you may grant: %.2f%%\n%s\n\n"
+            "Quote total (net): %.2f %s\n\nLine items (id | label | quantity | unit price net):\n%s\n\nYOUR AUTHORITY:\n%s\n\n"
             . "Your earlier replies on this quote:\n%s\n\nBuyer's latest comment:\n%s",
             $snapshot->totalNet,
             $snapshot->currencyIso,
             implode("\n", $lines),
-            $limits->maxDiscountPercent,
-            $countered === null
-                ? ''
-                : sprintf(
-                    '- the buyer asked for %.2f%%, which is above your cap: counter, do not grant it',
-                    $countered,
-                ),
+            AuthorityBrief::of($settings->policy, $decision->autoReply?->counteredRequestPercent),
             $conversation->agentText(),
             $conversation->newestBuyerText(),
         );
