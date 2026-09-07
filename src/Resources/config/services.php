@@ -294,13 +294,19 @@ return static function (ContainerConfigurator $configurator): void {
     $services->alias(MerchantQuoteAgentPlugin::LIFECYCLE_LOGGER_ID, 'logger')->public();
     $services->set(A2cnIdentityResolver::class);
 
-    // Counterparty did:web verification-key resolution. Guzzle wired
-    // explicitly and under our own service id: this block runs unconditionally
-    // (no SwagCommercial gate), so it cannot reach the GuzzleClient::class
-    // registration further down, which only exists inside that guard.
-    // SigningKeyManagerInterface is a public alias the UCP SDK bundle
+    // Counterparty did:web verification-key resolution. A plain HTTP client is
+    // registered explicitly under our own service id, the same way and for the
+    // same reason as merchant_quote_agent.model_http_client further down:
+    // Shopware does not guarantee a shared `http_client` service exists, and
+    // this fetch needs its own timeout, redirect and streaming controls
+    // regardless (see DidWebDocumentFetcher) — reusing a shared client would
+    // risk a different default silently applying to a counterparty-controlled
+    // URL. SigningKeyManagerInterface is a public alias the UCP SDK bundle
     // registers onto DefaultSigningKeyManager.
-    $services->set('merchant_quote_agent.a2cn.http_client', GuzzleClient::class);
+    $services->set('merchant_quote_agent.a2cn.http_client', HttpClientInterface::class)->factory([
+        HttpClient::class,
+        'create',
+    ]);
     $services->set(DidWebResolver::class)->args([
         service('merchant_quote_agent.a2cn.http_client'),
         service(SigningKeyManagerInterface::class),

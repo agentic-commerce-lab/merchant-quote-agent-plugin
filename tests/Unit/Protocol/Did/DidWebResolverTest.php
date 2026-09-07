@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Did;
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
-use GuzzleHttp\Psr7\Response;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 use Ucp\Sdk\Internal\Security\DefaultSigningKeyManager;
 
 final class DidWebResolverTest extends TestCase
@@ -20,7 +18,7 @@ final class DidWebResolverTest extends TestCase
 
     public function testItReturnsThePemForTheNamedVerificationMethod(): void
     {
-        $resolver = self::resolver([new Response(200, [], self::document())]);
+        $resolver = self::resolver([new MockResponse(self::document())]);
 
         $pem = $resolver->publicKeyPemFor(self::METHOD);
 
@@ -30,9 +28,9 @@ final class DidWebResolverTest extends TestCase
 
     public function testItMemoizesSoOneChainCostsOneRequest(): void
     {
-        $handler = new MockHandler([new Response(200, [], self::document())]);
+        $client = new MockHttpClient([new MockResponse(self::document())]);
         $resolver = new DidWebResolver(
-            new Client(['handler' => HandlerStack::create($handler)]),
+            $client,
             new DefaultSigningKeyManager(),
             new NullLogger(),
             // buyer.example (RFC 2606) does not resolve on a real network, so
@@ -43,27 +41,27 @@ final class DidWebResolverTest extends TestCase
         $resolver->publicKeyPemFor(self::METHOD);
         $resolver->publicKeyPemFor(self::METHOD);
 
-        // A second HTTP call would have thrown: the queue holds one response.
-        self::assertCount(0, $handler);
+        // A second HTTP call would have failed: the queue holds one response.
+        self::assertSame(1, $client->getRequestsCount());
     }
 
     public function testItReturnsNullWhenTheDocumentDoesNotListTheMethod(): void
     {
-        $resolver = self::resolver([new Response(200, [], self::document(id: 'did:web:buyer.example#other'))]);
+        $resolver = self::resolver([new MockResponse(self::document(id: 'did:web:buyer.example#other'))]);
 
         self::assertNull($resolver->publicKeyPemFor(self::METHOD));
     }
 
     public function testItReturnsNullOnATransportFailure(): void
     {
-        $resolver = self::resolver([new Response(404)]);
+        $resolver = self::resolver([new MockResponse('', ['http_code' => 404])]);
 
         self::assertNull($resolver->publicKeyPemFor(self::METHOD));
     }
 
     public function testItReturnsNullForAnUnsupportedCurve(): void
     {
-        $resolver = self::resolver([new Response(200, [], self::document(curve: 'P-384'))]);
+        $resolver = self::resolver([new MockResponse(self::document(curve: 'P-384'))]);
 
         self::assertNull($resolver->publicKeyPemFor(self::METHOD));
     }
@@ -98,7 +96,7 @@ final class DidWebResolverTest extends TestCase
     #[DataProvider('unsafeHostProvider')]
     public function testItReturnsNullForAnUnsafeUrl(string $method): void
     {
-        $resolver = self::resolver([new Response(200, [], self::document(id: $method))]);
+        $resolver = self::resolver([new MockResponse(self::document(id: $method))]);
 
         self::assertNull($resolver->publicKeyPemFor($method));
     }
@@ -110,12 +108,12 @@ final class DidWebResolverTest extends TestCase
      * fixture host to a public-looking, non-reserved address, keeping these
      * tests hermetic.
      *
-     * @param list<Response> $responses
+     * @param list<MockResponse> $responses
      */
     private static function resolver(array $responses): DidWebResolver
     {
         return new DidWebResolver(
-            new Client(['handler' => HandlerStack::create(new MockHandler($responses))]),
+            new MockHttpClient($responses),
             new DefaultSigningKeyManager(),
             new NullLogger(),
             static fn(string $host): array => $host === 'buyer.example' ? ['203.0.113.10'] : [],

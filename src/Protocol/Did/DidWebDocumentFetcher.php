@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Protocol\Did;
 
-use GuzzleHttp\ClientInterface;
-use GuzzleHttp\RequestOptions;
 use Psr\Log\LoggerInterface;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Symfony\Contracts\HttpClient\ResponseInterface;
 use Ucp\Sdk\Exception\ValidationException;
 use Ucp\Sdk\Internal\Service\UrlSafetyValidator;
 
@@ -37,7 +37,7 @@ final readonly class DidWebDocumentFetcher
     private const MAX_DOCUMENT_BYTES = 262_144;
 
     public function __construct(
-        private ClientInterface $client,
+        private HttpClientInterface $client,
         private LoggerInterface $logger,
         /**
          * Test-only DNS override: `buyer.example`-style fixture hosts do not
@@ -81,31 +81,63 @@ final readonly class DidWebDocumentFetcher
     private function body(string $url): ?string
     {
         try {
-            $response = $this->client->request('GET', $url, [
-                RequestOptions::TIMEOUT => self::TIMEOUT_SECONDS,
-                RequestOptions::CONNECT_TIMEOUT => self::TIMEOUT_SECONDS,
-                RequestOptions::HTTP_ERRORS => false,
-                RequestOptions::ALLOW_REDIRECTS => false,
-                // Read incrementally rather than let Guzzle buffer the whole
-                // response first: without this, MAX_DOCUMENT_BYTES only trims
-                // what is read back out of an already-fully-downloaded body.
-                RequestOptions::STREAM => true,
-            ]);
+            return $this->readBody($url);
         } catch (\Throwable $error) {
             $this->logger->info('A2CN could not fetch a did:web document.', ['url' => $url, 'exception' => $error]);
 
             return null;
         }
+    }
 
+    /**
+     * @throws \Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface
+     *   Left undocumented at request() and getStatusCode() themselves, so it
+     *   propagates here — caught by body(), which wraps this call.
+     */
+    private function readBody(string $url): ?string
+    {
+        $response = $this->client->request('GET', $url, [
+            'timeout' => self::TIMEOUT_SECONDS,
+            // Total wall-clock budget, not just inactivity: without this, a
+            // slow-drip response (bytes trickling in just fast enough to
+            // reset the inactivity timer) could hold the request open
+            // indefinitely.
+            'max_duration' => self::TIMEOUT_SECONDS,
+            'max_redirects' => 0,
+        ]);
+
+        // getStatusCode() does not throw on 4xx/5xx — only getHeaders() and
+        // getContent() do, when called without `false`. Treating a non-200 as
+        // a plain null result (rather than an exception) falls out of simply
+        // never calling those.
         if ($response->getStatusCode() !== 200) {
             return null;
         }
 
-        $body = $response->getBody()->read(self::MAX_DOCUMENT_BYTES + 1);
-        if (\strlen($body) > self::MAX_DOCUMENT_BYTES) {
-            $this->logger->info('A2CN refused an oversized did:web document.', ['url' => $url]);
+        return $this->readWithinCap($url, $response);
+    }
 
-            return null;
+    /**
+     * Reads the body incrementally via the client's streaming API rather than
+     * $response->getContent(), which buffers the whole response first: without
+     * this, MAX_DOCUMENT_BYTES only trims what is read back out of an
+     * already-fully-downloaded body, so an attacker-controlled host could
+     * still push an unbounded body into memory.
+     *
+     * @throws \Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface
+     *   Propagates from stream()/chunk::getContent(); caught by body(), which
+     *   wraps the call chain that reaches here via readBody().
+     */
+    private function readWithinCap(string $url, ResponseInterface $response): ?string
+    {
+        $body = '';
+        foreach ($this->client->stream($response) as $chunk) {
+            $body .= $chunk->getContent();
+            if (\strlen($body) > self::MAX_DOCUMENT_BYTES) {
+                $this->logger->info('A2CN refused an oversized did:web document.', ['url' => $url]);
+
+                return null;
+            }
         }
 
         return $body;

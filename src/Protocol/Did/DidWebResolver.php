@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Protocol\Did;
 
-use GuzzleHttp\ClientInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Ucp\Sdk\Service\SigningKeyManagerInterface;
 
 /**
@@ -39,7 +39,7 @@ class DidWebResolver
     private readonly DidWebDocumentFetcher $fetcher;
 
     public function __construct(
-        ClientInterface $client,
+        HttpClientInterface $client,
         private readonly SigningKeyManagerInterface $keys,
         private readonly LoggerInterface $logger,
         ?\Closure $dnsResolver = null,
