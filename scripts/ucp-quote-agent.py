@@ -70,7 +70,10 @@ def sh(*args, inp=None) -> bytes:
 
 def ask(prompt: str, default: str = "") -> str:
     shown = f"{prompt} [{default}]: " if default else f"{prompt}: "
-    answer = input(shown).strip()
+    try:
+        answer = input(shown).strip()
+    except EOFError:
+        return default
     return answer or default
 
 
@@ -328,7 +331,8 @@ def start_ngrok(port: int) -> tuple:
         tunnels = get_json("http://127.0.0.1:4040/api/tunnels")
         for tunnel in tunnels.get("tunnels", []) if isinstance(tunnels, dict) else []:
             public = tunnel.get("public_url", "")
-            if public.startswith("https://"):
+            addr = tunnel.get("config", {}).get("addr", "")
+            if public.startswith("https://") and (not addr or str(port) in addr):
                 return process, public
     process.terminate()
     sys.exit("[fatal] ngrok did not open an https tunnel within 60s")
@@ -455,7 +459,7 @@ def pick_product(rest: str, agent: str, product_query: str = None) -> tuple:
             print(f"  {index}) {product.get('title')} — {money(unit, currency)}{flag}")
             print(f"     id {product.get('id')}")
 
-        choice = 1 if (product_query and len(rows) == 1) else ask_int("Which one", 1)
+        choice = 1 if product_query else ask_int("Which one", 1)
         if not 1 <= choice <= len(rows):
             print("  out of range")
             continue
