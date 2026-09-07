@@ -6,23 +6,22 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Http;
 
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
+use MerchantQuoteAgentPlugin\Protocol\Crypto\CompactJws;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
-use MerchantQuoteAgentPlugin\Protocol\Http\A2cnDiscoveryController;
-use MerchantQuoteAgentPlugin\Protocol\Http\MandateDocumentResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Identity\MissingSigningKey;
-use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
-use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
-use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\TestActSigner;
 use PHPUnit\Framework\TestCase;
 use Ucp\Sdk\Internal\Security\DefaultJsonCanonicalization;
+use Ucp\Sdk\Model\Security\PublicSigningKey;
 
 final class A2cnDiscoveryControllerTest extends TestCase
 {
     public function testTheDiscoveryDocumentCarriesTheRequiredFields(): void
     {
-        $response = self::controller()->discovery(A2cnDiscoveryControllerFixtures::request());
+        $response = A2cnDiscoveryControllerFixtures::controller()->discovery(
+            A2cnDiscoveryControllerFixtures::request(),
+        );
 
         $body = A2cnDiscoveryControllerFixtures::decode($response->getContent());
         self::assertSame('0.2', $body['a2cn_version']);
@@ -32,10 +31,39 @@ final class A2cnDiscoveryControllerTest extends TestCase
         self::assertArrayHasKey('records_url', $body);
     }
 
+    /**
+     * Regression for the live-shop finding: Symfony's Request::getHost()
+     * always strips the port, but SalesChannelHostReader (which builds the
+     * identity SellerActFactory signs acts under) keeps a non-default one —
+     * so the discovery controller MUST resolve identity through
+     * getHttpHost(), or the published DID document names a different DID
+     * than the one this installation's acts are actually signed under, and
+     * a conformant counterparty rejects the document on fetch.
+     */
+    public function testTheIdentityHostMatchesSalesChannelHostReadersPortConvention(): void
+    {
+        $controller = A2cnDiscoveryControllerFixtures::controller();
+
+        $onPort = A2cnDiscoveryControllerFixtures::requestOnPort(8095);
+        $discoveryOnPort = A2cnDiscoveryControllerFixtures::decode($controller->discovery($onPort)->getContent());
+        $didOnPort = A2cnDiscoveryControllerFixtures::decode($controller->didDocument($onPort)->getContent());
+        self::assertSame('did:web:shop.example%3A8095', $discoveryOnPort['did']);
+        self::assertSame('did:web:shop.example%3A8095', $didOnPort['id']);
+
+        $onDefaultPort = A2cnDiscoveryControllerFixtures::requestOnPort(443);
+        $discoveryDefault = A2cnDiscoveryControllerFixtures::decode(
+            $controller->discovery($onDefaultPort)->getContent(),
+        );
+        $didDefault = A2cnDiscoveryControllerFixtures::decode($controller->didDocument($onDefaultPort)->getContent());
+        self::assertSame('did:web:shop.example', $discoveryDefault['did']);
+        self::assertSame('did:web:shop.example', $didDefault['id']);
+    }
+
     public function testTheDiscoveryAndDidResponsesAreCachedNotNoStore(): void
     {
-        $discovery = self::controller()->discovery(A2cnDiscoveryControllerFixtures::request());
-        $did = self::controller()->didDocument(A2cnDiscoveryControllerFixtures::request());
+        $controller = A2cnDiscoveryControllerFixtures::controller();
+        $discovery = $controller->discovery(A2cnDiscoveryControllerFixtures::request());
+        $did = $controller->didDocument(A2cnDiscoveryControllerFixtures::request());
 
         // Symfony's ResponseHeaderBag reorders and re-serializes Cache-Control
         // directives (ResponseHeaderBag::computeCacheControlValue() /
@@ -52,7 +80,9 @@ final class A2cnDiscoveryControllerTest extends TestCase
 
     public function testTheDidDocumentListsExactlyOneJsonWebKeyMethod(): void
     {
-        $response = self::controller()->didDocument(A2cnDiscoveryControllerFixtures::request());
+        $response = A2cnDiscoveryControllerFixtures::controller()->didDocument(
+            A2cnDiscoveryControllerFixtures::request(),
+        );
 
         $body = A2cnDiscoveryControllerFixtures::decode($response->getContent());
         self::assertCount(1, $body['verificationMethod']);
@@ -65,7 +95,9 @@ final class A2cnDiscoveryControllerTest extends TestCase
 
     public function testThePublishedJwkCarriesNoPrivateMember(): void
     {
-        $response = self::controller()->didDocument(A2cnDiscoveryControllerFixtures::request());
+        $response = A2cnDiscoveryControllerFixtures::controller()->didDocument(
+            A2cnDiscoveryControllerFixtures::request(),
+        );
 
         $body = A2cnDiscoveryControllerFixtures::decode($response->getContent());
         $jwk = $body['verificationMethod'][0]['publicKeyJwk'];
@@ -74,7 +106,7 @@ final class A2cnDiscoveryControllerTest extends TestCase
 
     public function testTheMandateIsSignedAndCached(): void
     {
-        $response = self::controller()->mandate(A2cnDiscoveryControllerFixtures::request());
+        $response = A2cnDiscoveryControllerFixtures::controller()->mandate(A2cnDiscoveryControllerFixtures::request());
 
         self::assertSame(200, $response->getStatusCode());
         $body = A2cnDiscoveryControllerFixtures::decode($response->getContent());
@@ -83,9 +115,46 @@ final class A2cnDiscoveryControllerTest extends TestCase
         self::assertStringContainsString('public', (string) $response->headers->get('Cache-Control'));
     }
 
+    /**
+     * Spec acceptance criterion 5, verbatim: "verifies using only published
+     * material." MandateSignerTest verifies against an in-memory test PEM;
+     * this instead fetches the published did.json THROUGH the controller,
+     * converts publicKeyJwk with the SDK's own PublicSigningKey::fromJwk()
+     * (exactly what a real counterparty would do), and verifies the
+     * mandate's proof against that — not a PEM the test already knows. The
+     * negative half proves the check is not a tautology: a one-byte change
+     * to the mandate body must break verification against that same key.
+     */
+    public function testTheMandateVerifiesAgainstOnlyThePublishedDidDocument(): void
+    {
+        $controller = A2cnDiscoveryControllerFixtures::controller();
+        $request = A2cnDiscoveryControllerFixtures::request();
+
+        $did = A2cnDiscoveryControllerFixtures::decode($controller->didDocument($request)->getContent());
+        $mandate = A2cnDiscoveryControllerFixtures::decode($controller->mandate($request)->getContent());
+
+        $publicKey = PublicSigningKey::fromJwk($did['verificationMethod'][0]['publicKeyJwk']);
+        self::assertNotNull($publicKey->publicKeyPem);
+
+        $hash = new ProtocolHash(new DefaultJsonCanonicalization());
+        $verified = CompactJws::verify($mandate['proof']['jws'], $publicKey->publicKeyPem);
+
+        $withoutProof = $mandate;
+        unset($withoutProof['proof']);
+        self::assertSame(
+            $hash->of($withoutProof),
+            $verified,
+            'the mandate did not verify against the key the shop itself publishes',
+        );
+
+        $tampered = $withoutProof;
+        $tampered['agent_id'] = 'a-different-agent';
+        self::assertNotSame($hash->of($tampered), $verified, 'a tampered mandate body must not still verify');
+    }
+
     public function testAMissingSigningKeyYields503RatherThanAStackTrace(): void
     {
-        $controller = self::controller(identities: new class extends A2cnIdentityResolver {
+        $controller = A2cnDiscoveryControllerFixtures::controller(identities: new class extends A2cnIdentityResolver {
             public function __construct() {}
 
             public function forHost(string $host, ?string $salesChannelId = null): A2cnIdentity
@@ -105,7 +174,8 @@ final class A2cnDiscoveryControllerTest extends TestCase
 
     public function testAMissingPolicyIsReportedAsNotFoundRatherThanAServerError(): void
     {
-        $controller = self::controller(settings: new class implements QuoteAgentSettingsSource {
+        $controller = A2cnDiscoveryControllerFixtures::controller(settings: new class implements
+            QuoteAgentSettingsSource {
             public function forSalesChannel(?string $salesChannelId): ?QuoteAgentSettings
             {
                 return null;
@@ -115,21 +185,5 @@ final class A2cnDiscoveryControllerTest extends TestCase
         $response = $controller->mandate(A2cnDiscoveryControllerFixtures::request());
 
         self::assertSame(404, $response->getStatusCode());
-    }
-
-    private static function controller(
-        ?A2cnIdentityResolver $identities = null,
-        ?QuoteAgentSettingsSource $settings = null,
-    ): A2cnDiscoveryController {
-        $keys = TestActSigner::keyStore();
-        $hash = new ProtocolHash(new DefaultJsonCanonicalization());
-
-        $mandateDocument = new MandateDocumentResponder(
-            $settings ?? A2cnDiscoveryControllerFixtures::settingsWithAPolicy(),
-            new SellerMandateFactory(),
-            new MandateSigner($hash, $keys),
-        );
-
-        return new A2cnDiscoveryController($identities ?? TestActSigner::identities(), $keys, $mandateDocument);
     }
 }

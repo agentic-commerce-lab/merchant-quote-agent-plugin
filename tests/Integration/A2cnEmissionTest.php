@@ -144,22 +144,17 @@ final class A2cnEmissionTest extends IntegrationTestCase
         $document = json_decode((string) $response->getContent(), associative: true, flags: \JSON_THROW_ON_ERROR);
         self::assertIsArray($document);
 
-        // Not asserted: $document['id'] === $act->senderDid(). On this live
-        // shop's own storefront domain (a non-default port,
-        // "localhost:8095"), the two diverge: SalesChannelHostReader (which
-        // built the act's identity) keeps the port, while
-        // A2cnDiscoveryController resolves identity from
-        // $request->getHost() — which Symfony's own Request ALWAYS strips
-        // the port from (see Request::getHost()'s docblock) — so the served
-        // document names "did:web:localhost", not
-        // "did:web:localhost%3A8095". That divergence is real and worth a
-        // follow-up (A2cnDiscoveryController likely wants
-        // $request->getHttpHost(), which keeps a non-default port, to match
-        // SalesChannelHostReader's own convention) but is out of this task's
-        // touch scope. It does not affect what this test actually has to
-        // prove: the KEY this document publishes is this installation's one
-        // global signing key regardless of which domain resolved it, so the
-        // verification below holds independently of the `id` mismatch.
+        // The document must describe the SAME DID the act is signed under —
+        // A2cnDiscoveryController now resolves identity through
+        // $request->getHttpHost() (keeps a non-default port, omits the
+        // default one), matching SalesChannelHostReader's own convention,
+        // which is what built this act's identity in the first place. A
+        // conformant counterparty resolves the act's
+        // sender_verification_method to this exact document and rejects it
+        // outright if the `id` names a different DID, even when the key
+        // material underneath happens to be the same.
+        self::assertSame($act->senderDid(), $document['id'] ?? null);
+
         $jwk = $document['verificationMethod'][0]['publicKeyJwk'] ?? null;
         self::assertIsArray($jwk, 'the DID document carries no publicKeyJwk');
 

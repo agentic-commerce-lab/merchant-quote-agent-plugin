@@ -19,11 +19,17 @@ use Symfony\Component\Routing\Attribute\Route;
  * discovery document, its did:web document, and its signed seller mandate.
  *
  * Every response resolves the publishing identity from the REQUEST's host
- * (`$request->getHost()`) and sales-channel id
+ * (`$request->getHttpHost()`) and sales-channel id
  * (`PlatformRequest::ATTRIBUTE_SALES_CHANNEL_ID`), not from a fixed
  * configuration value — one installation answers on every storefront domain
  * it serves, and each domain must publish a did:web document that matches
- * the host it was fetched from.
+ * the host it was fetched from. `getHttpHost()`, not `getHost()`: Symfony's
+ * `Request::getHost()` always strips the port, while `SalesChannelHostReader`
+ * (which builds the identity the emitter signs acts under) keeps a
+ * non-default one — using `getHost()` here would publish a did:web document
+ * naming a different DID than the one this installation's acts are actually
+ * signed under, so a conformant counterparty resolving the act's
+ * `sender_verification_method` would reject the document outright.
  *
  * These documents change only when the merchant reconfigures (a new key, a
  * new organization name, a new negotiation policy), so — unlike the act
@@ -115,7 +121,7 @@ final readonly class A2cnDiscoveryController
     private function resolveIdentity(Request $request): A2cnIdentity|JsonResponse
     {
         try {
-            return $this->identities->forHost($request->getHost(), self::salesChannelId($request));
+            return $this->identities->forHost($request->getHttpHost(), self::salesChannelId($request));
         } catch (MissingSigningKey) {
             return JsonEnvelope::noStore(['status' => 'signing_key_missing'], 503);
         } catch (\Doctrine\DBAL\Exception) {
