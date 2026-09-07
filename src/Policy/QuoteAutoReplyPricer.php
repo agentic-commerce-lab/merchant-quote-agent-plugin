@@ -12,7 +12,8 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 /**
  * Buyers on trunk ask per line ("Requested price"): grant each line exactly
  * its ask, never above the current price. Without per-line asks, scale
- * uniformly by the total discount.
+ * uniformly by the total discount. When countering an ungrantable ask, scale
+ * uniformly by the countered discount ceiling.
  */
 final class QuoteAutoReplyPricer
 {
@@ -24,10 +25,11 @@ final class QuoteAutoReplyPricer
     ): QuoteAutoReplyDetails {
         $hasLineAsks = $this->hasLineAsks($effective->lines);
         $factor = 1 - ($discountPercent / 100);
+        $isCounter = $counteredRequestPercent !== null;
 
         $lineUnitPricesNet = [];
         foreach ($effective->lines as $line) {
-            $unitPriceNet = $hasLineAsks
+            $unitPriceNet = $hasLineAsks && !$isCounter
                 ? $this->linePriceFromAsk($line)
                 : $this->linePriceFromDiscount($line, $factor);
             $lineUnitPricesNet[] = new QuoteLinePrice(lineItemId: $line->lineItemId(), unitPriceNet: $unitPriceNet);
