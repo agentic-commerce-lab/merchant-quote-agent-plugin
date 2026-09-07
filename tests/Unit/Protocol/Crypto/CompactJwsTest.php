@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Crypto;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\Base64Url;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\CompactJws;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\Es256Signature;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Ucp\Sdk\Model\Security\PublicSigningKey;
 
@@ -55,21 +56,59 @@ final class CompactJwsTest extends TestCase
     }
 
     /**
-     * Only a bare `{"alg":"ES256"}` header is accepted — not `none`, not
-     * another algorithm, not the same alg with extra members. Guessing at any
-     * other header would be the classic JWS algorithm-confusion bug.
+     * Only ES256 is accepted — not `none`, not another algorithm, not a
+     * missing `alg`, and not a header carrying a member beyond `alg`/`kid`
+     * (`typ` included: see CompactJws::HEADER_MEMBERS). Guessing at any other
+     * header would be the classic JWS algorithm-confusion bug.
+     *
+     * @return iterable<string, array{0: string}>
      */
-    public function testItRejectsAHeaderThatIsNotBareEs256(): void
+    public static function rejectedHeaderProvider(): iterable
+    {
+        yield 'alg none' => ['{"alg":"none"}'];
+        yield 'another alg' => ['{"alg":"HS256"}'];
+        yield 'missing alg' => ['{"kid":"did:web:buyer.example#key-1"}'];
+        yield 'empty header' => ['{}'];
+        yield 'unmodelled member' => ['{"alg":"ES256","extra":true}'];
+        yield 'typ' => ['{"alg":"ES256","typ":"JWT"}'];
+        yield 'not json' => ['not-json-at-all'];
+        yield 'json but not an object' => ['"ES256"'];
+    }
+
+    #[DataProvider('rejectedHeaderProvider')]
+    public function testItRejectsAHeaderThatIsNotEs256(string $header): void
     {
         ['private' => $private, 'public' => $public] = self::keyPair();
-        $jws = CompactJws::sign('payload', $private);
-        [, $body, $signature] = explode('.', $jws);
+        [, $body, $signature] = explode('.', CompactJws::sign('payload', $private));
 
-        foreach (['{"alg":"none"}', '{"alg":"HS256"}', '{"alg":"ES256","extra":true}'] as $header) {
-            $tampered = Base64Url::encode($header) . '.' . $body . '.' . $signature;
+        $tampered = Base64Url::encode($header) . '.' . $body . '.' . $signature;
 
-            self::assertNull(CompactJws::verify($tampered, $public), $header);
-        }
+        self::assertNull(CompactJws::verify($tampered, $public), $header);
+    }
+
+    /**
+     * The counterparty's reference implementation puts its verification method
+     * in the header `kid` and checks only `alg` on the way back. A verifier
+     * that demanded a bare header would refuse every act they sign, so both
+     * shapes must round trip — and the kid-bearing header must be
+     * deterministic, since its bytes are part of the signing input.
+     */
+    public function testItRoundTripsWithAndWithoutAKidInTheHeader(): void
+    {
+        ['private' => $private, 'public' => $public] = self::keyPair();
+
+        $withKid = CompactJws::sign('payload', $private, 'did:web:shop.example#k1');
+        $withoutKid = CompactJws::sign('payload', $private);
+
+        self::assertSame('payload', CompactJws::verify($withKid, $public));
+        self::assertSame('payload', CompactJws::verify($withoutKid, $public));
+
+        // Sorted keys, no spaces, unescaped slashes.
+        self::assertSame(
+            '{"alg":"ES256","kid":"did:web:shop.example#k1"}',
+            Base64Url::decode(explode('.', $withKid)[0]),
+        );
+        self::assertSame('{"alg":"ES256"}', Base64Url::decode(explode('.', $withoutKid)[0]));
     }
 
     /**

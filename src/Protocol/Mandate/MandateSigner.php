@@ -38,7 +38,10 @@ final readonly class MandateSigner
     public function sign(array $mandate, A2cnIdentity $identity, \DateTimeImmutable $now): array
     {
         $digest = $this->hash->of($mandate);
-        $jws = CompactJws::sign($digest, $this->keys->current()->privateKeyPem);
+        // The kid in the header names the same verification method the proof
+        // states below, so a verifier reading only the JWS resolves the same
+        // key as one reading the proof.
+        $jws = CompactJws::sign($digest, $this->keys->current()->privateKeyPem, $identity->verificationMethod);
 
         return $mandate
         + ['proof' => [

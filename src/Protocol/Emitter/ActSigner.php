@@ -25,19 +25,24 @@ final readonly class ActSigner
     ) {}
 
     /**
+     * `$kid` is the signer's verification method, carried in the JWS protected
+     * header so a counterparty can pick the right key out of our did:web
+     * document without re-reading the act. It is optional only because the
+     * header is valid without it; the emitter always supplies one.
+     *
      * @param array<string, mixed> $signedView
      *
      * @return array{protocol_act_hash: string, protocol_act_signature: string}
      *
      * @throws MissingSigningKey
      */
-    public function proofFor(array $signedView): array
+    public function proofFor(array $signedView, ?string $kid = null): array
     {
         $digest = $this->hash->of($signedView);
 
         return [
             'protocol_act_hash' => $digest,
-            'protocol_act_signature' => CompactJws::sign($digest, $this->keys->current()->privateKeyPem),
+            'protocol_act_signature' => CompactJws::sign($digest, $this->keys->current()->privateKeyPem, $kid),
         ];
     }
 }

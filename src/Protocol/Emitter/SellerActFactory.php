@@ -110,7 +110,9 @@ final readonly class SellerActFactory
             throw new UnbuildableAct('Refusing to emit an act this plugin cannot read back.');
         }
 
-        $signed = Act::fromArray($wire + $this->signer->proofFor(SignedView::of($unsigned)));
+        $signed = Act::fromArray(
+            $wire + $this->signer->proofFor(SignedView::of($unsigned), $identity->verificationMethod),
+        );
         if ($signed === null) {
             throw new UnbuildableAct('Refusing to emit an act this plugin cannot read back.');
         }
