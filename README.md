@@ -118,7 +118,11 @@ a quote in `draft` fires both triggers, both passes claim the quote 1s apart
 (`attempt` 0 and 1 in the decision records), and the buyer gets two replies to
 one ask. The discount survives it — offers are written as absolute values, so
 the second pass re-applies the same 10% rather than stacking — but
-"the buyer is never messaged twice" does not.
+"the buyer is never messaged twice" does not. An escalation doubles the same
+way: `QuoteEscalator`'s marker only returns early for a reason already
+stamped, so two passes that both read the snapshot before either writes it
+escalate twice — two buyer comments, and now two merchant notifications each,
+one `QuoteAgentEscalatedEvent` and one administration notification.
 
 Two ways out, and the first is the one you want anyway: switch the admin
 worker off (`shopware.admin_worker.enable_admin_worker: false`) once a real
