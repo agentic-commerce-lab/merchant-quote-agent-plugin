@@ -92,6 +92,43 @@ final class BuyerSignatureCheckTest extends TestCase
         self::assertStringContainsString('hash', $violation->description);
     }
 
+    /**
+     * `sender_verification_method` naming a DID other than `sender_did`
+     * must be refused locally — and, since the resolver would otherwise be
+     * asked to fetch that OTHER party's did:web document, refused before
+     * any network call. The resolver double here throws if ever invoked, so
+     * a passing test proves the network hop never happened rather than
+     * merely that the final result was a violation.
+     */
+    public function testItRefusesAVerificationMethodUnderAForeignDidBeforeAnyHttpCall(): void
+    {
+        ['private' => $private] = self::keyPair();
+        $act = self::signedBuyerAct($private, 'did:web:someone-else.example#key-1');
+
+        $resolver = new class extends DidWebResolver {
+            public function __construct() {}
+
+            public function publicKeyPemFor(string $verificationMethod): ?string
+            {
+                throw new \LogicException(
+                    'the network hop must not run once the verification method mismatch is caught locally',
+                );
+            }
+        };
+
+        $violation = (new BuyerSignatureCheck($resolver, new ProtocolHash(new DefaultJsonCanonicalization())))->check(
+            self::chainWith($act),
+            ProtocolFixtures::snapshot(self::QUOTE_ID),
+            ProtocolFixtures::SELLER,
+            ProtocolFixtures::at(),
+        );
+
+        self::assertNotNull($violation);
+        self::assertSame('buyer_act_unverified', $violation->violationType);
+        self::assertStringContainsString('did:web:someone-else.example#key-1', $violation->description);
+        self::assertStringContainsString(ProtocolFixtures::BUYER, $violation->description);
+    }
+
     public function testItIgnoresOurOwnActs(): void
     {
         $chain = self::chainWith(ProtocolFixtures::sellerAct(1, SessionId::forQuote(self::QUOTE_ID)), ActRole::Seller);
@@ -116,11 +153,14 @@ final class BuyerSignatureCheckTest extends TestCase
     }
 
     /** @return array<string, mixed> */
-    private static function signedBuyerAct(string $privateKeyPem): array
+    private static function signedBuyerAct(string $privateKeyPem, ?string $verificationMethod = null): array
     {
         $hash = new ProtocolHash(new DefaultJsonCanonicalization());
         $act = ProtocolFixtures::buyerAct(1, SessionId::forQuote(self::QUOTE_ID));
         unset($act['protocol_act_hash'], $act['protocol_act_signature']);
+        if ($verificationMethod !== null) {
+            $act['sender_verification_method'] = $verificationMethod;
+        }
 
         $parsed = Act::fromArray($act + ['protocol_act_hash' => '', 'protocol_act_signature' => '']);
         self::assertNotNull($parsed);

@@ -9,8 +9,12 @@ namespace MerchantQuoteAgentPlugin\Protocol\Did;
  * method names, and normalize it for the SDK.
  *
  * Split out of DidWebResolver: this is document parsing, a different concern
- * from the HTTP fetch (DidWebDocumentFetcher) and from turning a resolved key
- * into a PEM (DidWebResolver itself, which needs the SDK's key manager).
+ * from the HTTP fetch (DidWebDocumentFetcher), from whether the document
+ * actually authorizes the method to sign at all (DidWebKeyAuthorization,
+ * which DidWebResolver gates on before ever calling pick() — a real seam,
+ * and what keeps this class under mago's per-class cyclomatic-complexity
+ * gate), and from turning a resolved key into a PEM (DidWebResolver itself,
+ * which needs the SDK's key manager).
  *
  * `normalize()` is also where curve trust is decided (P-256 only, null
  * otherwise): that check belongs beside the code that fills the values the SDK

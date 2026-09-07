@@ -21,6 +21,12 @@ use Ucp\Sdk\Service\SigningKeyManagerInterface;
  * (P-256 only) is decided inside that same normalization step, alongside the
  * fields it fills — see DidWebJwk's docblock.
  *
+ * DidWebKeyAuthorization gates every resolution here, before DidWebJwk::pick()
+ * ever runs: a method merely listed under `verificationMethod` is not
+ * authorized to sign until the document also lists it under
+ * `assertionMethod` or `authentication` — a `keyAgreement`-only key must
+ * never resolve to a usable PEM.
+ *
  * The HTTP fetch (DidWebDocumentFetcher, which also gates the URL through the
  * SDK's host-safety validator) and the document parsing (DidWebJwk) are split
  * out: different concerns from what is left here — orchestration,
@@ -77,6 +83,10 @@ class DidWebResolver
      */
     private static function normalizedJwk(array $document, string $verificationMethod): ?array
     {
+        if (!DidWebKeyAuthorization::permits($document, $verificationMethod)) {
+            return null;
+        }
+
         $jwk = DidWebJwk::pick($document, $verificationMethod);
 
         return $jwk === null ? null : DidWebJwk::normalize($jwk, $verificationMethod);

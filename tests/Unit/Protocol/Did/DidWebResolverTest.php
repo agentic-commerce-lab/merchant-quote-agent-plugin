@@ -120,10 +120,18 @@ final class DidWebResolverTest extends TestCase
         );
     }
 
-    private static function document(string $id = 'did:web:buyer.example#key-1', string $curve = 'P-256'): string
-    {
+    /** @param list<string> $assertionMethod */
+    private static function document(
+        string $id = 'did:web:buyer.example#key-1',
+        string $curve = 'P-256',
+        array $assertionMethod = ['did:web:buyer.example#key-1'],
+    ): string {
         // A minimal DID document as a counterparty really publishes one: no
         // kid, no alg, no use — which is why the resolver normalizes.
+        // `assertionMethod` authorizes the key to sign, same as a real
+        // did:web document must — see DidWebResolverAuthorizationTest for
+        // the case where a key is listed under `verificationMethod` but not
+        // authorized to sign anything.
         return json_encode(
             [
                 '@context' => ['https://www.w3.org/ns/did/v1'],
@@ -139,6 +147,7 @@ final class DidWebResolverTest extends TestCase
                         'y' => 'x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0',
                     ],
                 ]],
+                'assertionMethod' => $assertionMethod,
             ],
             \JSON_THROW_ON_ERROR,
         );
