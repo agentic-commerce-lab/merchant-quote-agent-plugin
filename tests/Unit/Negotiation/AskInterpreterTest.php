@@ -26,7 +26,7 @@ final class AskInterpreterTest extends TestCase
 
     public function testItInterpretsANewBuyerAsk(): void
     {
-        [$client, $spy] = ScriptedClient::spy(['{"additional_discount_percent": 8}']);
+        [$client, $spy] = ScriptedClient::spy(['{"price":{"additionalDiscountPercent":8}}']);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('8% please', '2026-08-28 09:00:00'),
         ]);
@@ -65,7 +65,7 @@ final class AskInterpreterTest extends TestCase
 
     public function testNoNewAskCostsNoModelCall(): void
     {
-        [$client, $spy] = ScriptedClient::spy(['{"additional_discount_percent": 8}']);
+        [$client, $spy] = ScriptedClient::spy(['{"price":{"additionalDiscountPercent":8}}']);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('8% please', '2026-08-28 09:00:00'),
             NegotiationFixture::agentComment('here is 5%', '2026-08-28 09:30:00'),

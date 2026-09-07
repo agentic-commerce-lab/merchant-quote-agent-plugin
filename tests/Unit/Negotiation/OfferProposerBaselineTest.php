@@ -24,7 +24,7 @@ use PHPUnit\Framework\TestCase;
  */
 final class OfferProposerBaselineTest extends TestCase
 {
-    private static function proposer(\MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient $client): OfferProposer
+    private static function proposer(\MerchantQuoteAgentPlugin\Negotiation\ModelPlatform $client): OfferProposer
     {
         return new OfferProposer(
             $client,
@@ -55,7 +55,7 @@ final class OfferProposerBaselineTest extends TestCase
     public function testAPerLineOfferIsBoundedAgainstTheBaselineNotTheCurrentLines(): void
     {
         [$client] = ScriptedClient::spy([
-            '{"action":"offer","line_prices":[{"line_item_id":"line-1","unit_price_net":85}],"message":"85 each."}',
+            '{"action":"offer","message":"85 each.","terms":{"linePricesNet":[{"lineItemId":"line-1","unitPriceNet":85}]}}',
         ]);
         $snapshot = NegotiationFixture::snapshot(totalNet: 900.0);
         $baseline = new QuoteBaselineLines(1000.0, [
@@ -83,7 +83,7 @@ final class OfferProposerBaselineTest extends TestCase
     public function testTheBaselineIsWhatDecides(): void
     {
         [$client] = ScriptedClient::spy([
-            '{"action":"offer","line_prices":[{"line_item_id":"line-1","unit_price_net":85}],"message":"85 each."}',
+            '{"action":"offer","message":"85 each.","terms":{"linePricesNet":[{"lineItemId":"line-1","unitPriceNet":85}]}}',
         ]);
         $snapshot = NegotiationFixture::snapshot(totalNet: 900.0);
         $baseline = new QuoteBaselineLines(900.0, [

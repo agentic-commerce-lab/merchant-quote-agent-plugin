@@ -7,44 +7,30 @@ namespace MerchantQuoteAgentPlugin\Negotiation\Response;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedDelivery;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPayment;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
-use MerchantQuoteAgentPlugin\Policy\Data\PaymentTerm;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
 
 /**
  * The concession terms of a negotiate response — everything ProposedOffer
- * needs except the order total, which only the caller (Servicing) knows.
- * Split out of NegotiateResponse so that class's own constructor stays
- * under the parameter-count gate; this is where the term-by-term parsing lives.
+ * needs except the order total, which only the caller (Servicing) knows, and
+ * the reference lines, which only the proposer holds.
+ *
+ * Those two absences are why this is a wire twin of OfferedPrice rather than
+ * OfferedPrice itself: the schema handed to the model must not contain a field
+ * the model has no business filling in.
+ *
+ * Split out of NegotiateResponse so that class's own constructor stays under
+ * the parameter-count gate.
  */
 final readonly class OfferTerms
 {
-    /** @param list<QuoteLinePrice>|null $linePrices */
-    private function __construct(
-        private ?float $discountPercent,
-        private ?array $linePrices,
-        private OfferedDelivery $delivery,
-        private OfferedPayment $payment,
+    /** @param list<QuoteLinePrice>|null $linePricesNet */
+    public function __construct(
+        public ?float $discountPercent = null,
+        public ?array $linePricesNet = null,
+        public ?OfferedDelivery $delivery = null,
+        public ?OfferedPayment $payment = null,
     ) {}
-
-    /** @param array<string, mixed> $raw */
-    public static function read(array $raw): self
-    {
-        return new self(
-            discountPercent: Scalar::float($raw, 'discount_percent'),
-            linePrices: self::linePrices($raw),
-            delivery: new OfferedDelivery(
-                freeShipping: Scalar::bool($raw, 'free_shipping'),
-                expedited: Scalar::bool($raw, 'expedited'),
-                committedLeadTimeDays: Scalar::int($raw, 'committed_lead_time_days'),
-            ),
-            payment: new OfferedPayment(
-                paymentTerm: self::term($raw),
-                netDays: Scalar::int($raw, 'net_days'),
-                depositPercent: Scalar::float($raw, 'deposit_percent'),
-            ),
-        );
-    }
 
     /**
      * Both a quote-wide discount and per-line prices. OfferApplier writes the
@@ -53,45 +39,29 @@ final readonly class OfferTerms
      */
     public function contradictory(): bool
     {
-        return $this->discountPercent !== null && $this->linePrices !== null;
+        return $this->discountPercent !== null && $this->lines() !== null;
     }
 
     public function toOffer(float $orderTotalNet): ProposedOffer
     {
         return new ProposedOffer(
             orderTotalNet: $orderTotalNet,
-            price: new OfferedPrice(discountPercent: $this->discountPercent, linePricesNet: $this->linePrices),
-            delivery: $this->delivery,
-            payment: $this->payment,
+            price: new OfferedPrice(discountPercent: $this->discountPercent, linePricesNet: $this->lines()),
+            delivery: $this->delivery ?? new OfferedDelivery(),
+            payment: $this->payment ?? new OfferedPayment(),
         );
     }
 
     /**
-     * @param array<string, mixed> $raw
+     * `[]` and null both mean "no per-line concession". A model under a schema
+     * that permits an array will sometimes send the empty one, and an empty
+     * list read as a per-line offer would make contradictory() fire on a plain
+     * quote-wide discount and LinePriceOfferCheck bound nothing.
      *
      * @return list<QuoteLinePrice>|null
      */
-    private static function linePrices(array $raw): ?array
+    private function lines(): ?array
     {
-        $prices = [];
-
-        foreach (Json::rows($raw, 'line_prices') as $row) {
-            $id = $row['line_item_id'] ?? null;
-            $price = $row['unit_price_net'] ?? null;
-
-            if (\is_string($id) && (\is_int($price) || \is_float($price))) {
-                $prices[] = new QuoteLinePrice($id, (float) $price);
-            }
-        }
-
-        return $prices === [] ? null : $prices;
-    }
-
-    /** @param array<string, mixed> $raw */
-    private static function term(array $raw): ?PaymentTerm
-    {
-        $term = $raw['payment_term'] ?? null;
-
-        return \is_string($term) ? PaymentTerm::tryFrom($term) : null;
+        return $this->linePricesNet === [] ? null : $this->linePricesNet;
     }
 }

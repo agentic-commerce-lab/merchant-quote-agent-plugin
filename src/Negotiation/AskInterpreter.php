@@ -8,7 +8,7 @@ use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
-use MerchantQuoteAgentPlugin\Negotiation\Response\ExtractResponse;
+use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
 
 /**
  * Model call 1: the buyer's free text becomes a structured ask.
@@ -24,7 +24,7 @@ use MerchantQuoteAgentPlugin\Negotiation\Response\ExtractResponse;
 final readonly class AskInterpreter
 {
     public function __construct(
-        private ChatCompletionClient $client,
+        private ModelPlatform $platform,
         private PromptComposer $prompts,
         private DecisionRecorder $recorder,
     ) {}
@@ -46,14 +46,14 @@ final readonly class AskInterpreter
         }
 
         $prompt = $this->prompts->extract();
-        $answer = $this->client->complete(
+        $interpretation = $this->platform->object(
             $access,
             $prompt->text,
             self::userPrompt($snapshot, $conversation),
-            json: true,
+            CommentInterpretation::class,
         );
 
-        $ask = new InterpretedAsk(ExtractResponse::toInterpretation($answer), $prompt->hash);
+        $ask = new InterpretedAsk($interpretation, $prompt->hash);
         $this->recorder->recordAsk($ask);
 
         return $ask;

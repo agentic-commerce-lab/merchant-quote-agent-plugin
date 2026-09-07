@@ -20,8 +20,8 @@ final class RecordedOutcomePathsTest extends TestCase
     public function testACounteredPassRecordsTheCounterBand(): void
     {
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent": 15}',
-            '{"action":"offer","discount_percent":10,"message":"We can do 10%, valid until 2026-09-11."}',
+            '{"price":{"additionalDiscountPercent":15}}',
+            '{"action":"offer","message":"We can do 10%, valid until 2026-09-11.","terms":{"discountPercent":10}}',
             'Our best is 10%. Valid until 2026-09-11.',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -43,7 +43,7 @@ final class RecordedOutcomePathsTest extends TestCase
     public function testANonPriceAskRecordsOneEscalatedRecord(): void
     {
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent":5,"negotiation":{"payment":{"requested_net_days":30}}}',
+            '{"price":{"additionalDiscountPercent":5},"negotiation":{"payment":{"requestedNetDays":30}}}',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('5% and net 30?', '2026-08-28 09:00:00'),
@@ -71,8 +71,8 @@ final class RecordedOutcomePathsTest extends TestCase
         // there -- and by the call count: exactly extract + negotiate, since
         // a null offer never reaches apply() or reply().
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent":5}',
-            '{"action":"escalate","escalation_reason":"Cannot serve this buyer."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"escalate","escalationReason":"Cannot serve this buyer."}',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
@@ -104,8 +104,8 @@ final class RecordedOutcomePathsTest extends TestCase
     public function testASecondRoundPerLineAskOnAQuoteWithNoBaselineRecordsOneRecord(): void
     {
         $harness = PipelineHarness::with([
-            '{"line_changes":[{"line_item_id":"line-1","quantity":null,"target_unit_price":85,"remove":false}]}',
-            '{"action":"offer","line_prices":[{"line_item_id":"line-1","unit_price_net":95}],"message":"95 each."}',
+            '{"structural":{"lineChanges":[{"lineItemId":"line-1","quantity":null,"targetUnitPrice":85,"remove":false}]}}',
+            '{"action":"offer","message":"95 each.","terms":{"linePricesNet":[{"lineItemId":"line-1","unitPriceNet":95}]}}',
         ]);
         $snapshot = NegotiationFixture::withCustomFields(
             NegotiationFixture::snapshot(comments: [
@@ -136,8 +136,8 @@ final class RecordedOutcomePathsTest extends TestCase
         // before any other write -- uncaught here since claim() only catches
         // IllegalTransitionException.
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent":5}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
         ]);
         $gatewayFailure = new \RuntimeException('the shop is down');
         $harness->gateway->transitionThrows = $gatewayFailure;

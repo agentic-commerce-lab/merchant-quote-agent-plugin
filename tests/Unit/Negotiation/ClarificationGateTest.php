@@ -17,7 +17,7 @@ use PHPUnit\Framework\TestCase;
  */
 final class ClarificationGateTest extends TestCase
 {
-    private const AMBIGUOUS = '{"clarification_questions":["Which line did you mean?"]}';
+    private const AMBIGUOUS = '{"clarificationQuestions":["Which line did you mean?"]}';
 
     public function testAnAmbiguousAskIsPutToTheBuyerAndNeverReachesTheNegotiateCall(): void
     {
@@ -66,8 +66,8 @@ final class ClarificationGateTest extends TestCase
         // must win. If this ever asks the buyer instead, the guards were
         // reordered.
         $harness = PipelineHarness::with([
-            '{"clarification_questions":["Which line did you mean?"],'
-                . '"line_changes":[{"line_item_id":"line-1","quantity":20}]}',
+            '{"clarificationQuestions":["Which line did you mean?"],'
+                . '"structural":{"lineChanges":[{"lineItemId":"line-1","quantity":20}]}}',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('make it 20 of something', '2026-08-28 09:00:00'),

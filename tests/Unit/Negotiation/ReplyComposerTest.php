@@ -21,7 +21,7 @@ final class ReplyComposerTest extends TestCase
         return new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
     }
 
-    private static function composer(\MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient $client): ReplyComposer
+    private static function composer(\MerchantQuoteAgentPlugin\Negotiation\ModelPlatform $client): ReplyComposer
     {
         return new ReplyComposer(
             $client,

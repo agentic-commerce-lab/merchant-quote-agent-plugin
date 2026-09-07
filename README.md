@@ -364,7 +364,7 @@ term at all — so answering the price half alone would drop the rest in silence
 and granting the rest would promise the buyer something that never lands.
 
 **An ambiguous ask is put back to the buyer rather than guessed at.** When the
-extract step returns `clarification_questions` — asks that are clear in intent
+extract step returns `clarificationQuestions` — asks that are clear in intent
 but ambiguous in reference, like "10% off" on a five-line quote — the agent
 posts those questions verbatim, writes no offer, and does not spend the
 negotiate call. If the ask is still ambiguous after the buyer answers, it goes

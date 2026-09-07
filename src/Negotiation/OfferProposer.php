@@ -28,7 +28,7 @@ use MerchantQuoteAgentPlugin\Policy\OfferLevelMirror;
 final readonly class OfferProposer
 {
     public function __construct(
-        private ChatCompletionClient $client,
+        private ModelPlatform $platform,
         private PromptComposer $prompts,
         private OfferAuthorizer $authorizer,
         private DecisionRecorder $recorder,
@@ -76,15 +76,23 @@ final readonly class OfferProposer
         }
 
         $prompt = $this->prompts->negotiate($settings);
-        $raw = $this->client->complete(
+        $response = $this->platform->object(
             $access,
             $prompt->text,
             self::userPrompt($settings, $snapshot, $decision, $conversation),
-            json: true,
+            NegotiateResponse::class,
         );
-        $response = NegotiateResponse::read($raw);
 
-        if ($response->escalate) {
+        // ponytail: the audit column holds what the model proposed, and under a
+        // strict JSON schema the mapped object IS that answer — so re-encoding
+        // it is lossless and keeps every trace of the provider's envelope out
+        // of this class. Plain scalars and arrays only, so encoding cannot
+        // fail. If the byte-exact provider payload is ever wanted instead, it
+        // is on the result's RawHttpResult; ModelPlatform would have to return
+        // it alongside the object.
+        $raw = (string) json_encode($response);
+
+        if ($response->escalates()) {
             return $this->recorded($raw, ProposedAnswer::escalate(
                 QuoteEscalationReason::NeedsHumanReview,
                 $response->escalationReason ?? 'The agent declined to answer this ask.',

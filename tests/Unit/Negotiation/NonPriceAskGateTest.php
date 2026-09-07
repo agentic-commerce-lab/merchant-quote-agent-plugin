@@ -21,14 +21,14 @@ final class NonPriceAskGateTest extends TestCase
     {
         // #31: the gate read the sub-asks with plain truthiness, so a literal
         // `0` was indistinguishable from "not asked". "Pay on delivery" is
-        // exactly `requested_net_days: 0` — a real ask that used to be dropped
+        // exactly `requestedNetDays: 0` — a real ask that used to be dropped
         // in silence while the price half was answered, which is the failure
         // this gate exists to stop. `false` must still mean no, which is why
         // the fix filters on `!== null && !== false` rather than on null.
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent":5,"negotiation":{"delivery":{"free_shipping":false,'
-                . '"expedited":false,"requested_lead_time_days":null},"payment":{"requested_term":null,'
-                . '"requested_net_days":0,"requested_deposit_percent":null},"bundle":{"requested":false}}}',
+            '{"price":{"additionalDiscountPercent":5},"negotiation":{"delivery":{"freeShipping":false,'
+                . '"expedited":false,"requestedLeadTimeDays":null},"payment":{"requestedTerm":null,'
+                . '"requestedNetDays":0,"requestedDepositPercent":null},"bundle":{"requested":false}}}',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('5% off, and can we pay on delivery?', '2026-08-28 09:00:00'),
@@ -52,10 +52,10 @@ final class NonPriceAskGateTest extends TestCase
         // full shape with `false` in it. That is the model saying no, and an
         // in-band price ask must still be answered rather than escalated.
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent":5,"negotiation":{"delivery":{"free_shipping":false,'
-                . '"expedited":false,"requested_lead_time_days":null},"payment":{"requested_term":null,'
-                . '"requested_net_days":null,"requested_deposit_percent":null},"bundle":{"requested":false}}}',
-            '{"action":"offer","discount_percent":5,"message":"5% it is."}',
+            '{"price":{"additionalDiscountPercent":5},"negotiation":{"delivery":{"freeShipping":false,'
+                . '"expedited":false,"requestedLeadTimeDays":null},"payment":{"requestedTerm":null,'
+                . '"requestedNetDays":null,"requestedDepositPercent":null},"bundle":{"requested":false}}}',
+            '{"action":"offer","message":"5% it is.","terms":{"discountPercent":5}}',
             'Five percent off.',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [

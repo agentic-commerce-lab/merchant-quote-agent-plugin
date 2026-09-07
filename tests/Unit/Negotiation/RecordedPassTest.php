@@ -23,8 +23,8 @@ final class RecordedPassTest extends TestCase
     public function testAnOfferedPassWritesOneRecordCarryingWhatTheBuyerWasTold(): void
     {
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent":5}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'We can offer 5% off.',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -52,8 +52,8 @@ final class RecordedPassTest extends TestCase
     public function testAnOfferedPassRecordsEveryStageItPassedThrough(): void
     {
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent":5}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'We can bring this quote down by 5% to 950.00 EUR, valid until 2026-09-11.',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -85,12 +85,12 @@ final class RecordedPassTest extends TestCase
         // recordAsk() now runs before the negotiate call, so the extract hash
         // is on the draft by the time the second call fails. The empty string
         // reply is the mechanism ScriptedClient actually offers for a
-        // non-transient failure: ChatCompletionClient::content() throws
+        // non-transient failure: ModelPlatform::content() throws
         // ModelUnavailable directly on empty message content, with no retry
         // and no GuzzleException involved (unlike an omitted queue entry,
         // which throws OutOfBoundsException instead).
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent":5}',
+            '{"price":{"additionalDiscountPercent":5}}',
             '',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -121,7 +121,7 @@ final class RecordedPassTest extends TestCase
         // never calls negotiate, so a swapped hash assignment would put the
         // extract hash on negotiatePromptHash instead of leaving it null.
         $harness = PipelineHarness::with([
-            '{"line_changes":[{"line_item_id":"line-1","quantity":20,"target_unit_price":null,"remove":false}]}',
+            '{"structural":{"lineChanges":[{"lineItemId":"line-1","quantity":20,"targetUnitPrice":null,"remove":false}]}}',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('make it 20 units', '2026-08-28 09:00:00'),
@@ -145,7 +145,7 @@ final class RecordedPassTest extends TestCase
     {
         // Same transposition risk on the other gate that escalates before
         // negotiate is ever called: the price band, not the ask's shape.
-        $harness = PipelineHarness::with(['{"additional_discount_percent": 40}']);
+        $harness = PipelineHarness::with(['{"price":{"additionalDiscountPercent":40}}']);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('40% off or no deal', '2026-08-28 09:00:00'),
         ]);
@@ -220,8 +220,8 @@ final class RecordedPassTest extends TestCase
         // retry and re-answer the buyer. A missing record beats a duplicated
         // buyer message.
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent":5}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'We can offer 5% off.',
         ]);
         $harness->writer->throws = new \RuntimeException('the database is on fire');
@@ -250,8 +250,8 @@ final class RecordedPassTest extends TestCase
         // successful return with a failure, and a broken logger must not be
         // able to do that.
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent":5}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'We can bring this quote down by 5% to 950.00 EUR, valid until 2026-09-11.',
         ]);
         $harness->logger->throws = new \RuntimeException('the logger is broken');
@@ -279,8 +279,8 @@ final class RecordedPassTest extends TestCase
         // try/catch in record(), the caller -- and Messenger's retry --
         // would see the logger's failure instead of the real one.
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent":5}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'We can bring this quote down by 5% to 950.00 EUR, valid until 2026-09-11.',
         ]);
         $harness->logger->throws = new \RuntimeException('the logger is broken');

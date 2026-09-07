@@ -31,7 +31,7 @@ final class BaselineCompoundingTest extends IntegrationTestCase
             self::writeBuyerComment($quoteId, sprintf('Round %d: I need a better per-unit price.', $round));
 
             self::pipelineWith([
-                '{"additional_discount_percent": 10}',
+                '{"price":{"additionalDiscountPercent":10}}',
                 self::modelOffersTenPercentOffEveryLine($gateway->fetchSnapshot($quoteId)),
                 'Here is our best price.',
             ])->service(
@@ -106,15 +106,15 @@ final class BaselineCompoundingTest extends IntegrationTestCase
 
         foreach ($snapshot->content->lines as $line) {
             $rows[] = [
-                'line_item_id' => $line->identity->lineItemId,
-                'unit_price_net' => round($line->unitPriceNet * 0.9, 2),
+                'lineItemId' => $line->identity->lineItemId,
+                'unitPriceNet' => round($line->unitPriceNet * 0.9, 2),
             ];
         }
 
         return (string) json_encode([
             'action' => 'offer',
-            'line_prices' => $rows,
             'message' => 'A further 10% off each line.',
+            'terms' => ['linePricesNet' => $rows],
         ]);
     }
 }

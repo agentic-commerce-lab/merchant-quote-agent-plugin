@@ -8,50 +8,36 @@ use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 
 /**
- * The negotiate prompt's JSON to a ProposedOffer — the AGENT's offer, which
- * OfferAuthorizer then checks against the merchant's authority. Not to be
- * confused with NegotiationProposal, which is the BUYER's interpreted ask.
+ * The negotiate prompt's answer — the AGENT's offer, which OfferAuthorizer
+ * then checks against the merchant's authority. Not to be confused with
+ * NegotiationProposal, which is the BUYER's interpreted ask.
  *
- * `action: escalate` is a first-class answer, not a failure: the model is
- * allowed to say it cannot serve this buyer, and its reason travels to the log.
- * The concession terms themselves are parsed by OfferTerms, kept separate so
- * this class's constructor stays within the parameter-count gate.
+ * There is no parsing left in here: this class IS the JSON schema the model
+ * answers under, and Symfony AI maps the answer onto it. `action` carries no
+ * default on purpose — a response without one fails to map, which is what the
+ * hand-written "carried no usable action" gate used to do.
  */
 final readonly class NegotiateResponse
 {
-    private function __construct(
-        public bool $escalate,
-        public ?string $escalationReason,
-        public string $message,
-        private OfferTerms $terms,
+    public function __construct(
+        public NegotiationAction $action,
+        public string $message = '',
+        public ?string $escalationReason = null,
+        public OfferTerms $terms = new OfferTerms(),
     ) {}
 
-    /** @throws ModelUnavailable */
-    public static function read(string $json): self
+    public function escalates(): bool
     {
-        $raw = Json::object($json);
-        $action = $raw['action'] ?? null;
+        return $this->action === NegotiationAction::Escalate;
+    }
 
-        if ($action !== 'offer' && $action !== 'escalate') {
-            throw new ModelUnavailable('The negotiate response carried no usable action.');
-        }
-
-        $terms = OfferTerms::read($raw);
-
-        if ($action === 'offer' && $terms->contradictory()) {
+    /** @throws ModelUnavailable */
+    public function toOffer(float $orderTotalNet): ProposedOffer
+    {
+        if ($this->terms->contradictory()) {
             throw new ModelUnavailable('The negotiate response mixed a quote-wide discount with line prices.');
         }
 
-        return new self(
-            escalate: $action === 'escalate',
-            escalationReason: Scalar::string($raw, 'escalation_reason'),
-            message: Scalar::string($raw, 'message') ?? '',
-            terms: $terms,
-        );
-    }
-
-    public function toOffer(float $orderTotalNet): ProposedOffer
-    {
         return $this->terms->toOffer($orderTotalNet);
     }
 }

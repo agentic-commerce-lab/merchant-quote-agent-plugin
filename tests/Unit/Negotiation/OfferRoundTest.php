@@ -44,8 +44,8 @@ final class OfferRoundTest extends TestCase
         $recorder = new DecisionRecorder(new FakeDecisionWriter());
         $logger = new RecordingLogger();
         $offerReply = $perLineOffer
-            ? '{"action":"offer","line_prices":[{"line_item_id":"line-1","unit_price_net":95}],"message":"95 each."}'
-            : '{"action":"offer","discount_percent":5,"message":"5% off."}';
+            ? '{"action":"offer","message":"95 each.","terms":{"linePricesNet":[{"lineItemId":"line-1","unitPriceNet":95}]}}'
+            : '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}';
         [$client] = ScriptedClient::spy([$offerReply, 'a rewording that keeps none of the facts']);
         $prompts = new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
 
@@ -102,8 +102,8 @@ final class OfferRoundTest extends TestCase
         // whose line prices had just been cut. The figure the buyer is told is
         // the one the database reports: 1000.00 before, 950.00 after.
         $harness = PipelineHarness::with([
-            '{"line_changes":[{"line_item_id":"line-1","quantity":null,"target_unit_price":95,"remove":false}]}',
-            '{"action":"offer","line_prices":[{"line_item_id":"line-1","unit_price_net":95}],"message":"95 each."}',
+            '{"structural":{"lineChanges":[{"lineItemId":"line-1","quantity":null,"targetUnitPrice":95,"remove":false}]}}',
+            '{"action":"offer","message":"95 each.","terms":{"linePricesNet":[{"lineItemId":"line-1","unitPriceNet":95}]}}',
             'a rewording that keeps none of the facts',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -170,8 +170,8 @@ final class OfferRoundTest extends TestCase
         // The hashes are how #22 attributes an outcome to the prompt versions
         // that produced it, and #19 reads exactly this event.
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent": 5}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'We can bring this quote down by 5% to 950.00 EUR. The offer is valid until '
                 . NegotiationFixture::EXPIRES
                 . '.',

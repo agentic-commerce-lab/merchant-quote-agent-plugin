@@ -169,8 +169,8 @@ final class DecisionRecordTest extends IntegrationTestCase
         self::writeBuyerComment($quoteId, 'Could you do 5% off?');
 
         self::pipelineWith([
-            '{"additional_discount_percent": 5}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'We can offer 5% off.',
         ])->service(
             $gateway->fetchSnapshot($quoteId),
