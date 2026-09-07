@@ -29,34 +29,31 @@ final class SignedView
 
     private function __construct() {}
 
-    /** @return array<string, mixed> */
+    /**
+     * All nine keys, ALWAYS — `null` where the act has no value, never
+     * omitted. This is the one place the module's "absent, never null"
+     * determinism rule does not apply: the counterparty's reference
+     * `protocol_act_object()` returns the nine unconditionally, so an act with
+     * no expiry is signed as `"expires_at":null`. Omitting it would diverge
+     * the hash in both directions — our acts would not verify for them, and we
+     * would reconstruct the wrong signed object for theirs. Their
+     * implementation is the interop authority; the absent-not-null rule still
+     * governs everything inside `terms` and our own records.
+     *
+     * @return array<string, mixed>
+     */
     public static function of(Act $act): array
     {
-        $view = [
+        return [
             'protocol_version' => self::PROTOCOL_VERSION,
             'session_id' => $act->sessionId(),
+            'round_number' => $act->roundNumber(),
+            'sequence_number' => $act->sequenceNumber(),
+            'message_type' => $act->messageType(),
+            'sender_did' => $act->senderDid(),
+            'timestamp' => $act->timestamp(),
+            'expires_at' => $act->expiresAt(),
+            'terms' => $act->terms(),
         ];
-
-        $round = $act->roundNumber();
-        if ($round !== null) {
-            $view['round_number'] = $round;
-        }
-
-        $view['sequence_number'] = $act->sequenceNumber();
-        $view['message_type'] = $act->messageType();
-        $view['sender_did'] = $act->senderDid();
-        $view['timestamp'] = $act->timestamp();
-
-        $expiresAt = $act->expiresAt();
-        if ($expiresAt !== null) {
-            $view['expires_at'] = $expiresAt;
-        }
-
-        $terms = $act->terms();
-        if ($terms !== null) {
-            $view['terms'] = $terms;
-        }
-
-        return $view;
     }
 }

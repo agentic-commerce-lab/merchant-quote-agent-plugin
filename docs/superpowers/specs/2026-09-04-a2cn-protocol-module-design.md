@@ -191,6 +191,17 @@ preferences:
    a negative line item, so `-1.005` and `1.005` must round symmetrically.
 2. **Absent, never null.** An optional field we did not negotiate must be missing
    from the signed bytes: `{a:1}` and `{a:1,b:null}` canonicalize differently.
+   **One exception, and it is not ours to choose: the protocol act object.** The
+   counterparty's reference `protocol_act_object()` returns all nine signed
+   fields unconditionally, so an act with no expiry is signed as
+   `"expires_at":null`, and `SignedView` does the same (rule 5). Their
+   implementation is what every A2CN party verifies against, which makes it the
+   interop authority — a rule of ours that diverges the agreed bytes is a rule
+   that produces evidence nobody can check, in both directions: our own acts
+   would not verify for them, and we would reconstruct the wrong signed object
+   for an act of theirs that carries no expiry. Inside `terms`, and in every
+   record this module publishes, absent-never-null still holds; nothing there is
+   hashed against a foreign implementation's field list.
 3. **`total` is authoritative; `unit_price` is derived** and need not multiply out
    (A2CN determinism rule 3). `unit_price = round(total / quantity)`, or `total`
    when quantity is 0.
@@ -203,7 +214,8 @@ preferences:
    `protocol_act_object()` supplies — not our own record version, which stays
    `0.1`), `session_id`, `round_number`, `sequence_number`,
    `message_type`, `sender_did`, `timestamp`, `expires_at`, `terms` — and nothing
-   else. Adding a field changes every hash. Envelope fields (`message_id`,
+   else. All nine are always present, `null` where the act has no value (see the
+   exception in rule 2). Adding a field changes every hash. Envelope fields (`message_id`,
    `in_reply_to`, `sender_agent_id`, `sender_verification_method`, the proof
    itself) are **not** signed.
 6. **The hash is `base64url(SHA-256(JCS(object)))`**, and the compact JWS payload

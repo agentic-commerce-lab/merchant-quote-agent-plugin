@@ -16,8 +16,11 @@ use Ucp\Sdk\Service\DeterministicJsonInterface;
  * resulting bytes in ProtocolHashTest: an SDK change that moves them fails
  * there rather than silently diverging a counterparty's hash.
  *
- * Absent-not-null is the caller's job, but it is free here: the canonicalizer
- * receives PHP arrays, and an unset key simply is not in the array.
+ * Whether an optional field is absent or explicitly null is the caller's
+ * choice, and both are free here: the canonicalizer receives PHP arrays, so an
+ * unset key simply is not in the array and a `null` one canonicalizes as
+ * `null`. Which of the two is correct depends on the object — `terms` and our
+ * own records omit, the protocol act object nulls (see SignedView).
  */
 final readonly class ProtocolHash
 {

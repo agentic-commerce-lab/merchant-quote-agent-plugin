@@ -34,7 +34,13 @@ final class SignedViewTest extends TestCase
         );
     }
 
-    public function testItOmitsOptionalFieldsRatherThanNullingThem(): void
+    /**
+     * The counterparty's `protocol_act_object()` returns the nine fields
+     * unconditionally, so an act without an expiry is signed as
+     * `"expires_at":null` — the one place this module nulls rather than omits.
+     * Omitting would diverge the hash from theirs in both directions.
+     */
+    public function testItNullsAbsentOptionalFieldsRatherThanOmittingThem(): void
     {
         $raw = self::act();
         unset($raw['round_number'], $raw['expires_at'], $raw['terms']);
@@ -43,11 +49,20 @@ final class SignedViewTest extends TestCase
 
         $view = SignedView::of($act);
 
-        // `{a:1}` and `{a:1,b:null}` canonicalize differently, so an absent
-        // field must be absent, not null.
-        self::assertArrayNotHasKey('round_number', $view);
-        self::assertArrayNotHasKey('expires_at', $view);
-        self::assertArrayNotHasKey('terms', $view);
+        self::assertSame(
+            [
+                'protocol_version' => '0.2',
+                'session_id' => 'session-1',
+                'round_number' => null,
+                'sequence_number' => 3,
+                'message_type' => 'counteroffer',
+                'sender_did' => 'did:web:shop.example',
+                'timestamp' => '2026-09-04T10:00:00Z',
+                'expires_at' => null,
+                'terms' => null,
+            ],
+            $view,
+        );
     }
 
     public function testItExcludesEnvelopeAndProofFields(): void
