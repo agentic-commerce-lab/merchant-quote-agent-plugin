@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use GuzzleHttp\Client as GuzzleClient;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
@@ -59,7 +58,7 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
-use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
+use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
@@ -69,12 +68,15 @@ use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
+use MerchantQuoteAgentPlugin\Servicing\EscalationFlowEventSubscriber;
+use MerchantQuoteAgentPlugin\Servicing\EscalationNotifierInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
+use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\Controller\UcpQuoteController;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
@@ -82,7 +84,11 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteContractController;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteLineItemValidator;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
+use Shopware\Core\Framework\Event\BusinessEventCollector;
+use Shopware\Core\Framework\Notification\NotificationService;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Symfony\Component\HttpClient\HttpClient;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Ucp\Sdk\Internal\Service\UrlSafetyValidator;
 use Ucp\Sdk\Service\RuntimeConfigurationResolverInterface;
 
@@ -354,8 +360,21 @@ return static function (ContainerConfigurator $configurator): void {
     // autoconfigure() picks up EventSubscriberInterface, so no explicit tag.
     $services->set(QuoteServicingTrigger::class)->args([service('messenger.default_bus')]);
 
+    // Telling the MERCHANT a quote escalated. Two channels on purpose: the
+    // business event reaches whoever is not looking at the Administration (the
+    // merchant wires it to mail, a webhook or a task in Flow Builder), the
+    // notification reaches whoever is. autoconfigure() gives the collector
+    // subscriber its kernel.event_subscriber tag.
+    $services->set(ShopwareEscalationNotifier::class)->args([
+        service('event_dispatcher'),
+        service(NotificationService::class),
+        service('logger'),
+    ]);
+    $services->alias(EscalationNotifierInterface::class, ShopwareEscalationNotifier::class);
+    $services->set(EscalationFlowEventSubscriber::class)->args([service(BusinessEventCollector::class)]);
+
     // Whether a quote may be serviced at all, and with which settings (#5).
-    $services->set(QuoteEscalator::class);
+    $services->set(QuoteEscalator::class)->args([service(EscalationNotifierInterface::class)]);
     $services->set(ServicingPreflight::class)->args([
         service(QuoteAgentSettingsSource::class),
         service(QuoteEscalator::class),
@@ -388,11 +407,15 @@ return static function (ContainerConfigurator $configurator): void {
         $prompt('quote-reply-agent.prompt.md'),
     ]);
 
-    // Guzzle's own client, registered explicitly: nothing in the shop provides
-    // GuzzleHttp\ClientInterface, and ChatCompletionClient types against it
-    // rather than PSR-18 because that is the contract Guzzle's exceptions ride.
-    $services->set(GuzzleClient::class);
-    $services->set(ChatCompletionClient::class)->args([service(GuzzleClient::class), service('logger')]);
+    // A plain HTTP client, registered explicitly rather than autowired off the
+    // shop's `http_client`: Shopware does not guarantee that service exists,
+    // and ModelPlatform wraps whatever it is handed in its own retry and
+    // timeout anyway (see that class for why one retry is the ceiling).
+    $services->set('merchant_quote_agent.model_http_client', HttpClientInterface::class)->factory([
+        HttpClient::class,
+        'create',
+    ]);
+    $services->set(ModelPlatform::class)->args([service('merchant_quote_agent.model_http_client')]);
 
     // The policy deciders take only defaulted collaborators, so autowiring
     // leaves them at their defaults — no argument list to keep in sync.

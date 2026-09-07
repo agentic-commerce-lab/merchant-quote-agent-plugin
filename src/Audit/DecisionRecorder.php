@@ -19,7 +19,7 @@ use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
  * Stateful, which is the price of not changing every stage's return type: the
  * stages take this as a constructor dependency and append what they know, so
  * NegotiationPipeline and OfferRound stay inside the five-parameter cap and
- * ChatCompletionClient can report tokens without changing what it returns.
+ * ModelPlatform can report tokens without changing what it returns.
  *
  * Safe because a pass is never concurrent with another: Messenger handles one
  * message at a time per worker and the servicing lock is held throughout. The

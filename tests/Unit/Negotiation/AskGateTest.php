@@ -20,8 +20,8 @@ final class AskGateTest extends TestCase
         // shipping half in silence — and granting it would promise a term that
         // never lands on the quote.
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent": 5, "negotiation": {"delivery": {"free_shipping": true,'
-                . ' "expedited": false, "requested_lead_time_days": null}}}',
+            '{"price":{"additionalDiscountPercent":5},"negotiation":{"delivery":{"freeShipping":true,'
+                . '"expedited":false,"requestedLeadTimeDays":null}}}',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('5% and free shipping please', '2026-08-28 09:00:00'),
@@ -44,9 +44,9 @@ final class AskGateTest extends TestCase
         // it even when the buyer asked for nothing non-price. Escalating on the
         // object's presence alone would send every quote to a human.
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent": 5, "negotiation": {"delivery": {"free_shipping": false,'
-                . ' "expedited": false, "requested_lead_time_days": null}, "bundle": {"requested": false}}}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":5},"negotiation":{"delivery":{"freeShipping":false,'
+                . '"expedited":false,"requestedLeadTimeDays":null},"bundle":{"requested":false}}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'ok',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -70,8 +70,8 @@ final class AskGateTest extends TestCase
         // The negotiate call is shown the agent's earlier replies instead —
         // which is what its prompt claims it is given.
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent": 2}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":2}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'ok',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [

@@ -710,6 +710,21 @@ def run(
             f"({percent:g}% off), {money(round(asking * quantity, 2), currency)} total"
         )
 
+        # A percentage is only meaningful against the price the catalog quoted.
+        # With --asking-price the caller names the unit price outright, and the
+        # shop may well price the line off a volume tier the catalog never
+        # showed -- deriving a percentage from the catalog price then prints
+        # nonsense like "-141.77% off", which the extract prompt rightly refers
+        # to a human. State the number instead and let the shop do the maths.
+        ask_comment = (
+            f"Requesting {quantity} units of {title}. We can commit to "
+            f"{money(asking, currency)} per unit on this volume. Please review."
+            if asking_price_opt is not None
+            else f"Requesting {quantity} units of {title}. Asking {percent:g}% off the "
+            f"list price of {money(unit, currency)} per unit, i.e. "
+            f"{money(asking, currency)} per unit on this volume. Please review."
+        )
+
         token = login(shop, oauth, agent, redirect)
 
         created = call(
@@ -723,11 +738,7 @@ def run(
                         "requested_unit_price": asking,
                     }
                 ],
-                "comment": (
-                    f"Requesting {quantity} units of {title}. Asking {percent:g}% off the "
-                    f"list price of {money(unit, currency)} per unit, i.e. "
-                    f"{money(asking, currency)} per unit on this volume. Please review."
-                ),
+                "comment": ask_comment,
             },
             token=token,
             agent=agent,

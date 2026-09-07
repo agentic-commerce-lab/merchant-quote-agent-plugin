@@ -7,15 +7,35 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\Response;
 use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
 use MerchantQuoteAgentPlugin\Negotiation\Response\NegotiateResponse;
 use MerchantQuoteAgentPlugin\Policy\Data\PaymentTerm;
+use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
+use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\ScriptedClient;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * What the negotiate prompt's answer has to survive on the way from JSON to a
+ * ProposedOffer. There is no reader class in between any more, so this covers
+ * the generated schema and the mapping onto the DTO; OfferTermsTest covers what
+ * the terms then mean.
+ */
 final class NegotiateResponseTest extends TestCase
 {
+    /** @throws ModelUnavailable */
+    private static function read(string $json): NegotiateResponse
+    {
+        return ScriptedClient::returning([$json])->object(
+            NegotiationFixture::modelAccess(),
+            'sys',
+            'usr',
+            NegotiateResponse::class,
+        );
+    }
+
     public function testItReadsAQuoteWideOffer(): void
     {
-        $response = NegotiateResponse::read('{"action":"offer","discount_percent":7.5,"message":"Here is 7.5% off."}');
+        $response = self::read('{"action":"offer","message":"Here is 7.5% off.","terms":{"discountPercent":7.5}}');
 
-        self::assertFalse($response->escalate);
+        self::assertFalse($response->escalates());
         self::assertSame('Here is 7.5% off.', $response->message);
 
         $offer = $response->toOffer(1000.0);
@@ -26,9 +46,9 @@ final class NegotiateResponseTest extends TestCase
 
     public function testItReadsAPerLineOffer(): void
     {
-        $json = '{"action":"offer","line_prices":[{"line_item_id":"line-1","unit_price_net":45.5}],"message":"ok"}';
+        $json = '{"action":"offer","message":"ok","terms":{"linePricesNet":[{"lineItemId":"line-1","unitPriceNet":45.5}]}}';
 
-        $offer = NegotiateResponse::read($json)->toOffer(1000.0);
+        $offer = self::read($json)->toOffer(1000.0);
 
         self::assertNotNull($offer->price->linePricesNet);
         self::assertCount(1, $offer->price->linePricesNet);
@@ -39,10 +59,11 @@ final class NegotiateResponseTest extends TestCase
     public function testItReadsNonPriceTerms(): void
     {
         $json =
-            '{"action":"offer","free_shipping":true,"expedited":false,"committed_lead_time_days":3,'
-            . '"payment_term":"net_60","net_days":60,"deposit_percent":15,"message":"ok"}';
+            '{"action":"offer","message":"ok","terms":{'
+            . '"delivery":{"freeShipping":true,"expedited":false,"committedLeadTimeDays":3},'
+            . '"payment":{"paymentTerm":"net_60","netDays":60,"depositPercent":15}}}';
 
-        $offer = NegotiateResponse::read($json)->toOffer(1000.0);
+        $offer = self::read($json)->toOffer(1000.0);
 
         self::assertTrue($offer->delivery->freeShipping);
         self::assertSame(3, $offer->delivery->committedLeadTimeDays);
@@ -53,37 +74,30 @@ final class NegotiateResponseTest extends TestCase
 
     public function testTheModelMayDeclineAndSayWhy(): void
     {
-        $response = NegotiateResponse::read(
-            '{"action":"escalate","escalation_reason":"buyer wants terms I cannot offer","message":""}',
+        $response = self::read(
+            '{"action":"escalate","escalationReason":"buyer wants terms I cannot offer","message":""}',
         );
 
-        self::assertTrue($response->escalate);
+        self::assertTrue($response->escalates());
         self::assertSame('buyer wants terms I cannot offer', $response->escalationReason);
     }
 
-    public function testAnUnknownActionIsUnusable(): void
+    /** @return iterable<string, array{0: string}> */
+    public static function unusable(): iterable
     {
-        $this->expectException(ModelUnavailable::class);
-
-        NegotiateResponse::read('{"action":"maybe","message":"hmm"}');
+        yield 'an action outside the enum' => ['{"action":"maybe","message":"hmm"}'];
+        // `action` carries no default, so there is nothing to fall back to —
+        // and defaulting it would answer a buyer the model never answered.
+        yield 'no action at all' => ['{"message":"hmm"}'];
+        yield 'not json' => ['Sure! Here is my offer: 10% off.'];
+        yield 'a term outside the enum' => ['{"action":"offer","terms":{"payment":{"paymentTerm":"net_45"}}}'];
     }
 
-    public function testAnOfferCarryingBothADiscountAndLinePricesIsUnusable(): void
-    {
-        // OfferApplier writes the lines and drops the discount, so the offer
-        // the buyer is told about would not be the one the database holds.
-        $this->expectException(ModelUnavailable::class);
-
-        NegotiateResponse::read(
-            '{"action":"offer","discount_percent":5,'
-            . '"line_prices":[{"line_item_id":"line-1","unit_price_net":95}],"message":"both"}',
-        );
-    }
-
-    public function testUnparseableJsonIsUnusable(): void
+    #[DataProvider('unusable')]
+    public function testAnUnusableResponseEscalatesRatherThanGuessing(string $json): void
     {
         $this->expectException(ModelUnavailable::class);
 
-        NegotiateResponse::read('Sure! Here is my offer: 10% off.');
+        self::read($json);
     }
 }

@@ -4,20 +4,18 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
-use GuzzleHttp\Psr7\Response;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
-use MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient;
+use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use Psr\Log\NullLogger;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 
 /**
- * A ChatCompletionClient whose HTTP layer is scripted, so a test can assert
- * both what came back AND how many calls were paid for. The call count is the
- * point: an assertion on the outcome alone still passes when the pipeline made
- * a model call it should have gated away.
+ * A ModelPlatform whose HTTP layer is scripted, so a test can assert both what
+ * came back AND how many calls were paid for. The call count is the point: an
+ * assertion on the outcome alone still passes when the pipeline made a model
+ * call it should have gated away.
  */
 final class ScriptedClient
 {
@@ -29,41 +27,74 @@ final class ScriptedClient
 
     public int $calls = 0;
 
+    /** @var list<array{url: string, options: array<string, mixed>}> */
+    public array $requests = [];
+
     /** @param list<string> $replies each becomes one assistant message, in order */
-    public static function returning(array $replies): ChatCompletionClient
+    public static function returning(array $replies): ModelPlatform
     {
         return self::spy($replies)[0];
     }
 
     /**
+     * The same double handed raw responses instead of assistant messages, for
+     * the tests that script a 503 or a dead connection rather than an answer.
+     *
+     * @param list<MockResponse> $responses
+     *
+     * @return array{0: ModelPlatform, 1: self}
+     */
+    public static function responding(array $responses, ?DecisionRecorder $recorder = null): array
+    {
+        return self::build($responses, $recorder);
+    }
+
+    /** The decoded request body of the nth call. */
+    public function body(int $call = 0): array
+    {
+        return json_decode((string) $this->requests[$call]['options']['body'], true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
      * @param list<string> $replies
      *
-     * @return array{0: ChatCompletionClient, 1: self}
+     * @return array{0: ModelPlatform, 1: self}
      */
     public static function spy(array $replies, ?DecisionRecorder $recorder = null): array
     {
+        return self::build(array_map(NegotiationFixture::modelReply(...), $replies), $recorder);
+    }
+
+    /**
+     * @param list<MockResponse> $queue
+     *
+     * @return array{0: ModelPlatform, 1: self}
+     */
+    private static function build(array $queue, ?DecisionRecorder $recorder): array
+    {
         // Tests that don't care about the audit trail get a recorder wired to
-        // a throwaway writer, so every ChatCompletionClient construction site
-        // doesn't need to know about DecisionRecorder.
+        // a throwaway writer, so every ModelPlatform construction site doesn't
+        // need to know about DecisionRecorder.
         $recorder ??= new DecisionRecorder(new FakeDecisionWriter());
 
         $spy = new self();
-        $queue = array_map(static fn(string $r): Response => new Response(200, [], json_encode([
-            'choices' => [['message' => ['content' => $r]]],
-        ], JSON_THROW_ON_ERROR)), $replies);
 
-        $stack = HandlerStack::create(new MockHandler($queue));
-        $stack->push(static function (callable $handler) use ($spy) {
-            return static function ($request, array $options) use ($handler, $spy) {
-                $body = json_decode((string) $request->getBody(), true, flags: JSON_THROW_ON_ERROR);
-                ++$spy->calls;
-                $spy->systemPrompts[] = $body['messages'][0]['content'];
-                $spy->userPrompts[] = $body['messages'][1]['content'];
+        // MockHttpClient's callable form is what gives the spy the request: the
+        // queue alone would say what came back but not what was sent, and the
+        // prompt assertions are half of what these tests check.
+        $client = new MockHttpClient(static function (string $method, string $url, array $options) use (
+            $spy,
+            &$queue,
+        ): MockResponse {
+            $body = json_decode((string) ($options['body'] ?? ''), true, flags: JSON_THROW_ON_ERROR);
+            ++$spy->calls;
+            $spy->requests[] = ['url' => $url, 'options' => $options];
+            $spy->systemPrompts[] = $body['messages'][0]['content'];
+            $spy->userPrompts[] = $body['messages'][1]['content'];
 
-                return $handler($request, $options);
-            };
+            return array_shift($queue) ?? throw new \LogicException('The scripted client ran out of replies.');
         });
 
-        return [new ChatCompletionClient(new Client(['handler' => $stack]), new NullLogger(), $recorder), $spy];
+        return [new ModelPlatform($client, new NullLogger(), $recorder), $spy];
     }
 }

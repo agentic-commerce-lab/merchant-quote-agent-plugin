@@ -28,8 +28,8 @@ final class NegotiationPipelineTest extends IntegrationTestCase
         self::writeBuyerComment($quoteId, 'Could you do 5% off?');
 
         $pipeline = self::pipelineWith([
-            '{"additional_discount_percent": 5}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'We can offer 5% off.',
         ]);
 
@@ -54,7 +54,7 @@ final class NegotiationPipelineTest extends IntegrationTestCase
         self::writeBuyerComment($quoteId, 'I need 40% off.');
         $before = $gateway->fetchSnapshot($quoteId);
 
-        $pipeline = self::pipelineWith(['{"additional_discount_percent": 40}']);
+        $pipeline = self::pipelineWith(['{"price":{"additionalDiscountPercent":40}}']);
 
         $outcome = $pipeline->service(
             $gateway->fetchSnapshot($quoteId),
@@ -78,8 +78,8 @@ final class NegotiationPipelineTest extends IntegrationTestCase
         self::writeBuyerComment($quoteId, 'Could you do 5% off?');
 
         $replies = [
-            '{"additional_discount_percent": 5}',
-            '{"action":"offer","discount_percent":5,"message":"5% off."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'We can offer 5% off.',
         ];
 

@@ -15,8 +15,8 @@ final class NegotiationPipelineTest extends TestCase
     public function testAnInBandAskIsOffered(): void
     {
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent": 5}',
-            '{"action":"offer","discount_percent":5,"message":"5% off, valid until 2026-09-11."}',
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off, valid until 2026-09-11.","terms":{"discountPercent":5}}',
             'We can offer 5% off. Valid until 2026-09-11.',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -38,7 +38,7 @@ final class NegotiationPipelineTest extends TestCase
     {
         // The whole point of the gating: the band already knows 40% is out of
         // reach, so the negotiate and reply calls are never paid for.
-        $harness = PipelineHarness::with(['{"additional_discount_percent": 40}']);
+        $harness = PipelineHarness::with(['{"price":{"additionalDiscountPercent":40}}']);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('40% off or no deal', '2026-08-28 09:00:00'),
         ]);
@@ -75,8 +75,8 @@ final class NegotiationPipelineTest extends TestCase
     public function testAnAskInTheCounterBandIsCountered(): void
     {
         $harness = PipelineHarness::with([
-            '{"additional_discount_percent": 15}',
-            '{"action":"offer","discount_percent":10,"message":"We can do 10%, valid until 2026-09-11."}',
+            '{"price":{"additionalDiscountPercent":15}}',
+            '{"action":"offer","message":"We can do 10%, valid until 2026-09-11.","terms":{"discountPercent":10}}',
             'Our best is 10%. Valid until 2026-09-11.',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -149,7 +149,7 @@ final class NegotiationPipelineTest extends TestCase
         // vanished. Changing what is being sold is outside a price mandate,
         // and addProduct on a variant product still segfaults the worker (#3).
         $harness = PipelineHarness::with([
-            '{"line_changes":[{"line_item_id":"line-1","quantity":20,"target_unit_price":null,"remove":false}]}',
+            '{"structural":{"lineChanges":[{"lineItemId":"line-1","quantity":20,"targetUnitPrice":null,"remove":false}]}}',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('make it 20 units', '2026-08-28 09:00:00'),
@@ -171,8 +171,8 @@ final class NegotiationPipelineTest extends TestCase
         // The discriminator: a line change carrying only a target PRICE is a
         // price ask and squarely in the mandate.
         $harness = PipelineHarness::with([
-            '{"line_changes":[{"line_item_id":"line-1","quantity":null,"target_unit_price":95,"remove":false}]}',
-            '{"action":"offer","line_prices":[{"line_item_id":"line-1","unit_price_net":95}],"message":"95 each."}',
+            '{"structural":{"lineChanges":[{"lineItemId":"line-1","quantity":null,"targetUnitPrice":95,"remove":false}]}}',
+            '{"action":"offer","message":"95 each.","terms":{"linePricesNet":[{"lineItemId":"line-1","unitPriceNet":95}]}}',
             '95 each, valid until 2026-09-11.',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -216,8 +216,8 @@ final class NegotiationPipelineTest extends TestCase
     {
         $harness = PipelineHarness::with(
             [
-                '{"additional_discount_percent": 5}',
-                '{"action":"offer","discount_percent":5,"message":"ok"}',
+                '{"price":{"additionalDiscountPercent":5}}',
+                '{"action":"offer","message":"ok","terms":{"discountPercent":5}}',
             ],
             reReadTotalNet: 400.0,
         );

@@ -55,6 +55,16 @@ final class QuoteEscalator
     private const BUYER_MESSAGE = 'A member of our team will review this quote personally and get back to you.';
 
     /**
+     * The notifier is optional so every existing construction site — and the
+     * tests that predate it — keeps working: a shop with no notifier still
+     * escalates, it just tells nobody but the log, which is where this stood
+     * before.
+     */
+    public function __construct(
+        private readonly ?EscalationNotifierInterface $notifier = null,
+    ) {}
+
+    /**
      * The customFields fragment that releases a quote for a fresh escalation,
      * to be spread into a servicing pass's stamp.
      *
@@ -86,5 +96,18 @@ final class QuoteEscalator
         $gateway->addComment($quoteId, self::BUYER_MESSAGE);
 
         $gateway->updateQuote($quoteId, new QuoteUpdate(customFields: [self::MARKER_KEY => $reason->value]));
+
+        // After the buyer is told and the marker is stamped, never before: the
+        // marker's early return above is what makes this once per quote per
+        // reason, and a notifier that throws must not cost the buyer their
+        // comment. Guarded even though the contract forbids throwing — an
+        // implementation that forgets must not break escalation.
+        try {
+            $this->notifier?->notify(EscalationNotice::of($snapshot, $reason));
+        } catch (\Throwable) {
+            // @mago-expect lint:no-empty-catch-clause
+            // Deliberately empty: the notifier owns its own logging, and there
+            // is nothing useful left to say from here that it has not said.
+        }
     }
 }

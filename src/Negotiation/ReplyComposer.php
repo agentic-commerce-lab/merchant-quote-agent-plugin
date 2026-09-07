@@ -24,7 +24,7 @@ use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
 final readonly class ReplyComposer
 {
     public function __construct(
-        private ChatCompletionClient $client,
+        private ModelPlatform $platform,
         private PromptComposer $prompts,
         private LoggerInterface $logger,
         private DecisionRecorder $recorder,
@@ -82,7 +82,7 @@ final readonly class ReplyComposer
         $prompt = $this->prompts->reply($settings);
 
         try {
-            $reworded = trim($this->client->complete($access, $prompt->text, $template, json: false));
+            $reworded = trim($this->platform->text($access, $prompt->text, $template));
         } catch (ModelUnavailable $e) {
             // The offer is already applied. A plainer sentence beats no
             // sentence, so the template ships and the pass still succeeds.

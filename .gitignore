@@ -12,3 +12,8 @@ scripts/.ucp-agent-key.pem
 scripts/__pycache__/
 /.playwright-mcp/
 /src/Resources/public/
+# shopware-cli's "Building plugin Storefront" step writes a compiled bundle here
+# when `extension package` runs against the checkout rather than a copy. Build
+# output, never source: the plugin's own storefront files live in
+# src/Resources/views/storefront/.
+/src/Storefront/

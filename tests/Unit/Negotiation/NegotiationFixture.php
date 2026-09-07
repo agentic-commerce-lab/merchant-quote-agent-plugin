@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
-use GuzzleHttp\Psr7\Response;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteIdentity;
@@ -21,6 +20,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
+use Symfony\Component\HttpClient\Response\MockResponse;
 
 /** Shared fixtures for the negotiation stages. */
 final class NegotiationFixture
@@ -69,11 +69,14 @@ final class NegotiationFixture
     }
 
     /** A 200 OK with the OpenAI chat-completions envelope around $content. */
-    public static function modelReply(string $content): Response
+    public static function modelReply(string $content): MockResponse
     {
-        return new Response(200, [], json_encode([
-            'choices' => [['message' => ['content' => $content]]],
-        ], JSON_THROW_ON_ERROR));
+        return new MockResponse(
+            json_encode([
+                'choices' => [['message' => ['content' => $content], 'finish_reason' => 'stop']],
+            ], JSON_THROW_ON_ERROR),
+            ['response_headers' => ['content-type' => 'application/json']],
+        );
     }
 
     public static function buyerComment(string $text, string $at): QuoteComment

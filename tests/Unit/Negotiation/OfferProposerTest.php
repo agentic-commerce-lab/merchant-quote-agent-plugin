@@ -21,7 +21,7 @@ final class OfferProposerTest extends TestCase
         return new PromptComposer('EXTRACT', 'NEGOTIATE BASE', 'REPLY {{tone}}');
     }
 
-    private static function proposer(\MerchantQuoteAgentPlugin\Negotiation\ChatCompletionClient $client): OfferProposer
+    private static function proposer(\MerchantQuoteAgentPlugin\Negotiation\ModelPlatform $client): OfferProposer
     {
         return new OfferProposer(
             $client,
@@ -44,7 +44,9 @@ final class OfferProposerTest extends TestCase
 
     public function testAnInBandAskGetsAModelProposal(): void
     {
-        [$client, $spy] = ScriptedClient::spy(['{"action":"offer","discount_percent":5,"message":"5% for you."}']);
+        [$client, $spy] = ScriptedClient::spy([
+            '{"action":"offer","message":"5% for you.","terms":{"discountPercent":5}}',
+        ]);
         $snapshot = NegotiationFixture::snapshot();
 
         $answer = self::proposer($client)
@@ -70,7 +72,7 @@ final class OfferProposerTest extends TestCase
      */
     public function testAQuoteWideAnswerToAPerLineAskComesBackAsALinePrice(): void
     {
-        [$client] = ScriptedClient::spy(['{"action":"offer","discount_percent":5,"message":"5% for you."}']);
+        [$client] = ScriptedClient::spy(['{"action":"offer","message":"5% for you.","terms":{"discountPercent":5}}']);
         $snapshot = NegotiationFixture::snapshot(requestedUnitPrice: 95.0);
 
         $answer = self::proposer($client)
@@ -100,7 +102,7 @@ final class OfferProposerTest extends TestCase
      */
     public function testAQuoteWideAnswerIsConvertedOnALaterRoundToo(): void
     {
-        [$client] = ScriptedClient::spy(['{"action":"offer","discount_percent":5,"message":"5% for you."}']);
+        [$client] = ScriptedClient::spy(['{"action":"offer","message":"5% for you.","terms":{"discountPercent":5}}']);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::agentComment('Our first offer.', '2026-08-28 09:00:00'),
             NegotiationFixture::buyerComment('Still too high.', '2026-08-28 10:00:00'),
@@ -125,7 +127,7 @@ final class OfferProposerTest extends TestCase
 
     public function testTheModelIsToldItsAuthorityAndTheMerchantStrategy(): void
     {
-        [$client, $spy] = ScriptedClient::spy(['{"action":"offer","discount_percent":5,"message":"ok"}']);
+        [$client, $spy] = ScriptedClient::spy(['{"action":"offer","message":"ok","terms":{"discountPercent":5}}']);
         $snapshot = NegotiationFixture::snapshot();
 
         self::proposer($client)
@@ -144,7 +146,7 @@ final class OfferProposerTest extends TestCase
     {
         // The model asked for 40% against a 10% cap. The rules, not the model,
         // decide what is permitted — this is the guardrail working.
-        [$client] = ScriptedClient::spy(['{"action":"offer","discount_percent":40,"message":"40% off!"}']);
+        [$client] = ScriptedClient::spy(['{"action":"offer","message":"40% off!","terms":{"discountPercent":40}}']);
         $snapshot = NegotiationFixture::snapshot();
 
         $answer = self::proposer($client)
@@ -162,7 +164,7 @@ final class OfferProposerTest extends TestCase
     public function testTheModelMayDeclineAndItsReasonIsKept(): void
     {
         [$client] = ScriptedClient::spy([
-            '{"action":"escalate","escalation_reason":"buyer wants a term I cannot offer","message":""}',
+            '{"action":"escalate","escalationReason":"buyer wants a term I cannot offer","message":""}',
         ]);
         $snapshot = NegotiationFixture::snapshot();
 
