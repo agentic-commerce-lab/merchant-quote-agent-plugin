@@ -37,13 +37,33 @@ final readonly class A2cnIdentity
         // so the root dot of a fully qualified name is stripped here, once.
         // getHttpHost() lower-cases and drops a default port but leaves that
         // dot, so a request to `shop.example.` would otherwise publish a
-        // did:web the shop's own acts never name.
+        // did:web the shop's own acts never name. The dot has to come off the
+        // host portion before a port is appended, or a host that carries one
+        // (`shop.example.:8095`) keeps the dot mid-authority instead of
+        // losing it (see stripRootDot()).
         //
         // did:web uses ':' as its own segment separator, so a port has to be
         // percent-encoded or the authority would be read as a path.
-        $authority = str_replace(':', '%3A', rtrim($host, '.'));
+        $authority = str_replace(':', '%3A', self::stripRootDot($host));
         $did = 'did:web:' . $authority;
 
         return new self($did, $did . '#' . $kid, $organizationName);
+    }
+
+    /**
+     * Strips a trailing root dot from the host portion only, leaving any
+     * port untouched. An IPv6 literal brackets its own colons, so the port
+     * separator is the first ':' after a closing ']' — not the first ':' in
+     * the string — exactly how Symfony's Request::getPort() finds it.
+     */
+    private static function stripRootDot(string $host): string
+    {
+        $portAt = str_starts_with($host, '[') ? strpos($host, ':', (int) strrpos($host, ']')) : strrpos($host, ':');
+
+        if ($portAt === false) {
+            return rtrim($host, '.');
+        }
+
+        return rtrim(substr($host, 0, $portAt), '.') . substr($host, $portAt);
     }
 }
