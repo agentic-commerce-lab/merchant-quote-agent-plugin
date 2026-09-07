@@ -451,3 +451,64 @@ says.
 Prices, discounts and expiry dates are written as absolute values, so a worker
 that dies mid-pass and retries produces the same quote rather than stacking a
 second discount on the first — and the buyer is never messaged twice.
+
+## A2CN evidence
+
+Full design: `docs/superpowers/specs/2026-09-04-a2cn-protocol-module-design.md`.
+
+Nothing here is gated by a toggle: the presence of `a2cn_session` on a quote —
+written by whichever buyer agent opened the negotiation — is the gate itself.
+On every quote entering `replied`, `SellerActEmitter` checks whether that key
+is present and, if so, whether the quote's terms differ from our own last
+signed act (`a2cn_act_<n>_s`). If both hold, it counter-signs a `counteroffer`
+act at the next sequence number; a shop nobody negotiates with over A2CN emits
+nothing and shows nothing. A repeat pass over unchanged terms writes nothing —
+emission is idempotent by construction.
+
+This installation publishes, on the sales channel's own domain:
+
+| Path | Body |
+| --- | --- |
+| `/.well-known/a2cn-agent` | Discovery document: agent DID, verification method, mandate and records URLs, conformance level. |
+| `/.well-known/did.json` | did:web document — one `JsonWebKey2020` verification method carrying the public half of this installation's signing key. |
+| `/.well-known/a2cn-seller-mandate` | The negotiation bands (`maxDiscountPercent`, `counterOfferMaxPercent`, the value ceiling) published declaratively and signed. |
+
+and, per negotiation session:
+
+| Path | Body |
+| --- | --- |
+| `/a2cn/sessions/{sessionId}/acts` | Our mirror of the whole act chain. |
+| `/a2cn/records/{sessionId}` | The transaction record once an acceptance act exists, else the audit log once the session reached a terminal outcome, else `409`. |
+
+`{sessionId}` is a UUIDv5 derived from the Shopware quote id
+(`SessionId::forQuote`) — unguessable, and the capability the records
+endpoints are authorized against; the buyer already holds it from the acts it
+exchanged.
+
+**Verifying an act needs nothing this plugin did not already publish.** Fetch
+`/.well-known/did.json`, take `publicKeyJwk` off its one verification method,
+convert it to a PEM (`Ucp\Sdk\Model\Security\PublicSigningKey::fromJwk`), and
+verify the act's `protocol_act_signature` — a compact ES256 JWS
+(`Protocol\Crypto\CompactJws::verify`) — against that PEM. The verified
+payload must equal the act's own `protocol_act_hash`, itself
+`base64url(SHA-256(JCS(signed view)))` (`Protocol\Crypto\ProtocolHash` over
+`Protocol\Act\SignedView::of($act)`), so a signature that merely verifies over
+*some* object is not enough — it must verify over exactly the hash the act
+claims.
+
+The signing key (ES256/P-256) is generated once, at plugin install and again
+on `activate()` — so a shop that upgrades into this version gets one without a
+reinstall — and stored as a private JWK in `system_config` under
+`MerchantQuoteAgentPlugin.a2cn.signingKeyJwk`, deliberately outside the
+`…config.*` prefix the admin renders: a private key must never appear in a
+config form. One key serves every domain this installation answers on; only
+the published `did:web:<host>` differs per domain.
+
+Caveats carried over from the design (see the spec's own "Caveats" section for
+the full list and reasoning): Shopware is custodian of the authoritative act
+chain, so our mirror can show an omission but is not a second authority; only
+line quantity is cross-checked against a counterparty's act, not price; an
+approval receipt can be lost after its act is already emitted; this is
+single-tenant — one installation, one key, one identity per domain; and only
+`did:web:<host>` is produced, never a path form, so a storefront served under
+a path prefix still resolves its DID document at the domain root.
