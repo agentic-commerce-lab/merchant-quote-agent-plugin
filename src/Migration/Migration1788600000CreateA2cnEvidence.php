@@ -33,6 +33,18 @@ class Migration1788600000CreateA2cnEvidence extends MigrationStep
     #[Override]
     public function update(Connection $connection): void
     {
+        // Amended in place before release: the PRIMARY KEY below gained
+        // `role` after this method already shipped without it. Shopware
+        // tracks executed migrations by this class's creation timestamp, not
+        // its body, so a shop that installed a mid-branch build already ran
+        // the old CREATE TABLE and this one never re-runs there — the old
+        // two-column key survives, ActTableStore::append() fails silently
+        // (logged and swallowed: the mirror goes dead but loud), and
+        // /a2cn/records/{id} 500s on `ORDER BY sequence, role`. Reset such a
+        // shop with `bin/console plugin:uninstall MerchantQuoteAgentPlugin`
+        // — without `--keep-user-data`, which would preserve the old tables
+        // — before reinstalling.
+        //
         // PRIMARY KEY (session_id, sequence, role) is what makes append()
         // idempotent: re-mirroring an act we already hold must be free,
         // because the emitter mirrors the whole known chain on every
