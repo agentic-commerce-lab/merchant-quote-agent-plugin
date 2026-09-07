@@ -110,6 +110,24 @@ the settings read, before the state check and before any model call. Nothing
 in that message names the plugin or the step that was skipped, and under the
 admin worker (below) it leaves no trace at all.
 
+Installing the zip from the administration (*Extensions → My extensions →
+Upload extension*) needs no shell for that step: `MerchantQuoteAgentPlugin`
+overrides `executeComposerCommands()`, so Shopware's own
+`PluginLifecycleService` runs the `composer require` above — with
+`--update-with-dependencies` — on install, update and uninstall. Composer then
+runs inside a web request, so `composer.json`, `composer.lock` and `vendor/`
+must be writable by the web user, and PHP's `memory_limit` and
+`max_execution_time` have to survive a dependency resolution. Core skips the
+whole mechanism when `shopware.deployment.cluster_setup` is on, where the build
+owns the lock file; those shops resolve at build time as before.
+
+It also skips the `rm` above, and not by luck: core passes `--no-scripts`, and
+Flex applies recipes from `ScriptEvents::POST_INSTALL_CMD` / `POST_UPDATE_CMD`,
+which that flag suppresses. The recipe is not recorded as applied in
+`symfony.lock` either, so the *next* CLI `composer install` or `update` in that
+shop can still write the file — keep the `rm` in the runbook, just not in the
+install path.
+
 Prerequisites are the plugin's, not the zip's: SwagCommercial with the
 QuoteManagement licence active, and SwagAgenticCommerce.
 
