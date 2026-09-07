@@ -4,14 +4,28 @@ import {
     answeredTheBuyer,
     askSummary,
     escalationLabel,
+    foldToQuotes,
     formatCurrency,
     formatDate,
+    formatDateShort,
     formatPercent,
     outcomeLabel,
     outcomeVariant,
 } from '../../decision';
 
 const { Criteria } = Shopware.Data;
+
+/**
+ * ponytail: the page reads every pass in the period in one request and folds it
+ * client-side, so the figures and the rows are one computation and cannot
+ * disagree. The ceiling is PASS_LIMIT; past it the page says so rather than
+ * quietly describing a subset. The upgrade path, if a shop ever services more
+ * than this in 90 days, is a server-side latest-pass-per-quote read — DAL
+ * `grouping` is not it: it returns the FIRST row per group regardless of
+ * sorting and drops the total count.
+ */
+const PASS_LIMIT = 500;
+const PAGE_SIZE = 25;
 
 Shopware.Component.register('merchant-quote-agent-list', {
     template,
@@ -20,14 +34,14 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
     data() {
         return {
-            decisions: null,
-            figures: null,
-            roundsByQuote: {},
+            passes: [],
+            passTotal: 0,
+            intake: null,
             isLoading: false,
-            sortBy: 'createdAt',
-            sortDirection: 'DESC',
             rangeDays: 30,
-            outcomeFilter: 'all',
+            dispositionFilter: 'all',
+            page: 1,
+            pendingDelete: null,
         };
     },
 
@@ -44,29 +58,121 @@ Shopware.Component.register('merchant-quote-agent-list', {
             return Criteria.range('createdAt', { gte: from.toISOString() });
         },
 
-        listCriteria() {
-            const criteria = new Criteria(1, 25);
-            criteria.addFilter(this.rangeFilter);
-            criteria.addSorting(Criteria.sort(this.sortBy, this.sortDirection));
-
-            // The figures deliberately ignore this: they describe the period,
-            // not the current view of it.
-            const outcomes = this.outcomeFilterOptions.find((option) => option.value === this.outcomeFilter)?.outcomes;
-
-            if (outcomes) {
-                criteria.addFilter(Criteria.equalsAny('outcome', outcomes));
-            }
-
-            return criteria;
+        /** One row per quote, newest activity first. */
+        quotes() {
+            return foldToQuotes(this.passes);
         },
 
+        isTruncated() {
+            return this.passTotal > PASS_LIMIT;
+        },
+
+        /**
+         * The disposition partition. Every serviced quote is in exactly one
+         * class, so these always sum to `quotes.length`.
+         */
+        partition() {
+            return this.quotes.reduce((counts, quote) => {
+                counts[quote.disposition] = (counts[quote.disposition] ?? 0) + 1;
+
+                return counts;
+            }, {});
+        },
+
+        needsReview() {
+            return this.partition.needsReview ?? 0;
+        },
+
+        /** Everything that is not waiting on the merchant, as one share. */
+        needsReviewShare() {
+            return this.quotes.length > 0 ? (this.needsReview / this.quotes.length) * 100 : 0;
+        },
+
+        /**
+         * The classes other than the accented one, for the text breakdown.
+         * `other` only appears when it has a member — it means an outcome this
+         * page does not know, which is worth seeing rather than hiding.
+         */
+        restOfPartition() {
+            return ['answered', 'awaitingBuyer', 'noAction', 'other']
+                .map((key) => ({ key, count: this.partition[key] ?? 0 }))
+                .filter((entry) => entry.key !== 'other' || entry.count > 0);
+        },
+
+        /** Net value of the quotes the agent touched, counted once per quote. */
+        valueHandled() {
+            return this.quotes.reduce((sum, quote) => sum + quote.netBefore, 0);
+        },
+
+        /** The currency is only claimed when the period has exactly one. */
+        valueCurrency() {
+            const seen = new Set(this.passes.map((pass) => pass.currencyIso).filter(Boolean));
+
+            return seen.size === 1 ? [...seen][0] : null;
+        },
+
+        /** Averaged over the passes that granted something, not over all passes. */
+        granted() {
+            return this.averageOver(
+                this.passes.filter((pass) => answeredTheBuyer(pass.outcome)),
+                'discountPercentGranted',
+            );
+        },
+
+        cap() {
+            return this.averageOver(
+                this.passes.filter((pass) => answeredTheBuyer(pass.outcome)),
+                'maxDiscountPercent',
+            );
+        },
+
+        /** How much of the allowed discount was actually spent. */
+        capUsedShare() {
+            if (this.granted === null || !this.cap) {
+                return null;
+            }
+
+            return Math.min(100, (this.granted / this.cap) * 100);
+        },
+
+        filteredQuotes() {
+            if (this.dispositionFilter === 'all') {
+                return this.quotes;
+            }
+
+            return this.quotes.filter((quote) => quote.disposition === this.dispositionFilter);
+        },
+
+        pageCount() {
+            return Math.max(1, Math.ceil(this.filteredQuotes.length / PAGE_SIZE));
+        },
+
+        pagedQuotes() {
+            const start = (this.page - 1) * PAGE_SIZE;
+
+            return this.filteredQuotes.slice(start, start + PAGE_SIZE);
+        },
+
+        pageSize() {
+            return PAGE_SIZE;
+        },
+
+        /**
+         * Only the narrow, fixed-content columns get a width. The ask and the
+         * date share what is left: the ask is capped by `.mqa-ask` so it cannot
+         * push the date out, and the date is allowed to wrap so it cannot clip
+         * itself. Pinning all five to a pixel budget worked at exactly one
+         * window width — a data-grid column is sized by its widest
+         * unshrinkable content, so the fix has to make the content shrinkable
+         * rather than guess the numbers.
+         */
         columns() {
             return [
-                { property: 'quoteNumber', label: 'merchant-quote-agent.list.columnQuoteNumber', primary: true },
-                { property: 'outcome', label: 'merchant-quote-agent.list.columnOutcome' },
-                { property: 'interpretedAsks', label: 'merchant-quote-agent.list.columnBuyerAsk', sortable: false },
-                { property: 'discountPercentGranted', label: 'merchant-quote-agent.list.columnMerchantOffer' },
-                { property: 'createdAt', label: 'merchant-quote-agent.list.columnCreatedAt' },
+                { property: 'quoteNumber', label: 'merchant-quote-agent.list.columnQuoteNumber', primary: true, width: '110px' },
+                { property: 'disposition', label: 'merchant-quote-agent.list.columnOutcome', width: '180px' },
+                { property: 'asked', label: 'merchant-quote-agent.list.columnBuyerAsk' },
+                { property: 'granted', label: 'merchant-quote-agent.list.columnMerchantOffer', width: '120px' },
+                { property: 'lastActivity', label: 'merchant-quote-agent.list.columnCreatedAt' },
             ];
         },
 
@@ -78,29 +184,26 @@ Shopware.Component.register('merchant-quote-agent-list', {
             ];
         },
 
-        /**
-         * `outcomes` is the filter each option applies; the default carries
-         * none. Escalations lead because they are the only rows that need a
-         * human, and there was previously no way to isolate them.
-         */
-        outcomeFilterOptions() {
+        /** Filters on where a quote stands now, which is what the rows show. */
+        dispositionFilterOptions() {
             return [
                 { value: 'all', label: this.$tc('merchant-quote-agent.list.filterAll') },
-                { value: 'escalated', label: this.$tc('merchant-quote-agent.outcome.escalated'), outcomes: ['escalated'] },
-                { value: 'answered', label: this.$tc('merchant-quote-agent.list.filterAnswered'), outcomes: ANSWERED_OUTCOMES },
-                { value: 'clarified', label: this.$tc('merchant-quote-agent.outcome.clarified'), outcomes: ['clarified'] },
-                { value: 'nothing_to_do', label: this.$tc('merchant-quote-agent.outcome.nothing_to_do'), outcomes: ['nothing_to_do'] },
+                ...['needsReview', 'answered', 'awaitingBuyer', 'noAction'].map((key) => ({
+                    value: key,
+                    label: this.$tc(`merchant-quote-agent.disposition.${key}`),
+                })),
             ];
         },
     },
 
     watch: {
         rangeDays() {
+            this.page = 1;
             this.load();
         },
 
-        outcomeFilter() {
-            this.loadDecisions();
+        dispositionFilter() {
+            this.page = 1;
         },
     },
 
@@ -109,11 +212,12 @@ Shopware.Component.register('merchant-quote-agent-list', {
     },
 
     methods: {
-        outcomeVariant,
-        answeredTheBuyer,
         formatCurrency,
         formatDate,
+        formatDateShort,
         formatPercent,
+        outcomeVariant,
+        answeredTheBuyer,
 
         outcomeLabel(outcome) {
             return outcomeLabel(this, outcome);
@@ -127,94 +231,39 @@ Shopware.Component.register('merchant-quote-agent-list', {
             return askSummary(this, asks);
         },
 
-        async load() {
-            await Promise.all([this.loadDecisions(), this.loadFigures()]);
+        dispositionLabel(key) {
+            return this.$tc(`merchant-quote-agent.disposition.${key}`);
         },
 
-        async loadDecisions() {
+        async load() {
             this.isLoading = true;
 
             try {
-                this.decisions = await this.decisionRepository.search(this.listCriteria, Shopware.Context.api);
-            } catch (error) {
-                this.decisions = null;
-                // eslint-disable-next-line no-console
-                console.error('merchant-quote-agent: failed to load decisions', error);
+                await Promise.all([this.loadPasses(), this.loadIntake()]);
             } finally {
                 this.isLoading = false;
             }
         },
 
-        async loadFigures() {
+        async loadPasses() {
+            const criteria = new Criteria(1, PASS_LIMIT);
+            criteria.addFilter(this.rangeFilter);
+            // Newest first is what foldToQuotes needs to pick each quote's
+            // current state.
+            criteria.addSorting(Criteria.sort('createdAt', 'DESC'));
+            criteria.setTotalCountMode(1);
+
             try {
-                const decisions = await this.aggregateDecisions();
-                // How many passes each quote took, so a quote listed three
-                // times reads as one three-round negotiation rather than as
-                // three unrelated rows.
-                this.roundsByQuote = decisions.rounds;
+                const result = await this.decisionRepository.search(criteria, Shopware.Context.api);
 
-                this.figures = {
-                    ...decisions,
-                    // Nulled rather than zeroed when the quote entity is out of
-                    // reach: a `merchant_quote_agent.viewer` without `quote:read`
-                    // used to lose the whole card, and "0 received" would be a
-                    // worse answer than "not available".
-                    ...(await this.aggregateQuotes(decisions.answeredQuoteIds)),
-                };
+                this.passes = Array.from(result);
+                this.passTotal = result.total ?? this.passes.length;
             } catch (error) {
-                this.figures = null;
-                this.roundsByQuote = {};
+                this.passes = [];
+                this.passTotal = 0;
                 // eslint-disable-next-line no-console
-                console.error('merchant-quote-agent: failed to load figures', error);
+                console.error('merchant-quote-agent: failed to load servicing passes', error);
             }
-        },
-
-        /** Three aggregate requests against the decisions of this period. */
-        async aggregateDecisions() {
-            const all = new Criteria(1, 1);
-            all.addFilter(this.rangeFilter);
-            all.addAggregation(
-                Criteria.terms('perQuote', 'quoteId', null, null, Criteria.max('value', 'totalNetBefore')),
-            );
-            all.addAggregation(Criteria.terms('currencies', 'currencyIso'));
-
-            const answered = new Criteria(1, 1);
-            answered.addFilter(this.rangeFilter);
-            answered.addFilter(Criteria.equalsAny('outcome', ANSWERED_OUTCOMES));
-            answered.addAggregation(Criteria.terms('quotes', 'quoteId'));
-            answered.addAggregation(Criteria.avg('granted', 'discountPercentGranted'));
-            answered.addAggregation(Criteria.avg('cap', 'maxDiscountPercent'));
-
-            const escalated = new Criteria(1, 1);
-            escalated.addFilter(this.rangeFilter);
-            escalated.addFilter(Criteria.equals('outcome', 'escalated'));
-            escalated.addAggregation(Criteria.terms('quotes', 'quoteId'));
-
-            const [allResult, answeredResult, escalatedResult] = await Promise.all([
-                this.decisionRepository.search(all, Shopware.Context.api),
-                this.decisionRepository.search(answered, Shopware.Context.api),
-                this.decisionRepository.search(escalated, Shopware.Context.api),
-            ]);
-
-            const perQuote = allResult.aggregations?.perQuote?.buckets ?? [];
-            const currencies = allResult.aggregations?.currencies?.buckets ?? [];
-            const answeredQuoteIds = this.bucketKeys(answeredResult, 'quotes');
-
-            return {
-                // Every count here is a count of quotes, not of passes. Mixing
-                // the two is what produced shares above 100%.
-                handled: perQuote.length,
-                answered: answeredQuoteIds.size,
-                escalated: this.bucketKeys(escalatedResult, 'quotes').size,
-                answeredQuoteIds,
-                rounds: Object.fromEntries(perQuote.map((bucket) => [bucket.key, bucket.count])),
-                valueHandled: perQuote.reduce((sum, bucket) => sum + Number(bucket.value?.max ?? 0), 0),
-                // Summing across currencies would be a made-up number, so the
-                // total only claims a currency when the period has exactly one.
-                valueCurrency: currencies.length === 1 ? currencies[0].key : null,
-                granted: answeredResult.aggregations?.granted?.avg ?? null,
-                cap: answeredResult.aggregations?.cap?.avg ?? null,
-            };
         },
 
         /**
@@ -222,72 +271,108 @@ Shopware.Component.register('merchant-quote-agent-list', {
          * entity, which may be absent or unreadable while everything above
          * still works.
          */
-        async aggregateQuotes(answeredQuoteIds) {
+        async loadIntake() {
             try {
                 const quoteRepository = this.repositoryFactory.create('quote');
 
-                const received = new Criteria(1, 1);
-                received.addFilter(this.rangeFilter);
-                received.addAggregation(Criteria.count('received', 'id'));
+                const created = new Criteria(1, 1);
+                created.addFilter(this.rangeFilter);
+                created.addAggregation(Criteria.count('created', 'id'));
 
                 const expired = new Criteria(1, 1);
                 expired.addFilter(this.rangeFilter);
                 expired.addFilter(Criteria.equals('stateMachineState.technicalName', 'expired'));
                 expired.addAggregation(Criteria.terms('expiredQuotes', 'id'));
 
-                const [receivedResult, expiredResult] = await Promise.all([
-                    quoteRepository.search(received, Shopware.Context.api),
+                const [createdResult, expiredResult] = await Promise.all([
+                    quoteRepository.search(created, Shopware.Context.api),
                     quoteRepository.search(expired, Shopware.Context.api),
                 ]);
 
-                return {
-                    received: receivedResult.aggregations?.received?.count ?? 0,
-                    expiredUnanswered: [...this.bucketKeys(expiredResult, 'expiredQuotes')].filter(
-                        (id) => !answeredQuoteIds.has(id),
-                    ).length,
+                const answered = new Set(
+                    this.passes.filter((pass) => answeredTheBuyer(pass.outcome)).map((pass) => pass.quoteId),
+                );
+
+                this.intake = {
+                    created: createdResult.aggregations?.created?.count ?? 0,
+                    expiredUnanswered: (expiredResult.aggregations?.expiredQuotes?.buckets ?? [])
+                        .filter((bucket) => !answered.has(bucket.key)).length,
                 };
             } catch (error) {
+                // Nulled rather than zeroed: a viewer without `quote:read`
+                // should see the figure absent, not see "0 created".
+                this.intake = null;
                 // eslint-disable-next-line no-console
                 console.error('merchant-quote-agent: quote figures unavailable', error);
-
-                return { received: null, expiredUnanswered: null };
             }
         },
 
-        bucketKeys(result, name) {
-            return new Set((result.aggregations?.[name]?.buckets ?? []).map((bucket) => bucket.key));
+        averageOver(rows, field) {
+            const values = rows
+                .map((row) => row[field])
+                .filter((value) => value !== null && value !== undefined)
+                .map(Number);
+
+            if (values.length === 0) {
+                return null;
+            }
+
+            return values.reduce((sum, value) => sum + value, 0) / values.length;
         },
 
         /**
-         * Of the quotes the agent handled — not of the quotes received. Those
-         * are different populations: a pass in this period can belong to a
-         * quote created before it, which is how "400%" got on screen.
+         * What the agent gave away on the quote's most recent pass. Gated on
+         * the outcome rather than on the column being non-null: an escalated
+         * pass can carry a recalculated total it never offered anyone.
          */
-        share(value) {
-            const handled = this.figures?.handled ?? 0;
+        grantedLabel(quote) {
+            const pass = quote.latest;
 
-            return handled > 0 ? Math.round((value / handled) * 100) : null;
-        },
-
-        rounds(item) {
-            return this.roundsByQuote[item.quoteId] ?? null;
-        },
-
-        /**
-         * What the agent gave away. Gated on the outcome rather than on the
-         * column being non-null: an escalated pass can carry a recalculated
-         * total it never offered anyone.
-         */
-        grantedLabel(item) {
-            if (!answeredTheBuyer(item.outcome)) {
+            if (!answeredTheBuyer(pass.outcome)) {
                 return '–';
             }
 
-            if (item.discountPercentGranted !== null && item.discountPercentGranted !== undefined) {
-                return formatPercent(item.discountPercentGranted);
+            if (pass.discountPercentGranted !== null && pass.discountPercentGranted !== undefined) {
+                return formatPercent(pass.discountPercentGranted);
             }
 
-            return item.totalNetAfter !== null ? formatCurrency(item.totalNetAfter, item.currencyIso) : '–';
+            return pass.totalNetAfter !== null ? formatCurrency(pass.totalNetAfter, pass.currencyIso) : '–';
+        },
+
+        openQuote(quote) {
+            this.$router.push({ name: 'merchant.quote.agent.detail', params: { id: quote.latest.id } });
+        },
+
+        onPageChange({ page }) {
+            this.page = page;
+        },
+
+        /**
+         * Deletes every pass recorded for one quote — the row's own unit. The
+         * grid shows quotes, so offering to delete a single hidden pass would
+         * not match what was clicked. Confirmed first: this is an audit trail
+         * and the rows cannot be rebuilt.
+         */
+        async confirmDelete() {
+            const quote = this.pendingDelete;
+
+            if (!quote) {
+                return;
+            }
+
+            const ids = this.passes
+                .filter((pass) => pass.quoteId === quote.quoteId)
+                .map((pass) => pass.id);
+
+            this.pendingDelete = null;
+
+            try {
+                await this.decisionRepository.syncDeleted(ids, Shopware.Context.api);
+                await this.load();
+            } catch (error) {
+                // eslint-disable-next-line no-console
+                console.error('merchant-quote-agent: failed to delete audit rows', error);
+            }
         },
     },
 });

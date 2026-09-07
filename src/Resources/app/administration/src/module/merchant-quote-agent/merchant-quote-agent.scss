@@ -66,6 +66,114 @@
     text-align: left;
 }
 
+/* ------------------------------------------------------------- standing */
+
+/* The disposition partition. Emphasis form: the queue waiting on the merchant
+   carries the hue, everything else is de-emphasised, and every class is also
+   printed as a number — so no reading depends on colour. Validated for CVD
+   against the de-emphasis track in both themes (worst adjacent pair ΔE 27.4
+   light / 9.6 dark, normal-vision 34.5 / 23.1). */
+.mqa-standing {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 640px;
+}
+
+.mqa-standing__lede {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.mqa-standing__label {
+    color: var(--color-text-secondary-default);
+    font-size: 13px;
+}
+
+.mqa-standing__value {
+    color: var(--color-text-primary-default);
+    font-size: 28px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.mqa-standing__of {
+    color: var(--color-text-secondary-default);
+    font-size: 13px;
+}
+
+.mqa-standing__bar {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--color-background-primary-disabled);
+    overflow: hidden;
+}
+
+.mqa-standing__fill {
+    height: 100%;
+    /* 4px rounded data-end anchored to the baseline, per the mark spec. */
+    border-radius: 4px;
+    background: var(--color-border-critical-default);
+    transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mqa-standing__rest {
+    display: flex;
+    align-items: baseline;
+    gap: 6px 18px;
+    flex-wrap: wrap;
+    margin: 0;
+    font-size: 13px;
+}
+
+.mqa-standing__rest dt {
+    color: var(--color-text-secondary-default);
+}
+
+.mqa-standing__rest dd {
+    margin: 0 0 0 -12px;
+    color: var(--color-text-primary-default);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+/* A ratio against a limit: one hue, filled portion against its own track. */
+.mqa-figure--meter {
+    grid-column: span 2;
+    max-width: 260px;
+}
+
+.mqa-meter {
+    height: 6px;
+    margin-top: 6px;
+    border-radius: 3px;
+    background: var(--color-background-primary-disabled);
+    overflow: hidden;
+}
+
+.mqa-meter__fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--color-border-brand-default);
+    transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mqa-standing__fill,
+    .mqa-meter__fill {
+        transition: none;
+    }
+}
+
+.mqa-rule {
+    margin: 24px 0;
+    border: 0;
+    border-top: 1px solid var(--color-border-secondary-default);
+}
+
 .mqa-figures__note {
     margin: 20px 0 0;
     color: var(--color-text-secondary-default);
@@ -89,6 +197,30 @@
 .mqa-cell__value {
     font-variant-numeric: tabular-nums;
     font-weight: 600;
+}
+
+/* The ask is the one long string in the row, and the grid's table is
+   auto-layout: a column's width follows its widest unshrinkable content, so
+   left alone the ask pushed the date column off the right edge. The cap has to
+   sit on an element that has a width — `overflow: hidden` on the cell's own
+   wrapper constrains nothing — so it lives here, on our own span, and this is
+   the only place that owns the number. Full text stays in the title attribute. */
+.merchant-quote-agent-list .sw-data-grid__cell--asked .sw-data-grid__cell-content {
+    display: block;
+}
+
+.mqa-ask {
+    display: block;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The date is the other elastic column. Allowed to wrap onto a second line so
+   it fits whatever width is left instead of clipping to "04 Sept 20". */
+.merchant-quote-agent-list .sw-data-grid__cell--lastActivity .sw-data-grid__cell-content {
+    white-space: normal;
 }
 
 .mqa-list__toolbar {

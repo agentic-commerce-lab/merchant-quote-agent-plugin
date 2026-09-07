@@ -67,21 +67,24 @@
             "no": "No"
         },
         "list": {
-            "gridTitle": "Servicing passes",
-            "columnCreatedAt": "When",
+            "gridTitle": "Quotes serviced",
+            "columnCreatedAt": "Last activity",
             "columnQuoteNumber": "Quote",
             "columnOutcome": "Outcome",
             "columnBuyerAsk": "Buyer asked",
             "columnMerchantOffer": "Granted",
             "filterLabel": "Outcome",
             "filterAll": "All outcomes",
-            "filterAnswered": "Answered the buyer",
             "roundCount": "{count} rounds",
             "emptyStateTitle": "Nothing to show",
-            "emptyStateSubline": "The agent serviced no quote matching this period and outcome."
+            "emptyStateSubline": "The agent serviced no quote matching this period and outcome.",
+            "deleteRows": "Delete audit rows",
+            "deleteTitle": "Delete audit rows?",
+            "deleteBody": "This removes all {count} recorded passes for quote #{quoteNumber}. Audit rows cannot be rebuilt.",
+            "deleteConfirm": "Delete",
+            "truncated": "Showing the {shown} most recently serviced quotes of {total} passes in this period. Narrow the period to see all of them."
         },
         "range": {
-            "label": "Period",
             "last7": "Last 7 days",
             "last30": "Last 30 days",
             "last90": "Last 90 days"
@@ -89,15 +92,13 @@
         "figures": {
             "title": "This period",
             "received": "Quotes created",
-            "handled": "Quotes serviced",
-            "autoAnswered": "Answered automatically",
-            "escalated": "Escalated to a human",
             "expiredUnanswered": "Expired unanswered",
             "valueHandled": "Value handled (net)",
             "mixedCurrencies": "across several currencies",
             "granted": "Average discount granted",
-            "againstCap": "against a {cap} cap",
-            "shareNote": "Shares are of the {handled} quotes the agent handled. A quote can be both answered and escalated across its rounds."
+            "needsReview": "Waiting on you",
+            "ofServiced": "of {total} quotes serviced",
+            "ofCap": "of a {cap} cap"
         },
         "detail": {
             "pageTitle": "Quote #{quoteNumber}",
@@ -150,6 +151,13 @@
                 "platform": "from Agent platforms",
                 "channel": "from this channel’s domain"
             }
+        },
+        "disposition": {
+            "needsReview": "Needs review",
+            "answered": "Answered",
+            "awaitingBuyer": "Question asked",
+            "noAction": "No action needed",
+            "other": "Unrecognised outcome"
         }
     }
 }
