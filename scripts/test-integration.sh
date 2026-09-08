@@ -18,6 +18,12 @@
 #
 #   SHOP_SSH=user@host SHOP_PATH=/home/user/files/shop composer run test:integration
 #
+# SHOP_PHP defaults to php8.3, this plugin's own floor — but a remote host's
+# vendor tree may demand newer than that (a released SwagCommercial shop
+# has needed php8.4), so override it there:
+#
+#   SHOP_SSH=user@host SHOP_PATH=/home/user/files/shop SHOP_PHP=php8.4 composer run test:integration
+#
 # That host IP-bans on frequent connections, so this script opens exactly one
 # ssh ControlMaster socket up front and routes both the sync (via
 # scripts/sync-to-shop.sh, handed the same socket through MQA_SSH_SOCKET) and
@@ -63,8 +69,11 @@ if [ -n "${SHOP_SSH:-}" ]; then
     REMOTE_ARGS="$REMOTE_ARGS $quoted"
   done
 
+  # bootstrap.php falls back to /var/www/html (the Docker docroot) unless
+  # SHOPWARE_ROOT says otherwise; on a remote shop the real docroot is
+  # $SHOP_PATH, so export it for the remote phpunit process.
   ssh -S "$SOCKET" "$SHOP_SSH" \
-    "cd '$SHOP_PATH/custom/plugins/MerchantQuoteAgentPlugin' && '$SHOP_PHP' '$SHOP_PATH/vendor/bin/phpunit' -c phpunit.integration.xml.dist$REMOTE_ARGS"
+    "cd '$SHOP_PATH/custom/plugins/MerchantQuoteAgentPlugin' && SHOPWARE_ROOT='$SHOP_PATH' '$SHOP_PHP' '$SHOP_PATH/vendor/bin/phpunit' -c phpunit.integration.xml.dist$REMOTE_ARGS"
   exit 0
 fi
 
