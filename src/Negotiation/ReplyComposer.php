@@ -52,11 +52,15 @@ final readonly class ReplyComposer
             return null;
         }
 
-        $totalNet = $after->totals->totalNet;
+        // The GROSS total, never the net one. Live quote 1020 told a buyer who
+        // owed 8226.60 that their new total was 6913.11, because this reached
+        // for totalNet -- 19% understated, and invisible on the 0%-tax quote
+        // next to it where the two figures are equal.
+        $total = $after->totals->buyerFacingTotal();
         $validUntil = $after->lifecycle->expiresAt ?? new \DateTimeImmutable('+14 days');
-        $template = ReplyTemplate::compose($reductionPercent, $totalNet, $after->identity->currencyIso, $validUntil);
+        $template = ReplyTemplate::compose($reductionPercent, $total, $after->identity->currencyIso, $validUntil);
 
-        [$text, $hash] = $this->reword($settings, $template, $reductionPercent, $totalNet, $validUntil);
+        [$text, $hash] = $this->reword($settings, $template, $reductionPercent, $total, $validUntil);
 
         $gateway->addComment($after->identity->quoteId, $text);
         $this->recorder->recordReply($text, $hash);
@@ -70,7 +74,7 @@ final readonly class ReplyComposer
         QuoteAgentSettings $settings,
         string $template,
         float $reductionPercent,
-        float $totalNet,
+        float $total,
         \DateTimeImmutable $validUntil,
     ): array {
         $access = $settings->llm;
@@ -93,7 +97,7 @@ final readonly class ReplyComposer
             return [$template, null];
         }
 
-        if (!ReplyTemplate::keepsTheFacts($reworded, $reductionPercent, $totalNet, $validUntil)) {
+        if (!ReplyTemplate::keepsTheFacts($reworded, $reductionPercent, $total, $validUntil)) {
             $this->logger->warning('The reworded reply dropped a fact; sending the template instead.', [
                 'reworded' => $reworded,
             ]);

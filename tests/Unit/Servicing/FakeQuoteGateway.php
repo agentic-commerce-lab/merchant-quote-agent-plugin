@@ -45,6 +45,17 @@ final class FakeQuoteGateway implements QuoteGatewayInterface
         private readonly bool $quoteMissing = false,
     ) {}
 
+    /**
+     * Swap the queue after construction, for a harness that decides its totals
+     * later than it builds its gateway.
+     *
+     * @param list<QuoteSnapshot> $snapshots
+     */
+    public function replaceSnapshots(array $snapshots): void
+    {
+        $this->snapshots = $snapshots;
+    }
+
     #[\Override]
     public function fetchSnapshot(string $quoteId, QuoteVersion $version = QuoteVersion::Live): QuoteSnapshot
     {

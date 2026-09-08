@@ -93,11 +93,22 @@ final readonly class OfferRound
         // What the buyer is told is what the DATABASE says the quote came down
         // by — the offer's own `discountPercent` is null for a per-line
         // concession, and announcing that as a percentage tells the buyer zero.
+        //
+        // Measured from the BASELINE, not from this round's opening total. Per
+        // round the percentages compound and the conversation stops adding up:
+        // live quote 1019 was told "2%" and then "3%" while actually receiving
+        // 4.94%, so when the buyer asked for "5% at least" they were already
+        // 3.81 EUR away from it and nobody could tell. The baseline is the
+        // quote as the buyer first saw it, which is the only total they can
+        // check a percentage against.
         $replyHash = $this->reply->reply(
             $gateway,
             $applied->after,
             $settings,
-            ReplyTemplate::reduction($snapshot->totals->totalNet, $applied->after->totals->totalNet),
+            ReplyTemplate::reduction(
+                $baseline?->totalNet ?? $snapshot->totals->totalNet,
+                $applied->after->totals->totalNet,
+            ),
             $conversation,
         );
 
