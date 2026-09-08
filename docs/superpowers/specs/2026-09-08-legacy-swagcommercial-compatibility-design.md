@@ -56,6 +56,7 @@ throughout and every one of its fifteen consuming files handles null, with
 | 4 | state `change_requested` | absent | see below |
 | 5 | `QuoteSendRequestRoute` | absent | buyer gateway reports itself unavailable wholesale |
 | 6 | `QuoteLineItemRoute` | absent | as above |
+| 7 | `QuoteLineItemEntity::getRequestedPrice()` | absent | `CommercialQuoteSnapshotMapper:69` fatals |
 
 Verified present on both: `quote.discount`, the `quote.state` machine,
 `QuoteManipulation::addProduct`/`addCustomLineItem`,
@@ -74,6 +75,14 @@ state. Two places name `change_requested` literally:
 the structured one. On a legacy shop the comment is the *only* ask channel, so
 the second one failing would silently discard every buyer ask the agent was
 built to read.
+
+Breakage 7 is the one that bites hardest and is easiest to miss, because it is
+a method call rather than a field read: `CommercialQuoteSnapshotMapper` builds
+the snapshot published to buyer agents and calls `$lineItem->getRequestedPrice()`
+on an untyped commercial entity. On 6.7.12 that is `Error: Call to undefined
+method`, and it fires on *every* buyer-side read — `getQuote`, `listQuotes`,
+and the snapshot returned by every mutating call. The whole buyer surface is
+dead on legacy until this is guarded, not just the pricing parts.
 
 Breakage 5 is not a loss of function. On 6.7.12 `QuoteRequestRoute::request()`
 creates the quote directly in `open` (`CartToQuoteConverter:114`); trunk changed
@@ -143,9 +152,12 @@ backend do. The two stay separate.
 
 ### Read path
 
-`QuoteLineNet::of()`, `QuoteLineMapper` and `QuoteCommentMapper` take
-`CommercialCapabilities` and read the three trunk-only fields only when present,
-substituting null otherwise. No consumer changes: all three values are already
+`QuoteLineNet::of()`, `QuoteLineMapper`, `QuoteCommentMapper` and
+`CommercialQuoteSnapshotMapper` take `CommercialCapabilities` and read the
+trunk-only fields only when present, substituting null otherwise. The first
+three read them off a DAL `Entity`; the fourth calls a getter on an untyped
+commercial entity, so it is gated on the same `lineItemAsks` flag rather than on
+`method_exists` — one fact, one source. No consumer changes: all three values are already
 nullable in the read model, and `QuoteLineNet`'s existing `$requested === null`
 branch already covers the legacy case exactly.
 
@@ -201,22 +213,38 @@ saying so is the only honest answer.
 
 ### Honesty at the edges
 
-Two surfaces must stop promising what a legacy shop cannot do:
+One surface, not three. The boundary where a legacy shop must say no is
+`counterQuote()`: `QuoteLineItemValidator::validateCounterIdentity()` makes
+`requested_unit_price` **mandatory** on every counter line item, and a legacy
+backend cannot record it. A counter carrying line items therefore returns a 422
+naming the reason; a counter carrying only a comment is valid and is the path
+the storefront itself uses there.
 
-- `QuoteCapabilityProfileContributor` omits `requested_unit_price` from the
-  advertised line-item shape when `lineItemAsks` is false.
-- `AskInterpreter`'s prompt stops telling the model that structured per-line
-  asks exist when they never will, so the model reads the buyer's prose as the
-  sole ask channel rather than as a supplement to a field that is always null.
+The published OpenAPI document and the extract prompt stay as they are, and the
+reasoning is worth recording because the first draft of this spec changed both:
 
-This is the reason the capability is a named object rather than three inline
-`has()` guards. The bridge, the UCP profile and the prompt all need the same
-fact, and it should be stated once.
+- The **OpenAPI document** is a static file served verbatim by
+  `QuoteContractController`. Its only claim a legacy shop cannot honour is that
+  mandatory counter field, which the 422 above already answers precisely, at the
+  point the agent actually asks. Serving a second variant document — or doing
+  runtime surgery on the JSON — buys a marginally more accurate contract at the
+  cost of a second artifact to keep in sync.
+- The **extract prompt** already renders `requested price` as `none` per line
+  (`AskInterpreter::userPrompt()`), so on a legacy shop the model simply sees a
+  column that is never populated. The prompt describes that column truthfully; it
+  does not assert one will be present. Splitting it into two variants would also
+  fork `ComposedPrompt`'s hash, which the audit trail records per decision — two
+  prompt lineages for no behavioural gain.
+
+`CommercialCapabilities` therefore has four consumers, all inside Bridge: the
+three read mappers and the buyer gateway. That is still enough to justify naming
+the fact once rather than scattering `has()` checks, but it is a smaller claim
+than the first draft made.
 
 ## Testing
 
 **Unit.** `CommercialCapabilities` is a constructor argument, so both profiles
-are two fixtures. Cover: each of the three read guards with the field absent and
+are two fixtures. Cover: each of the four read guards with the field absent and
 present; `QuoteLineItemWriter` issuing a `delete()` under `softDeleteLines:
 false` and a `deletedAt` update under true; `requestQuote()` skipping the send
 route under `draftBeforeSend: false`; `counterQuote()` rejecting a line price
