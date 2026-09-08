@@ -72,7 +72,7 @@ final class AskGate
             );
         }
 
-        if ($ask->needsClarification()) {
+        if ($ask->needsClarification() && !StructuredAsk::isUnmet($snapshot)) {
             // The model could not place the ask, so answering it means picking
             // a line at random. Before this gate the pass fell through with an
             // empty ask, landed in the grant band at roughly 0% and sent a
@@ -81,6 +81,25 @@ final class AskGate
             // again. Which of ask-or-escalate happens is ClarificationRound's
             // call: the marker settles it, and it owns the marker.
             return ClarificationRound::handle($gateway, $snapshot, $ask, $round, $logger);
+        }
+
+        if ($ask->needsClarification()) {
+            // An unmet per-line target is not a line picked at random: it names
+            // the line AND the price, so the ambiguity this gate exists for
+            // cannot be present. Quote 1017 asked "what do you think about this
+            // discount?" over three lines that each carried a requested price,
+            // and the follow-up "the one I've requested" hit the marker and
+            // escalated a 2.7% ask. The appliers read `requestedUnitPrice`
+            // directly, so the pass below answers it with no help from the
+            // interpretation.
+            //
+            // ponytail: the whole comment is treated as answered by the
+            // structured target. A comment that asks for the targets AND
+            // something genuinely ambiguous on top loses the second half
+            // silently; split the question per line if that shows up.
+            $logger->info('The buyer\'s comment was unclear, but an unmet requested price answers it.', [
+                'quoteId' => $snapshot->identity->quoteId,
+            ]);
         }
 
         return null;
