@@ -413,7 +413,10 @@ return static function (ContainerConfigurator $configurator): void {
         service(QuoteVersionResolver::class),
         service(CommercialCapabilities::class),
     ]);
-    $services->set(QuoteLineItemWriter::class)->args([service('quote_line_item.repository')]);
+    $services->set(QuoteLineItemWriter::class)->args([
+        service('quote_line_item.repository'),
+        service(CommercialCapabilities::class),
+    ]);
     $services->set(QuoteWriter::class)->args([service('quote.repository')]);
     $services->set(QuoteStateTransitioner::class);
 

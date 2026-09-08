@@ -158,7 +158,7 @@ abstract class IntegrationTestCase extends TestCase
         return new QuoteGatewayFactory(
             new QuoteSnapshotReader($quoteRepository, new QuoteVersionResolver(), $capabilities),
             new QuoteWriters(
-                new QuoteLineItemWriter($lineItemRepository),
+                new QuoteLineItemWriter($lineItemRepository, $capabilities),
                 new QuoteWriter($quoteRepository),
                 $recalculator,
                 $productAdder,
