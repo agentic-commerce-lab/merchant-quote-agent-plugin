@@ -88,6 +88,16 @@ final class DecisionRecorder
         if ($answer->escalation !== null) {
             $this->draft->escalationReason = $answer->escalation->value;
         }
+
+        // WHY it was refused, not just that it was. Quote 1019 escalated with
+        // proposal_rejected and a NULL violations column, so the pass could
+        // not be explained afterwards: the reason string reaches
+        // ProposedAnswer::escalate() and stopped here, and its log twin is an
+        // `info` that prod suppresses. An empty detail stays null -- a model
+        // that declined on its own terms broke no rule.
+        if ($answer->escalationDetail !== '') {
+            $this->draft->violations = [$answer->escalationDetail];
+        }
     }
 
     /** @param list<string> $writes */

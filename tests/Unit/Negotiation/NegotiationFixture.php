@@ -45,7 +45,7 @@ final class NegotiationFixture
         return new QuoteSnapshot(
             identity: new QuoteIdentity('q1', '10001', 'EUR', 'sc1'),
             revision: $revision ?? new QuoteRevision('v1', new \DateTimeImmutable('2026-08-28 10:00:00.000')),
-            totals: new QuoteTotals(totalNet: $totalNet),
+            totals: new QuoteTotals(totalNet: $totalNet, totalGross: $totalNet),
             lifecycle: new QuoteLifecycle(stateTechnicalName: $state, expiresAt: new \DateTimeImmutable(self::EXPIRES)),
             content: new QuoteContent(lines: [new QuoteLineSnapshot(
                 identity: new QuoteLineIdentity('line-1', 'Widget', 'prod-1'),

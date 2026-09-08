@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
@@ -31,6 +33,61 @@ final class PipelineHarness
         public RecordingLogger $logger,
         public FakeDecisionWriter $writer,
     ) {}
+
+    /** The snapshot to hand to service(), when a test needs a specific opening total. */
+    public QuoteSnapshot $before;
+
+    /**
+     * A pipeline whose before/after totals are stated outright, including the
+     * gross ones — what the buyer is told is measured on these.
+     *
+     * @param list<string> $replies in call order: extract, negotiate, reply
+     */
+    public static function withTotals(
+        array $replies,
+        float $afterNet,
+        float $afterGross,
+        float $beforeNet = 1000.0,
+        ?float $baselineNet = null,
+    ): self {
+        $harness = self::with($replies, reReadTotalNet: $afterNet);
+        // A buyer comment, so the pass has an ask to answer and reaches the
+        // reply at all: an empty conversation is NothingToDo.
+        $before = NegotiationFixture::snapshot(totalNet: $beforeNet, comments: [
+            NegotiationFixture::buyerComment('what can you do on price?', '2026-08-28 09:00:00'),
+        ]);
+
+        if ($baselineNet !== null) {
+            $before = NegotiationFixture::withCustomFields($before, NegotiationFixture::baselineOf(
+                $baselineNet,
+                $baselineNet / 10,
+            ));
+        }
+
+        $harness->before = $before;
+        $harness->gateway->replaceSnapshots([
+            NegotiationFixture::snapshot(state: 'in_review', totalNet: $beforeNet),
+            self::taxed(NegotiationFixture::snapshot(state: 'in_review', totalNet: $afterNet), $afterGross),
+        ]);
+
+        return $harness;
+    }
+
+    /**
+     * The same snapshot with a gross total that differs from its net one — a
+     * taxed quote. Here rather than on NegotiationFixture, which is at its
+     * method-count gate, and this is its only caller.
+     */
+    private static function taxed(QuoteSnapshot $snapshot, float $totalGross): QuoteSnapshot
+    {
+        return new QuoteSnapshot(
+            identity: $snapshot->identity,
+            revision: $snapshot->revision,
+            totals: new QuoteTotals(totalNet: $snapshot->totals->totalNet, totalGross: $totalGross),
+            lifecycle: $snapshot->lifecycle,
+            content: $snapshot->content,
+        );
+    }
 
     /** @param list<string> $replies in call order: extract, negotiate, reply */
     public static function with(array $replies, float $reReadTotalNet = 950.0): self
@@ -69,6 +126,7 @@ final class PipelineHarness
 
         $harness = new self($pipeline, $gateway, $spy, $logger, $writer);
         $harness->round = $round;
+        $harness->before = NegotiationFixture::snapshot();
 
         return $harness;
     }

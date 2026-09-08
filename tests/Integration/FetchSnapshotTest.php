@@ -83,6 +83,30 @@ final class FetchSnapshotTest extends IntegrationTestCase
         );
     }
 
+    /**
+     * The buyer-facing total, against real data.
+     *
+     * Quote 1020 on the test shop was told "your new total is 6913.11 EUR"
+     * when the buyer owed 8226.60 — the reply had reached for `amountNet`.
+     * Nothing caught it because the quote next to it was 0%-tax, where the two
+     * figures are identical. This pins that the gross total is read at all and
+     * is never below the net one.
+     */
+    public function testTheGrossTotalIsReadAndIsNeverBelowTheNetOne(): void
+    {
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
+
+        $totals = static::gateway()->fetchSnapshot($quoteId)->totals;
+
+        self::assertNotNull($totals->totalGross, 'amountTotal must reach the snapshot.');
+        self::assertGreaterThanOrEqual(
+            $totals->totalNet - 0.01,
+            $totals->totalGross,
+            'A gross total below the net one means the two fields are swapped.',
+        );
+        self::assertSame($totals->totalGross, $totals->buyerFacingTotal());
+    }
+
     public function testQuoteLevelDiscountRoundTripsWhenPresent(): void
     {
         $context = Context::createDefaultContext();
