@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Bridge;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
 
 /** Maps a quote's `comments` association onto the bridge's read model. */
-final class QuoteCommentMapper
+final readonly class QuoteCommentMapper
 {
+    public function __construct(
+        private CommercialCapabilities $capabilities,
+    ) {}
+
     /** @return list<QuoteComment> */
     public function map(Entity $quote): array
     {
@@ -28,7 +33,9 @@ final class QuoteCommentMapper
             $createdAt = $comment->get('createdAt');
             $result[] = new QuoteComment(
                 comment: (string) $comment->get('comment'),
-                lineItemId: $this->nullableString($comment->get('quoteLineItemId')),
+                lineItemId: $this->capabilities->lineScopedComments
+                    ? $this->nullableString($comment->get('quoteLineItemId'))
+                    : null,
                 createdById: $this->nullableString($comment->get('createdById')),
                 customerId: $this->nullableString($comment->get('customerId')),
                 createdAt: $createdAt instanceof \DateTimeInterface
