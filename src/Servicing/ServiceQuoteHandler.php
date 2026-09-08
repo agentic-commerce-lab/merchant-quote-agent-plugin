@@ -45,8 +45,11 @@ final readonly class ServiceQuoteHandler
      * `debug:config framework messenger`), so a quote that stays busy backs off
      * to hours. Lock contention resolves on the scale of one servicing pass, so
      * a fixed delay just above it is the honest wait.
+     *
+     * Public because ObserveQuoteHandler contends for the very same per-quote
+     * lock and must wait the same amount — two numbers would drift.
      */
-    private const BUSY_RETRY_DELAY_MS = 5000;
+    public const BUSY_RETRY_DELAY_MS = 5000;
 
     public function __construct(
         private QuoteServicingLock $locks,

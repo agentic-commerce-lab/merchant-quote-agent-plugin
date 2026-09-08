@@ -44,6 +44,15 @@
     </card>
 
     <card>
+        <title>A2CN identity</title>
+        <input-field type="text">
+            <name>a2cnOrganizationName</name>
+            <label>Organization name published in the A2CN seller mandate</label>
+            <helpText>Leave empty to publish the sales channel name.</helpText>
+        </input-field>
+    </card>
+
+    <card>
         <title>Price bands</title>
         <input-field type="float">
             <name>maxDiscountPercent</name>

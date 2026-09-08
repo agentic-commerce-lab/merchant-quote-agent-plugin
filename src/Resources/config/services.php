@@ -57,6 +57,7 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\RequestRuntimeConfigurationR
 use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
+use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -68,6 +69,36 @@ use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
+use MerchantQuoteAgentPlugin\Protocol\Check\BuyerSignatureCheck;
+use MerchantQuoteAgentPlugin\Protocol\Check\BuyerTermsCheck;
+use MerchantQuoteAgentPlugin\Protocol\Check\ChainLengthCheck;
+use MerchantQuoteAgentPlugin\Protocol\Check\DuplicateSequenceCheck;
+use MerchantQuoteAgentPlugin\Protocol\Check\EvidenceInspector;
+use MerchantQuoteAgentPlugin\Protocol\Check\SessionIdCheck;
+use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
+use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\ActSigner;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\ChainMirror;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteHandler;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\OfferVisibleStateSubscriber;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
+use MerchantQuoteAgentPlugin\Protocol\Http\A2cnDiscoveryController;
+use MerchantQuoteAgentPlugin\Protocol\Http\A2cnRecordsController;
+use MerchantQuoteAgentPlugin\Protocol\Http\MandateDocumentResponder;
+use MerchantQuoteAgentPlugin\Protocol\Http\QuoteTerminalStateReader;
+use MerchantQuoteAgentPlugin\Protocol\Http\RecordPartiesResolver;
+use MerchantQuoteAgentPlugin\Protocol\Http\RecordResponder;
+use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
+use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
+use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
+use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
+use MerchantQuoteAgentPlugin\Protocol\Record\AuditLog;
+use MerchantQuoteAgentPlugin\Protocol\Record\OfferChainHash;
+use MerchantQuoteAgentPlugin\Protocol\Record\TransactionRecord;
+use MerchantQuoteAgentPlugin\Protocol\Store\ActStoreInterface;
+use MerchantQuoteAgentPlugin\Protocol\Store\DbalActStore;
+use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
 use MerchantQuoteAgentPlugin\Servicing\EscalationFlowEventSubscriber;
 use MerchantQuoteAgentPlugin\Servicing\EscalationNotifierInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
@@ -77,6 +108,7 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
+use MerchantQuoteAgentPlugin\Ucp\Profile\A2cnMandateProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\Controller\UcpQuoteController;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
@@ -91,6 +123,7 @@ use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Ucp\Sdk\Internal\Service\UrlSafetyValidator;
 use Ucp\Sdk\Service\RuntimeConfigurationResolverInterface;
+use Ucp\Sdk\Service\SigningKeyManagerInterface;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
@@ -238,6 +271,117 @@ return static function (ContainerConfigurator $configurator): void {
     $services->alias(TerminalOutcomeWriterInterface::class, TerminalOutcomeWriter::class);
     $services->set(TerminalOutcomeSubscriber::class);
 
+    // --- A2CN / Protocol -----------------------------------------------
+    // The evidence layer (src/Protocol/): signed negotiation acts on a quote.
+    // Registered unconditionally, above the SwagCommercial gate below —
+    // nothing in this block depends on Shopware or SwagCommercial. Later
+    // A2CN tasks append their services to this same block.
+    $services->set(ProtocolHash::class);
+    $services->set(TermsFactory::class);
+
+    // The evidence mirror (Task 13): our own copy of the act chain, plus the
+    // violations and human approval receipts that are only ours.
+    $services->set(DbalActStore::class);
+    $services->alias(ActStoreInterface::class, DbalActStore::class);
+
+    // The installation's signing key and published did:web identity (Task 14).
+    // Public: the plugin class fetches A2cnKeyStore from the container during
+    // activate(), where the compiled container's private-service fence would
+    // otherwise apply. `logger` itself is a private alias Symfony removes when
+    // it compiles, so the same hook reaches PSR-3 through a public alias of
+    // our own — its only user is the fail-open catch in activate().
+    $services->set(A2cnKeyStore::class)->public();
+    $services->alias(MerchantQuoteAgentPlugin::LIFECYCLE_LOGGER_ID, 'logger')->public();
+    $services->set(A2cnIdentityResolver::class);
+
+    // Counterparty did:web verification-key resolution. A plain HTTP client is
+    // registered explicitly under our own service id, the same way and for the
+    // same reason as merchant_quote_agent.model_http_client further down:
+    // Shopware does not guarantee a shared `http_client` service exists, and
+    // this fetch needs its own timeout, redirect and streaming controls
+    // regardless (see DidWebDocumentFetcher) — reusing a shared client would
+    // risk a different default silently applying to a counterparty-controlled
+    // URL. SigningKeyManagerInterface is a public alias the UCP SDK bundle
+    // registers onto DefaultSigningKeyManager.
+    $services->set('merchant_quote_agent.a2cn.http_client', HttpClientInterface::class)->factory([
+        HttpClient::class,
+        'create',
+    ]);
+    $services->set(DidWebResolver::class)->args([
+        service('merchant_quote_agent.a2cn.http_client'),
+        service(SigningKeyManagerInterface::class),
+        service('logger'),
+    ]);
+
+    // The evidence checks and the inspector that runs them. Order is
+    // normative and spelled out here rather than as a tag priority, so a
+    // reviewer reads the specification in the code that enforces it: every
+    // local comparison before the one check that resolves a did:web document
+    // over the network.
+    $services->set(SessionIdCheck::class);
+    $services->set(DuplicateSequenceCheck::class);
+    $services->set(ChainLengthCheck::class);
+    $services->set(BuyerTermsCheck::class);
+    $services->set(BuyerSignatureCheck::class);
+    $services->set(EvidenceInspector::class)->args([[
+        service(SessionIdCheck::class),
+        service(DuplicateSequenceCheck::class),
+        service(ChainLengthCheck::class),
+        service(BuyerTermsCheck::class),
+        service(BuyerSignatureCheck::class),
+    ]]);
+
+    // Building and signing the seller's own act (Task 15).
+    $services->set(ActSigner::class);
+    $services->set(SellerActFactory::class);
+
+    // The evidence mirror facade for the emitter (Task 16). Depends only on
+    // ActStoreInterface, so — unlike SellerActEmitter below — it belongs in
+    // this unconditional block rather than behind the SwagCommercial gate.
+    $services->set(ChainMirror::class);
+
+    // The end-of-session records (Task 18): pure derivations over the act
+    // chain, no SwagCommercial dependency, so — like everything else in this
+    // block — registered unconditionally.
+    $services->set(OfferChainHash::class);
+    $services->set(TransactionRecord::class);
+    $services->set(AuditLog::class);
+
+    // Configuration (issue #5), moved here from inside the CommercialAvailability
+    // guard below: the signed seller mandate (Task 20) needs a sales channel's
+    // NegotiationPolicy on every installation, not just one with SwagCommercial
+    // licensed — the reader itself touches only SystemConfigService and the
+    // validator, neither of which needs SwagCommercial. Autowired: the factory
+    // takes ValidatorInterface, which Shopware aliases to HappyPathValidator —
+    // harmless, because a validate() call with no explicit constraints
+    // delegates straight to the real Symfony validator.
+    //
+    // The reader stays private: the alias below is what references it, so
+    // RemoveUnusedDefinitionsPass no longer prunes it as dead.
+    $services->set(QuoteAgentSettingsFactory::class);
+    $services->set(QuoteAgentSettingsReader::class);
+    $services->alias(QuoteAgentSettingsSource::class, QuoteAgentSettingsReader::class);
+
+    // The signed seller mandate and its discovery documents (Task 20): pure
+    // derivations over NegotiationPolicy plus this installation's own key and
+    // identity, no SwagCommercial dependency, so registered unconditionally
+    // like the rest of this block. The controller is imported OUTSIDE the
+    // CommercialAvailability gate in routes.php for the same reason.
+    $services->set(SellerMandateFactory::class);
+    $services->set(MandateSigner::class);
+    $services->set(MandateDocumentResponder::class);
+    $services->set(A2cnDiscoveryController::class)->tag('controller.service_arguments');
+
+    // Advertises the mandate capability in the UCP discovery document. Must
+    // run AFTER the Agentic Commerce plugin's capability filter, exactly like
+    // QuoteCapabilityProfileContributor above: its contributor sits at the
+    // default priority, so anything negative lands behind it.
+    // autoconfigure(false) avoids a second tag at the default priority.
+    $services->set(A2cnMandateProfileContributor::class)->autoconfigure(false)->tag('ucp_sdk.profile_contributor', [
+        'priority' => -256,
+    ]);
+    // --- end A2CN / Protocol ---------------------------------------------
+
     // Stage one of ADR 0001's two-stage gate: class existence decides whether
     // the bridge is REGISTERED at all. Shopware only registers an active
     // plugin's autoloader, so this is false both when SwagCommercial is absent
@@ -334,17 +478,6 @@ return static function (ContainerConfigurator $configurator): void {
 
     $services->alias(BuyerQuoteGatewayInterface::class, SwagCommercialBuyerQuoteGateway::class);
 
-    // Configuration (issue #5). Autowired: the factory takes ValidatorInterface,
-    // which Shopware aliases to HappyPathValidator — harmless, because a
-    // validate() call with no explicit constraints delegates straight to the
-    // real Symfony validator.
-    //
-    // The reader stays private: the alias below is what references it, so
-    // RemoveUnusedDefinitionsPass no longer prunes it as dead.
-    $services->set(QuoteAgentSettingsFactory::class);
-    $services->set(QuoteAgentSettingsReader::class);
-    $services->alias(QuoteAgentSettingsSource::class, QuoteAgentSettingsReader::class);
-
     // Servicing (issue #4): trigger, queue and lock. Inside the guard because
     // a shop without SwagCommercial has no quotes to service.
     //
@@ -372,6 +505,11 @@ return static function (ContainerConfigurator $configurator): void {
     ]);
     $services->alias(EscalationNotifierInterface::class, ShopwareEscalationNotifier::class);
     $services->set(EscalationFlowEventSubscriber::class)->args([service(BusinessEventCollector::class)]);
+
+    // The A2CN trigger (Task 17): same core event, inside this same guard for
+    // the same reason as QuoteServicingTrigger above — a shop without
+    // SwagCommercial has no `quote.state` state machine to fire it on.
+    $services->set(OfferVisibleStateSubscriber::class)->args([service('messenger.default_bus'), service('logger')]);
 
     // Whether a quote may be serviced at all, and with which settings (#5).
     $services->set(QuoteEscalator::class)->args([service(EscalationNotifierInterface::class)]);
@@ -444,4 +582,49 @@ return static function (ContainerConfigurator $configurator): void {
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
         service(QuoteServicingPipelineInterface::class)->ignoreOnInvalid(),
     ]);
+
+    // The emitter (Task 16) depends on QuoteGatewayInterface, which only
+    // exists where SwagCommercial does — registered here, inside the same
+    // gate as the other gateway consumers above, rather than in the
+    // unconditional A2CN block. `ignoreOnInvalid()` kept for consistency with
+    // ServiceQuoteHandler above even though this reference never actually goes
+    // invalid (QuoteGatewayInterface is always defined, factory-backed); the
+    // null case that matters for this shop is the factory's return value, which
+    // SellerActEmitter's nullable, defaulted `$gateway` now handles itself.
+    $services->set(SellerActEmitter::class)->args([
+        service(SellerActFactory::class),
+        service(EvidenceInspector::class),
+        service(ChainMirror::class),
+        service('logger'),
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+    ]);
+
+    // The trigger's handler (Task 17): same lock as servicing, same
+    // ignoreOnInvalid() gateway as ServiceQuoteHandler above. SellerActEmitter
+    // is registered unconditionally within this guard (just above), so it is
+    // never invalid here — only the gateway degrades to null when
+    // SwagCommercial is present but unlicensed.
+    $services->set(ObserveQuoteHandler::class)->args([
+        service(QuoteServicingLock::class),
+        service('logger'),
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+        service(SellerActEmitter::class)->ignoreOnInvalid(),
+    ]);
+
+    // The act chain and end-of-session records (Task 19). Same gateway
+    // dependency, same ignoreOnInvalid() posture as SellerActEmitter and
+    // ObserveQuoteHandler above: QuoteTerminalStateReader's own nullable
+    // `$gateway` turns an unlicensed shop into a 502, not a container error.
+    //
+    // RecordResponder has no SwagCommercial dependency of its own — every
+    // collaborator it takes is from the unconditional A2CN block above — but
+    // it exists only to serve A2cnRecordsController, so it is registered here
+    // beside it rather than scattered up with the block it happens to depend
+    // on.
+    $services->set(QuoteTerminalStateReader::class)->args([
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+    ]);
+    $services->set(RecordPartiesResolver::class);
+    $services->set(RecordResponder::class);
+    $services->set(A2cnRecordsController::class)->tag('controller.service_arguments');
 };
