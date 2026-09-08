@@ -131,6 +131,14 @@ install path.
 Prerequisites are the plugin's, not the zip's: SwagCommercial with the
 QuoteManagement licence active, and SwagAgenticCommerce.
 
+Requires SwagCommercial with B2B quote management licensed
+(`QUOTE_MANAGEMENT-6302947`), version **6.7.1.2 or newer**. The plugin probes
+what the installed SwagCommercial can do rather than checking its version: a
+release without `quote_line_item.requested_price` (everything up to and
+including 6.7.12) simply has no structured per-line buyer ask, and the agent
+reads asks from quote comments instead. Merchant-side concessions — per-line
+offer prices and the quote-level discount — work on every supported version.
+
 ## Operating the servicing loop
 
 The servicing loop (issue #4) only queues messages when a buyer comments or a
