@@ -11,6 +11,8 @@ use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilitiesFactory;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteCommentWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteProductAdderInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
@@ -116,6 +118,7 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteContractController;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteLineItemValidator;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
+use Shopware\Core\Framework\DataAbstractionLayer\DefinitionInstanceRegistry;
 use Shopware\Core\Framework\Event\BusinessEventCollector;
 use Shopware\Core\Framework\Notification\NotificationService;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
@@ -392,6 +395,15 @@ return static function (ContainerConfigurator $configurator): void {
     if (!CommercialAvailability::isAvailableByClass()) {
         return;
     }
+
+    // What this shop's SwagCommercial can do, probed once at container build
+    // from the DAL rather than from a version number (see the factory). Six
+    // services below take it; nothing outside Bridge does.
+    $services->set(CommercialCapabilitiesFactory::class)->args([service(DefinitionInstanceRegistry::class)]);
+    $services->set(CommercialCapabilities::class)->factory([
+        service(CommercialCapabilitiesFactory::class),
+        'create',
+    ]);
 
     // Repositories are resolved by string id and typed with a covariant
     // template in the consumer, so autowiring cannot supply them.
