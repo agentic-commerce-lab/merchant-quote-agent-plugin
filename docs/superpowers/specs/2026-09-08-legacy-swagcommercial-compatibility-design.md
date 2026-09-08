@@ -57,6 +57,7 @@ throughout and every one of its fifteen consuming files handles null, with
 | 5 | `QuoteSendRequestRoute` | absent | buyer gateway reports itself unavailable wholesale |
 | 6 | `QuoteLineItemRoute` | absent | as above |
 | 7 | `QuoteLineItemEntity::getRequestedPrice()` | absent | `CommercialQuoteSnapshotMapper:69` fatals |
+| 8 | `quote_line_item.deletedAt` named in a DAL criteria filter | absent | `SwagCommercialBuyerQuoteGateway:218,357` throws `UnmappedFieldException` |
 
 Verified present on both: `quote.discount`, the `quote.state` machine,
 `QuoteManipulation::addProduct`/`addCustomLineItem`,
@@ -88,6 +89,24 @@ Breakage 5 is not a loss of function. On 6.7.12 `QuoteRequestRoute::request()`
 creates the quote directly in `open` (`CartToQuoteConverter:114`); trunk changed
 it to create a `draft` that `QuoteSendRequestRoute` then sends. The route is
 missing because the step does not exist there.
+
+Breakage 8 was not found by reading — it was found by running
+`LegacyBuyerFlowTest` against a real released shop, and it is the category the
+other seven entries in this table don't cover: a criteria filter rather than
+an `Entity::get()` read or a method call. `SwagCommercialBuyerQuoteGateway`
+names `deletedAt` in a DAL `Criteria` on the `lineItems` association, in
+`listQuotes()` and the shared `loadQuote()` helper, to keep soft-deleted lines
+out of what the buyer sees. `Entity::get()` and method calls degrade to `null`
+or throw a catchable error the surrounding code already expects; a criteria
+naming an unmapped field is neither — the DAL rejects it outright with
+`UnmappedFieldException` before the query ever runs. Live, this surfaced as
+every quote-reading `LegacyBuyerFlowTest` case failing with `Quote "…" was not
+found for this customer`, because `loadQuote()` translates any exception into
+not-found (see Breakage 4's sibling reasoning): the real cause — an unsupported
+field in a filter — was invisible behind a misleading 404. Fixed the same way
+as the rest of the table: gated on `$capabilities->softDeleteLines`, and
+skipped entirely rather than merely worked around, because a release without
+that column also has no soft-deleted rows to filter.
 
 ## Goals
 
@@ -205,7 +224,11 @@ remain required. Then:
   already accepts one, and skips line pricing when
   `CommercialQuoteLinePricing::isAvailable()` is false. That method exists and
   already returns false without the route; no change to it.
-- `getQuote`, `listQuotes`, `acceptQuote`, `declineQuote`: unchanged.
+- `getQuote`, `acceptQuote`, `declineQuote`: unchanged.
+- `listQuotes()` and the shared `loadQuote()` helper add the `deletedAt`
+  criteria filter only when `softDeleteLines` is true (breakage 8) — the field
+  is trunk-only and the DAL rejects it in a criteria outright, not just in a
+  read.
 
 A counter-offer carrying `requested_unit_price` on a legacy shop is a 422, not a
 silent drop — the agent asked for something this backend cannot record, and

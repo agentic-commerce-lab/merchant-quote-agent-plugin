@@ -215,7 +215,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $criteria->addAssociation('stateMachineState');
         $criteria->addAssociation('currency');
         $criteria->addAssociation('lineItems');
-        $criteria->getAssociation('lineItems')->addFilter(new EqualsFilter('deletedAt', null));
+        $this->excludeSoftDeletedLineItems($criteria);
         $criteria->addAssociation('comments');
 
         /**
@@ -345,6 +345,25 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
     }
 
     /**
+     * `quote_line_item.deleted_at` is a trunk-only column: released
+     * SwagCommercial (6.7.1.2–6.7.12.x) never added it, and the DAL rejects a
+     * criteria that names an unmapped field outright — `UnmappedFieldException`,
+     * not a silently-ignored filter — so adding it unconditionally breaks every
+     * read on a released shop. Gated on `$capabilities->softDeleteLines`
+     * instead: where the column does not exist, removal is a hard delete, so
+     * the `lineItems` association can never contain a soft-deleted row and
+     * there is nothing for the filter to exclude.
+     */
+    private function excludeSoftDeletedLineItems(Criteria $criteria): void
+    {
+        if (!$this->capabilities->softDeleteLines) {
+            return;
+        }
+
+        $criteria->getAssociation('lineItems')->addFilter(new EqualsFilter('deletedAt', null));
+    }
+
+    /**
      * The commercial load route filters by customer and sales channel, so a quote
      * belonging to somebody else is indistinguishable from one that does not
      * exist - its exception is translated to a not-found without confirming
@@ -354,7 +373,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
     {
         $criteria = new Criteria();
         $criteria->addAssociation('lineItems');
-        $criteria->getAssociation('lineItems')->addFilter(new EqualsFilter('deletedAt', null));
+        $this->excludeSoftDeletedLineItems($criteria);
         $criteria->addAssociation('comments');
 
         $quoteLoadRoute = CommercialQuoteAccess::service($this->quoteLoadRoute, 'quote load');
