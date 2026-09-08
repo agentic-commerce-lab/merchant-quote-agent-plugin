@@ -6,33 +6,44 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
+use MerchantQuoteAgentPlugin\Negotiation\Response\ChatEnvelope;
 use MerchantQuoteAgentPlugin\Negotiation\Response\ModelAnswerSerializer;
 use MerchantQuoteAgentPlugin\Negotiation\Response\ResponseFormatFactory;
 use Psr\Log\LoggerInterface;
-use Symfony\AI\Platform\Bridge\Generic\Factory;
-use Symfony\AI\Platform\Exception\ExceptionInterface as PlatformException;
-use Symfony\AI\Platform\Message\Message;
-use Symfony\AI\Platform\Message\MessageBag;
-use Symfony\AI\Platform\Platform;
-use Symfony\AI\Platform\Result\ResultInterface;
-use Symfony\AI\Platform\StructuredOutput\PlatformSubscriber;
-use Symfony\AI\Platform\TokenUsage\TokenUsage;
-use Symfony\AI\Platform\TokenUsage\TokenUsageInterface;
-use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\HttpClient\Retry\GenericRetryStrategy;
 use Symfony\Component\HttpClient\RetryableHttpClient;
+use Symfony\Component\Serializer\Exception\ExceptionInterface as SerializerException;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as TransportException;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
- * One `POST /chat/completions`, used by all three prompts, through Symfony AI's
- * Generic platform bridge. No agent loop, no tool calling — the model answers
- * once and the rules decide what that answer is allowed to do.
+ * One `POST /chat/completions`, used by all three prompts. No agent loop, no
+ * tool calling — the model answers once and the rules decide what that answer
+ * is allowed to do.
  *
- * The Generic bridge is the one that takes an arbitrary base URL, which is the
- * whole point: the credentials and the endpoint are the merchant's (see
- * ModelAccess), so a shop may point this at Azure, its own gateway or a
- * self-hosted model. A provider-specific bridge would take that away.
+ * The credentials and the endpoint are the merchant's (see ModelAccess), so a
+ * shop may point this at Azure, their own gateway or a self-hosted model. That
+ * is why the request is built here rather than taken from a provider-specific
+ * client.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT USE. Symfony AI's Generic platform bridge
+ * makes exactly this POST, and this class was built on it first. The bridge
+ * ships a Flex recipe that writes `config/packages/ai_generic_platform.yaml`
+ * declaring an `ai` extension only symfony/ai-bundle provides — which no shop
+ * installing this plugin has. The result is fatal and immediate:
+ *
+ *     There is no extension able to load the configuration for "ai"
+ *     ... Looked for namespace "ai", found "framework", "shopware", ...
+ *
+ * The shop does not boot until someone deletes a file they have never heard
+ * of, and `composer require` is what creates it. Measured on Shopware 6.7.13.1.
+ * A recipe is the root project's to accept or refuse, so a dependency cannot
+ * suppress it: not depending on the bridge is the only fix available to us.
+ *
+ * Symfony AI is still used for the part that earned its keep — generating the
+ * JSON schema from the DTOs, in ResponseFormatFactory. symfony/ai-platform
+ * ships no recipe of its own (verified against a shop's symfony.lock), so that
+ * dependency is safe to keep.
  *
  * Exactly ONE retry. A servicing pass makes up to three calls and the quote
  * lock's TTL is 300 seconds; at a 30s timeout plus one 2s backoff, three calls
@@ -64,15 +75,13 @@ final readonly class ModelPlatform
         LoggerInterface $logger,
         private DecisionRecorder $recorder,
     ) {
-        // The retry is the transport's job now, not this class's: a flat 2s
-        // backoff (multiplier 1.0, no jitter) keeps the worst case the docblock
-        // above computes, and GenericRetryStrategy retries only the transport
-        // failures and 5xx/429 that are actually transient. A malformed
-        // envelope is not, and retrying it would just fail the same way again.
+        // The retry is the transport's job: a flat 2s backoff (multiplier 1.0,
+        // no jitter) keeps the worst case the docblock above computes, and
+        // GenericRetryStrategy retries only what is actually transient. A
+        // malformed envelope is not, and retrying it would fail the same way.
         //
         // One consequence worth knowing when reading the audit trail: a retried
-        // call's modelLatencyMs now includes the failed attempt and the backoff,
-        // where the hand-rolled retry recorded only the successful attempt.
+        // call's modelLatencyMs includes the failed attempt and the backoff.
         $this->http = new RetryableHttpClient(
             $http->withOptions(['timeout' => self::TIMEOUT_SECONDS]),
             new GenericRetryStrategy(
@@ -89,21 +98,15 @@ final readonly class ModelPlatform
     /** @throws ModelUnavailable */
     public function text(ModelAccess $access, string $system, string $user): string
     {
-        $content = $this->call($access, $system, $user, options: [])->getContent();
-
-        if (!\is_string($content) || $content === '') {
-            throw new ModelUnavailable('The model returned no usable message content.');
-        }
-
-        return $content;
+        return $this->send($access, $system, $user, options: []);
     }
 
     /**
      * The model answers under a JSON schema generated from `$type`, and the
      * answer is mapped straight onto it. Anything unusable throws: there is no
      * partial read and no default-and-carry-on, because an answer the model did
-     * not actually produce would put words in the buyer's mouth and the deciders
-     * would act on them.
+     * not actually produce would put words in the buyer's mouth and the
+     * deciders would act on them.
      *
      * @template T of object
      *
@@ -115,21 +118,28 @@ final readonly class ModelPlatform
      */
     public function object(ModelAccess $access, string $system, string $user, string $type): object
     {
-        $content = $this->call($access, $system, $user, ['response_format' => $type])->getContent();
+        $format = (new ResponseFormatFactory())->create($type);
+        $answer = $this->send($access, $system, $user, ['response_format' => $format]);
 
-        if (!$content instanceof $type) {
+        try {
+            $mapped = (new ModelAnswerSerializer())->deserialize($answer, $type, 'json');
+        } catch (SerializerException|\JsonException $e) {
+            throw new ModelUnavailable('The model did not answer in the requested shape.', previous: $e);
+        }
+
+        if (!$mapped instanceof $type) {
             throw new ModelUnavailable('The model did not answer in the requested shape.');
         }
 
-        return $content;
+        return $mapped;
     }
 
     /**
-     * @param array<string, mixed> $options
+     * @param array<string, mixed> $options extra top-level request body fields
      *
      * @throws ModelUnavailable
      */
-    private function call(ModelAccess $access, string $system, string $user, array $options): ResultInterface
+    private function send(ModelAccess $access, string $system, string $user, array $options): string
     {
         // ModelAccess is built from merchant config where the model name may be
         // left blank (RawConfigValue::llm reports that as a credential problem
@@ -140,59 +150,56 @@ final readonly class ModelPlatform
         }
 
         $startedAt = microtime(true);
+        $decoded = $this->post($access, [
+            ...$options,
+            'model' => $access->model,
+            'messages' => [
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => $user],
+            ],
+        ]);
 
-        try {
-            $result = $this
-                ->platform($access)
-                ->invoke($access->model, new MessageBag(Message::forSystem($system), Message::ofUser($user)), $options)
-                ->getResult();
-        } catch (PlatformException|TransportException $e) {
-            // Everything the bridge can go wrong with rides one of these two:
-            // the transport contract for a connection that never landed, the
-            // platform contract for a 4xx/5xx, a body that would not decode and
-            // an answer that would not map to the requested shape.
-            throw new ModelUnavailable('The model could not be reached.', previous: $e);
-        }
-
-        $usage = $result->getMetadata()->get('token_usage');
-        // Not every OpenAI-compatible provider sends a usage block, so a
-        // missing count is null rather than an error — a model call that
-        // happened is worth recording even when its cost is unknown.
-        $usage = $usage instanceof TokenUsageInterface ? $usage : new TokenUsage();
-
+        // Only the attempt that reaches here gets recorded: a failed call throws
+        // out of post() above, so it never has a body to read tokens from. Not
+        // every OpenAI-compatible provider sends `usage`, so a missing count is
+        // null rather than an error — a model call that happened is worth
+        // recording even when its cost is unknown.
         $this->recorder->recordModelCall(
             $access->model,
             self::hostOnly($access->baseUrl),
-            $usage->getPromptTokens(),
-            $usage->getCompletionTokens(),
+            ChatEnvelope::usage($decoded, 'prompt_tokens'),
+            ChatEnvelope::usage($decoded, 'completion_tokens'),
             (int) round((microtime(true) - $startedAt) * 1000),
         );
 
-        return $result;
+        return ChatEnvelope::content($decoded);
     }
 
     /**
-     * Built per call, not once: the merchant's credentials arrive with the
-     * settings rather than the container, and PlatformSubscriber carries the
-     * requested output type from the invocation to the result — one shared
-     * across calls would hand a stale type to the next answer.
+     * ResponseInterface::toArray() is typed on array-key, but a JSON object
+     * body decodes to string keys and a non-object body throws out of it.
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return array<array-key, mixed>
+     *
+     * @throws ModelUnavailable
      */
-    private function platform(ModelAccess $access): Platform
+    private function post(ModelAccess $access, array $payload): array
     {
-        $dispatcher = new EventDispatcher();
-        $dispatcher->addSubscriber(new PlatformSubscriber(new ResponseFormatFactory(), new ModelAnswerSerializer()));
-
-        return Factory::createPlatform(
-            baseUrl: $access->baseUrl,
-            apiKey: $access->apiKey,
-            httpClient: $this->http,
-            eventDispatcher: $dispatcher,
-            supportsEmbeddings: false,
-            // The bridge would default to OpenAI's `/v1/chat/completions`, but
-            // the merchant's base URL already carries whatever prefix their
-            // gateway uses, so only the endpoint itself belongs here.
-            completionsPath: '/chat/completions',
-        );
+        try {
+            // toArray() is what turns a non-2xx into an exception AND decodes
+            // the body, so both failure modes land in the one catch below.
+            return $this->http->request('POST', rtrim($access->baseUrl, '/') . '/chat/completions', [
+                'auth_bearer' => $access->apiKey,
+                'json' => $payload,
+            ])->toArray();
+        } catch (TransportException $e) {
+            // The transport contract covers a connection that never landed, a
+            // 4xx/5xx the retry could not rescue, and a body that would not
+            // decode. Every one of them means the same thing here: escalate.
+            throw new ModelUnavailable('The model could not be reached.', previous: $e);
+        }
     }
 
     /**
