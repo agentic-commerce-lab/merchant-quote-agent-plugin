@@ -9,10 +9,9 @@ enum QuoteEscalationReason: string
     case DiscountLimitExceeded = 'discount_limit_exceeded';
     case QuoteValueLimitExceeded = 'quote_value_limit_exceeded';
     case NeedsHumanReview = 'needs_human_review';
-    // `currency_mismatch` used to live here, written when the value ceiling
-    // carried its own ISO code. Nothing writes it since that field left the
-    // admin, but rows on disk still hold the string, so the administration
-    // snippet for it stays.
+    // The quote's currency has no configured value ceiling. An unknown
+    // ceiling is not an unlimited one, so a human decides.
+    case CurrencyMismatch = 'currency_mismatch';
     // Issue #5: the agent is enabled but cannot run — no API key, or config
     // that fails its own constraints.
     case NotConfigured = 'not_configured';

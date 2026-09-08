@@ -1,0 +1,86 @@
+[
+  {
+    "description": "the final quote's currency has a ceiling and clears it -> no violation",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [{ "lineItemId": "l1", "quantity": 1, "unitPriceNet": 1000, "totalNet": 1000 }]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 950,
+        "lines": [{ "lineItemId": "l1", "quantity": 1, "unitPriceNet": 950, "totalNet": 950 }]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": { "EUR": 5000, "USD": 6000 },
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": []
+  },
+  {
+    "description": "a currency with no configured ceiling is a violation, so the gate matches the decider",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "JPY",
+        "totalNet": 1000,
+        "lines": [{ "lineItemId": "l1", "quantity": 1, "unitPriceNet": 1000, "totalNet": 1000 }]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "JPY",
+        "totalNet": 950,
+        "lines": [{ "lineItemId": "l1", "quantity": 1, "unitPriceNet": 950, "totalNet": 950 }]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": { "EUR": 5000 },
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": ["no auto-reply limit is configured for JPY"]
+  },
+  {
+    "description": "the ceiling for the quote's own currency is the one measured against",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "USD",
+        "totalNet": 7000,
+        "lines": [{ "lineItemId": "l1", "quantity": 1, "unitPriceNet": 7000, "totalNet": 7000 }]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "USD",
+        "totalNet": 6650,
+        "lines": [{ "lineItemId": "l1", "quantity": 1, "unitPriceNet": 6650, "totalNet": 6650 }]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": { "EUR": 5000, "USD": 6000 },
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": ["quote value 6650.00 exceeds the auto-reply limit 6000"]
+  }
+]

@@ -3,27 +3,21 @@
         xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/shopware/platform/master/src/Core/System/SystemConfig/Schema/config.xsd">
 
     <card>
-        <title>Quote agent</title>
+        <title>Agent activation</title>
         <input-field type="bool">
             <name>enabled</name>
             <label>Enable the quote agent</label>
             <defaultValue>false</defaultValue>
             <helpText>Off by default. While off the agent is completely silent: it queues nothing and writes nothing.</helpText>
         </input-field>
-        <input-field type="bool">
-            <name>rulesOnlyMode</name>
-            <label>Rules-only mode (no model call)</label>
-            <defaultValue>false</defaultValue>
-            <helpText>Decide grant / counter / escalate deterministically without calling a model. An explicit choice, never a fallback on error.</helpText>
-        </input-field>
     </card>
 
     <card>
-        <title>Model access</title>
+        <title>Model settings</title>
         <input-field type="password">
             <name>llmApiKey</name>
             <label>LLM API key</label>
-            <helpText>Your own key. Stored in system_config, obscured here but NOT encrypted at rest. Required in every mode, including rules-only: interpreting a buyer's free-text ask is itself a model call.</helpText>
+            <helpText>Your own key. Stored in system_config, obscured here but NOT encrypted at rest.</helpText>
         </input-field>
         <input-field type="text">
             <name>llmBaseUrl</name>
@@ -36,15 +30,19 @@
             <label>Model name</label>
             <helpText>The model to send each request to, e.g. gpt-4o-mini. Required: there is deliberately no default, because guessing one would pick a price and quality point for you.</helpText>
         </input-field>
+    </card>
+
+    <card>
+        <title>Negotiation strategy</title>
         <input-field type="textarea">
             <name>negotiationStrategy</name>
             <label>Negotiation strategy</label>
-            <helpText>Tone and commercial posture, e.g. "open at 2%, concede in 1% steps, never lead with the maximum". Appended to the negotiation prompt and used as the reply's tone instruction. It can never move a cap — the bands below are the guardrail.</helpText>
+            <helpText>Tone and commercial posture, e.g. "open at 2%, concede in 1% steps, never lead with the maximum". Appended to the negotiation prompt and used as the reply's tone instruction. It can never move a cap — the policies below are the guardrail.</helpText>
         </input-field>
     </card>
 
     <card>
-        <title>Price bands</title>
+        <title>Negotiation policies</title>
         <input-field type="float">
             <name>maxDiscountPercent</name>
             <label>Maximum discount (%)</label>
@@ -56,20 +54,21 @@
             <label>Counter-offer ceiling (%)</label>
             <helpText>An ask above the maximum but at or below this gets a deterministic counter at the maximum. Blank means no counter band.</helpText>
         </input-field>
-        <input-field type="float">
+        <input-field type="price">
             <name>maxQuoteValueNet</name>
-            <label>Maximum quote value for auto-reply (net)</label>
-            <helpText>Above this the quote always escalates. Read in the quote's own currency, so a multi-currency channel compares the same number against every one of them. Blank means no ceiling.</helpText>
+            <label>Maximum quote value for negotiation</label>
+            <helpText>Above this net total the quote always escalates. Only the net value is read; the gross box mirrors it because a system-config price carries no tax rate. Use "Maintain currency prices" to set a ceiling per currency — a quote in a currency you left blank escalates, because its ceiling is unknown rather than unlimited. Leave every currency blank for no ceiling at all.</helpText>
         </input-field>
         <input-field type="int">
             <name>validityDays</name>
-            <label>Offer validity (days)</label>
+            <label>Default offer validity (days)</label>
             <defaultValue>0</defaultValue>
         </input-field>
     </card>
 
     <card>
         <title>A2CN identity</title>
+        <subtitle>Advanced. Only read when this shop publishes a signed A2CN seller mandate; leave it alone otherwise.</subtitle>
         <input-field type="text">
             <name>a2cnOrganizationName</name>
             <label>Organization name published in the A2CN seller mandate</label>

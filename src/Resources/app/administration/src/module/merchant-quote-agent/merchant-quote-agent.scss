@@ -447,3 +447,18 @@
     font-family: ui-monospace, "SF Mono", "Menlo", monospace;
     font-size: 12px;
 }
+
+/* The negotiation strategy is prose — a posture in sentences, not a value —
+   so it gets a taller box than mt-textarea's 125px/300px default. There is no
+   `rows` prop to pass from config.xml: mt-textarea styles the textarea itself
+   and its extra attributes land on the wrapper div. The wrapper class comes
+   from sw-system-config, which emits `sw-system-config--field-{fieldName}` per
+   field, so this stays scoped to the one field.
+
+   Three classes deep on purpose: mt-textarea's own rule is scoped, which
+   compiles to `.mt-textarea__textarea[data-v-hash]` and outranks a two-class
+   selector no matter which stylesheet loads last. */
+.sw-system-config .sw-system-config--field-negotiation-strategy .mt-textarea__textarea {
+    min-height: 320px;
+    max-height: none;
+}

@@ -32,6 +32,7 @@ final class OfferVerifierTest extends TestCase
     {
         yield from self::readFixtureFile('offer-verify.json');
         yield from self::readFixtureFile('offer-verify-compounding.json');
+        yield from self::readFixtureFile('offer-verify-currency.json');
     }
 
     private static function readFixtureFile(string $filename): iterable

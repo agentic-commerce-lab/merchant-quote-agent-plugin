@@ -23,7 +23,6 @@ final class PromptComposerTest extends TestCase
     {
         return new QuoteAgentSettings(
             new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0)),
-            rulesOnly: false,
             llm: new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini'),
             strategyPrompt: $strategy,
         );

@@ -35,9 +35,14 @@ final class NegotiationPolicyArray
             'validityDays' => RawConfigValue::int($raw, 'validityDays') ?? 0,
         ];
 
-        $ceilingNet = RawConfigValue::float($raw, 'maxQuoteValueNet');
-        if ($ceilingNet !== null) {
-            $price['maxQuoteValueNet'] = $ceilingNet;
+        // Passed straight through: the reader has already resolved the admin's
+        // price field into an ISO-keyed map, and QuoteLimits refuses a
+        // wrong-typed entry per currency so the message names the one at fault.
+        $ceiling = RawValue::at($raw, 'maxQuoteValueNet');
+        if (\is_array($ceiling)) {
+            $price['maxQuoteValueNet'] = $ceiling;
+        } elseif (($net = RawConfigValue::float($raw, 'maxQuoteValueNet')) !== null) {
+            $price['maxQuoteValueNet'] = $net;
         }
 
         return ['price' => $price];

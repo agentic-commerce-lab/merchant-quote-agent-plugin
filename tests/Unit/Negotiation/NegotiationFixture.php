@@ -90,7 +90,6 @@ final class NegotiationFixture
     }
 
     public static function settings(
-        bool $rulesOnly = false,
         float $maxDiscountPercent = 10.0,
         ?float $counterOfferMaxPercent = 20.0,
         ?string $strategy = null,
@@ -101,7 +100,6 @@ final class NegotiationFixture
                 counterOfferMaxPercent: $counterOfferMaxPercent,
                 validityDays: 14,
             )),
-            rulesOnly: $rulesOnly,
             llm: self::modelAccess(),
             strategyPrompt: $strategy,
         );

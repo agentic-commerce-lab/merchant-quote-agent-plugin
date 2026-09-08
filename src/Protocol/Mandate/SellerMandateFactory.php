@@ -45,12 +45,11 @@ final readonly class SellerMandateFactory
             'negotiation_bands' => NegotiationBands::fromPolicy($policy),
         ];
 
-        $ceiling = $policy->price->valueCeiling;
-        if ($ceiling !== null) {
-            // No `max_commitment_currency`: the ceiling is read in the
-            // quote's own currency, and publishing an empty string claims a
-            // currency the shop never declared.
-            $mandate['max_commitment_value'] = MinorUnits::from($ceiling->net);
+        $commitment = $policy->price->valueCeiling?->soleCommitment();
+        if ($commitment !== null) {
+            [$net, $currencyIso] = $commitment;
+            $mandate['max_commitment_value'] = MinorUnits::from($net);
+            $mandate['max_commitment_currency'] = $currencyIso;
         }
 
         return $mandate;

@@ -180,22 +180,4 @@ final class OfferProposerTest extends TestCase
         self::assertSame(QuoteEscalationReason::NeedsHumanReview, $answer->escalation);
         self::assertStringContainsString('term I cannot offer', $answer->escalationDetail);
     }
-
-    public function testRulesOnlyModePricesFromTheBandWithNoModelCall(): void
-    {
-        [$client, $spy] = ScriptedClient::spy([]);
-        $snapshot = NegotiationFixture::snapshot();
-
-        $answer = self::proposer($client)
-            ->propose(
-                NegotiationFixture::settings(rulesOnly: true),
-                SnapshotAdapter::toPolicy($snapshot),
-                self::grantDecision(),
-                SnapshotAdapter::conversation($snapshot),
-            );
-
-        self::assertNotNull($answer->offer);
-        self::assertSame(0, $spy->calls, 'Rules-only must not let a model choose the number.');
-        self::assertNull($answer->promptHash);
-    }
 }

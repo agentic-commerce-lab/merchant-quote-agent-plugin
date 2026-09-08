@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Http;
 
+use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
@@ -45,8 +46,7 @@ final class A2cnDiscoveryControllerFixtures
             {
                 return new QuoteAgentSettings(
                     policy: new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 15.0)),
-                    rulesOnly: true,
-                    llm: null,
+                    llm: new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini'),
                     strategyPrompt: null,
                 );
             }

@@ -63,7 +63,6 @@ trait PipelineFixture
                 counterOfferMaxPercent: 20.0,
                 validityDays: 14,
             )),
-            rulesOnly: false,
             llm: new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini'),
             strategyPrompt: null,
         );

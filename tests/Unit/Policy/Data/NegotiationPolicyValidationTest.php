@@ -28,21 +28,26 @@ final class NegotiationPolicyValidationTest extends TestCase
     public function testANegativeCeilingIsReportedThroughTwoLevelsOfNesting(): void
     {
         // The deepest nesting left in the policy now that the sub-policies are
-        // gone. Drop Assert\Valid from either hop and this path disappears.
-        $policy = new NegotiationPolicy(price: new QuoteLimits(
-            maxDiscountPercent: 5.0,
-            valueCeiling: new QuoteValueCeiling(net: -1.0),
-        ));
+        // gone. Drop Assert\Valid from either hop and this path disappears,
+        // and the per-currency map means the offending currency is named.
+        $policy =
+            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0, valueCeiling: new QuoteValueCeiling([
+                'EUR' => 50_000.0,
+                'USD' => -1.0,
+            ])));
 
-        self::assertSame(['price.valueCeiling.net'], self::paths(self::validator()->validate($policy)));
+        self::assertSame(
+            ['price.valueCeiling.netByCurrencyIso[USD]'],
+            self::paths(self::validator()->validate($policy)),
+        );
     }
 
     public function testAValidPolicyReportsNothing(): void
     {
-        $policy = new NegotiationPolicy(price: new QuoteLimits(
-            maxDiscountPercent: 5.0,
-            valueCeiling: new QuoteValueCeiling(net: 50_000.0),
-        ));
+        $policy =
+            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0, valueCeiling: new QuoteValueCeiling([
+                'EUR' => 50_000.0,
+            ])));
 
         self::assertSame([], self::paths(self::validator()->validate($policy)));
     }

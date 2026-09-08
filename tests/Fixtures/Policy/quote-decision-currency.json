@@ -1,0 +1,107 @@
+[
+  {
+    "description": "the quote's currency has a ceiling and clears it -> normal auto_reply",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [{ "lineItemId": "l1", "quantity": 1, "unitPriceNet": 1000, "totalNet": 1000 }],
+        "buyerTargetNet": 950
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": { "EUR": 5000, "USD": 6000 },
+        "validityDays": 14
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 5,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [{ "lineItemId": "l1", "unitPriceNet": 950 }],
+      "validityDays": 14
+    }
+  },
+  {
+    "description": "each currency is measured against its own ceiling, not the first one",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "USD",
+        "totalNet": 5500,
+        "lines": [{ "lineItemId": "l1", "quantity": 1, "unitPriceNet": 5500, "totalNet": 5500 }],
+        "buyerTargetNet": 5225
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": { "EUR": 5000, "USD": 6000 },
+        "validityDays": 14
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 5,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [{ "lineItemId": "l1", "unitPriceNet": 5225 }],
+      "validityDays": 14
+    }
+  },
+  {
+    "description": "a currency with no configured ceiling escalates: unknown is not unlimited",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "JPY",
+        "totalNet": 1000,
+        "lines": [{ "lineItemId": "l1", "quantity": 1, "unitPriceNet": 1000, "totalNet": 1000 }],
+        "buyerTargetNet": 950
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": { "EUR": 5000 },
+        "validityDays": 14
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "escalate",
+      "reason": "currency_mismatch",
+      "requestedDiscountPercent": 5
+    }
+  },
+  {
+    "description": "no ceiling anywhere is not a per-currency gap: nothing is checked",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "JPY",
+        "totalNet": 1000000,
+        "lines": [{ "lineItemId": "l1", "quantity": 1, "unitPriceNet": 1000000, "totalNet": 1000000 }],
+        "buyerTargetNet": 950000
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "validityDays": 14
+      },
+      "interpretation": null
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 5,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [{ "lineItemId": "l1", "unitPriceNet": 950000 }],
+      "validityDays": 14
+    }
+  }
+]

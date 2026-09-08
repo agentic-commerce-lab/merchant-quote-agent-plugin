@@ -33,13 +33,37 @@ final readonly class QuoteLimits
     /** @throws \TypeError|\ValueError */
     public static function fromArray(array $data): self
     {
-        $ceilingNet = OptionalShape::float($data, 'maxQuoteValueNet');
-
         return new self(
             maxDiscountPercent: RequiredShape::float($data, 'maxDiscountPercent'),
             counterOfferMaxPercent: OptionalShape::float($data, 'counterOfferMaxPercent'),
-            valueCeiling: $ceilingNet === null ? null : new QuoteValueCeiling(net: $ceilingNet),
+            valueCeiling: self::ceiling($data),
             validityDays: OptionalShape::int($data, 'validityDays') ?? 0,
         );
+    }
+
+    /**
+     * `maxQuoteValueNet` is either a currency-keyed map (what the reader builds
+     * out of the admin's price field) or a bare number (the ported TS
+     * fixtures), which reads as a ceiling for any currency.
+     *
+     * @throws \TypeError|\ValueError
+     */
+    private static function ceiling(array $data): ?QuoteValueCeiling
+    {
+        $raw = $data['maxQuoteValueNet'] ?? null;
+
+        if (\is_array($raw)) {
+            $byIso = [];
+
+            foreach (array_keys($raw) as $iso) {
+                $byIso[(string) $iso] = RequiredShape::float($raw, (string) $iso);
+            }
+
+            return $byIso === [] ? null : new QuoteValueCeiling($byIso);
+        }
+
+        $net = OptionalShape::float($data, 'maxQuoteValueNet');
+
+        return $net === null ? null : new QuoteValueCeiling([QuoteValueCeiling::ANY_CURRENCY => $net]);
     }
 }

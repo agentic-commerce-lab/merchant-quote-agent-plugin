@@ -48,7 +48,6 @@ final readonly class QuoteAgentSettingsFactory
             }
         }
 
-        $rulesOnly = RawConfigValue::bool($raw, 'rulesOnlyMode') === true;
         $apiKey = RawConfigValue::stringOrEmpty($raw, 'llmApiKey');
 
         array_push($problems, ...RawConfigValue::credentialProblems($raw, $apiKey));
@@ -59,7 +58,6 @@ final readonly class QuoteAgentSettingsFactory
 
         return new QuoteAgentSettings(
             policy: $policy,
-            rulesOnly: $rulesOnly,
             llm: RawConfigValue::llm($raw, $apiKey),
             strategyPrompt: RawConfigValue::string($raw, 'negotiationStrategy'),
         );

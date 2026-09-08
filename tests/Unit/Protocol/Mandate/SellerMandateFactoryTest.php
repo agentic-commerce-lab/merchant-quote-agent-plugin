@@ -45,16 +45,29 @@ final class SellerMandateFactoryTest extends TestCase
     public function testMaxCommitmentIsInMinorUnitsFromTheValueCeiling(): void
     {
         $mandate = self::build(
-            new NegotiationPolicy(price: new QuoteLimits(
-                maxDiscountPercent: 15.0,
-                valueCeiling: new QuoteValueCeiling(net: 7600.0),
-            )),
+            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 15.0, valueCeiling: new QuoteValueCeiling([
+                'EUR' => 7600.0,
+            ]))),
         );
 
         self::assertSame(760000, $mandate['max_commitment_value']);
-        // The ceiling carries no currency since that field left the admin, and
-        // an empty `max_commitment_currency` would claim one the shop never
-        // declared. Absent is the honest answer.
+        self::assertSame('EUR', $mandate['max_commitment_currency']);
+    }
+
+    public function testTwoPerCurrencyCeilingsPublishNoMaxCommitmentAtAll(): void
+    {
+        // `max_commitment_value` and `max_commitment_currency` are scalars in
+        // the A2CN spec. With a ceiling per currency there is no single honest
+        // pair, and a signed document that picks one arbitrarily is worse than
+        // one that claims nothing.
+        $mandate = self::build(
+            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 15.0, valueCeiling: new QuoteValueCeiling([
+                'EUR' => 7600.0,
+                'USD' => 8200.0,
+            ]))),
+        );
+
+        self::assertArrayNotHasKey('max_commitment_value', $mandate);
         self::assertArrayNotHasKey('max_commitment_currency', $mandate);
     }
 

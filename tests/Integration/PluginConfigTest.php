@@ -73,7 +73,6 @@ final class PluginConfigTest extends IntegrationTestCase
         $config = self::systemConfig();
 
         self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'enabled'));
-        self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'rulesOnlyMode'));
         self::assertSame(0.0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'maxDiscountPercent'));
         self::assertSame(0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'validityDays'));
     }
@@ -116,7 +115,6 @@ final class PluginConfigTest extends IntegrationTestCase
 
         $config = self::systemConfig();
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'enabled', true);
-        $config->set(QuoteAgentSettingsReader::DOMAIN . 'rulesOnlyMode', false);
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmApiKey', '');
 
         $this->expectException(\MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration::class);

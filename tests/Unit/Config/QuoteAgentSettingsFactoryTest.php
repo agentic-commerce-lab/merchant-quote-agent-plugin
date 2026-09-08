@@ -24,14 +24,15 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
     {
         $raw = [
             'enabled' => true,
-            'rulesOnlyMode' => false,
             'llmApiKey' => 'sk-test',
             'llmBaseUrl' => 'https://api.openai.com/v1',
             'llmModel' => 'gpt-4o-mini',
             'negotiationStrategy' => 'open at 2%',
             'maxDiscountPercent' => 12.0,
             'counterOfferMaxPercent' => 18.0,
-            'maxQuoteValueNet' => 50_000.0,
+            // The reader hands the factory an ISO-keyed map, already resolved
+            // out of the admin's price field.
+            'maxQuoteValueNet' => ['EUR' => 50_000.0, 'USD' => 55_000.0],
             'validityDays' => 14,
         ];
 
@@ -49,9 +50,14 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         self::assertNotNull($settings);
         self::assertSame(12.0, $settings->policy->price->maxDiscountPercent);
         self::assertSame(18.0, $settings->policy->price->counterOfferMaxPercent);
-        self::assertSame(50_000.0, $settings->policy->price->valueCeiling?->net);
+        self::assertSame(50_000.0, $settings->policy->price->valueCeiling?->netFor('EUR'));
+        self::assertSame(55_000.0, $settings->policy->price->valueCeiling?->netFor('USD'));
+        self::assertNull(
+            $settings->policy->price->valueCeiling?->netFor('GBP'),
+            'A currency the merchant left blank has an unknown ceiling, not an absent one.',
+        );
         self::assertSame(14, $settings->policy->price->validityDays);
-        self::assertSame('sk-test', $settings->llm?->apiKey);
+        self::assertSame('sk-test', $settings->llm->apiKey);
         self::assertSame('open at 2%', $settings->strategyPrompt);
     }
 
@@ -93,10 +99,10 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
     {
         yield 'discount cap over 100' => [['maxDiscountPercent' => 150.0], 'price.maxDiscountPercent'];
         yield 'ceiling wrong type' => [['maxQuoteValueNet' => '50000'], 'maxQuoteValueNet'];
+        yield 'ceiling map with a wrong-typed entry' => [['maxQuoteValueNet' => ['EUR' => 'lots']], 'EUR'];
         // The silent fallback #5 removes: a blank key is never a quiet switch
         // to deterministic decisions, even in rules-only mode.
         yield 'blank API key' => [['llmApiKey' => '   '], 'API key'];
-        yield 'rules-only mode still needs a key' => [['rulesOnlyMode' => true, 'llmApiKey' => ''], 'API key'];
         yield 'blank model name' => [['llmModel' => ''], 'model'];
     }
 
@@ -129,6 +135,6 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         $settings = self::build();
 
         self::assertNotNull($settings);
-        self::assertSame('gpt-4o-mini', $settings->llm?->model);
+        self::assertSame('gpt-4o-mini', $settings->llm->model);
     }
 }
