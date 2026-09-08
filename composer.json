@@ -33,6 +33,7 @@
         "captainhook/captainhook": "^5.25",
         "captainhook/hook-installer": "^1.0",
         "carthage-software/mago": "^1.30",
+        "ext-pdo": "*",
         "phauthentic/cognitive-code-analysis": "^1.11",
         "phpunit/phpunit": "^11.5",
         "shipmonk/composer-dependency-analyser": "^1.0"
