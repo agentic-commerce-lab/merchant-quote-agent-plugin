@@ -14,6 +14,7 @@ use Shopware\Core\Framework\Migration\MigrationCollection;
 use Shopware\Core\Framework\Plugin\Context\ActivateContext;
 use Shopware\Core\Framework\Plugin\Context\InstallContext;
 use Shopware\Core\Framework\Plugin\Context\UninstallContext;
+use Shopware\Core\Framework\Plugin\Context\UpdateContext;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Stringable;
 use Symfony\Component\DependencyInjection\Container;
@@ -129,6 +130,46 @@ final class MerchantQuoteAgentPluginTest extends TestCase
                 '6.7.0.0',
                 '1.0.0',
                 self::createStub(MigrationCollection::class),
+            ),
+        );
+
+        self::assertSame([A2cnKeyStore::class], $container->requested);
+        self::assertCount(1, $logger->records);
+        self::assertSame('error', $logger->records[0]['level']);
+        self::assertInstanceOf(\Throwable::class, $logger->records[0]['exception']);
+    }
+
+    /**
+     * The upgrade gap this test pins: PluginLifecycleService::updatePlugin()
+     * calls update() on the live plugin instance and never deactivates or
+     * reactivates a plugin that is already active, so activate() does NOT run
+     * on a `plugin:update`. A shop that upgraded into the version introducing
+     * the evidence layer therefore stayed keyless — observed on a live
+     * installation — until it was deactivated and activated by hand.
+     * generateIfAbsent() is what makes generating here safe: a shop that
+     * already holds a key is untouched, so no upgrade rotates one.
+     *
+     * Asserted against the same throwing container as activate(), because
+     * fail-open matters more on this path, not less: updatePlugin() responds
+     * to a throwing update() by DEACTIVATING the plugin, so an openssl
+     * failure allowed to propagate would take all quote servicing off a shop
+     * that merely ran an upgrade.
+     */
+    public function testUpdateGeneratesTheSigningKeyAndSurvivesFailingTo(): void
+    {
+        $logger = self::recordingLogger();
+        $container = self::throwingContainer($logger);
+        $plugin = new MerchantQuoteAgentPlugin(active: true, basePath: __DIR__);
+        $plugin->setContainer($container);
+
+        $plugin->update(
+            new UpdateContext(
+                $plugin,
+                Context::createDefaultContext(),
+                '6.7.0.0',
+                '1.0.0',
+                self::createStub(MigrationCollection::class),
+                '1.1.0',
             ),
         );
 

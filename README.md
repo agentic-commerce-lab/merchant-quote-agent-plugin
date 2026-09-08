@@ -496,10 +496,15 @@ payload must equal the act's own `protocol_act_hash`, itself
 *some* object is not enough — it must verify over exactly the hash the act
 claims.
 
-The signing key (ES256/P-256) is generated once, at plugin install and again
-on `activate()` — so a shop that upgrades into this version gets one without a
-reinstall — and stored as a private JWK in `system_config` under
-`MerchantQuoteAgentPlugin.a2cn.signingKeyJwk`, deliberately outside the
+The signing key (ES256/P-256) is generated on `activate()` and on `update()`,
+and never at install — during install the plugin is by definition inactive, so
+its own services are not in the container yet. Both hooks call
+`generateIfAbsent()`, so an upgrade never rotates a key the already-signed acts
+depend on. A shop that upgraded into an earlier build of this version, before
+`update()` generated one, needs a single `bin/console plugin:deactivate` /
+`plugin:activate` pass to get its key. The key is stored as a private JWK in
+`system_config` under `MerchantQuoteAgentPlugin.a2cn.signingKeyJwk`,
+deliberately outside the
 `…config.*` prefix the admin renders: a private key must never appear in a
 config form. One key serves every domain this installation answers on; only
 the published `did:web:<host>` differs per domain.

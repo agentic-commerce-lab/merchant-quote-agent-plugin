@@ -11,6 +11,7 @@ use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Plugin;
 use Shopware\Core\Framework\Plugin\Context\ActivateContext;
 use Shopware\Core\Framework\Plugin\Context\UninstallContext;
+use Shopware\Core\Framework\Plugin\Context\UpdateContext;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 
 /**
@@ -82,13 +83,36 @@ class MerchantQuoteAgentPlugin extends Plugin
      * activate() runs — which is why the live shop works — and a plugin that
      * is installed but never activated needs no signing key.
      *
-     * Activating an already-installed shop also lands here, so a shop that
-     * updates into this version gets a key without being reinstalled.
+     * A `plugin:update` does not come through here — see update() below.
      */
     #[Override]
     public function activate(ActivateContext $activateContext): void
     {
         parent::activate($activateContext);
+        $this->generateSigningKey();
+    }
+
+    /**
+     * The other half of that story, and the reason activate() alone was not
+     * enough: PluginLifecycleService::updatePlugin() calls update() on the
+     * live plugin instance and never deactivates or reactivates a plugin that
+     * is already active, so a shop upgrading into the version that introduced
+     * the evidence layer got no key at all until someone deactivated and
+     * activated it by hand. Observed on a live installation, not deduced.
+     *
+     * Safe to repeat on every upgrade because generateIfAbsent() leaves an
+     * existing key alone: no upgrade ever rotates one out from under the acts
+     * already signed with it.
+     *
+     * Fail-open matters more here than in activate(): updatePlugin() responds
+     * to a throwing update() by DEACTIVATING the plugin, so an openssl
+     * failure allowed to propagate would take all quote servicing off a shop
+     * that merely ran an upgrade.
+     */
+    #[Override]
+    public function update(UpdateContext $updateContext): void
+    {
+        parent::update($updateContext);
         $this->generateSigningKey();
     }
 
