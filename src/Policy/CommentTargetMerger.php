@@ -11,12 +11,20 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 /**
  * Per-line target prices asked in comments behave exactly like the structured
  * "Requested price" field; the structured field wins unless this is a
- * renegotiation round (`change_requested`), where the newer comment ask wins.
+ * renegotiation round, where the newer comment ask wins.
+ *
+ * A renegotiation round is `change_requested` on trunk and `reopen` on a
+ * released SwagCommercial. Recognising both matters most on the older one,
+ * where there is no structured field at all and the comment is the buyer's only
+ * ask channel.
  *
  * Ported from `mergeCommentTargets` in src/policy/quote-decision.ts.
  */
 final class CommentTargetMerger
 {
+    /** `change_requested` on trunk, `reopen` on a released SwagCommercial. */
+    private const RENEGOTIATION_STATES = ['change_requested', 'reopen'];
+
     private readonly CommentLineTargets $lineTargets;
 
     public function __construct(?CommentLineTargets $lineTargets = null)
@@ -31,7 +39,7 @@ final class CommentTargetMerger
             return $snapshot;
         }
 
-        $commentWins = $snapshot->lifecycle->stateTechnicalName === 'change_requested';
+        $commentWins = \in_array($snapshot->lifecycle->stateTechnicalName, self::RENEGOTIATION_STATES, strict: true);
         $lines = [];
         foreach ($snapshot->lines as $line) {
             $lines[] = self::withMergedTarget($line, $targets, $commentWins);

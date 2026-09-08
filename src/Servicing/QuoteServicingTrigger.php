@@ -34,12 +34,19 @@ use Symfony\Component\Messenger\MessageBusInterface;
 final readonly class QuoteServicingTrigger implements EventSubscriberInterface
 {
     /**
-     * The only two states that mean the agent has something to do. Notably NOT
+     * The only states that mean the agent has something to do. Notably NOT
      * `in_review` or `replied`: those are the states the agent's own servicing
      * drives, so leaving them out means a self-trigger is impossible by
      * construction, independently of the context stamp.
+     *
+     * `change_requested` and `reopen` are the same event under two
+     * SwagCommercial versions — a buyer asking for changes. Trunk added
+     * `change_requested`; a released SwagCommercial runs `ACTION_REQUEST_CHANGE`
+     * into `reopen`. Both are listed unconditionally rather than probed: on
+     * trunk no route transitions into `reopen`, and if one ever did, servicing a
+     * reopened quote is the right answer anyway.
      */
-    private const TRIGGER_STATES = ['open', 'change_requested'];
+    private const TRIGGER_STATES = ['open', 'change_requested', 'reopen'];
 
     public function __construct(
         private MessageBusInterface $bus,
