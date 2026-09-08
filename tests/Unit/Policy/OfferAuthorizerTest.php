@@ -5,10 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Policy;
 
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
-use MerchantQuoteAgentPlugin\Policy\Data\OfferedDelivery;
-use MerchantQuoteAgentPlugin\Policy\Data\OfferedPayment;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
-use MerchantQuoteAgentPlugin\Policy\Data\PaymentTerm;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
@@ -66,8 +63,6 @@ final class OfferAuthorizerTest extends TestCase
         return new ProposedOffer(
             orderTotalNet: (float) $data['orderTotalNet'],
             price: new OfferedPrice(linePricesNet: $linePricesNet, referenceLines: $referenceLines),
-            delivery: new OfferedDelivery(),
-            payment: new OfferedPayment(),
         );
     }
 }

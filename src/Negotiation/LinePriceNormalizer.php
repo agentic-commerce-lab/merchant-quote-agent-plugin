@@ -56,8 +56,6 @@ final readonly class LinePriceNormalizer
                 linePricesNet: $resolved,
                 referenceLines: $offer->price->referenceLines,
             ),
-            delivery: $offer->delivery,
-            payment: $offer->payment,
         );
     }
 

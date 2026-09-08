@@ -26,17 +26,6 @@ final class NegotiationPolicyArray
         return array_filter(
             [
                 'price' => self::price($raw),
-                'delivery' => self::section([
-                    'freeShippingAboveNet' => RawConfigValue::float($raw, 'deliveryFreeShippingAboveNet'),
-                    'maxShippingWaiverNet' => RawConfigValue::float($raw, 'deliveryMaxShippingWaiverNet'),
-                    'expeditedAllowed' => RawConfigValue::bool($raw, 'deliveryExpeditedAllowed') === true ? true : null,
-                    'committedLeadTimeDaysMin' => RawConfigValue::int($raw, 'deliveryCommittedLeadTimeDaysMin'),
-                ]),
-                'payment' => self::section([
-                    'allowedTerms' => RawConfigValue::stringList($raw, 'paymentAllowedTerms'),
-                    'maxNetDays' => RawConfigValue::int($raw, 'paymentMaxNetDays'),
-                    'minDepositPercent' => RawConfigValue::float($raw, 'paymentMinDepositPercent'),
-                ]),
                 'bundle' => self::section(['volumeTiers' => $tiers === [] ? null : $tiers]),
             ],
             static fn(mixed $section): bool => $section !== null,
@@ -80,9 +69,8 @@ final class NegotiationPolicyArray
 
     /**
      * A sub-policy is emitted only when the merchant set at least one of its
-     * fields. Blank means null, and null is what makes DeliveryDecider answer
-     * "no delivery policy configured" rather than a subtly different per-field
-     * reason.
+     * fields, so a blank field group means null rather than a policy of
+     * zeroes. Only `bundle` remains to emit.
      *
      * @param array<string, mixed> $fields
      *

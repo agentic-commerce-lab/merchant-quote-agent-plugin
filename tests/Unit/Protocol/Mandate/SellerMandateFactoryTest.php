@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Mandate;
 
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
-use MerchantQuoteAgentPlugin\Policy\Data\PaymentPolicy;
-use MerchantQuoteAgentPlugin\Policy\Data\PaymentTerm;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteValueCeiling;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
@@ -69,16 +67,17 @@ final class SellerMandateFactoryTest extends TestCase
         self::assertSame($bands['autoGrantMaxBps'], $bands['escalateAboveBps']);
     }
 
-    public function testNegotiationBandsPublishPaymentAuthorityWhenConfigured(): void
+    public function testTheMandatePublishesPriceAuthorityOnly(): void
     {
-        $mandate = self::build(new NegotiationPolicy(
-            price: new QuoteLimits(maxDiscountPercent: 15.0),
-            payment: new PaymentPolicy(allowedTerms: [PaymentTerm::Net30], maxNetDays: 30, minDepositPercent: 10.0),
-        ));
+        // The signed document used to carry payment and delivery bands. The
+        // agent decides neither -- AskGate escalates every non-price ask, and
+        // QuoteUpdate cannot write a term -- so the claim was unbacked. Bundle
+        // stays: a volume tier is a published rate, not a decision.
+        $mandate = self::build(new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 15.0)));
 
-        self::assertSame(['net_30'], $mandate['negotiation_bands']['payment']['allowedTerms']);
-        self::assertSame(30, $mandate['negotiation_bands']['payment']['maxNetDays']);
-        self::assertSame(1000, $mandate['negotiation_bands']['payment']['minDepositBps']);
+        self::assertArrayNotHasKey('payment', $mandate['negotiation_bands']);
+        self::assertArrayNotHasKey('delivery', $mandate['negotiation_bands']);
+        self::assertSame(1500, $mandate['negotiation_bands']['autoGrantMaxBps']);
     }
 
     /** @return array<string, mixed> */

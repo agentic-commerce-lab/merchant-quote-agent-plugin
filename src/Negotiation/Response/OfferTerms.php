@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Negotiation\Response;
 
-use MerchantQuoteAgentPlugin\Policy\Data\OfferedDelivery;
-use MerchantQuoteAgentPlugin\Policy\Data\OfferedPayment;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
@@ -21,6 +19,11 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
  *
  * Split out of NegotiateResponse so that class's own constructor stays under
  * the parameter-count gate.
+ *
+ * Price only. `delivery` and `payment` were fields here until those dimensions
+ * were retired; leaving them would invite the model to propose a term that
+ * AskGate escalates, no check bounds any more, and QuoteUpdate cannot write —
+ * a concession promised to the buyer and then silently dropped.
  */
 final readonly class OfferTerms
 {
@@ -28,8 +31,6 @@ final readonly class OfferTerms
     public function __construct(
         public ?float $discountPercent = null,
         public ?array $linePricesNet = null,
-        public ?OfferedDelivery $delivery = null,
-        public ?OfferedPayment $payment = null,
     ) {}
 
     /**
@@ -47,8 +48,6 @@ final readonly class OfferTerms
         return new ProposedOffer(
             orderTotalNet: $orderTotalNet,
             price: new OfferedPrice(discountPercent: $this->discountPercent, linePricesNet: $this->lines()),
-            delivery: $this->delivery ?? new OfferedDelivery(),
-            payment: $this->payment ?? new OfferedPayment(),
         );
     }
 

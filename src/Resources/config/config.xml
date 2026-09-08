@@ -86,56 +86,13 @@
         </input-field>
     </card>
 
-    <card>
-        <title>Delivery — blank escalates</title>
-        <input-field type="float">
-            <name>deliveryFreeShippingAboveNet</name>
-            <label>Grant free shipping above (net)</label>
-        </input-field>
-        <input-field type="float">
-            <name>deliveryMaxShippingWaiverNet</name>
-            <label>Maximum shipping waiver (net)</label>
-        </input-field>
-        <input-field type="bool">
-            <name>deliveryExpeditedAllowed</name>
-            <label>Expedited shipping may be granted</label>
-            <defaultValue>false</defaultValue>
-        </input-field>
-        <input-field type="int">
-            <name>deliveryCommittedLeadTimeDaysMin</name>
-            <label>Shortest lead time the agent may commit to (days)</label>
-        </input-field>
-    </card>
 
     <card>
-        <title>Payment — blank escalates</title>
-        <input-field type="multi-select">
-            <name>paymentAllowedTerms</name>
-            <label>Payment terms the agent may grant</label>
-            <options>
-                <option><id>prepaid</id><name>Prepaid</name></option>
-                <option><id>net_15</id><name>Net 15</name></option>
-                <option><id>net_30</id><name>Net 30</name></option>
-                <option><id>net_60</id><name>Net 60</name></option>
-                <option><id>net_90</id><name>Net 90</name></option>
-            </options>
-        </input-field>
-        <input-field type="int">
-            <name>paymentMaxNetDays</name>
-            <label>Maximum net days</label>
-        </input-field>
-        <input-field type="float">
-            <name>paymentMinDepositPercent</name>
-            <label>Minimum deposit (%)</label>
-        </input-field>
-    </card>
-
-    <card>
-        <title>Volume tiers — blank escalates</title>
+        <title>Published volume pricing</title>
         <input-field type="textarea">
             <name>bundleVolumeTiers</name>
-            <label>Volume tiers, one per line</label>
-            <helpText>Format minQty:discountPercent, e.g. "10:5" then "50:7.5" on the next line. A line that does not parse makes the whole configuration invalid — the agent escalates rather than applying half a ladder.</helpText>
+            <label>Volume tiers — one per line, as "minimum quantity : discount %"</label>
+            <helpText>One tier per line. "10:5" means an order of 10 or more units of any single line qualifies for 5% off; "50:7.5" on the next line means 50 or more qualifies for 7.5%. The highest qualifying tier applies, never two at once, and no tier can exceed the maximum discount above. These tiers are PUBLISHED to buying agents in this shop's signed negotiation mandate — they are what you will honour when a buyer asks for them, not a discount the agent volunteers, and it will never offer more than the buyer actually asked for. A line that does not parse makes the whole configuration invalid, so the agent escalates rather than applying half a ladder.</helpText>
         </input-field>
     </card>
 

@@ -45,7 +45,7 @@ final class ModelPlatformTest extends TestCase
             'action' => 'offer',
             'message' => 'We can do 5%.',
             'escalationReason' => null,
-            'terms' => ['discountPercent' => 5.0, 'linePricesNet' => null, 'delivery' => null, 'payment' => null],
+            'terms' => ['discountPercent' => 5.0, 'linePricesNet' => null],
         ], JSON_THROW_ON_ERROR);
 
         [$platform, $spy] = ScriptedClient::spy([$answer]);

@@ -102,10 +102,18 @@ standing and the existing counter instruction still fires.
 
 ### 2. The tier leaves the brief
 
-Delete `AuthorityBrief::bundle()`. `BundleDecider` keeps classifying the band and
-`BundleBand` stays in the mandate, so published volume pricing survives as a
-threshold and as a protocol claim — it stops being a number suggested to a model
-that will then exceed the buyer's ask to reach it.
+Delete `AuthorityBrief::bundle()`. `BundleBand` stays, so published volume
+pricing survives as a protocol claim.
+
+**Corrected during implementation.** This section first claimed `BundleDecider`
+would keep classifying the band. It does not, and cannot: `NonPriceTermsDecider`
+only calls it when `asks->bundle->requested` is true, and that same condition
+makes `hasNonPriceAsk()` true, so AskGate escalates first. `BundleDecider` was
+unreachable for exactly the reason payment and delivery were, and the brief line
+was the tier's ONLY live effect — the model said so itself. So the tier is now a
+published claim with no behaviour attached, and `BundleDecider` went with the
+rest of the dead non-price code. Whether `bundleVolumeTiers` should survive as a
+mandate-only advertisement is a decision left open.
 
 ### 3. Retiring Payment and Delivery
 
@@ -119,6 +127,8 @@ that will then exceed the buyer's ask to reach it.
 - `NegotiationBands::withSubPolicies()` — drop the payment and delivery bands.
   Keep bundle.
 - `OfferLimitsBuilder` — `OfferLimits` loses its payment and delivery members.
+- `OfferTerms` and `ProposedOffer` — the model's response schema loses
+  `delivery` and `payment` (see "What must not be deleted").
 
 Existing `system_config` rows stay on disk. They are ignored once the keys leave
 the reader, they cost nothing, and leaving them is what makes a revert a code
@@ -140,12 +150,16 @@ dropped — trading an advertised-but-unhonoured term for a lost buyer request,
 which is worse. The model must keep extracting non-price asks precisely so the
 agent can refuse them.
 
-**`NonPriceTermsDecider` stays on the live path.** `NegotiationDecider::decide()`
-calls it unconditionally and aggregates its band into `overall`
-(`NegotiationDecider:36-39`). It simplifies to a constant granting, bandless
-decision with no policy to read, but it cannot be removed: `overall` must remain
-equal to the price band, which is what the pipeline's gate documents and relies
-on.
+**`NonPriceTermsDecider` was on the live path.** `NegotiationDecider::decide()`
+called it unconditionally and aggregated its band into `overall`
+(`NegotiationDecider:36-39`).
+
+**Corrected during implementation.** The spec said it must stay, simplified to a
+constant granting decision. It could go entirely: `BandAggregator` is worst-wins
+(`Escalate > Counter > Grant`), so aggregating a constant `Grant` is a no-op.
+`NegotiationDecider` now takes `overall` straight from the price band, which is
+what the pipeline's gate already assumed, and the decider, `NonPriceDecision` and
+`NegotiationDecision::$nonPrice` are all gone.
 
 Everything else that exists only to serve those two config sections goes: the
 payment and delivery deciders, their grant verifiers and offer checks, the
@@ -191,9 +205,20 @@ bands are absent and that bundle survives. Any pinned canonical bytes or hashes
 covering the mandate are regenerated in the same commit; a pinned-byte test that
 changes silently is worse than one that fails.
 
-One test must be added that does not exist today: that a delivery or payment ask
-still escalates to a human after the deletion. That is the regression the
-"must not be deleted" section exists to prevent, and nothing currently pins it.
+**Corrected during implementation.** The spec claimed no test pinned the
+escalation of a delivery or payment ask. `NonPriceAskGateTest` already does, and
+precisely: a `requestedNetDays: 0` payment ask must escalate, and all-false
+sub-asks must not. It is the safety net for this deletion and needed no
+addition — it passes unchanged, which is the evidence the extract side survived
+intact.
+
+One surface the spec missed entirely: `OfferTerms`, the schema handed to the
+model, still declared `terms.delivery` and `terms.payment`. Leaving them would
+have been worse after the deletion than before it, since the checks that used to
+bound them were gone — a proposed term would have passed authorization unchecked
+and then been dropped. They are removed, and a provider that sends one anyway
+makes the answer unusable, which escalates rather than discarding a concession
+the buyer was just promised.
 
 ## Consequences
 

@@ -6,7 +6,6 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\Response;
 
 use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
 use MerchantQuoteAgentPlugin\Negotiation\Response\NegotiateResponse;
-use MerchantQuoteAgentPlugin\Policy\Data\PaymentTerm;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\ScriptedClient;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -56,20 +55,11 @@ final class NegotiateResponseTest extends TestCase
         self::assertSame(45.5, $offer->price->linePricesNet[0]->unitPriceNet);
     }
 
-    public function testItReadsNonPriceTerms(): void
+    public function testAPriceOnlyOfferStillReads(): void
     {
-        $json =
-            '{"action":"offer","message":"ok","terms":{'
-            . '"delivery":{"freeShipping":true,"expedited":false,"committedLeadTimeDays":3},'
-            . '"payment":{"paymentTerm":"net_60","netDays":60,"depositPercent":15}}}';
+        $offer = self::read('{"action":"offer","message":"ok","terms":{"discountPercent":5}}')->toOffer(1000.0);
 
-        $offer = self::read($json)->toOffer(1000.0);
-
-        self::assertTrue($offer->delivery->freeShipping);
-        self::assertSame(3, $offer->delivery->committedLeadTimeDays);
-        self::assertSame(PaymentTerm::Net60, $offer->payment->paymentTerm);
-        self::assertSame(60, $offer->payment->netDays);
-        self::assertSame(15.0, $offer->payment->depositPercent);
+        self::assertSame(5.0, $offer->price->discountPercent);
     }
 
     public function testTheModelMayDeclineAndSayWhy(): void
@@ -90,7 +80,13 @@ final class NegotiateResponseTest extends TestCase
         // and defaulting it would answer a buyer the model never answered.
         yield 'no action at all' => ['{"message":"hmm"}'];
         yield 'not json' => ['Sure! Here is my offer: 10% off.'];
-        yield 'a term outside the enum' => ['{"action":"offer","terms":{"payment":{"paymentTerm":"net_45"}}}'];
+        // `terms.delivery` and `terms.payment` left the schema with those
+        // dimensions. A provider that sends one anyway makes the whole answer
+        // unusable, which escalates -- deliberately, because the alternative
+        // is quietly discarding a concession the buyer was just promised.
+        yield 'a retired non-price term' => [
+            '{"action":"offer","message":"ok","terms":{"discountPercent":5,"delivery":{"freeShipping":true}}}',
+        ];
     }
 
     #[DataProvider('unusable')]

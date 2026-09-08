@@ -10,10 +10,14 @@ use MerchantQuoteAgentPlugin\Policy\Data\NegotiationProposal;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 
 /**
- * Deterministic multi-dimension negotiation. Delegates the price dimension
- * to QuoteDecider (no band logic is duplicated) and the delivery/payment/
- * bundle dimensions to NonPriceTermsDecider. Every value is computed by
- * code, never by an LLM.
+ * Deterministic negotiation. Delegates the price dimension to QuoteDecider, so
+ * no band logic is duplicated. Every value is computed by code, never by an LLM.
+ *
+ * There is only the price dimension. Delivery, payment and bundle asks are
+ * escalated by AskGate before they reach here, so the non-price decision this
+ * used to aggregate was always a granting one -- and BandAggregator is
+ * worst-wins, which makes aggregating a Grant a no-op. `overall` is therefore
+ * the price band, which is what NegotiationPipeline's gate already assumed.
  *
  * Ported from `decideNegotiation` in src/policy/negotiate-decision.ts.
  */
@@ -21,10 +25,8 @@ final class NegotiationDecider
 {
     public function __construct(
         private readonly QuoteDecider $quoteDecider = new QuoteDecider(),
-        private readonly NonPriceTermsDecider $nonPriceTermsDecider = new NonPriceTermsDecider(),
         private readonly PriceBandClassifier $priceBandClassifier = new PriceBandClassifier(),
         private readonly PriceEscalationReasons $priceEscalationReasons = new PriceEscalationReasons(),
-        private readonly BandAggregator $bandAggregator = new BandAggregator(),
     ) {}
 
     public function decide(
@@ -33,13 +35,11 @@ final class NegotiationDecider
         ?NegotiationProposal $proposal = null,
     ): NegotiationDecision {
         $price = $this->quoteDecider->decide($snapshot, $policy->price, $proposal?->price);
-        $nonPrice = $this->nonPriceTermsDecider->decide($snapshot, $policy, $proposal?->nonPrice);
 
         return new NegotiationDecision(
-            overall: $this->bandAggregator->aggregate([$this->priceBandClassifier->classify($price), $nonPrice->band]),
+            overall: $this->priceBandClassifier->classify($price),
             price: $price,
-            nonPrice: $nonPrice,
-            escalationReasons: [...$this->priceEscalationReasons->reasons($price), ...$nonPrice->escalationReasons],
+            escalationReasons: $this->priceEscalationReasons->reasons($price),
         );
     }
 }

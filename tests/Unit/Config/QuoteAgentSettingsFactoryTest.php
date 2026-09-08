@@ -35,13 +35,6 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
             'maxQuoteValueCurrency' => 'EUR',
             'validityDays' => 14,
             'replyTone' => 'formal',
-            'deliveryFreeShippingAboveNet' => 500.0,
-            'deliveryMaxShippingWaiverNet' => 80.0,
-            'deliveryExpeditedAllowed' => true,
-            'deliveryCommittedLeadTimeDaysMin' => 3,
-            'paymentAllowedTerms' => ['net_30', 'net_60'],
-            'paymentMaxNetDays' => 60,
-            'paymentMinDepositPercent' => 10.0,
             'bundleVolumeTiers' => "10:5\n50:7.5",
         ];
 
@@ -63,10 +56,6 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         self::assertSame('EUR', $settings->policy->price->valueCeiling?->currencyIso);
         self::assertSame(14, $settings->policy->price->validityDays);
         self::assertSame('formal', $settings->policy->price->replyTone);
-        self::assertSame(500.0, $settings->policy->delivery?->freeShippingAboveNet);
-        self::assertSame(3, $settings->policy->delivery?->committedLeadTimeDaysMin);
-        self::assertSame(60, $settings->policy->payment?->maxNetDays);
-        self::assertCount(2, $settings->policy->payment->allowedTerms ?? []);
         self::assertCount(2, $settings->policy->bundle->volumeTiers ?? []);
         self::assertSame(50, $settings->policy->bundle?->volumeTiers[1]->minQty);
         self::assertSame('sk-test', $settings->llm?->apiKey);
@@ -87,24 +76,13 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
 
     public function testABlankSubPolicySectionBecomesNullRatherThanAnAllNullObject(): void
     {
-        $settings = self::build([
-            'deliveryFreeShippingAboveNet' => null,
-            'deliveryMaxShippingWaiverNet' => null,
-            'deliveryExpeditedAllowed' => false,
-            'deliveryCommittedLeadTimeDaysMin' => null,
-            'paymentAllowedTerms' => [],
-            'paymentMaxNetDays' => null,
-            'paymentMinDepositPercent' => null,
-            'bundleVolumeTiers' => '',
-        ]);
+        $settings = self::build(['bundleVolumeTiers' => '']);
 
         self::assertNotNull($settings);
         self::assertNull(
-            $settings->policy->delivery,
-            'A blank delivery section must escalate as "no delivery policy configured".',
+            $settings->policy->bundle,
+            'A blank tier field must be no bundle policy, not a policy of empty tiers.',
         );
-        self::assertNull($settings->policy->payment);
-        self::assertNull($settings->policy->bundle);
     }
 
     public function testAnUntouchedInstallEscalatesEverythingRatherThanFailing(): void
@@ -135,11 +113,9 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
     public static function invalidConfigurations(): iterable
     {
         yield 'discount cap over 100' => [['maxDiscountPercent' => 150.0], 'price.maxDiscountPercent'];
-        yield 'negative lead time' => [['deliveryCommittedLeadTimeDaysMin' => -1], 'delivery.committedLeadTimeDaysMin'];
         yield 'bad ceiling currency' => [['maxQuoteValueCurrency' => 'NOPE'], 'price.valueCeiling.currencyIso'];
         yield 'tier percent over 100' => [['bundleVolumeTiers' => '10:150'], 'bundle.volumeTiers[0].discountPercent'];
         yield 'malformed tier line' => [['bundleVolumeTiers' => "10:5\nbroken"], 'line 2'];
-        yield 'unknown payment term' => [['paymentAllowedTerms' => ['net_45']], 'PaymentPolicy'];
         yield 'ceiling wrong type' => [['maxQuoteValueNet' => '50000'], 'maxQuoteValueNet'];
         yield 'wrong-typed ceiling currency' => [['maxQuoteValueCurrency' => 978], 'maxQuoteValueCurrency'];
         // The silent fallback #5 removes: a blank key is never a quiet switch
@@ -164,7 +140,7 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
     public function testEveryProblemIsReportedAtOnce(): void
     {
         try {
-            self::build(['maxDiscountPercent' => 150.0, 'deliveryCommittedLeadTimeDaysMin' => -1]);
+            self::build(['maxDiscountPercent' => 150.0, 'maxQuoteValueCurrency' => 'NOPE']);
             self::fail('Invalid configuration was accepted.');
         } catch (InvalidQuoteAgentConfiguration $e) {
             self::assertCount(2, $e->problems);

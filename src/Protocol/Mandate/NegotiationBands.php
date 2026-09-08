@@ -20,13 +20,14 @@ use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
  * agent will make the offer itself.
  *
  * An absent sub-policy contributes no key at all — absent, never null: a
- * buyer reading `isset($bands['delivery'])` must see exactly "this shop
- * declared no delivery authority", not "this shop declared null authority".
- * The delivery/payment/bundle conversions themselves live in
- * DeliveryBand/PaymentBand/BundleBand — split out so this class does not
- * carry all four conversions (and trip the per-class
- * cyclomatic-complexity gate); each block asks its own single question, the
- * same seam Record\OfferSelection and Record\OptionalAct already use.
+ * buyer reading `isset($bands['bundle'])` must see exactly "this shop declared
+ * no volume authority", not "this shop declared null authority". The bundle
+ * conversion itself lives in BundleBand, the same seam
+ * Record\OfferSelection and Record\OptionalAct already use.
+ *
+ * Bundle is the only sub-policy left. Delivery and payment were published here
+ * until it became clear the agent decides neither: AskGate escalates every
+ * non-price ask, so the document was advertising authority nobody exercised.
  */
 final class NegotiationBands
 {
@@ -56,16 +57,11 @@ final class NegotiationBands
      */
     private static function withSubPolicies(array $bands, NegotiationPolicy $policy): array
     {
-        $delivery = DeliveryBand::from($policy->delivery);
-        if ($delivery !== null) {
-            $bands['delivery'] = $delivery;
-        }
-
-        $payment = PaymentBand::from($policy->payment);
-        if ($payment !== null) {
-            $bands['payment'] = $payment;
-        }
-
+        // Delivery and payment bands were published here until the two
+        // sub-policies were removed. They advertised terms the agent never
+        // decided: AskGate escalates every non-price ask to a human, and
+        // QuoteUpdate cannot write a delivery or payment term at all. A signed
+        // document claiming otherwise is worse than a smaller one.
         $bundle = BundleBand::from($policy->bundle);
         if ($bundle !== null) {
             $bands['bundle'] = $bundle;
