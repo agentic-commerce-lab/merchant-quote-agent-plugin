@@ -61,17 +61,32 @@ final readonly class AskInterpreter
 
     /**
      * The shape the extract prompt states it will receive: the line items as
-     * `id | label | quantity | unit price`, then the buyer's newest comment —
-     * only that one, or an older round's ask is extracted a second time.
+     * `id | label | quantity | unit price | requested price`, then the buyer's
+     * newest comment — only that one, or an older round's ask is extracted a
+     * second time.
+     *
+     * The requested column is the buyer's own per-line ask, which
+     * SwagCommercial writes to `quote_line_item.requested_price` from the
+     * storefront. Without it the model saw a comment that REFERS to a number
+     * it was never shown ("what do you think about this discount?") and could
+     * only ask which discount was meant — while the ask sat on the line. The
+     * extract prompt already assumed this column existed: its
+     * `additionalDiscountPercent` rule reads "on top of any requested prices
+     * already entered".
+     *
+     * Echoing a requested price back as a `lineChanges` target is harmless:
+     * CommentTargetMerger lets the structured field win over a comment target
+     * outside a renegotiation round, so the number cannot be double-counted.
      */
     private static function userPrompt(QuoteSnapshot $snapshot, BuyerConversation $conversation): string
     {
         $lines = array_map(static fn(QuoteLineSnapshot $l): string => sprintf(
-            '%s | %s | %d | %.2f',
+            '%s | %s | %d | %.2f | %s',
             $l->identity->lineItemId,
             $l->identity->label ?? '',
             $l->quantity,
             $l->unitPriceNet,
+            $l->requestedUnitPrice === null ? 'none' : sprintf('%.2f', $l->requestedUnitPrice),
         ), $snapshot->content->lines);
 
         return (

@@ -38,6 +38,37 @@ final class ClarificationGateTest extends TestCase
         self::assertSame(['Which line did you mean?'], $harness->gateway->comments);
     }
 
+    public function testAnUnmetStructuredTargetAnswersTheAskInsteadOfClarifying(): void
+    {
+        // Quote 1017: the buyer set a per-line requested price and wrote "I
+        // take 10 of each, so what do you think about this discount?". The
+        // model was shown no requested column, so it asked which discount was
+        // meant; the buyer answered "the one I've requested" and the marker
+        // turned that into an escalation. Nothing was ambiguous — the line
+        // itself named the price, which is the one thing a clarification
+        // question cannot be needed for.
+        $harness = PipelineHarness::with(
+            [
+                self::AMBIGUOUS,
+                '{"action":"offer","message":"2% off.","terms":{"discountPercent":2}}',
+                'We can do 2%.',
+            ],
+            reReadTotalNet: 980.0,
+        );
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('what do you think about this discount?', '2026-08-28 09:00:00'),
+        ], requestedUnitPrice: 98.0);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Offered, $outcome);
+    }
+
     public function testTheSameAmbiguityEscalatesOnceWeHaveAlreadyAsked(): void
     {
         $harness = PipelineHarness::with([self::AMBIGUOUS]);

@@ -63,6 +63,43 @@ final class AskInterpreterTest extends TestCase
         self::assertStringContainsString('Widget', $spy->userPrompts[0]);
     }
 
+    public function testTheUserPromptCarriesTheStructuredRequestedPrice(): void
+    {
+        // Quote 1017: the buyer entered a per-line "Requested price" and then
+        // wrote "I take 10 of each, so what do you think about this discount?".
+        // The prompt never carried the requested column, so the model had no
+        // number to extract, asked to clarify, and the follow-up escalated —
+        // while the ask sat on the line the whole time.
+        [$client, $spy] = ScriptedClient::spy(['{}']);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('what do you think about this discount?', '2026-08-28 09:00:00'),
+        ], requestedUnitPrice: 90.0);
+
+        (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
+            NegotiationFixture::settings(),
+            $snapshot,
+            SnapshotAdapter::conversation($snapshot),
+        );
+
+        self::assertStringContainsString('90.00', $spy->userPrompts[0]);
+    }
+
+    public function testALineWithNoRequestedPriceSaysSoRatherThanShowingAPrice(): void
+    {
+        [$client, $spy] = ScriptedClient::spy(['{}']);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('any discount?', '2026-08-28 09:00:00'),
+        ]);
+
+        (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
+            NegotiationFixture::settings(),
+            $snapshot,
+            SnapshotAdapter::conversation($snapshot),
+        );
+
+        self::assertStringContainsString('line-1 | Widget | 10 | 100.00 | none', $spy->userPrompts[0]);
+    }
+
     public function testNoNewAskCostsNoModelCall(): void
     {
         [$client, $spy] = ScriptedClient::spy(['{"price":{"additionalDiscountPercent":8}}']);
