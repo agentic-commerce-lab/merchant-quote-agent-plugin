@@ -14,9 +14,9 @@
 #
 # A remote, non-Docker shop (e.g. the released-SwagCommercial host) is driven
 # over SSH instead, by setting SHOP_SSH (user@host) and SHOP_PATH (its
-# docroot):
+# docroot, an ABSOLUTE path on the remote host — `~` will not expand there):
 #
-#   SHOP_SSH=user@host SHOP_PATH=~/files/shop composer run test:integration
+#   SHOP_SSH=user@host SHOP_PATH=/home/user/files/shop composer run test:integration
 #
 # That host IP-bans on frequent connections, so this script opens exactly one
 # ssh ControlMaster socket up front and routes both the sync (via
@@ -29,6 +29,16 @@ cd "$(dirname "$0")/.."
 
 if [ -n "${SHOP_SSH:-}" ]; then
   : "${SHOP_PATH:?SHOP_PATH (the remote docroot) must be set alongside SHOP_SSH}"
+  # Must be an absolute path on the REMOTE host, checked before the SSH
+  # master below opens — see scripts/sync-to-shop.sh's matching guard for
+  # why no form of `~` works here.
+  case "$SHOP_PATH" in
+    /*) ;;
+    *)
+      echo "SHOP_PATH must be an absolute path on the remote host (e.g. /home/user/files/shop); '~' does not expand there. Got: $SHOP_PATH" >&2
+      exit 1
+      ;;
+  esac
   # Same reasoning as Docker's explicit `php8.3`: the remote host may run
   # several PHP versions side by side, so name the one Shopware 6.7 needs
   # rather than trusting a bare `phpunit` shebang. Override if this host's

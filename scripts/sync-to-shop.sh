@@ -23,6 +23,19 @@ if [ -n "${SHOP_SSH:-}" ]; then
   # one connection for this script's own five-plus commands, just not
   # shared with a sibling invocation.
   : "${SHOP_PATH:?SHOP_PATH (the remote docroot) must be set alongside SHOP_SSH}"
+  # Must be an absolute path on the REMOTE host, checked before the SSH
+  # master below opens — a relative path or a `~` would only fail after
+  # spending a connection, which is exactly the cost this mode exists to
+  # avoid. `~` never expands inside the single-quoted remote command
+  # strings below, and unquoted it expands against the LOCAL $HOME before
+  # this script even runs — so there is no form of `~` that works here.
+  case "$SHOP_PATH" in
+    /*) ;;
+    *)
+      echo "SHOP_PATH must be an absolute path on the remote host (e.g. /home/user/files/shop); '~' does not expand there. Got: $SHOP_PATH" >&2
+      exit 1
+      ;;
+  esac
 
   DEST="$SHOP_PATH/custom/plugins/MerchantQuoteAgentPlugin"
   BUILT="$DEST/src/Resources/public"
