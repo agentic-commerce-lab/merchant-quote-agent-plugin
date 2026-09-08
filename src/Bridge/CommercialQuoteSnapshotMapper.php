@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Bridge;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
 
 /**
@@ -18,6 +19,10 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
  */
 final readonly class CommercialQuoteSnapshotMapper
 {
+    public function __construct(
+        private CommercialCapabilities $capabilities,
+    ) {}
+
     /**
      * @mago-expect analysis:mixed-method-access
      * @mago-expect analysis:mixed-argument
@@ -66,7 +71,10 @@ final readonly class CommercialQuoteSnapshotMapper
                 // Per unit, in the quote currency; gross or net per totals.tax_status.
                 'unit_price' => (float) $lineItem->getUnitPrice(),
                 'total_price' => (float) $lineItem->getTotalPrice(),
-                'requested_unit_price' => $lineItem->getRequestedPrice(),
+                // A method, not a column: on a SwagCommercial without line-item
+                // asks this getter does not exist, and calling it is a fatal
+                // Error on every buyer-side read rather than a null.
+                'requested_unit_price' => $this->capabilities->lineItemAsks ? $lineItem->getRequestedPrice() : null,
             ];
         }
 

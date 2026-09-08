@@ -459,7 +459,7 @@ return static function (ContainerConfigurator $configurator): void {
     // without SwagCommercial and the capability reports itself unsupported.
     // (No `isAvailableByClass()` guard here: the early return above already
     // means SwagCommercial's classes provably exist past this point.)
-    $services->set(CommercialQuoteSnapshotMapper::class);
+    $services->set(CommercialQuoteSnapshotMapper::class)->args([service(CommercialCapabilities::class)]);
 
     // "May this buyer request be served at all, and on whose behalf" —
     // the preconditions every operation shares, separate from the
