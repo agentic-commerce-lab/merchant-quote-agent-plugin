@@ -32,10 +32,7 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
         'maxDiscountPercent',
         'counterOfferMaxPercent',
         'maxQuoteValueNet',
-        'maxQuoteValueCurrency',
         'validityDays',
-        'replyTone',
-        'bundleVolumeTiers',
     ];
 
     public function __construct(

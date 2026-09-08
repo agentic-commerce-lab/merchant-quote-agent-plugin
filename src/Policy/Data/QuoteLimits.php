@@ -17,7 +17,6 @@ final readonly class QuoteLimits
         public ?QuoteValueCeiling $valueCeiling = null,
         #[Assert\PositiveOrZero]
         public int $validityDays = 0,
-        public ?string $replyTone = null,
     ) {}
 
     /** The same limits with a tightened discount cap — see AskedDiscountCeiling. */
@@ -28,7 +27,6 @@ final readonly class QuoteLimits
             counterOfferMaxPercent: $this->counterOfferMaxPercent,
             valueCeiling: $this->valueCeiling,
             validityDays: $this->validityDays,
-            replyTone: $this->replyTone,
         );
     }
 
@@ -40,14 +38,8 @@ final readonly class QuoteLimits
         return new self(
             maxDiscountPercent: RequiredShape::float($data, 'maxDiscountPercent'),
             counterOfferMaxPercent: OptionalShape::float($data, 'counterOfferMaxPercent'),
-            valueCeiling: $ceilingNet === null
-                ? null
-                : new QuoteValueCeiling(net: $ceilingNet, currencyIso: OptionalShape::string(
-                    $data,
-                    'maxQuoteValueCurrency',
-                )),
+            valueCeiling: $ceilingNet === null ? null : new QuoteValueCeiling(net: $ceilingNet),
             validityDays: OptionalShape::int($data, 'validityDays') ?? 0,
-            replyTone: OptionalShape::string($data, 'replyTone'),
         );
     }
 }

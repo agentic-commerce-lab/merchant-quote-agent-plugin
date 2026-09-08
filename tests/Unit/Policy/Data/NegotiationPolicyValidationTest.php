@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Policy\Data;
 
-use MerchantQuoteAgentPlugin\Policy\Data\BundlePolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteValueCeiling;
-use MerchantQuoteAgentPlugin\Policy\Data\VolumeTier;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Validator\Validation;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -27,32 +25,24 @@ final class NegotiationPolicyValidationTest extends TestCase
         self::assertSame(['price.maxDiscountPercent'], self::paths(self::validator()->validate($policy)));
     }
 
-    public function testAnOutOfRangeVolumeTierIsReportedThroughTwoLevelsOfNesting(): void
+    public function testANegativeCeilingIsReportedThroughTwoLevelsOfNesting(): void
     {
-        $policy = new NegotiationPolicy(
-            price: new QuoteLimits(maxDiscountPercent: 5.0),
-            bundle: new BundlePolicy(volumeTiers: [new VolumeTier(minQty: 10, discountPercent: 150.0)]),
-        );
-
-        self::assertSame(['bundle.volumeTiers[0].discountPercent'], self::paths(self::validator()->validate($policy)));
-    }
-
-    public function testABadCurrencyIsReportedWithItsPath(): void
-    {
+        // The deepest nesting left in the policy now that the sub-policies are
+        // gone. Drop Assert\Valid from either hop and this path disappears.
         $policy = new NegotiationPolicy(price: new QuoteLimits(
             maxDiscountPercent: 5.0,
-            valueCeiling: new QuoteValueCeiling(net: 100.0, currencyIso: 'NOPE'),
+            valueCeiling: new QuoteValueCeiling(net: -1.0),
         ));
 
-        self::assertSame(['price.valueCeiling.currencyIso'], self::paths(self::validator()->validate($policy)));
+        self::assertSame(['price.valueCeiling.net'], self::paths(self::validator()->validate($policy)));
     }
 
     public function testAValidPolicyReportsNothing(): void
     {
-        $policy = new NegotiationPolicy(
-            price: new QuoteLimits(maxDiscountPercent: 5.0),
-            bundle: new BundlePolicy(volumeTiers: [new VolumeTier(minQty: 10, discountPercent: 7.5)]),
-        );
+        $policy = new NegotiationPolicy(price: new QuoteLimits(
+            maxDiscountPercent: 5.0,
+            valueCeiling: new QuoteValueCeiling(net: 50_000.0),
+        ));
 
         self::assertSame([], self::paths(self::validator()->validate($policy)));
     }

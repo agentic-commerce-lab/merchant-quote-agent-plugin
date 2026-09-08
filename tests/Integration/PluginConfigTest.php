@@ -74,7 +74,6 @@ final class PluginConfigTest extends IntegrationTestCase
 
         self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'enabled'));
         self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'rulesOnlyMode'));
-        self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'deliveryExpeditedAllowed'));
         self::assertSame(0.0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'maxDiscountPercent'));
         self::assertSame(0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'validityDays'));
     }

@@ -19,10 +19,9 @@ use MerchantQuoteAgentPlugin\Protocol\Terms\NonFiniteAmount;
  * normative A2CN authority: the spec defines the mandate envelope
  * (`max_commitment_value`, `authorized_deal_types`, validity) but says
  * nothing about how a shop's discount policy is expressed. Publishing the
- * bands here — and the delivery/payment/bundle blocks inside them — makes
- * public exactly the same non-price authority QuoteBandDecider and the
- * sibling deciders already enforce server-side; a buyer agent that ignores
- * this extension still gets a spec-conformant declared mandate.
+ * bands here makes public exactly the price authority QuoteBandDecider
+ * already enforces server-side; a buyer agent that ignores this extension
+ * still gets a spec-conformant declared mandate.
  */
 final readonly class SellerMandateFactory
 {
@@ -48,8 +47,10 @@ final readonly class SellerMandateFactory
 
         $ceiling = $policy->price->valueCeiling;
         if ($ceiling !== null) {
+            // No `max_commitment_currency`: the ceiling is read in the
+            // quote's own currency, and publishing an empty string claims a
+            // currency the shop never declared.
             $mandate['max_commitment_value'] = MinorUnits::from($ceiling->net);
-            $mandate['max_commitment_currency'] = $ceiling->currencyIso ?? '';
         }
 
         return $mandate;

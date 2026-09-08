@@ -5,7 +5,6 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "ext-filter": "*",
         "ext-openssl": "*",
         "cuyz/valinor": "^2.6",
         "doctrine/dbal": "~4.4.0",

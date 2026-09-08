@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Config;
 
-use CuyZ\Valinor\Mapper\MappingError;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
@@ -35,21 +34,11 @@ final readonly class QuoteAgentSettingsFactory
         }
 
         $problems = [];
-        $tiers = [];
-
-        try {
-            $tiers = VolumeTierParser::parse(RawConfigValue::stringOrEmpty($raw, 'bundleVolumeTiers'));
-        } catch (\UnexpectedValueException $e) {
-            $problems[] = $e->getMessage();
-        }
-
         $policy = null;
 
         try {
-            $policy = NegotiationPolicy::fromArray(NegotiationPolicyArray::build($raw, $tiers));
-        } catch (MappingError|\TypeError|\ValueError $e) {
-            // Valinor maps the sub-policies; an unknown PaymentTerm lands here
-            // rather than as a constraint violation.
+            $policy = NegotiationPolicy::fromArray(NegotiationPolicyArray::build($raw));
+        } catch (\TypeError|\ValueError $e) {
             $problems[] = $e->getMessage();
         }
 

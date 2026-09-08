@@ -352,9 +352,8 @@ ceiling on a pilot channel first.
 
 **The agent ships switched off, and a fresh install answers nothing.** That is
 deliberate on two counts: `enabled` defaults to false, and `maxDiscountPercent`
-defaults to `0` with every non-price dimension blank, so even once enabled the
-agent escalates every ask until you set bands. A silent agent is far more often
-"not configured yet" than "broken".
+defaults to `0`, so even once enabled the agent escalates every ask until you
+set bands. A silent agent is far more often "not configured yet" than "broken".
 
 **You supply the model credentials.** The API key is yours, so per-tenant model
 cost is not the plugin's, and the base URL lets you point at Azure, your own
@@ -381,10 +380,10 @@ true` stores `"true"`, which is not the boolean `true` and so reads as switched
 off — silently. Always write `bin/console system:config:set --json <key>
 <value>`, e.g. `--json ...validityDays 30`.
 
-**Invalid configuration is refused whole.** A discount cap above 100, a bad
-ceiling currency or a volume-tier line that does not parse makes the whole
-sales channel unusable and escalates, rather than applying the half of the
-policy that happened to be valid.
+**Invalid configuration is refused whole.** A discount cap above 100, or a
+wrong-typed value from the CLI, makes the whole sales channel unusable and
+escalates, rather than applying the half of the policy that happened to be
+valid.
 
 ## How the agent negotiates
 

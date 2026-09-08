@@ -94,14 +94,12 @@ final class NegotiationFixture
         float $maxDiscountPercent = 10.0,
         ?float $counterOfferMaxPercent = 20.0,
         ?string $strategy = null,
-        ?string $tone = null,
     ): QuoteAgentSettings {
         return new QuoteAgentSettings(
             new NegotiationPolicy(price: new QuoteLimits(
                 maxDiscountPercent: $maxDiscountPercent,
                 counterOfferMaxPercent: $counterOfferMaxPercent,
                 validityDays: 14,
-                replyTone: $tone,
             )),
             rulesOnly: $rulesOnly,
             llm: self::modelAccess(),

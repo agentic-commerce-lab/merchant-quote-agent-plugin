@@ -47,7 +47,7 @@ final class ReplyComposerTest extends TestCase
             ->reply(
                 $gateway,
                 $after,
-                NegotiationFixture::settings(tone: 'formal'),
+                NegotiationFixture::settings(strategy: 'formal'),
                 5.0,
                 SnapshotAdapter::conversation($after),
             );

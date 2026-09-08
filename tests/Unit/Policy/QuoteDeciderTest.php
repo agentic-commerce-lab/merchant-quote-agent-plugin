@@ -61,7 +61,6 @@ final class QuoteDeciderTest extends TestCase
     public static function fixtures(): iterable
     {
         yield from self::readFixtureFile('quote-decision.json');
-        yield from self::readFixtureFile('quote-decision-currency.json');
     }
 
     private static function readFixtureFile(string $filename): iterable
