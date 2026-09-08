@@ -209,14 +209,8 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $criteria->setOffset(($page - 1) * $limit);
         $criteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_EXACT);
         $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::DESCENDING));
-        // The listing route only associates the currency, so state and line items
-        // must be requested here or every entry would come back stateless - and
-        // state is exactly what an agent polls this endpoint for.
-        $criteria->addAssociation('stateMachineState');
-        $criteria->addAssociation('currency');
-        $criteria->addAssociation('lineItems');
-        $this->excludeSoftDeletedLineItems($criteria);
-        $criteria->addAssociation('comments');
+        $criteria->addAssociation('currency'); // the listing route only associates this itself
+        $this->addQuoteReadAssociations($criteria);
 
         /**
          * The route returns an untyped SwagCommercial collection — no type
@@ -363,6 +357,15 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $criteria->getAssociation('lineItems')->addFilter(new EqualsFilter('deletedAt', null));
     }
 
+    /** Shared by listQuotes() and loadQuote(): both read state, line items and comments off the quote entity. */
+    private function addQuoteReadAssociations(Criteria $criteria): void
+    {
+        $criteria->addAssociation('stateMachineState'); // unconditional: trunk's routes associate this themselves, released SwagCommercial does not - relying on the route would mean relying on that version difference
+        $criteria->addAssociation('lineItems');
+        $this->excludeSoftDeletedLineItems($criteria);
+        $criteria->addAssociation('comments');
+    }
+
     /**
      * The commercial load route filters by customer and sales channel, so a quote
      * belonging to somebody else is indistinguishable from one that does not
@@ -372,10 +375,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
     private function loadQuote(string $quoteId, SalesChannelContext $context): object
     {
         $criteria = new Criteria();
-        $criteria->addAssociation('lineItems');
-        $this->excludeSoftDeletedLineItems($criteria);
-        $criteria->addAssociation('comments');
-
+        $this->addQuoteReadAssociations($criteria);
         $quoteLoadRoute = CommercialQuoteAccess::service($this->quoteLoadRoute, 'quote load');
 
         try {

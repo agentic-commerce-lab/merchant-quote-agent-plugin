@@ -57,7 +57,8 @@ throughout and every one of its fifteen consuming files handles null, with
 | 5 | `QuoteSendRequestRoute` | absent | buyer gateway reports itself unavailable wholesale |
 | 6 | `QuoteLineItemRoute` | absent | as above |
 | 7 | `QuoteLineItemEntity::getRequestedPrice()` | absent | `CommercialQuoteSnapshotMapper:69` fatals |
-| 8 | `quote_line_item.deletedAt` named in a DAL criteria filter | absent | `SwagCommercialBuyerQuoteGateway:218,357` throws `UnmappedFieldException` |
+| 8 | `quote_line_item.deletedAt` named in a DAL criteria filter | absent | `SwagCommercialBuyerQuoteGateway:357` throws `UnmappedFieldException` |
+| 9 | `stateMachineState` association on the load route | not added | `CommercialQuoteSnapshotMapper:40` publishes `state: null` |
 
 Verified present on both: `quote.discount`, the `quote.state` machine,
 `QuoteManipulation::addProduct`/`addCustomLineItem`,
@@ -107,6 +108,26 @@ field in a filter — was invisible behind a misleading 404. Fixed the same way
 as the rest of the table: gated on `$capabilities->softDeleteLines`, and
 skipped entirely rather than merely worked around, because a release without
 that column also has no soft-deleted rows to filter.
+
+Breakage 9 was also found by running against a real shop, not by reading, and
+it is a third category the original eight entries don't cover: relying on an
+association a newer version's route happens to add on its own, alongside
+Breakage 8's criteria-filter case. `loadQuote()`'s `Criteria` never named
+`stateMachineState`; it didn't need to, because trunk's `QuoteLoadRoute`
+associates it itself. Released SwagCommercial's `QuoteLoadRoute` associates
+only `currency` — `stateMachineState` is trunk's addition, not a baseline every
+release shares. So on a released shop `$quote->getStateMachineState()` comes
+back null, and `CommercialQuoteSnapshotMapper::toSnapshot()` publishes
+`state: null` on every buyer-facing snapshot: `getQuote`, `requestQuote`,
+`counterQuote`, `acceptQuote`, `declineQuote`. Live, this surfaced as
+`LegacyBuyerFlowTest::testAQuoteRequestLandsOpenInOneCallAndCarriesTheComment`
+failing with `Failed asserting that null is identical to 'open'`. Fixed by
+adding the association in `loadQuote()` unconditionally, not gated on a
+capability: the association exists on every supported release, and having the
+route also add it is idempotent, so there is no version difference to gate on
+here — only a version difference in who was already adding it. `listQuotes()`
+already carried this same association for the same reason; the two now share
+one `addQuoteReadAssociations()` helper instead of stating it twice.
 
 ## Goals
 
