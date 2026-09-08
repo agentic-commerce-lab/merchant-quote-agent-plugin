@@ -24,8 +24,7 @@ final class OfferTermsTest extends TestCase
 
         self::assertSame(1000.0, $offer->orderTotalNet);
         self::assertNull($offer->price->discountPercent);
-        self::assertNull($offer->delivery->freeShipping);
-        self::assertNull($offer->payment->paymentTerm);
+        self::assertNull($offer->price->linePricesNet);
     }
 
     /**

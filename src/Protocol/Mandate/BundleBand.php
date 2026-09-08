@@ -9,7 +9,8 @@ use MerchantQuoteAgentPlugin\Policy\Data\VolumeTier;
 
 /**
  * The bundle block of `negotiation_bands` — split out of NegotiationBands for
- * the same reason as DeliveryBand and PaymentBand. Every volume tier's
+ * the same reason the other bands were: to keep NegotiationBands inside the
+ * complexity gate. Every volume tier's
  * `discountPercent` converts to `discountBps`.
  */
 final class BundleBand

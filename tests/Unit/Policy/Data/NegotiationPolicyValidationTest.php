@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Policy\Data;
 
 use MerchantQuoteAgentPlugin\Policy\Data\BundlePolicy;
-use MerchantQuoteAgentPlugin\Policy\Data\DeliveryPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteValueCeiling;
@@ -38,27 +37,20 @@ final class NegotiationPolicyValidationTest extends TestCase
         self::assertSame(['bundle.volumeTiers[0].discountPercent'], self::paths(self::validator()->validate($policy)));
     }
 
-    public function testANegativeLeadTimeAndABadCurrencyAreBothReported(): void
+    public function testABadCurrencyIsReportedWithItsPath(): void
     {
-        $policy = new NegotiationPolicy(
-            price: new QuoteLimits(
-                maxDiscountPercent: 5.0,
-                valueCeiling: new QuoteValueCeiling(net: 100.0, currencyIso: 'NOPE'),
-            ),
-            delivery: new DeliveryPolicy(committedLeadTimeDaysMin: -1),
-        );
+        $policy = new NegotiationPolicy(price: new QuoteLimits(
+            maxDiscountPercent: 5.0,
+            valueCeiling: new QuoteValueCeiling(net: 100.0, currencyIso: 'NOPE'),
+        ));
 
-        self::assertSame(
-            ['price.valueCeiling.currencyIso', 'delivery.committedLeadTimeDaysMin'],
-            self::paths(self::validator()->validate($policy)),
-        );
+        self::assertSame(['price.valueCeiling.currencyIso'], self::paths(self::validator()->validate($policy)));
     }
 
     public function testAValidPolicyReportsNothing(): void
     {
         $policy = new NegotiationPolicy(
             price: new QuoteLimits(maxDiscountPercent: 5.0),
-            delivery: new DeliveryPolicy(committedLeadTimeDaysMin: 3),
             bundle: new BundlePolicy(volumeTiers: [new VolumeTier(minQty: 10, discountPercent: 7.5)]),
         );
 

@@ -11,6 +11,12 @@ use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * The aggregate decision, which is now the price decision: the delivery,
+ * payment and bundle cases left this fixture along with those dimensions.
+ * AskGate escalates every non-price ask before the decider is reached, so the
+ * non-price decision it used to aggregate was always a granting one.
+ */
 final class NegotiationDeciderTest extends TestCase
 {
     #[DataProvider('fixtures')]
@@ -24,11 +30,6 @@ final class NegotiationDeciderTest extends TestCase
 
         self::assertSame($expected['overall'], $decision->overall->value, $description);
         self::assertSame($expected['price']['kind'], $decision->price->kind->value, $description);
-        if (isset($expected['delivery'])) {
-            self::assertNotNull($decision->nonPrice?->delivery, $description);
-        } else {
-            self::assertNull($decision->nonPrice?->delivery, $description);
-        }
         self::assertSame(
             $this->escalationPrefixes($expected['escalationReasons']),
             $this->escalationPrefixes($decision->escalationReasons),

@@ -187,8 +187,9 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         // aggregate rather than re-running PriceBandClassifier over `->price`
         // keeps one classification, and means the day a non-price ask does
         // reach the decider the gate already accounts for it.
+        $policySnapshot = SnapshotAdapter::toPolicy($snapshot);
         $decision = $this->decider->decide(
-            SnapshotAdapter::toPolicy($snapshot),
+            $policySnapshot,
             $settings->policy,
             new NegotiationProposal(price: $ask?->interpretation),
         );
@@ -200,6 +201,12 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             return $this->round->escalated($gateway, $snapshot, $reason, $ask?->promptHash, null);
         }
 
-        return $this->round->play($gateway, $snapshot, $settings, $decision, $ask?->promptHash);
+        return $this->round->play(
+            $gateway,
+            $snapshot,
+            CappedAuthority::forRound($settings, $policySnapshot, $ask),
+            $decision,
+            $ask?->promptHash,
+        );
     }
 }

@@ -101,8 +101,6 @@ final class OfferLevelMirrorTest extends TestCase
 
         self::assertEquals($lines, $mirrored->price->referenceLines);
         self::assertSame($offer->orderTotalNet, $mirrored->orderTotalNet);
-        self::assertSame($offer->delivery, $mirrored->delivery);
-        self::assertSame($offer->payment, $mirrored->payment);
     }
 
     private static function offer(OfferedPrice $price): ProposedOffer

@@ -20,6 +20,18 @@ final readonly class QuoteLimits
         public ?string $replyTone = null,
     ) {}
 
+    /** The same limits with a tightened discount cap — see AskedDiscountCeiling. */
+    public function withMaxDiscountPercent(float $maxDiscountPercent): self
+    {
+        return new self(
+            maxDiscountPercent: $maxDiscountPercent,
+            counterOfferMaxPercent: $this->counterOfferMaxPercent,
+            valueCeiling: $this->valueCeiling,
+            validityDays: $this->validityDays,
+            replyTone: $this->replyTone,
+        );
+    }
+
     /** @throws \TypeError|\ValueError */
     public static function fromArray(array $data): self
     {

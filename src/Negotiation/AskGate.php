@@ -56,9 +56,14 @@ final class AskGate
             // nowhere: only `price` is composed into the proposal below, and
             // QuoteUpdate cannot write a delivery term anyway. Answering the
             // price half and dropping the rest silently is worse than saying
-            // a human takes it — and promising shipping that never lands is
-            // worse still, which is why this does not route through
-            // NonPriceTermsDecider.
+            // a human takes it, and promising shipping that never lands is
+            // worse still.
+            //
+            // This gate is why the delivery and payment policies, their
+            // deciders and their config no longer exist: nothing downstream
+            // could ever be reached to honour them. The asks are still
+            // EXTRACTED, and must stay so — that is what makes this
+            // escalation possible instead of a silent drop.
             $logger->info('The buyer asked for a non-price term; a human decides that.', [
                 'quoteId' => $snapshot->identity->quoteId,
             ]);

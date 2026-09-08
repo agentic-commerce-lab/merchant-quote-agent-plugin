@@ -61,8 +61,6 @@ final class OfferLevelMirror
                 linePricesNet: self::atPercent($referenceLines, $percent),
                 referenceLines: $referenceLines,
             ),
-            delivery: $offer->delivery,
-            payment: $offer->payment,
         );
     }
 

@@ -16,8 +16,6 @@ final readonly class ProposedOffer
         #[Assert\PositiveOrZero]
         public float $orderTotalNet,
         public OfferedPrice $price = new OfferedPrice(),
-        public OfferedDelivery $delivery = new OfferedDelivery(),
-        public OfferedPayment $payment = new OfferedPayment(),
     ) {}
 
     /**
@@ -37,8 +35,6 @@ final readonly class ProposedOffer
                 linePricesNet: $this->price->linePricesNet,
                 referenceLines: $lines,
             ),
-            delivery: $this->delivery,
-            payment: $this->payment,
         );
     }
 }

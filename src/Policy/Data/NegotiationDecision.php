@@ -10,7 +10,6 @@ final readonly class NegotiationDecision
     public function __construct(
         public Band $overall,
         public QuoteDecision $price,
-        public ?NonPriceDecision $nonPrice = null,
         public array $escalationReasons = [],
     ) {}
 }

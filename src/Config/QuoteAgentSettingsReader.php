@@ -35,13 +35,6 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
         'maxQuoteValueCurrency',
         'validityDays',
         'replyTone',
-        'deliveryFreeShippingAboveNet',
-        'deliveryMaxShippingWaiverNet',
-        'deliveryExpeditedAllowed',
-        'deliveryCommittedLeadTimeDaysMin',
-        'paymentAllowedTerms',
-        'paymentMaxNetDays',
-        'paymentMinDepositPercent',
         'bundleVolumeTiers',
     ];
 

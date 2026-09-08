@@ -25,4 +25,9 @@ final readonly class QuoteAgentSettings
         public ?ModelAccess $llm,
         public ?string $strategyPrompt,
     ) {}
+
+    public function withPolicy(NegotiationPolicy $policy): self
+    {
+        return new self($policy, $this->rulesOnly, $this->llm, $this->strategyPrompt);
+    }
 }
