@@ -1,7 +1,7 @@
 {
     "merchant-quote-agent": {
         "general": {
-            "mainMenuItemGeneral": "Quote Agent",
+            "mainMenuItemGeneral": "Quote Agent Dashboard",
             "description": "Was der Quote Agent bisher getan hat"
         },
         "outcome": {
@@ -98,7 +98,8 @@
             "granted": "Durchschnittlich gewährter Rabatt",
             "needsReview": "Wartet auf dich",
             "ofServiced": "von {total} bearbeiteten Angeboten",
-            "ofCap": "bei einem Limit von {cap}"
+            "ofCap": "bei einem Limit von {cap}",
+            "orderPlaced": "Bestellungen ausgelöst"
         },
         "detail": {
             "pageTitle": "Angebot #{quoteNumber}",
@@ -119,13 +120,19 @@
             "missingTitle": "Entscheidung nicht gefunden",
             "missingSubline": "Dieser Datensatz konnte nicht geladen werden. Möglicherweise wurde er gelöscht.",
             "terminal": {
-                "accepted": "Vom Käufer angenommen",
+                "accepted": "Bestellung ausgelöst",
                 "declined": "Abgelehnt",
                 "expired": "Abgelaufen",
                 "cancelled": "Storniert",
                 "withdrawn": "Zurückgezogen"
             },
-            "openQuote": "Angebot öffnen"
+            "openQuote": "Angebot öffnen",
+            "conversationTitle": "Konversation",
+            "conversationSubtitle": "Was der Kunde geschrieben hat und was der Agent geantwortet hat. Direkt vom Angebot gelesen.",
+            "fromCustomer": "Kunde",
+            "fromAgent": "Quote Agent",
+            "openOrder": "Bestellung öffnen",
+            "orderPlacedAt": "Bestellung ausgelöst am {at}"
         },
         "access": {
             "mainMenuItem": "Agent-Zugriff",
@@ -157,7 +164,19 @@
             "answered": "Beantwortet",
             "awaitingBuyer": "Rückfrage gestellt",
             "noAction": "Kein Handlungsbedarf",
-            "other": "Unbekanntes Ergebnis"
+            "other": "Unbekanntes Ergebnis",
+            "orderPlaced": "Bestellung ausgelöst"
+        },
+        "escalationWhy": {
+            "anUnstatedAmount": "einen Betrag, der nicht als Prozentwert lesbar war",
+            "discount_limit_exceeded": "Der Kunde hat {asked} verlangt, mehr als Ihr Maximalrabatt von {cap}. Mehr als das Maximum zu gewähren, kann nur ein Mensch entscheiden.",
+            "quote_value_limit_exceeded": "Dieses Angebot hat einen Wert von {value} und liegt über dem Maximalwert, den Sie für Verhandlungen festgelegt haben. Große Angebote werden unabhängig vom verlangten Rabatt übergeben.",
+            "currency_mismatch": "Für {currency} ist kein Maximalwert konfiguriert, daher kann der Agent nicht feststellen, ob dieses Angebot innerhalb Ihrer Obergrenze liegt. Legen Sie einen Wert für diese Währung fest, damit verhandelt werden kann.",
+            "needs_human_review": "Der Kunde hat nach einem Menschen gefragt oder etwas außerhalb von Preis und Gültigkeit verlangt — eine Lieferbedingung, eine Zahlungsbedingung oder eine Änderung am Angebotsinhalt. Der Agent verhandelt ausschließlich den Preis.",
+            "not_configured": "Der Agent ist aktiviert, seine Konfiguration ist aber unvollständig oder ungültig. Er hat daher nichts geantwortet, statt zu raten. Die technischen Details unten nennen die Felder.",
+            "model_unavailable": "Das Modell war nicht erreichbar oder hat unbrauchbar geantwortet. Am Angebot wurde nichts geändert.",
+            "proposal_rejected": "Das Modell hat Konditionen vorgeschlagen, die außerhalb der von Ihren Richtlinien erlaubten Befugnis liegen. Die Policy-Schicht hat sie abgelehnt, das Angebot blieb unverändert.",
+            "verification_failed": "Das Angebot wurde geändert, beim erneuten Lesen stimmte es aber nicht mit dem Autorisierten überein. Ein Mensch muss das prüfen, bevor der Kunde etwas erfährt."
         }
     }
 }

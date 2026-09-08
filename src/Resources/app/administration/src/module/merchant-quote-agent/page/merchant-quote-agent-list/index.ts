@@ -3,6 +3,7 @@ import {
     ANSWERED_OUTCOMES,
     answeredTheBuyer,
     askSummary,
+    dispositionVariant,
     escalationLabel,
     foldToQuotes,
     formatCurrency,
@@ -81,6 +82,20 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
         needsReview() {
             return this.partition.needsReview ?? 0;
+        },
+
+        /**
+         * Quotes the agent negotiated that the customer then ordered. The one
+         * figure on this page that measures the agent earning money rather
+         * than the agent being busy, so it is stated as a count and a share of
+         * everything serviced.
+         */
+        orderPlaced() {
+            return this.partition.orderPlaced ?? 0;
+        },
+
+        orderPlacedShare() {
+            return this.quotes.length > 0 ? (this.orderPlaced / this.quotes.length) * 100 : 0;
         },
 
         /** Everything that is not waiting on the merchant, as one share. */
@@ -188,7 +203,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
         dispositionFilterOptions() {
             return [
                 { value: 'all', label: this.$tc('merchant-quote-agent.list.filterAll') },
-                ...['needsReview', 'answered', 'awaitingBuyer', 'noAction'].map((key) => ({
+                ...['orderPlaced', 'needsReview', 'answered', 'awaitingBuyer', 'noAction'].map((key) => ({
                     value: key,
                     label: this.$tc(`merchant-quote-agent.disposition.${key}`),
                 })),
@@ -217,6 +232,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
         formatDateShort,
         formatPercent,
         outcomeVariant,
+        dispositionVariant,
         answeredTheBuyer,
 
         outcomeLabel(outcome) {

@@ -1,6 +1,6 @@
 {
     "name": "shopware/merchant-quote-agent-plugin",
-    "description": "Quote Management Agent plugin",
+    "description": "Quote Agent plugin",
     "type": "shopware-platform-plugin",
     "license": "MIT",
     "require": {
@@ -86,8 +86,8 @@
     "extra": {
         "shopware-plugin-class": "MerchantQuoteAgentPlugin\\MerchantQuoteAgentPlugin",
         "label": {
-            "en-GB": "Quote Management Agent",
-            "de-DE": "Quote Management Agent"
+            "en-GB": "Quote Agent",
+            "de-DE": "Quote Agent"
         },
         "description": {
             "en-GB": "Autonomous B2B quote negotiation within merchant-defined limits."

@@ -105,6 +105,13 @@
     font-size: 13px;
 }
 
+/* The revenue lede. Positive hue on the number only: the critical bar below
+   belongs to the review queue, and two competing fills would leave neither
+   reading as the accent. */
+.mqa-standing__lede--won .mqa-standing__value {
+    color: var(--color-text-positive-default);
+}
+
 .mqa-standing__bar {
     height: 8px;
     border-radius: 4px;
@@ -461,4 +468,67 @@
 .sw-system-config .sw-system-config--field-negotiation-strategy .mt-textarea__textarea {
     min-height: 320px;
     max-height: none;
+}
+
+/* The quote's comment thread. Customer left, agent indented right — the
+   asymmetry does the attribution at a glance, and the author label repeats it
+   in words so nothing rests on position or colour alone. */
+.mqa-thread {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.mqa-thread__entry {
+    max-width: 70ch;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: var(--color-elevation-surface-sunken);
+}
+
+.mqa-thread__entry--agent {
+    margin-left: auto;
+    border: 1px solid var(--color-border-brand-selected);
+    background: var(--color-elevation-surface-raised);
+}
+
+.mqa-thread__meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.mqa-thread__author {
+    color: var(--color-text-primary-default);
+    font-weight: 600;
+}
+
+.mqa-thread__time {
+    color: var(--color-text-secondary-default);
+}
+
+/* The customer's own sentence, so prose rules: pretty wrapping and preserved
+   line breaks. A buyer who wrote a list wrote it as a list. */
+.mqa-thread__text {
+    margin: 0;
+    color: var(--color-text-primary-default);
+    white-space: pre-wrap;
+    text-wrap: pretty;
+}
+
+/* The escalation sentence sits under the reason badge and above the recorded
+   detail, so it needs to read as the explanation rather than as another field
+   value. Own line, prose width. */
+.mqa-run__why {
+    display: block;
+    max-width: 70ch;
+    margin-top: 4px;
+    color: var(--color-text-primary-default);
+    text-wrap: pretty;
 }
