@@ -30,6 +30,13 @@ use Symfony\Component\Messenger\MessageBusInterface;
  * through the `customer_send` transition (draft → open), so the state
  * subscription already covers it. Verified against the shop's own
  * state_machine_transition table.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10), and the branch that crosses it
+ * is real: `reopen` needs its own transition-name check to tell a buyer's
+ * `request_change` from a merchant's `reopen` apart, on top of the state-name
+ * and enter-side filters every other trigger state already needed. See
+ * TRIGGER_STATES for why the two cannot be told apart by state name alone.
  */
 final readonly class QuoteServicingTrigger implements EventSubscriberInterface
 {
@@ -39,12 +46,22 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
      * drives, so leaving them out means a self-trigger is impossible by
      * construction, independently of the context stamp.
      *
-     * `change_requested` and `reopen` are the same event under two
-     * SwagCommercial versions — a buyer asking for changes. Trunk added
-     * `change_requested`; a released SwagCommercial runs `ACTION_REQUEST_CHANGE`
-     * into `reopen`. Both are listed unconditionally rather than probed: on
-     * trunk no route transitions into `reopen`, and if one ever did, servicing a
-     * reopened quote is the right answer anyway.
+     * `change_requested` is trunk's name for a buyer asking for changes. A
+     * released SwagCommercial (6.7.1.2-6.7.12) has no `change_requested` state
+     * at all - it reuses `reopen` for the same purpose, but `reopen` there has
+     * TWO inbound transitions, not one:
+     *
+     *  - `request_change` (replied -> reopen): the buyer asking for changes.
+     *    This is `change_requested` under a different name, and belongs here.
+     *  - `reopen` (declined -> reopen): a MERCHANT un-declining a quote they
+     *    previously declined. There is no new buyer input, so servicing this
+     *    one would mean an agent reply lands because a merchant gave the
+     *    customer a second chance, not because the customer asked anything -
+     *    exactly the kind of surprise this plugin exists to prevent.
+     *
+     * State name alone cannot tell those two apart, so `reopen` stays listed
+     * here unconditionally and onQuoteStateChanged() checks the transition
+     * name too, but only for `reopen`.
      */
     private const TRIGGER_STATES = ['open', 'change_requested', 'reopen'];
 
@@ -79,6 +96,13 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
         }
 
         if (!\in_array($event->getStateName(), self::TRIGGER_STATES, strict: true)) {
+            return;
+        }
+
+        // `reopen` alone does not say who acted - see TRIGGER_STATES. Service
+        // it only for the buyer's `request_change` transition, not for a
+        // merchant's `reopen` transition un-declining the quote.
+        if ($event->getStateName() === 'reopen' && $event->getTransition()->getTransitionName() !== 'request_change') {
             return;
         }
 

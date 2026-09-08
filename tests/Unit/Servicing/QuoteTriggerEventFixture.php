@@ -30,6 +30,7 @@ final class QuoteTriggerEventFixture
         string $side = StateMachineStateChangeEvent::STATE_MACHINE_TRANSITION_SIDE_ENTER,
         ?Context $context = null,
         string $fromState = 'draft',
+        string $transitionName = 'customer_send',
     ): StateMachineStateChangeEvent {
         $machine = new StateMachineEntity();
         $machine->setId('0191bd7f7a5e7c9e8a3f4b2c1d0e9f88');
@@ -46,7 +47,7 @@ final class QuoteTriggerEventFixture
         return new StateMachineStateChangeEvent(
             $context ?? Context::createDefaultContext(),
             $side,
-            new Transition('quote', 'q1', 'customer_send', 'stateId'),
+            new Transition('quote', 'q1', $transitionName, 'stateId'),
             $machine,
             $from,
             $to,
