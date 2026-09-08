@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Bridge;
 
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteList;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
 use Override;
@@ -38,10 +39,11 @@ use Ucp\Sdk\Exception\ValidationException;
  * @mago-expect lint:cyclomatic-complexity
  * The rule aggregates per class (threshold 10) and every branch here is real:
  * requestQuote() rejects an empty line-item list and a non-positive quantity
- * inline (both 422s), counterQuote() only touches pricing when line items were
+ * inline (both 422s) and branches on `$capabilities->draftBeforeSend` for the
+ * send step, counterQuote() only touches pricing when line items were
  * actually sent, loadQuote() translates any commercial exception into
  * not-found so a foreign quote is indistinguishable from a missing one, and
- * hasCommercialRoutes() checks all seven. None of that is incidental
+ * hasCommercialRoutes() checks all six. None of that is incidental
  * complexity; it's the port's error handling. Splitting further would
  * redistribute the count without drawing a boundary worth having — the
  * gateway's shape is tracked in #44.
@@ -66,6 +68,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         private readonly CommercialQuoteLinePricing $linePricing,
         private readonly CartService $cartService,
         private readonly LineItemFactoryRegistry $lineItemFactory,
+        private readonly CommercialCapabilities $capabilities,
         private readonly ?object $quoteRequestRoute = null,
         private readonly ?object $quoteSendRequestRoute = null,
         private readonly ?object $quoteLoadRoute = null,
@@ -78,12 +81,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
     #[Override]
     public function isAvailable(): bool
     {
-        return (
-            $this->hasCommercialRoutes()
-            && $this->linePricing->isAvailable()
-            && $this->access->isAvailable()
-            && CommercialAvailability::isLicensed()
-        );
+        return $this->hasCommercialRoutes() && $this->access->isAvailable() && CommercialAvailability::isLicensed();
     }
 
     #[Override]
@@ -134,6 +132,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
                 $index,
             ));
             if (null !== $requestedPrice) {
+                $this->linePricing->assertCanPriceLines();
                 $requestedPrices[$productId] = $requestedPrice;
             }
         }
@@ -146,6 +145,14 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $cart = $this->cartService->getCart($context->getToken(), $context);
         $this->cartService->add($cart, $items, $context);
 
+        // A released SwagCommercial's request() has no second, send-stage
+        // comment call — the comment must ride along with the draft itself, or
+        // it is lost. Trunk splits create-draft from send, so passing it here
+        // too would post it twice; only the legacy path carries it here.
+        $requestBag = $this->capabilities->draftBeforeSend
+            ? null
+            : new RequestDataBag(['comment' => trim($comment ?? '')]);
+
         /**
          * The route returns an untyped SwagCommercial entity — no type to
          * narrow to; BuyerQuoteFlowTest proves the call is correct against
@@ -154,7 +161,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
          * @mago-expect analysis:mixed-method-access
          */
         $quote = CommercialQuoteAccess::service($this->quoteRequestRoute, 'quote request')
-            ->request($context)
+            ->request($context, $requestBag)
             ->getQuote();
         /** @mago-expect analysis:mixed-method-access */
         $quoteId = (string) $quote->getId();
@@ -162,13 +169,13 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         /** @mago-expect analysis:mixed-argument */
         $this->linePricing->applyRequestedPrices($quoteId, $quote, $requestedPrices, $context);
 
-        CommercialQuoteAccess::service($this->quoteSendRequestRoute, 'quote send-request')->sendRequest(
-            $context,
-            $quoteId,
-            new RequestDataBag([
-                'comment' => trim($comment ?? ''),
-            ]),
-        );
+        if ($this->capabilities->draftBeforeSend) {
+            CommercialQuoteAccess::service($this->quoteSendRequestRoute, 'quote send-request')->sendRequest(
+                $context,
+                $quoteId,
+                new RequestDataBag(['comment' => trim($comment ?? '')]),
+            );
+        }
 
         return $this->loadSnapshot($quoteId, $context);
     }
@@ -246,6 +253,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $quote = $this->loadQuote($quoteId, $context);
 
         if ([] !== $lineItems) {
+            $this->linePricing->assertCanPriceLines();
             $this->linePricing->applyCounterPrices($quoteId, $quote, $lineItems, $context);
         }
 
@@ -311,16 +319,17 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
     }
 
     /**
-     * Whether the seven buyer-side routes actually resolved. They are
-     * ignore-on-invalid references, so on a shop without SwagCommercial — or
-     * with it installed but missing one of these specific routes — some
-     * arrive null and quoting must not be advertised as available.
+     * The six routes every supported SwagCommercial has. `quoteSendRequestRoute`
+     * is deliberately absent: trunk splits a quote request into create-draft
+     * plus send, a released SwagCommercial creates the quote in `open` in one
+     * call, so the route missing means the step does not exist — not that the
+     * gateway is broken. `requestQuote()` branches on
+     * `$capabilities->draftBeforeSend` instead.
      */
     private function hasCommercialRoutes(): bool
     {
         return (
             null !== $this->quoteRequestRoute
-            && null !== $this->quoteSendRequestRoute
             && null !== $this->quoteLoadRoute
             && null !== $this->quoteListingRoute
             && null !== $this->quoteRequestChangeRoute

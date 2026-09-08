@@ -484,6 +484,7 @@ return static function (ContainerConfigurator $configurator): void {
 
     $services
         ->set(SwagCommercialBuyerQuoteGateway::class)
+        ->arg('$capabilities', service(CommercialCapabilities::class))
         ->arg('$quoteRequestRoute', service(CommercialAvailability::QUOTE_REQUEST_ROUTE)->nullOnInvalid())
         ->arg('$quoteSendRequestRoute', service(CommercialAvailability::QUOTE_SEND_REQUEST_ROUTE)->nullOnInvalid())
         ->arg('$quoteLoadRoute', service(CommercialAvailability::QUOTE_LOAD_ROUTE)->nullOnInvalid())

@@ -38,6 +38,24 @@ final readonly class CommercialQuoteLinePricing
     }
 
     /**
+     * The 422 an agent gets for asking a released SwagCommercial to record a
+     * per-unit ask. Named rather than silent: the price would otherwise be
+     * accepted and dropped, and the agent would believe it had countered.
+     *
+     * @throws ValidationException
+     */
+    public function assertCanPriceLines(): void
+    {
+        if ($this->isAvailable()) {
+            return;
+        }
+
+        throw new ValidationException('This shop does not support per-line price asks. Send the ask as a comment instead.', [
+            '$.line_items must be empty: this shop does not support per-line price asks',
+        ]);
+    }
+
+    /**
      * Buyer asks belong in `requestedPrice` (per unit) - never in a price
      * definition, which newer commercial versions rebuild from the catalog.
      *
