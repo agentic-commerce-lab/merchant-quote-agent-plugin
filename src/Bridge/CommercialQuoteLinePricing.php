@@ -31,7 +31,24 @@ final readonly class CommercialQuoteLinePricing
         private ?object $quoteLineItemRoute = null,
     ) {}
 
-    /** The one commercial route this class needs. */
+    /**
+     * The one commercial route this class needs — deliberately not gated on
+     * `CommercialCapabilities::lineItemAsks`, which every READ consumer of a
+     * line's `requestedUnitPrice` gates on instead. Those are two different
+     * facts, not the same fact checked twice:
+     *
+     *  - `lineItemAsks` (the `requested_price` DAL field exists) answers "can
+     *    we READ a buyer's ask?"
+     *  - this route being non-null (the `QuoteLineItemRoute` class exists)
+     *    answers "can we WRITE one through the Store API?"
+     *
+     * A backport can ship the field before the route. If it ever does, the
+     * right behaviour is exactly what falls out of keeping the two probes
+     * separate: reads of asks a buyer wrote through the storefront keep
+     * working, and an agent trying to write one gets `assertCanPriceLines()`'s
+     * honest 422 instead of a silent no-op. Collapsing this onto
+     * `lineItemAsks` would make that 422 disappear along with the write.
+     */
     public function isAvailable(): bool
     {
         return null !== $this->quoteLineItemRoute;

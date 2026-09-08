@@ -12,10 +12,17 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 
 /**
  * A quote accumulates one record per servicing pass, and the terminal outcome
- * belongs to the last one. `reopen` is not in QuoteServicingTrigger's trigger
- * states, so a reopened quote is never serviced again and never produces a
- * newer record — whichever record is last stays last, and a plain `update()`
- * gives "the last terminal transition wins" for free.
+ * belongs to the last one. That holds independently of which states re-trigger
+ * servicing — including a buyer's `request_change` into `reopen`, which
+ * QuoteServicingTrigger does service, unlike a merchant's un-declining
+ * `reopen`: a terminal transition can only ever stamp a record that already
+ * exists, and QuoteServicingTrigger only ever queues the NEXT pass onto
+ * Messenger rather than running it inline, so that pass's record cannot exist
+ * yet at the moment of a terminal transition that precedes it. Whichever
+ * record is newest at that moment is therefore, by construction, the one the
+ * concluding pass produced, and a plain `update()` picking "whichever record
+ * is last" gives "the last terminal transition wins" for free — regardless of
+ * how many passes a quote went through or which state names triggered them.
  *
  * `createdAt` is queryable although QuoteDecisionRecord never declares it:
  * EntityDefinition::defaultFields() adds CreatedAtField and UpdatedAtField with

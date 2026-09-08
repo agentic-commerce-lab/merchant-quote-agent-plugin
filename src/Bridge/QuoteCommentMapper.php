@@ -33,6 +33,14 @@ final readonly class QuoteCommentMapper
             $createdAt = $comment->get('createdAt');
             $result[] = new QuoteComment(
                 comment: (string) $comment->get('comment'),
+                // A released SwagCommercial has no `quote_comment.quote_line_item_id`
+                // column at all, so the scope is simply unknowable there — never
+                // null, always dropped to null rather than read (Entity::get()
+                // would throw propertyNotFound on the missing column). The comment
+                // TEXT itself always survives regardless: on that shop a comment is
+                // the buyer's only ask channel at all, with no per-line
+                // `requestedPrice` to fall back to, so losing the text here would
+                // lose the ask entirely rather than just its line scope.
                 lineItemId: $this->capabilities->lineScopedComments
                     ? $this->nullableString($comment->get('quoteLineItemId'))
                     : null,

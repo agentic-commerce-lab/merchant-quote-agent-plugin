@@ -58,9 +58,15 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
      * Seven of these are individually `nullOnInvalid()` references to
      * SwagCommercial routes — ADR 0001 requires them to stay individually
      * typed and individually null-checkable, so the plugin degrades service by
-     * service on a shop without the commercial backend. Bundling them into a
-     * value object moves the same arity one file over; the shape is tracked
-     * in #44.
+     * service on a shop without the commercial backend. Of the rest,
+     * `$access`, `$snapshotMapper` and `$linePricing` are the gateway's own
+     * collaborators, `$cartService` and `$lineItemFactory` are core services
+     * `requestQuote()` needs to fill the cart before any commercial route
+     * runs, and `$capabilities` is the runtime-probed
+     * `CommercialCapabilities` this whole class branches on (`draftBeforeSend`
+     * in `requestQuote()`, and every read consumer downstream of it) — thirteen
+     * in total. Bundling the routes into a value object moves the same arity
+     * one file over; the shape is tracked in #44.
      */
     public function __construct(
         private readonly CommercialQuoteAccess $access,
