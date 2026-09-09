@@ -109,4 +109,18 @@ final class CustomerScopeTest extends TestCase
         self::assertInstanceOf(EqualsFilter::class, $filters[0]);
         self::assertSame('', $filters[0]->getValue());
     }
+
+    public function testAnEmptyScopeStillRejectsAMissingCustomerOnTheRow(): void
+    {
+        // null !== '' is true (throws, correct); null != '' is false (a loose
+        // comparison would let this through as a "match"). An empty bound scope
+        // paired with a null $seen is the one case that tells strict and loose
+        // comparison apart, and it is exactly the case where a missing
+        // association on a customer-less quote must not be waved through as a
+        // cross-company read. This test exists to fail the moment verify()'s
+        // `!==` is loosened to `!=`.
+        $this->expectException(CrossCustomerRead::class);
+
+        self::scope('')->verify(null, 'quote 10001');
+    }
 }
