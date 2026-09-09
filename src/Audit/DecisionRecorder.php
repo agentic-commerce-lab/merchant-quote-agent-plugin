@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Audit;
 
+use MerchantQuoteAgentPlugin\Bridge\Data\History\CustomerSummary;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Negotiation\AppliedOffer;
 use MerchantQuoteAgentPlugin\Negotiation\InterpretedAsk;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
 use MerchantQuoteAgentPlugin\Negotiation\ProposedAnswer;
+use MerchantQuoteAgentPlugin\Negotiation\Response\HistoryRequest;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 
@@ -27,17 +29,17 @@ use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
  * so a draft left behind by a crashed pass cannot answer for the next quote.
  *
  * One method per collaborator, each taking the value object that collaborator
- * already produces. A setter per field would trip `too-many-methods`, and this
- * is the better API regardless.
+ * already produces. The history collaborators bring that API above ten
+ * methods; splitting the recorder itself would split its single pass lifecycle.
+ *
+ * @mago-expect lint:too-many-methods
+ * Audit owns this per-collaborator API. Revisit if stages start sharing a
+ * recording value object or the recorder takes on a second lifecycle.
  *
  * @mago-expect lint:cyclomatic-complexity
- * The rule aggregates per class (threshold 10) and each record* method
- * contributes exactly one branch: the `$this->draft === null` guard that lets
- * every stage call every method regardless of whether a pass is under way.
- * recordReplyTransitionFailed() is the one that tips this over — it exists
- * because ReplyComposer::send() failing to reach `replied` must show up in
- * the audit record, not just the log, and splitting it into its own class
- * for one more guard clause would be the worse trade.
+ * Retains main's class-level exception for the per-stage null-draft guards,
+ * including recordReplyTransitionFailed(). History payload mapping lives in
+ * HistoryRecord so it does not add branching to this lifecycle owner.
  */
 final class DecisionRecorder
 {
@@ -53,6 +55,7 @@ final class DecisionRecorder
         $draft->quoteId = $snapshot->identity->quoteId;
         $draft->quoteNumber = $snapshot->identity->quoteNumber;
         $draft->salesChannelId = $snapshot->identity->salesChannelId;
+        $draft->customerId = $snapshot->identity->customerId === '' ? null : $snapshot->identity->customerId;
         $draft->currencyIso = $snapshot->identity->currencyIso;
         $draft->triggerReason = $context->reason->value;
         $draft->attempt = $context->attempt;
@@ -62,6 +65,16 @@ final class DecisionRecorder
         $draft->startedAt = microtime(true);
 
         $this->draft = $draft;
+    }
+
+    public function recordHistorySummary(CustomerSummary $summary): void
+    {
+        HistoryRecord::summaryTo($this->draft, $summary);
+    }
+
+    public function recordHistoryRound(HistoryRequest $request, string $result): void
+    {
+        HistoryRecord::roundTo($this->draft, $request, $result);
     }
 
     public function recordAsk(InterpretedAsk $ask): void

@@ -98,6 +98,7 @@ final class DecisionRecordTest extends IntegrationTestCase
         $draft->quoteId = Uuid::randomHex();
         $draft->quoteNumber = '10042';
         $draft->salesChannelId = Uuid::randomHex();
+        $draft->customerId = Uuid::randomHex();
         $draft->currencyIso = 'EUR';
         $draft->triggerReason = 'comment_written';
         $draft->attempt = 1;
@@ -123,6 +124,12 @@ final class DecisionRecordTest extends IntegrationTestCase
         $draft->verified = true;
         $draft->errorClass = 'RuntimeException';
         $draft->interpretedAsks = ['discount' => '10%'];
+        $draft->historyReads = [
+            'available' => true,
+            'reason' => null,
+            'quotesSeen' => 2,
+            'rounds' => [['kind' => 'orders', 'productId' => null, 'result' => "Orders:\nPaid 12.50"]],
+        ];
         $draft->rawProposal = 'raw model output text';
         $draft->violations = ['discount_over_cap'];
         $draft->writes = ['line_item_price_updated'];
@@ -168,6 +175,11 @@ final class DecisionRecordTest extends IntegrationTestCase
         $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'open');
         self::writeBuyerComment($quoteId, 'Could you do 5% off?');
 
+        $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
+        self::assertInstanceOf(EntityRepository::class, $repository);
+        $criteria = (new Criteria())->addFilter(new EqualsFilter('quoteId', $quoteId));
+        $existingIds = $repository->searchIds($criteria, Context::createDefaultContext())->getIds();
+
         self::pipelineWith([
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
@@ -179,12 +191,10 @@ final class DecisionRecordTest extends IntegrationTestCase
             NegotiationFixture::context(),
         );
 
-        $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
-        self::assertInstanceOf(EntityRepository::class, $repository);
-
-        $criteria = new Criteria();
-        $criteria->addFilter(new EqualsFilter('quoteId', $quoteId));
-        $record = $repository->search($criteria, Context::createDefaultContext())->first();
+        $allIds = $repository->searchIds($criteria, Context::createDefaultContext())->getIds();
+        $newIds = array_values(array_diff($allIds, $existingIds));
+        self::assertCount(1, $newIds, 'The pass must write exactly one new decision for this quote.');
+        $record = $repository->search(new Criteria($newIds), Context::createDefaultContext())->first();
 
         self::assertNotNull($record, 'A real pass wrote no audit record.');
         self::assertSame('offered', $record->outcome);

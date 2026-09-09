@@ -22,7 +22,14 @@ use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
-/** Shared fixtures for the negotiation stages. */
+/**
+ * Shared fixtures for the negotiation stages.
+ *
+ * @mago-expect lint:too-many-methods
+ * These small named fixture builders keep test call sites readable without
+ * expanding snapshot() beyond five parameters. Negotiation tests own this
+ * fixture; split it if its builders grow beyond shared stage inputs.
+ */
 final class NegotiationFixture
 {
     /**
@@ -43,7 +50,7 @@ final class NegotiationFixture
         ?QuoteRevision $revision = null,
     ): QuoteSnapshot {
         return new QuoteSnapshot(
-            identity: new QuoteIdentity('q1', '10001', 'EUR', 'sc1'),
+            identity: new QuoteIdentity('q1', '10001', 'EUR', 'sc1', 'cust-1'),
             revision: $revision ?? new QuoteRevision('v1', new \DateTimeImmutable('2026-08-28 10:00:00.000')),
             totals: new QuoteTotals(totalNet: $totalNet, totalGross: $totalNet),
             lifecycle: new QuoteLifecycle(stateTechnicalName: $state, expiresAt: new \DateTimeImmutable(self::EXPIRES)),
@@ -60,6 +67,25 @@ final class NegotiationFixture
     public static function context(): PassContext
     {
         return new PassContext(ServicingTriggerReason::CommentWritten, 0);
+    }
+
+    public static function snapshotWithCustomer(string $customerId): QuoteSnapshot
+    {
+        $snapshot = self::snapshot();
+
+        return new QuoteSnapshot(
+            identity: new QuoteIdentity(
+                $snapshot->identity->quoteId,
+                $snapshot->identity->quoteNumber,
+                $snapshot->identity->currencyIso,
+                $snapshot->identity->salesChannelId,
+                $customerId,
+            ),
+            revision: $snapshot->revision,
+            totals: $snapshot->totals,
+            lifecycle: $snapshot->lifecycle,
+            content: $snapshot->content,
+        );
     }
 
     /** The merchant's LLM credentials, shared so every test points at the same fake host. */
