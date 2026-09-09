@@ -61,7 +61,7 @@ This is the load-bearing part of the design. Nothing in the buyer's text may ste
 
 ### 1. The id is bound structurally, never passed
 
-`Negotiation\CustomerHistoryInterface` is a port — Shopware-free, like `QuoteGatewayInterface` — implemented by `Bridge\History\DalCustomerHistory`. It is built per pass by `Bridge\History\CustomerHistoryFactory::for(string $customerId)`, which stores the id as a `private readonly` property on the reader.
+`Negotiation\CustomerHistoryInterface` is a port — Shopware-free, like `QuoteGatewayInterface` — implemented by `Bridge\History\DalCustomerHistory`. It is built per pass by `Bridge\History\CustomerHistoryFactory::for(string $customerId)` — behind `Negotiation\CustomerHistoryFactoryInterface`, so the loop is unit-testable without three DAL repositories — which stores the id as a `private readonly` property on the reader.
 
 **No method on that interface takes a customer id, and no model-visible schema mentions a customer.** The tool JSON schema exposes `kind` and an optional `productId`, with `additionalProperties: false`. There is nothing to inject into: a prompt injection that emits `{"kind": "orders", "customerId": "<other uuid>"}` is rejected by the schema, and even if it survived, no code path reads such a field.
 
@@ -95,7 +95,7 @@ The prompt marks the brief **INTERNAL**: it informs posture and may never be quo
 
 `Bridge\Data\QuoteIdentity` gains `public string $customerId = ''`, defaulted so existing test constructions keep working. `QuoteSnapshotReader::readIdentity()` reads `$quote->get('customerId')` — the raw FK field, no new association.
 
-An empty id means a data anomaly (`customer_id` is `Required`). The reader must never degrade into an unfiltered read: the filter is applied unconditionally, so an empty id matches nothing. `CustomerHistoryFactory::for('')` returns `CustomerHistory::none()`, a null object whose every read is empty; the pass logs a warning and the audit row records `{"available": false, "reason": "..."}`. Recorded rather than silent, which is the module's actual rule — and the pre-#100 behaviour, so negotiation character does not change.
+An empty id means a data anomaly (`customer_id` is `Required`). The reader must never degrade into an unfiltered read: the filter is applied unconditionally, so an empty id matches nothing. `CustomerHistoryFactory::for('')` returns `NoCustomerHistory`, a null object whose every read is empty; the pass logs a warning and the audit row records `{"available": false, "reason": "..."}`. Recorded rather than silent, which is the module's actual rule — and the pre-#100 behaviour, so negotiation character does not change.
 
 ### 2. `Negotiation\CustomerHistoryInterface`
 
@@ -103,7 +103,7 @@ Four methods, each returning a `Bridge\Data\History\*` read model:
 
 | Method | Read | Scope |
 | --- | --- | --- |
-| `summary()` | The brief's aggregate: quotes seen, converted, expired-or-declined, discount granted last time, whether they accept first counters, order count, lifetime net, last order date | quote + decision reads below |
+| `summary()` | Grouped into `QuoteStats` + `OrderStats` (eleven flat fields trip `too-many-properties`). The brief's aggregate: quotes seen, converted, expired-or-declined, discount granted last time, offers we made and how many were on quotes that closed, order count, lifetime net, last order date | quote + decision reads below |
 | `quotes()` | The company's 25 newest **live** quotes: number, date, net, state, whether `orderId` is set — joined with what *we* granted on each, from `merchant_quote_agent_decision` | `quote.repository`, `customerId` filter, live version; decisions by `quote_id IN` |
 | `orders()` | Aggregate (count, lifetime net, last order date) **plus the 10 newest order rows** — number, date, net, state — **with their line items** (label, quantity, unit price net) | `order.repository`, `orderCustomer.customerId` filter, live version |
 | `productPurchases(string $productId)` | What the company paid for this SKU, across all employees: unit price, quantity, order date, 10 newest | `order_line_item.repository`, `productId` + `order.orderCustomer.customerId`, live version |
@@ -187,7 +187,7 @@ ServiceQuoteHandler
 
 | Failure | Behaviour |
 | --- | --- |
-| Empty `customerId` on the quote | `CustomerHistory::none()`, warning logged, reason recorded in `history_reads`. Pass continues. |
+| Empty `customerId` on the quote | `NoCustomerHistory`, warning logged, reason recorded in `history_reads`. Pass continues. |
 | `productId` not on this quote | Round refused, refusal rendered into the prompt and recorded. Loop continues. |
 | History round budget exhausted | Escalate `NeedsHumanReview`, detail recorded. Never a thin answer. |
 | A read returns a row for another customer | `CrossCustomerRead` thrown, pass escalates, violation recorded. |
