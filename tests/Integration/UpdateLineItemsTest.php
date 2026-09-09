@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
@@ -112,6 +113,16 @@ final class UpdateLineItemsTest extends IntegrationTestCase
      */
     public function testAMirroredRequestedPriceRoundTripsAndIsHiddenFromTheAgent(): void
     {
+        $capabilities = static::getContainer()->get(CommercialCapabilities::class);
+        self::assertInstanceOf(CommercialCapabilities::class, $capabilities);
+
+        if (!$capabilities->lineItemAsks) {
+            self::markTestSkipped(
+                'This shop has no quote_line_item.requestedPrice column '
+                . '(CommercialCapabilities::$lineItemAsks is false); the mirror is a no-op there.',
+            );
+        }
+
         $context = Context::createDefaultContext();
         $gateway = static::gateway();
         $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), $context);

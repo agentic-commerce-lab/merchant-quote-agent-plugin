@@ -131,6 +131,14 @@ install path.
 Prerequisites are the plugin's, not the zip's: SwagCommercial with the
 QuoteManagement licence active, and SwagAgenticCommerce.
 
+Requires SwagCommercial with B2B quote management licensed
+(`QUOTE_MANAGEMENT-6302947`), version **6.7.1.2 or newer**. The plugin probes
+what the installed SwagCommercial can do rather than checking its version: a
+release without `quote_line_item.requested_price` (everything up to and
+including 6.7.12) simply has no structured per-line buyer ask, and the agent
+reads asks from quote comments instead. Merchant-side concessions — per-line
+offer prices and the quote-level discount — work on every supported version.
+
 ## Operating the servicing loop
 
 The servicing loop (issue #4) only queues messages when a buyer comments or a
@@ -237,6 +245,50 @@ Scope is read but not enforced: Agentic Commerce cannot yet issue
 `com.shopware.quote:manage` (its supported-scope list is a private constant),
 so any valid token for the customer is accepted and authorization is by quote
 ownership. Enforcement lands with the upstream scope change.
+
+**None of the above matters until the sales channel's Identity Linking
+capability is switched on — and Agentic Commerce's own admin UI has no
+control for it.** A buyer
+who completes login and consent on a channel where it is off never gets a
+token: the consent page instead reports *"This authorization link has expired
+or has already been used. Ask the agent for a new one,"* and asking for a
+fresh link changes nothing, because that message has nothing to do with
+expiry. `ConsentGrantCompleter`
+(`src/Identity/Authorization/ConsentGrantCompleter.php`) claims the pending
+authorization handle before it asks Agentic Commerce to grant it, then catches
+every `UcpException` as a refusal and returns null — deliberately, per its
+docblock: an earlier version let an unhandled refusal reach the storefront as
+a 500, by which point the handle was already consumed, so now every refusal
+renders the same terminal "expired or already used" page instead. The handle
+being burned before AC is even consulted is what makes retrying the same URL
+always report "already used", whatever the real cause was. The reason
+survives in only one place, the shop log, as a warning:
+`Agentic Commerce refused an identity-linking grant: Identity linking
+capability is disabled for this sales channel.`, with `client_id` and
+`sales_channel_id` in its context.
+
+Agentic Commerce's own admin bundle has no control to flip this: it splits
+its capabilities into a list of five that render as toggles (`catalog`,
+`cart`, `discount`, `checkout`, `order` — also the defaults) and a second
+list holding `identity_linking` and `payment_tokenization`, each carrying a
+`reason` string and a docs link instead of a checkbox; the function that
+feeds the toggle UI returns only the first list, so the second never renders
+as editable there. Not a bug in this plugin.
+
+This plugin's own Agent access page carries a checkbox for it instead, gated
+by the same `ucp.viewer` / `ucp.editor` ACLs as the allowlist fields below. It
+drives the same admin API:
+
+    GET /api/_admin/ucp/sales-channels/{salesChannelId}/config     # ucp.viewer
+    PUT /api/_admin/ucp/sales-channels/{salesChannelId}/config     # ucp.editor
+
+The PUT merges top-level keys, so a payload carrying only
+`enabledCapabilities` is enough — everything else set by Agentic Commerce's
+own console survives untouched. But a list value is replaced wholesale, not
+merged element-wise, so the payload must carry the complete capability array:
+read `enabledCapabilities`, add or remove `identity_linking`, and PUT the
+whole array back. Sending `["identity_linking"]` alone would silently disable
+`catalog`, `cart`, `discount`, `checkout` and `order` too.
 
 ## Deciding which agents may transact
 

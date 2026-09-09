@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Bridge;
 
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteList;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
 use Override;
@@ -38,10 +39,11 @@ use Ucp\Sdk\Exception\ValidationException;
  * @mago-expect lint:cyclomatic-complexity
  * The rule aggregates per class (threshold 10) and every branch here is real:
  * requestQuote() rejects an empty line-item list and a non-positive quantity
- * inline (both 422s), counterQuote() only touches pricing when line items were
+ * inline (both 422s) and branches on `$capabilities->draftBeforeSend` for the
+ * send step, counterQuote() only touches pricing when line items were
  * actually sent, loadQuote() translates any commercial exception into
  * not-found so a foreign quote is indistinguishable from a missing one, and
- * hasCommercialRoutes() checks all seven. None of that is incidental
+ * hasCommercialRoutes() checks all six. None of that is incidental
  * complexity; it's the port's error handling. Splitting further would
  * redistribute the count without drawing a boundary worth having — the
  * gateway's shape is tracked in #44.
@@ -56,9 +58,15 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
      * Seven of these are individually `nullOnInvalid()` references to
      * SwagCommercial routes — ADR 0001 requires them to stay individually
      * typed and individually null-checkable, so the plugin degrades service by
-     * service on a shop without the commercial backend. Bundling them into a
-     * value object moves the same arity one file over; the shape is tracked
-     * in #44.
+     * service on a shop without the commercial backend. Of the rest,
+     * `$access`, `$snapshotMapper` and `$linePricing` are the gateway's own
+     * collaborators, `$cartService` and `$lineItemFactory` are core services
+     * `requestQuote()` needs to fill the cart before any commercial route
+     * runs, and `$capabilities` is the runtime-probed
+     * `CommercialCapabilities` this whole class branches on (`draftBeforeSend`
+     * in `requestQuote()`, and every read consumer downstream of it) — thirteen
+     * in total. Bundling the routes into a value object moves the same arity
+     * one file over; the shape is tracked in #44.
      */
     public function __construct(
         private readonly CommercialQuoteAccess $access,
@@ -66,6 +74,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         private readonly CommercialQuoteLinePricing $linePricing,
         private readonly CartService $cartService,
         private readonly LineItemFactoryRegistry $lineItemFactory,
+        private readonly CommercialCapabilities $capabilities,
         private readonly ?object $quoteRequestRoute = null,
         private readonly ?object $quoteSendRequestRoute = null,
         private readonly ?object $quoteLoadRoute = null,
@@ -78,12 +87,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
     #[Override]
     public function isAvailable(): bool
     {
-        return (
-            $this->hasCommercialRoutes()
-            && $this->linePricing->isAvailable()
-            && $this->access->isAvailable()
-            && CommercialAvailability::isLicensed()
-        );
+        return $this->hasCommercialRoutes() && $this->access->isAvailable() && CommercialAvailability::isLicensed();
     }
 
     #[Override]
@@ -134,6 +138,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
                 $index,
             ));
             if (null !== $requestedPrice) {
+                $this->linePricing->assertCanPriceLines();
                 $requestedPrices[$productId] = $requestedPrice;
             }
         }
@@ -146,6 +151,14 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $cart = $this->cartService->getCart($context->getToken(), $context);
         $this->cartService->add($cart, $items, $context);
 
+        // A released SwagCommercial's request() has no second, send-stage
+        // comment call — the comment must ride along with the draft itself, or
+        // it is lost. Trunk splits create-draft from send, so passing it here
+        // too would post it twice; only the legacy path carries it here.
+        $requestBag = $this->capabilities->draftBeforeSend
+            ? null
+            : new RequestDataBag(['comment' => trim($comment ?? '')]);
+
         /**
          * The route returns an untyped SwagCommercial entity — no type to
          * narrow to; BuyerQuoteFlowTest proves the call is correct against
@@ -154,7 +167,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
          * @mago-expect analysis:mixed-method-access
          */
         $quote = CommercialQuoteAccess::service($this->quoteRequestRoute, 'quote request')
-            ->request($context)
+            ->request($context, $requestBag)
             ->getQuote();
         /** @mago-expect analysis:mixed-method-access */
         $quoteId = (string) $quote->getId();
@@ -162,13 +175,13 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         /** @mago-expect analysis:mixed-argument */
         $this->linePricing->applyRequestedPrices($quoteId, $quote, $requestedPrices, $context);
 
-        CommercialQuoteAccess::service($this->quoteSendRequestRoute, 'quote send-request')->sendRequest(
-            $context,
-            $quoteId,
-            new RequestDataBag([
-                'comment' => trim($comment ?? ''),
-            ]),
-        );
+        if ($this->capabilities->draftBeforeSend) {
+            CommercialQuoteAccess::service($this->quoteSendRequestRoute, 'quote send-request')->sendRequest(
+                $context,
+                $quoteId,
+                new RequestDataBag(['comment' => trim($comment ?? '')]),
+            );
+        }
 
         return $this->loadSnapshot($quoteId, $context);
     }
@@ -196,14 +209,8 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $criteria->setOffset(($page - 1) * $limit);
         $criteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_EXACT);
         $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::DESCENDING));
-        // The listing route only associates the currency, so state and line items
-        // must be requested here or every entry would come back stateless - and
-        // state is exactly what an agent polls this endpoint for.
-        $criteria->addAssociation('stateMachineState');
-        $criteria->addAssociation('currency');
-        $criteria->addAssociation('lineItems');
-        $criteria->getAssociation('lineItems')->addFilter(new EqualsFilter('deletedAt', null));
-        $criteria->addAssociation('comments');
+        $criteria->addAssociation('currency'); // the listing route only associates this itself
+        $this->addQuoteReadAssociations($criteria);
 
         /**
          * The route returns an untyped SwagCommercial collection — no type
@@ -246,6 +253,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $quote = $this->loadQuote($quoteId, $context);
 
         if ([] !== $lineItems) {
+            $this->linePricing->assertCanPriceLines();
             $this->linePricing->applyCounterPrices($quoteId, $quote, $lineItems, $context);
         }
 
@@ -311,22 +319,51 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
     }
 
     /**
-     * Whether the seven buyer-side routes actually resolved. They are
-     * ignore-on-invalid references, so on a shop without SwagCommercial — or
-     * with it installed but missing one of these specific routes — some
-     * arrive null and quoting must not be advertised as available.
+     * The six routes every supported SwagCommercial has. `quoteSendRequestRoute`
+     * is deliberately absent: trunk splits a quote request into create-draft
+     * plus send, a released SwagCommercial creates the quote in `open` in one
+     * call, so the route missing means the step does not exist — not that the
+     * gateway is broken. `requestQuote()` branches on
+     * `$capabilities->draftBeforeSend` instead.
      */
     private function hasCommercialRoutes(): bool
     {
         return (
             null !== $this->quoteRequestRoute
-            && null !== $this->quoteSendRequestRoute
             && null !== $this->quoteLoadRoute
             && null !== $this->quoteListingRoute
             && null !== $this->quoteRequestChangeRoute
             && null !== $this->quoteDeclineRoute
             && null !== $this->quoteOrderRoute
         );
+    }
+
+    /**
+     * `quote_line_item.deleted_at` is a trunk-only column: released
+     * SwagCommercial (6.7.1.2–6.7.12.x) never added it, and the DAL rejects a
+     * criteria that names an unmapped field outright — `UnmappedFieldException`,
+     * not a silently-ignored filter — so adding it unconditionally breaks every
+     * read on a released shop. Gated on `$capabilities->softDeleteLines`
+     * instead: where the column does not exist, removal is a hard delete, so
+     * the `lineItems` association can never contain a soft-deleted row and
+     * there is nothing for the filter to exclude.
+     */
+    private function excludeSoftDeletedLineItems(Criteria $criteria): void
+    {
+        if (!$this->capabilities->softDeleteLines) {
+            return;
+        }
+
+        $criteria->getAssociation('lineItems')->addFilter(new EqualsFilter('deletedAt', null));
+    }
+
+    /** Shared by listQuotes() and loadQuote(): both read state, line items and comments off the quote entity. */
+    private function addQuoteReadAssociations(Criteria $criteria): void
+    {
+        $criteria->addAssociation('stateMachineState'); // unconditional: trunk's routes associate this themselves, released SwagCommercial does not - relying on the route would mean relying on that version difference
+        $criteria->addAssociation('lineItems');
+        $this->excludeSoftDeletedLineItems($criteria);
+        $criteria->addAssociation('comments');
     }
 
     /**
@@ -338,10 +375,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
     private function loadQuote(string $quoteId, SalesChannelContext $context): object
     {
         $criteria = new Criteria();
-        $criteria->addAssociation('lineItems');
-        $criteria->getAssociation('lineItems')->addFilter(new EqualsFilter('deletedAt', null));
-        $criteria->addAssociation('comments');
-
+        $this->addQuoteReadAssociations($criteria);
         $quoteLoadRoute = CommercialQuoteAccess::service($this->quoteLoadRoute, 'quote load');
 
         try {

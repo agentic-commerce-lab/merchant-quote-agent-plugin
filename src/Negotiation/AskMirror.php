@@ -35,6 +35,22 @@ use Psr\Log\LoggerInterface;
  * which is at its parameter cap — the same reason AskGate and StructuredAsk
  * are statics. The merger is stateless, so constructing one per call costs
  * nothing (QuoteDiscountApplier does the same).
+ *
+ * Runs unconditionally, even on a released SwagCommercial with no
+ * `quote_line_item.requestedPrice` column (`CommercialCapabilities::$lineItemAsks
+ * === false`). Deliberately not gated here: the `quote.customFields` stamp
+ * below always lands (that field exists on every release), and
+ * QuoteLineItemWriter/QuoteLineTaxRules already drop the corresponding
+ * `requestedPrice` row fragment for such a backend, so the line write this
+ * method triggers is a harmless no-op rather than the
+ * PropertyNotFoundException it used to be. The result is a customFields
+ * marker for an ask that was never actually mirrored onto a line — dead
+ * state, but inert: QuoteLineNet returns `requestedUnitPrice: null`
+ * unconditionally when `!lineItemAsks`, so nothing ever reads the marker
+ * back on such a shop either. Threading the capability through here to skip
+ * the stamp too would mean a sixth constructor argument on
+ * NegotiationPipeline (see above) for a marker nothing consults; not worth
+ * it unless a legacy-only reader of this key appears.
  */
 final class AskMirror
 {

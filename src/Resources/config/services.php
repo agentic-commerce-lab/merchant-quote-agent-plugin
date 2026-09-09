@@ -11,6 +11,8 @@ use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilitiesFactory;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteCommentWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteProductAdderInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
@@ -117,6 +119,7 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteContractController;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteLineItemValidator;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
+use Shopware\Core\Framework\DataAbstractionLayer\DefinitionInstanceRegistry;
 use Shopware\Core\Framework\Event\BusinessEventCollector;
 use Shopware\Core\Framework\Notification\NotificationService;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
@@ -398,14 +401,27 @@ return static function (ContainerConfigurator $configurator): void {
         return;
     }
 
+    // What this shop's SwagCommercial can do, probed once at container build
+    // from the DAL rather than from a version number (see the factory). Six
+    // services below take it; nothing outside Bridge does.
+    $services->set(CommercialCapabilitiesFactory::class)->args([service(DefinitionInstanceRegistry::class)]);
+    $services->set(CommercialCapabilities::class)->factory([
+        service(CommercialCapabilitiesFactory::class),
+        'create',
+    ]);
+
     // Repositories are resolved by string id and typed with a covariant
     // template in the consumer, so autowiring cannot supply them.
     $services->set(QuoteVersionResolver::class);
     $services->set(QuoteSnapshotReader::class)->args([
         service('quote.repository'),
         service(QuoteVersionResolver::class),
+        service(CommercialCapabilities::class),
     ]);
-    $services->set(QuoteLineItemWriter::class)->args([service('quote_line_item.repository')]);
+    $services->set(QuoteLineItemWriter::class)->args([
+        service('quote_line_item.repository'),
+        service(CommercialCapabilities::class),
+    ]);
     $services->set(QuoteWriter::class)->args([service('quote.repository')]);
     $services->set(QuoteStateTransitioner::class);
 
@@ -451,7 +467,7 @@ return static function (ContainerConfigurator $configurator): void {
     // without SwagCommercial and the capability reports itself unsupported.
     // (No `isAvailableByClass()` guard here: the early return above already
     // means SwagCommercial's classes provably exist past this point.)
-    $services->set(CommercialQuoteSnapshotMapper::class);
+    $services->set(CommercialQuoteSnapshotMapper::class)->args([service(CommercialCapabilities::class)]);
 
     // "May this buyer request be served at all, and on whose behalf" —
     // the preconditions every operation shares, separate from the
@@ -473,6 +489,7 @@ return static function (ContainerConfigurator $configurator): void {
 
     $services
         ->set(SwagCommercialBuyerQuoteGateway::class)
+        ->arg('$capabilities', service(CommercialCapabilities::class))
         ->arg('$quoteRequestRoute', service(CommercialAvailability::QUOTE_REQUEST_ROUTE)->nullOnInvalid())
         ->arg('$quoteSendRequestRoute', service(CommercialAvailability::QUOTE_SEND_REQUEST_ROUTE)->nullOnInvalid())
         ->arg('$quoteLoadRoute', service(CommercialAvailability::QUOTE_LOAD_ROUTE)->nullOnInvalid())

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Bridge;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use Shopware\Core\Checkout\Cart\Price\Struct\CalculatedPrice;
 use Shopware\Core\Checkout\Cart\Price\Struct\CartPrice;
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
@@ -21,6 +22,11 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity;
  * by dividing by 1 + rate: rate-agnostic, correct for lines with mixed tax
  * rules, and it reproduces Shopware's arithmetic exactly — summed derived nets
  * equal `amount_net` to the cent on every one of those 36 quotes.
+ *
+ * On a SwagCommercial without the `requested_price` column the buyer has no way
+ * to state a per-line ask at all, so `requestedUnitPrice` is null on every line
+ * and the ask arrives through comment prose instead — which is what
+ * CommentTargetMerger reads.
  */
 final readonly class QuoteLineNet
 {
@@ -37,12 +43,18 @@ final readonly class QuoteLineNet
         public float $netRatio,
     ) {}
 
-    /** @param string $taxStatus the owning quote's `taxStatus`; only `gross` needs converting */
-    public static function of(Entity $lineItem, string $taxStatus): self
+    /**
+     * @param string $taxStatus the owning quote's `taxStatus`; only `gross` needs converting
+     * @param CommercialCapabilities $capabilities `requested_price` is a trunk
+     *     column; on a released SwagCommercial `Entity::get()` throws
+     *     `propertyNotFound` rather than returning null, so the read has to be
+     *     gated rather than defaulted
+     */
+    public static function of(Entity $lineItem, string $taxStatus, CommercialCapabilities $capabilities): self
     {
         $total = (float) $lineItem->get('totalPrice');
         $totalNet = round($total - self::taxIn($lineItem, $taxStatus), precision: 2);
-        $requested = $lineItem->get('requestedPrice');
+        $requested = $capabilities->lineItemAsks ? $lineItem->get('requestedPrice') : null;
 
         // A line's total is 0.0 only when its price is, and then so is its tax,
         // leaving no ratio to scale a buyer's ask by — so leave the ask as it

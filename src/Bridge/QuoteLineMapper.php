@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Bridge;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineIdentity;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
@@ -19,8 +20,12 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity;
  * that field as buyer-only comes through, so hiding the mirror here is what
  * keeps all of them seeing what they saw before it existed — see MirroredAsks.
  */
-final class QuoteLineMapper
+final readonly class QuoteLineMapper
 {
+    public function __construct(
+        private CommercialCapabilities $capabilities,
+    ) {}
+
     /** @return list<QuoteLineSnapshot> */
     public function map(Entity $quote): array
     {
@@ -36,11 +41,11 @@ final class QuoteLineMapper
         $lines = [];
 
         foreach ($lineItems as $lineItem) {
-            if (!$lineItem instanceof Entity || $lineItem->get('deletedAt') !== null) {
+            if (!$lineItem instanceof Entity || $this->isRemoved($lineItem)) {
                 continue;
             }
 
-            $lines[] = $this->line($lineItem, QuoteLineNet::of($lineItem, $taxStatus), $mirrored);
+            $lines[] = $this->line($lineItem, QuoteLineNet::of($lineItem, $taxStatus, $this->capabilities), $mirrored);
         }
 
         return $lines;
@@ -69,5 +74,15 @@ final class QuoteLineMapper
     private function nullableString(mixed $value): ?string
     {
         return \is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * A released SwagCommercial has no `deleted_at` on a quote line — removal
+     * there is a real delete, so a row that is present is a live line and
+     * `Entity::get()` would throw on the column rather than return null.
+     */
+    private function isRemoved(Entity $lineItem): bool
+    {
+        return $this->capabilities->softDeleteLines && $lineItem->get('deletedAt') !== null;
     }
 }

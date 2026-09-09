@@ -137,6 +137,8 @@
         "access": {
             "mainMenuItem": "Agent access",
             "salesChannelLabel": "Sales channel",
+            "identityLinkingLabel": "Identity linking",
+            "identityLinkingHelp": "Lets buyer agents obtain a customer token for this sales channel. Without it, sign-in fails with a misleading “authorization link expired” page.",
             "platformAllowlistLabel": "Agent platforms",
             "platformAllowlistHelp": "Hosts allowed to act as an agent platform when identity linking is used.",
             "remoteProfileAllowlistLabel": "Profile hosts",

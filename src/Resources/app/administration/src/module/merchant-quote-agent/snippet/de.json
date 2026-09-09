@@ -137,6 +137,8 @@
         "access": {
             "mainMenuItem": "Agent-Zugriff",
             "salesChannelLabel": "Verkaufskanal",
+            "identityLinkingLabel": "Identity Linking",
+            "identityLinkingHelp": "Erlaubt Buyer-Agenten, für diesen Verkaufskanal ein Kunden-Token zu erhalten. Ohne dies schlägt die Anmeldung mit einer irreführenden Seite „Autorisierungslink abgelaufen“ fehl.",
             "platformAllowlistLabel": "Agent-Plattformen",
             "platformAllowlistHelp": "Hosts, die bei Identity Linking als Agent-Plattform auftreten dürfen.",
             "remoteProfileAllowlistLabel": "Profil-Hosts",

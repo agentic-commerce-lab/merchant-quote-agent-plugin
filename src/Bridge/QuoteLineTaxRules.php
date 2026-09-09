@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Bridge;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use Shopware\Core\Checkout\Cart\Price\Struct\CalculatedPrice;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
@@ -19,6 +20,13 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
  * rate now drives the net→gross conversion Shopware stores, so a wrong rate is
  * a wrong stored price rather than only a wrong VAT display. A 7% product
  * repriced against an assumed 19% would overcharge the buyer.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10); the capability guard added to
+ * requestedPriceRow() (no `requestedPrice` fragment on a backend without the
+ * column) pushed this over it. That guard cannot move to QuoteLineItemWriter
+ * instead — see requestedPriceRow()'s own docblock — because that class is
+ * already at the same ceiling for the same reason.
  */
 final readonly class QuoteLineTaxRules
 {
@@ -33,6 +41,7 @@ final readonly class QuoteLineTaxRules
     /** @param EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $lineItemRepository */
     public function __construct(
         private EntityRepository $lineItemRepository,
+        private CommercialCapabilities $capabilities,
     ) {}
 
     /**
@@ -95,6 +104,7 @@ final readonly class QuoteLineTaxRules
             $ratios[(string) $lineItem->get('id')] = QuoteLineNet::of(
                 $lineItem,
                 (string) $quote->get('taxStatus'),
+                $this->capabilities,
             )->netRatio;
         }
 
@@ -112,10 +122,20 @@ final readonly class QuoteLineTaxRules
      * which is at the gate's class-complexity ceiling — and this is where the
      * ratio that drives the conversion is read anyway.
      *
+     * Instance rather than static so it can read `$this->capabilities`: a
+     * released SwagCommercial has no `quote_line_item.requestedPrice` column
+     * at all, and the DAL rejects an unknown field outright rather than
+     * ignoring it, so this must return [] there — not a null-valued entry —
+     * regardless of what the net/ratio inputs are.
+     *
      * @return array<string, float>
      */
-    public static function requestedPriceRow(?float $net, ?float $netRatio): array
+    public function requestedPriceRow(?float $net, ?float $netRatio): array
     {
+        if (!$this->capabilities->lineItemAsks) {
+            return [];
+        }
+
         return $net === null || $netRatio === null ? [] : ['requestedPrice' => round($net / $netRatio, precision: 2)];
     }
 

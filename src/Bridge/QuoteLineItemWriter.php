@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Bridge;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -22,6 +23,22 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
  * short-circuits and stores the number verbatim into `price.unitPrice` — a
  * gross field. False makes the calculator convert: calculateGross() in a gross
  * quote, straight through in a net one, so nothing here branches on tax mode.
+ *
+ * Removal is the one operation that differs by SwagCommercial version. Trunk
+ * added `quote_line_item.deleted_at` and its transformer skips those rows; a
+ * released SwagCommercial has no such column, and the DAL rejects an unknown
+ * field outright rather than ignoring it — so there, removal is a real delete.
+ * That loses the audit trail the soft-delete model preserves, which is accepted:
+ * a released shop has nowhere to preserve it, and refusing to remove lines would
+ * block a concession the agent is otherwise authorized to make. The A2CN act
+ * chain lives in `quote.customFields` and is unaffected either way.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10); the branch splitting removals
+ * from updates in `write()` pushed this over it. Each branch corresponds to a
+ * genuinely different DAL operation (update vs. delete) or payload shape
+ * (quantity vs. price vs. removal), so splitting further would move the count
+ * around rather than remove it.
  */
 final readonly class QuoteLineItemWriter
 {
@@ -32,8 +49,9 @@ final readonly class QuoteLineItemWriter
     /** @param EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $lineItemRepository */
     public function __construct(
         private EntityRepository $lineItemRepository,
+        private CommercialCapabilities $capabilities,
     ) {
-        $this->taxRules = new QuoteLineTaxRules($lineItemRepository);
+        $this->taxRules = new QuoteLineTaxRules($lineItemRepository, $capabilities);
     }
 
     /** @param list<QuoteLineItemChange> $changes */
@@ -47,8 +65,15 @@ final readonly class QuoteLineItemWriter
         $taxRules = $this->taxRules->forLines($priced, $context);
         $netRatios = $this->taxRules->netRatiosFor($priced, $context);
         $payload = [];
+        $deletions = [];
 
         foreach ($changes as $change) {
+            if ($change->isRemoval() && !$this->capabilities->softDeleteLines) {
+                $deletions[] = ['id' => $change->lineItemId];
+
+                continue;
+            }
+
             $row = $this->rowFor($change, $taxRules, $netRatios);
             if ($row !== []) {
                 $payload[] = ['id' => $change->lineItemId, ...$row];
@@ -57,6 +82,10 @@ final readonly class QuoteLineItemWriter
 
         if ($payload !== []) {
             $this->lineItemRepository->update($payload, $context);
+        }
+
+        if ($deletions !== []) {
+            $this->lineItemRepository->delete($deletions, $context);
         }
     }
 
@@ -106,7 +135,7 @@ final readonly class QuoteLineItemWriter
 
         $ratio = $netRatios[$change->lineItemId] ?? null;
 
-        return $row + QuoteLineTaxRules::requestedPriceRow($change->requestedUnitPriceNet, $ratio);
+        return $row + $this->taxRules->requestedPriceRow($change->requestedUnitPriceNet, $ratio);
     }
 
     /**

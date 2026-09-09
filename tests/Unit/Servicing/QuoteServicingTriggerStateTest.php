@@ -44,6 +44,45 @@ final class QuoteServicingTriggerStateTest extends TestCase
     }
 
     /**
+     * `reopen` via `request_change` (replied -> reopen) is what a released
+     * SwagCommercial (6.7.1.2-6.7.12) names the same event trunk calls
+     * `change_requested` — a buyer asking for changes.
+     *
+     * @throws \Symfony\Component\Messenger\Exception\ExceptionInterface
+     */
+    public function testEnteringReopenQueuesTheQuote(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        (new QuoteServicingTrigger($bus))->onQuoteStateChanged(QuoteTriggerEventFixture::stateEvent(
+            'reopen',
+            fromState: 'replied',
+            transitionName: 'request_change',
+        ));
+
+        self::assertCount(1, $bus->messages);
+    }
+
+    /**
+     * `reopen` via the `reopen` transition (declined -> reopen) is a MERCHANT
+     * un-declining a previously declined quote, not a buyer asking anything.
+     * Same destination state as the buyer's `request_change`, different actor
+     * — only the transition name tells them apart, so this must queue nothing.
+     *
+     * @throws \Symfony\Component\Messenger\Exception\ExceptionInterface
+     */
+    public function testMerchantDrivenReopenQueuesNothing(): void
+    {
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        (new QuoteServicingTrigger($bus))->onQuoteStateChanged(QuoteTriggerEventFixture::stateEvent(
+            'reopen',
+            fromState: 'declined',
+            transitionName: 'reopen',
+        ));
+
+        self::assertSame([], $bus->messages);
+    }
+
+    /**
      * `in_review` and `replied` are the states the agent's OWN servicing drives.
      * Keeping them out of the trigger set means a self-trigger cannot happen
      * even if the context stamp were ever lost.

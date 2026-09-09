@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Bridge;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteIdentity;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLifecycle;
@@ -34,9 +35,10 @@ final readonly class QuoteSnapshotReader
     public function __construct(
         private EntityRepository $quoteRepository,
         private QuoteVersionResolver $versionResolver,
+        CommercialCapabilities $capabilities,
     ) {
-        $this->lineMapper = new QuoteLineMapper();
-        $this->commentMapper = new QuoteCommentMapper();
+        $this->lineMapper = new QuoteLineMapper($capabilities);
+        $this->commentMapper = new QuoteCommentMapper($capabilities);
         $this->discountMapper = new QuoteDiscountMapper();
     }
 

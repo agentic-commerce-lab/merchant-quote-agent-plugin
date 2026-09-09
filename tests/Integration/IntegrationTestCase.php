@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\VariantRejectingProductAdder;
@@ -151,10 +152,13 @@ abstract class IntegrationTestCase extends TestCase
         $stateMachineRegistry = static::getContainer()->get(StateMachineRegistry::class);
         self::assertInstanceOf(StateMachineRegistry::class, $stateMachineRegistry);
 
+        $capabilities = static::getContainer()->get(CommercialCapabilities::class);
+        self::assertInstanceOf(CommercialCapabilities::class, $capabilities);
+
         return new QuoteGatewayFactory(
-            new QuoteSnapshotReader($quoteRepository, new QuoteVersionResolver()),
+            new QuoteSnapshotReader($quoteRepository, new QuoteVersionResolver(), $capabilities),
             new QuoteWriters(
-                new QuoteLineItemWriter($lineItemRepository),
+                new QuoteLineItemWriter($lineItemRepository, $capabilities),
                 new QuoteWriter($quoteRepository),
                 $recalculator,
                 $productAdder,

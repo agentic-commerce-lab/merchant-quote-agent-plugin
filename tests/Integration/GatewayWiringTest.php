@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
 
 /**
@@ -54,10 +55,12 @@ final class GatewayWiringTest extends IntegrationTestCase
     }
 
     /**
-     * The nine ids the buyer-side gateway and its line-pricing collaborator
-     * inject. Separate from the merchant-side test above because these come
-     * from a different `services.php` block, registered on
-     * `SwagCommercialBuyerQuoteGateway`/`CommercialQuoteLinePricing`.
+     * The seven buyer-side ids every supported SwagCommercial has. Separate
+     * from the merchant-side test above because these come from a different
+     * `services.php` block, registered on
+     * `SwagCommercialBuyerQuoteGateway`/`CommercialQuoteLinePricing`. The two
+     * trunk-only ids (`QUOTE_LINE_ITEM_ROUTE`, `QUOTE_SEND_REQUEST_ROUTE`) are
+     * covered separately below, since a released shop legitimately lacks them.
      */
     public function testTheBuyerGatewayServiceIdsResolveInThisShop(): void
     {
@@ -104,13 +107,15 @@ final class GatewayWiringTest extends IntegrationTestCase
         ];
     }
 
-    /** @return list<non-empty-string> */
+    /**
+     * The seven buyer-side ids every supported SwagCommercial has.
+     *
+     * @return list<non-empty-string>
+     */
     private static function injectedBuyerCommercialIds(): array
     {
         return [
             CommercialAvailability::QUOTE_REQUEST_ROUTE,
-            CommercialAvailability::QUOTE_SEND_REQUEST_ROUTE,
-            CommercialAvailability::QUOTE_LINE_ITEM_ROUTE,
             CommercialAvailability::QUOTE_LOAD_ROUTE,
             CommercialAvailability::QUOTE_LISTING_ROUTE,
             CommercialAvailability::QUOTE_REQUEST_CHANGE_ROUTE,
@@ -118,5 +123,27 @@ final class GatewayWiringTest extends IntegrationTestCase
             CommercialAvailability::QUOTE_ORDER_ROUTE,
             CommercialAvailability::CUSTOMER_SPECIFIC_FEATURE_SERVICE,
         ];
+    }
+
+    /**
+     * The two ids only an unreleased SwagCommercial has. Their absence is a
+     * supported configuration, so this asserts the implication rather than the
+     * presence: a shop that has `requested_price` must also have both routes,
+     * because that is the release they shipped in.
+     */
+    public function testTheTrunkOnlyRoutesTrackTheLineItemAskCapability(): void
+    {
+        $capabilities = static::getContainer()->get(CommercialCapabilities::class);
+        self::assertInstanceOf(CommercialCapabilities::class, $capabilities);
+
+        if (!$capabilities->lineItemAsks) {
+            self::assertFalse(class_exists(CommercialAvailability::QUOTE_LINE_ITEM_ROUTE));
+            self::assertFalse(class_exists(CommercialAvailability::QUOTE_SEND_REQUEST_ROUTE));
+
+            return;
+        }
+
+        static::commercialService(CommercialAvailability::QUOTE_LINE_ITEM_ROUTE);
+        static::commercialService(CommercialAvailability::QUOTE_SEND_REQUEST_ROUTE);
     }
 }

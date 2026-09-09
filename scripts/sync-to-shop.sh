@@ -1,7 +1,80 @@
 #!/usr/bin/env bash
-# Copy this plugin into the live shop container. /var/www/html is a named
-# volume, not a bind mount, so there is nothing to symlink — we push files.
+# Copy this plugin into the live shop. Two targets:
+#
+#   Docker (default): a container's /var/www/html is a named volume, not a
+#   bind mount, so there is nothing to symlink — we push files via `docker
+#   exec`/`docker exec -i` piped tar.
+#
+#   SSH (SHOP_SSH set): a remote host reached over one multiplexed SSH
+#   connection instead — see the SHOP_SSH branch below for why.
 set -euo pipefail
+
+if [ -n "${SHOP_SSH:-}" ]; then
+  # Remote shop over SSH, e.g. the released-SwagCommercial host, which
+  # IP-bans on frequent connections. Every command below MUST reuse one
+  # ssh ControlMaster socket rather than opening its own connection — five
+  # remote commands plus a piped tar translated naively into five-plus
+  # separate SSH connections would be the ban.
+  #
+  # `MQA_SSH_SOCKET`, if set, names a ControlMaster already opened by a
+  # caller (scripts/test-integration.sh opens one before calling this
+  # script and calling phpunit remotely, so the whole sync+test run shares
+  # it). Run standalone, this script opens and tears down its own — still
+  # one connection for this script's own five-plus commands, just not
+  # shared with a sibling invocation.
+  : "${SHOP_PATH:?SHOP_PATH (the remote docroot) must be set alongside SHOP_SSH}"
+  # Must be an absolute path on the REMOTE host, checked before the SSH
+  # master below opens — a relative path or a `~` would only fail after
+  # spending a connection, which is exactly the cost this mode exists to
+  # avoid. `~` never expands inside the single-quoted remote command
+  # strings below, and unquoted it expands against the LOCAL $HOME before
+  # this script even runs — so there is no form of `~` that works here.
+  case "$SHOP_PATH" in
+    /*) ;;
+    *)
+      echo "SHOP_PATH must be an absolute path on the remote host (e.g. /home/user/files/shop); '~' does not expand there. Got: $SHOP_PATH" >&2
+      exit 1
+      ;;
+  esac
+
+  DEST="$SHOP_PATH/custom/plugins/MerchantQuoteAgentPlugin"
+  BUILT="$DEST/src/Resources/public"
+  KEEP="/tmp/mqa-built-public"
+
+  OWNS_SOCKET=0
+  SOCKET="${MQA_SSH_SOCKET:-}"
+  if [ -z "$SOCKET" ] || ! ssh -S "$SOCKET" -O check "$SHOP_SSH" >/dev/null 2>&1; then
+    OWNS_SOCKET=1
+    SOCKET="$(mktemp -u /tmp/mqa-ssh-XXXXXX.sock)"
+    ssh -M -S "$SOCKET" -fN -o ControlPersist=60 "$SHOP_SSH"
+  fi
+
+  cleanup_socket() {
+    if [ "$OWNS_SOCKET" = "1" ]; then
+      ssh -S "$SOCKET" -O exit "$SHOP_SSH" >/dev/null 2>&1 || true
+    fi
+  }
+  trap cleanup_socket EXIT
+
+  remote() {
+    ssh -S "$SOCKET" "$SHOP_SSH" "$1"
+  }
+
+  # Wipe first: a stale destination can carry macOS AppleDouble (._*) files
+  # from an earlier sync, and PHPUnit picks those up as test classes. But
+  # carry `src/Resources/public` across the wipe — see the Docker branch's
+  # comment below for why.
+  remote "rm -rf '$KEEP'; [ -d '$BUILT' ] && mv '$BUILT' '$KEEP' || true"
+  remote "rm -rf '$DEST'"
+  remote "mkdir -p '$DEST'"
+  # -m on extract: see the Docker branch's comment below for why.
+  COPYFILE_DISABLE=1 tar --exclude=vendor --exclude=.git --exclude=report --exclude=node_modules -cf - . \
+    | ssh -S "$SOCKET" "$SHOP_SSH" "tar -xmf - -C '$DEST'"
+  remote "[ -d '$KEEP' ] && mkdir -p '$DEST/src/Resources' && mv '$KEEP' '$BUILT' || true"
+
+  echo "synced to $SHOP_SSH:$DEST"
+  exit 0
+fi
 
 CONTAINER="${SHOP_CONTAINER:-merchant-quote-shop}"
 DEST="/var/www/html/custom/plugins/MerchantQuoteAgentPlugin"

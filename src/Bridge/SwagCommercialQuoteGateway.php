@@ -95,9 +95,11 @@ final readonly class SwagCommercialQuoteGateway implements QuoteGatewayInterface
         // QuoteCommenter inserts blindly and lets the quote_comment foreign key
         // reject an unknown id, which would leak a Doctrine exception through this
         // interface. One redundant read keeps the isolation the interface promises
-        // without declaring doctrine/dbal.
-        $this->reader->read($quoteId, QuoteVersion::Live, $context);
-        $this->lifecycle->comments->comment($quoteId, $comment, $context);
+        // without declaring doctrine/dbal — and that same read already carries the
+        // quote's current state, which the comment must be stamped with (see
+        // SwagCommercialCommentWriter), so there is no second read for that.
+        $state = $this->reader->read($quoteId, QuoteVersion::Live, $context)->lifecycle->stateTechnicalName;
+        $this->lifecycle->comments->comment($quoteId, $comment, $context, $state);
     }
 
     /**
