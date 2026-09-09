@@ -59,6 +59,7 @@ throughout and every one of its fifteen consuming files handles null, with
 | 7 | `QuoteLineItemEntity::getRequestedPrice()` | absent | `CommercialQuoteSnapshotMapper:69` fatals |
 | 8 | `quote_line_item.deletedAt` named in a DAL criteria filter | absent | `SwagCommercialBuyerQuoteGateway:357` throws `UnmappedFieldException` |
 | 9 | `stateMachineState` association on the load route | not added | `CommercialQuoteSnapshotMapper:40` publishes `state: null` |
+| 10 | `quote_line_item.requestedPrice`, written by the ask mirror | absent | `QuoteLineItemWriter:138` write rejected |
 
 Verified present on both: `quote.discount`, the `quote.state` machine,
 `QuoteManipulation::addProduct`/`addCustomLineItem`,
@@ -128,6 +129,29 @@ route also add it is idempotent, so there is no version difference to gate on
 here — only a version difference in who was already adding it. `listQuotes()`
 already carried this same association for the same reason; the two now share
 one `addQuoteReadAssociations()` helper instead of stating it twice.
+
+Breakage 10 arrived by neither of the first two routes: not from reading the
+trunk diff, like entries 1–7, and not from running the suite against a real
+shop, like 8 and 9. It arrived from **merging `main`**. While this branch was
+in flight, `main` grew a feature — "mirror a chat price ask onto the line it
+names" (`AskMirror`, `MirroredAsks`) — developed against trunk, with no idea
+this branch's capability gate existed. `QuoteLineItemWriter` already built its
+DAL payload through `QuoteLineTaxRules::requestedPriceRow()`, and that helper
+added a `requestedPrice` entry to the row whenever a net price and a tax ratio
+were both available, unconditionally. The merge landed clean — nothing
+conflicted, nothing failed to compile — and the two changes were each correct
+in isolation. Only running the integration suite against a real 6.7.12 shop
+surfaced it: any agent reprice that also mirrored an ask now threw
+`PropertyNotFoundException: Property "requestedPrice" does not exist`, because
+the row carried the field regardless of `$capabilities->lineItemAsks`. Fixed by
+threading the guard into `requestedPriceRow()` itself, which already held a
+`CommercialCapabilities` reference from this branch's own merge resolution.
+This is a distinct and recurring failure mode, worth naming on its own: a
+capability gate is not a one-time retrofit. Every trunk-only column or method
+this plugin touches is a fresh place parallel work can reintroduce a hard
+dependency on it, invisibly, through a clean merge — the gate has to be applied
+to new work as it lands, not just to the code that existed when the gate was
+built.
 
 ## Goals
 

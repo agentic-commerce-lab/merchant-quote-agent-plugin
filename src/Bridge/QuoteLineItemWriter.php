@@ -135,7 +135,7 @@ final readonly class QuoteLineItemWriter
 
         $ratio = $netRatios[$change->lineItemId] ?? null;
 
-        return $row + QuoteLineTaxRules::requestedPriceRow($change->requestedUnitPriceNet, $ratio);
+        return $row + $this->taxRules->requestedPriceRow($change->requestedUnitPriceNet, $ratio);
     }
 
     /**

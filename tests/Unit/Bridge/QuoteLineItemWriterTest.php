@@ -37,11 +37,11 @@ use Shopware\Core\Framework\Struct\ArrayEntity;
  * integration suite covers that the operation actually lands.
  *
  * @mago-expect lint:too-many-methods
- * Ten cases plus three private helpers: four guard the removal/quantity
- * behaviour that differs by capability profile, six guard the requestedPrice
- * tax-space conversion. Each is independently load-bearing and none share
- * enough setup to fold together without losing which behaviour a failure
- * points at.
+ * Eleven cases plus three private helpers: four guard the removal/quantity
+ * behaviour that differs by capability profile, seven guard the requestedPrice
+ * tax-space conversion and capability gate. Each is independently load-bearing
+ * and none share enough setup to fold together without losing which behaviour
+ * a failure points at.
  */
 final class QuoteLineItemWriterTest extends TestCase
 {
@@ -176,12 +176,50 @@ final class QuoteLineItemWriterTest extends TestCase
     }
 
     /**
+     * The defect this branch shipped: a released SwagCommercial has no
+     * `quote_line_item.requestedPrice` column, and the DAL rejects an
+     * unknown field outright rather than ignoring it — so any reprice that
+     * also carries a mirrored ask must come out of `write()` with no
+     * `requestedPrice` key at all, not a present-and-null one.
+     */
+    public function testALegacyShopEmitsNoRequestedPriceKey(): void
+    {
+        $payload = $this->writeAndCapture(
+            [new QuoteLineItemChange(lineItemId: 'line-1', requestedUnitPriceNet: 80.0)],
+            taxStatus: 'gross',
+            capabilities: CommercialCapabilities::legacy(),
+        );
+
+        self::assertSame([], $payload, 'A legacy backend must drop the change rather than emit an unknown field.');
+    }
+
+    /**
+     * Same change, a capability profile that has the column: the key must
+     * still be written. Pins the guard against the other direction — a fix
+     * that always suppresses the field would pass the legacy test above and
+     * silently break every modern shop.
+     */
+    public function testAModernShopStillWritesTheRequestedPriceKey(): void
+    {
+        $payload = $this->writeAndCapture(
+            [new QuoteLineItemChange(lineItemId: 'line-1', requestedUnitPriceNet: 80.0)],
+            taxStatus: 'gross',
+            capabilities: CommercialCapabilities::modern(),
+        );
+
+        self::assertSame([['id' => 'line-1', 'requestedPrice' => 95.2]], $payload);
+    }
+
+    /**
      * @param list<QuoteLineItemChange> $changes
      *
      * @return list<array<string, mixed>>
      */
-    private function writeAndCapture(array $changes, string $taxStatus): array
-    {
+    private function writeAndCapture(
+        array $changes,
+        string $taxStatus,
+        ?CommercialCapabilities $capabilities = null,
+    ): array {
         $captured = [];
         $repository = $this->createMock(EntityRepository::class);
         $repository->method('search')->willReturn($this->searchResult($taxStatus));
@@ -195,7 +233,7 @@ final class QuoteLineItemWriterTest extends TestCase
                 return EntityWrittenContainerEvent::createWithWrittenEvents([], $context, []);
             });
 
-        (new QuoteLineItemWriter($repository, CommercialCapabilities::modern()))->write(
+        (new QuoteLineItemWriter($repository, $capabilities ?? CommercialCapabilities::modern()))->write(
             $changes,
             Context::createDefaultContext(),
         );
