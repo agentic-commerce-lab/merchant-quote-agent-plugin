@@ -93,7 +93,6 @@ final class TerminalOutcomeSubscriptionTest extends IntegrationTestCase
         foreach (['process', 'sent', 'decline'] as $action) {
             $registry->transition(new Transition('quote', $quoteId, $action, 'stateId'), $context);
         }
-
     }
 
     /**
