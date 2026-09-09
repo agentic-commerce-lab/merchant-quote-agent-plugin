@@ -6,12 +6,14 @@ namespace MerchantQuoteAgentPlugin\Bridge;
 
 use Shopware\Core\Checkout\Cart\Price\Struct\CalculatedPrice;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Entity;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 
 /**
- * Reads the tax rules a quote line already carries, so a reprice can echo them
- * instead of inventing a rate.
+ * Reads the tax facts a quote line already carries, so a write can echo them
+ * instead of inventing a rate: the rules a reprice repeats, and the net ratio a
+ * mirrored requested price is converted back through.
  *
  * Load-bearing since QuoteLineItemWriter writes `isCalculated => false`: the
  * rate now drives the net→gross conversion Shopware stores, so a wrong rate is
@@ -57,6 +59,64 @@ final readonly class QuoteLineTaxRules
         }
 
         return $rules;
+    }
+
+    /**
+     * Each line's own net ratio, read the way QuoteLineNet reads it so that a
+     * write inverts exactly what the read applied — subtracting the line's
+     * `calculatedTaxes` rather than dividing by a rate, which is what keeps a
+     * mixed-rate line exact.
+     *
+     * A line missing from the result is a line the caller must not write a
+     * requested price to: no ratio means no conversion, and assuming 1.0 would
+     * store a gross quote's ask below the one the buyer made.
+     *
+     * @param list<string> $lineItemIds
+     *
+     * @return array<string, float>
+     */
+    public function netRatiosFor(array $lineItemIds, Context $context): array
+    {
+        if ($lineItemIds === []) {
+            return [];
+        }
+
+        $criteria = new Criteria($lineItemIds);
+        $criteria->addAssociation('quote');
+        $ratios = [];
+
+        foreach ($this->lineItemRepository->search($criteria, $context)->getEntities() as $lineItem) {
+            $quote = $lineItem->get('quote');
+
+            if (!$quote instanceof Entity) {
+                continue;
+            }
+
+            $ratios[(string) $lineItem->get('id')] = QuoteLineNet::of(
+                $lineItem,
+                (string) $quote->get('taxStatus'),
+            )->netRatio;
+        }
+
+        return $ratios;
+    }
+
+    /**
+     * The buyer's mirrored ask as a row fragment, converted out of net and
+     * into the quote's own tax space — the exact inverse of what QuoteLineNet
+     * applied on the way in.
+     *
+     * No ratio, no fragment: see netRatiosFor(). The rest of the row still
+     * stands, because a reprice must not be lost over a display-only field
+     * that could not be converted. Here rather than on QuoteLineItemWriter,
+     * which is at the gate's class-complexity ceiling — and this is where the
+     * ratio that drives the conversion is read anyway.
+     *
+     * @return array<string, float>
+     */
+    public static function requestedPriceRow(?float $net, ?float $netRatio): array
+    {
+        return $net === null || $netRatio === null ? [] : ['requestedPrice' => round($net / $netRatio, precision: 2)];
     }
 
     /** @return list<array{taxRate: float, percentage: float}> */

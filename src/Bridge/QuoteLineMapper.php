@@ -13,6 +13,11 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity;
  *
  * Everything here is shape; the gross→net conversion the read model needs
  * lives in QuoteLineNet, which explains why it is needed at all.
+ *
+ * The one exception is `requestedUnitPrice`, which is subtracted when the
+ * AGENT wrote it. This is the single read boundary every guard that treats
+ * that field as buyer-only comes through, so hiding the mirror here is what
+ * keeps all of them seeing what they saw before it existed — see MirroredAsks.
  */
 final class QuoteLineMapper
 {
@@ -25,6 +30,8 @@ final class QuoteLineMapper
             return [];
         }
 
+        $customFields = $quote->get('customFields');
+        $mirrored = MirroredAsks::read(\is_array($customFields) ? $customFields : []);
         $taxStatus = (string) $quote->get('taxStatus');
         $lines = [];
 
@@ -33,24 +40,29 @@ final class QuoteLineMapper
                 continue;
             }
 
-            $lines[] = $this->line($lineItem, QuoteLineNet::of($lineItem, $taxStatus));
+            $lines[] = $this->line($lineItem, QuoteLineNet::of($lineItem, $taxStatus), $mirrored);
         }
 
         return $lines;
     }
 
-    private function line(Entity $lineItem, QuoteLineNet $net): QuoteLineSnapshot
+    /** @param array<string, float> $mirrored */
+    private function line(Entity $lineItem, QuoteLineNet $net, array $mirrored): QuoteLineSnapshot
     {
+        $lineItemId = (string) $lineItem->get('id');
+
         return new QuoteLineSnapshot(
             identity: new QuoteLineIdentity(
-                lineItemId: (string) $lineItem->get('id'),
+                lineItemId: $lineItemId,
                 label: $this->nullableString($lineItem->get('label')),
                 productId: $this->nullableString($lineItem->get('referencedId')),
             ),
             quantity: (int) $lineItem->get('quantity'),
             unitPriceNet: $net->unitPrice,
             totalNet: $net->total,
-            requestedUnitPrice: $net->requestedUnitPrice,
+            requestedUnitPrice: MirroredAsks::holds($mirrored, $lineItemId, $net->requestedUnitPrice)
+                ? null
+                : $net->requestedUnitPrice,
         );
     }
 
