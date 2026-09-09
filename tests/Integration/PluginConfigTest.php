@@ -13,6 +13,11 @@ use Shopware\Core\System\SystemConfig\CachedSystemConfigLoader;
 use Shopware\Core\System\SystemConfig\Store\MemoizedSystemConfigStore;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 
+/**
+ * @mago-expect lint:too-many-methods
+ *
+ * Test class with many methods, necessary for comprehensive config coverage.
+ */
 final class PluginConfigTest extends IntegrationTestCase
 {
     #[\Override]
@@ -120,6 +125,37 @@ final class PluginConfigTest extends IntegrationTestCase
         $this->expectException(\MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration::class);
 
         $reader->forSalesChannel(null);
+    }
+
+    /**
+     * The SLA benchmarks the dashboard's escalation resolution time and
+     * steers nothing in the pipeline, which is why it is deliberately absent
+     * from QuoteAgentSettings — see testTheSlaDoesNotReachTheGuardrailEngine.
+     */
+    public function testTheEscalationSlaIsConfigurable(): void
+    {
+        $config = self::systemConfig();
+        $key = QuoteAgentSettingsReader::DOMAIN . 'escalationSlaHours';
+
+        $config->set($key, 24.0);
+
+        self::assertSame(24.0, $config->get($key));
+    }
+
+    /**
+     * The SLA must not become a guardrail. It is a reporting benchmark, so a
+     * shop that sets it must not thereby change what the agent does.
+     */
+    public function testTheSlaDoesNotReachTheGuardrailEngine(): void
+    {
+        self::assertStringNotContainsString(
+            'escalationSlaHours',
+            (string) file_get_contents(__DIR__ . '/../../src/Config/QuoteAgentSettingsReader.php'),
+        );
+        self::assertStringNotContainsString(
+            'escalationSlaHours',
+            (string) file_get_contents(__DIR__ . '/../../src/Config/QuoteAgentSettings.php'),
+        );
     }
 
     private static function systemConfig(): SystemConfigService

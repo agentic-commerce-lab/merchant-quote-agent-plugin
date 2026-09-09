@@ -64,6 +64,11 @@
             <label>Default offer validity (days)</label>
             <defaultValue>0</defaultValue>
         </input-field>
+        <input-field type="float">
+            <name>escalationSlaHours</name>
+            <label>Escalation SLA (hours)</label>
+            <helpText>How long the deal desk has to answer an escalated quote. Used only to benchmark the dashboard's escalation resolution time — it does not change what the agent does or what it may grant. Blank means no benchmark.</helpText>
+        </input-field>
     </card>
 
     <card>
