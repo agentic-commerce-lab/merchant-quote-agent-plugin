@@ -1,16 +1,21 @@
 import template from './merchant-quote-agent-access.html.twig';
 
 /**
- * Edits the three UCP allowlists for one sales channel.
+ * Edits the three UCP allowlists, plus the Identity Linking capability, for
+ * one sales channel.
  *
  * The data belongs to the Agentic Commerce plugin, so this page drives that
  * plugin's own admin API rather than writing its table: the PUT goes through its
  * UcpConfigService, which validates every host and merges the payload over the
- * stored config. We therefore send only the three keys we edit, and anything set
- * by console survives untouched. Saving is not otherwise inert, though: on an
- * active channel that same method also provisions a signing key and enables
- * the agentic-files bridge. Both are idempotent and identical to what Agentic
- * Commerce's own settings screen does on save.
+ * stored config. We therefore send only the keys we edit, and anything set
+ * by console survives untouched. That merge is top-level only, though: a list
+ * value such as `enabledCapabilities` is replaced wholesale, not merged
+ * element-wise, so save() always sends the complete array it loaded rather
+ * than just the toggled entry — otherwise saving allowlists here would
+ * silently disable every other capability. Saving is not otherwise inert,
+ * though: on an active channel that same method also provisions a signing key
+ * and enables the agentic-files bridge. Both are idempotent and identical to
+ * what Agentic Commerce's own settings screen does on save.
  *
  * Saving needs that plugin's `ucp.editor` privilege, which is separate from this
  * plugin's own. A 403 from it is shown as-is rather than reported as success.
@@ -25,6 +30,7 @@ Shopware.Component.register('merchant-quote-agent-access', {
             salesChannels: [],
             salesChannelId: null,
             lists: { platformAllowlist: '', remoteProfileAllowlist: '', agentAllowlist: '' },
+            capabilities: [],
             profileDomain: null,
             isLoading: false,
             isSaving: false,
@@ -35,6 +41,26 @@ Shopware.Component.register('merchant-quote-agent-access', {
     computed: {
         canEdit() {
             return this.acl.can('ucp.editor');
+        },
+
+        /**
+         * `identity_linking` is off by default and has no control in Agentic
+         * Commerce's own admin UI, so it lives here instead. The checkbox only
+         * toggles that one entry; `capabilities` keeps every other entry
+         * (catalog, cart, discount, checkout, order, ...) untouched, because the
+         * config endpoint replaces a list wholesale rather than merging it
+         * element-wise — see the PUT in save().
+         */
+        identityLinkingEnabled: {
+            get() {
+                return this.capabilities.includes('identity_linking');
+            },
+
+            set(value) {
+                this.capabilities = value
+                    ? [...this.capabilities.filter((capability) => capability !== 'identity_linking'), 'identity_linking']
+                    : this.capabilities.filter((capability) => capability !== 'identity_linking');
+            },
         },
 
         httpClient() {
@@ -149,6 +175,7 @@ Shopware.Component.register('merchant-quote-agent-access', {
                     remoteProfileAllowlist: this.toText(config.remoteProfileAllowlist),
                     agentAllowlist: this.toText(config.agentAllowlist),
                 };
+                this.capabilities = Array.isArray(config.enabledCapabilities) ? config.enabledCapabilities : [];
             } catch (error) {
                 if (this.salesChannelId === requested) {
                     this.error = this.messageFor(error);
@@ -173,6 +200,7 @@ Shopware.Component.register('merchant-quote-agent-access', {
                         platformAllowlist: this.fromText(this.lists.platformAllowlist),
                         remoteProfileAllowlist: this.fromText(this.lists.remoteProfileAllowlist),
                         agentAllowlist: this.fromText(this.lists.agentAllowlist),
+                        enabledCapabilities: this.capabilities,
                     },
                     { headers: this.headers() },
                 );

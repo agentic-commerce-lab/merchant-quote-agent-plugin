@@ -34,6 +34,14 @@
                     @update:model-value="(value) => { salesChannelId = value; loadConfig(); }"
                 />
 
+                <mt-checkbox
+                    :label="$tc('merchant-quote-agent.access.identityLinkingLabel')"
+                    :help-text="$tc('merchant-quote-agent.access.identityLinkingHelp')"
+                    :disabled="!canEdit || isLoading"
+                    :model-value="identityLinkingEnabled"
+                    @update:model-value="(value) => { identityLinkingEnabled = value; }"
+                />
+
                 <div class="mqa-access__lists">
                     <mt-textarea
                         :label="$tc('merchant-quote-agent.access.platformAllowlistLabel')"
