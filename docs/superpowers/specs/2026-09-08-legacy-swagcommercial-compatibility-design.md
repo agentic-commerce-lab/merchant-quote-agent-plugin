@@ -327,6 +327,33 @@ three read mappers and the buyer gateway. That is still enough to justify naming
 the fact once rather than scattering `has()` checks, but it is a smaller claim
 than the first draft made.
 
+### Discovery honesty is a second edge
+
+Not found by reading the spec — found by an agent hitting the dead end in
+practice, then tracing the resulting "authorization link expired" consent-page
+error back to its real cause in the shop log, an hour later.
+
+`QuoteCapabilityProfileContributor` re-adds `com.shopware.quote` to the
+published UCP profile unconditionally (see its class docblock above for why it
+has to re-add anything at all). But a buyer agent cannot use that capability
+without an identity-linking access token, and Agentic Commerce's
+`identity_linking` capability is off by default and configured per sales
+channel. Advertising the quote capability on a shop that has not turned
+identity linking on is the same honesty failure as the OpenAPI document and
+extract prompt question above, just reaching a different surface: discovery is
+the only signal a buyer agent gets, and a capability it cannot obtain a token
+for is a dead end it cannot diagnose from the outside.
+
+The fix mirrors `RuntimeConfiguration::isCapabilityEnabled()`'s own semantics
+in `ProfileBuildInput::$enabledCapabilities`: an empty list means the shop
+never restricted capabilities at all, not that none are enabled, so it must
+still advertise the quote capability. Only a non-empty list that omits
+`dev.ucp.common.identity_linking` suppresses the descriptor. Getting that
+inverted would silently kill the feature on every shop that has never touched
+capability restriction, which is the common case — a worse regression than
+the bug being fixed. This is buyer-discovery-only: the merchant-side servicing
+loop never needs a buyer token and is unaffected.
+
 ## Testing
 
 **Unit.** `CommercialCapabilities` is a constructor argument, so both profiles
