@@ -168,11 +168,13 @@ final class CustomerHistoryTest extends IntegrationTestCase
         [$mine] = $customers[0];
         [$theirs] = $customers[1];
 
-        $history = self::factory()->for($mine)->orders();
+        $theirNumbers = self::orderNumbersOf($theirs);
+        self::assertNotSame([], $theirNumbers);
 
-        foreach ($history->recent as $entry) {
-            self::assertNotSame($theirs, $entry, 'A second company\'s order leaked into this one\'s history.');
-        }
+        $entries = self::factory()->for($mine)->orders()->recent;
+        $mineNumbers = array_map(static fn(object $e): string => $e->orderNumber, $entries);
+
+        self::assertSame([], array_intersect($mineNumbers, $theirNumbers));
     }
 
     /** @return list<string> */
@@ -192,5 +194,19 @@ final class CustomerHistoryTest extends IntegrationTestCase
         }
 
         return $numbers;
+    }
+
+    /** @return list<string> that customer's live order numbers, straight off the DB, independent of the reader under test */
+    private static function orderNumbersOf(string $customerId): array
+    {
+        $rows = self::connection(static::getContainer())
+            ->fetchFirstColumn('SELECT o.order_number FROM `order` o'
+            . ' INNER JOIN order_customer oc ON oc.order_id = o.id AND oc.order_version_id = o.version_id'
+            . ' WHERE o.version_id = UNHEX(:live) AND oc.customer_id = UNHEX(:id)', [
+                'live' => Defaults::LIVE_VERSION,
+                'id' => $customerId,
+            ]);
+
+        return array_map(static fn(mixed $n): string => (string) $n, $rows);
     }
 }
