@@ -34,6 +34,16 @@ Shopware.Component.register('merchant-quote-agent-access', {
             profileDomain: null,
             isLoading: false,
             isSaving: false,
+            // True only once loadConfig() has completed successfully for the
+            // channel currently selected. Save is gated on this: the PUT
+            // replaces enabledCapabilities wholesale, so saving from a blank
+            // or stale `capabilities` (never loaded, or a load that failed
+            // after a channel switch) would silently wipe every capability on
+            // that sales channel. Cleared on channel switch and on load
+            // failure; set in loadConfig() only behind its own
+            // requested-channel guard, so a slow, now-stale response cannot
+            // arm it for whatever channel is selected by the time it resolves.
+            configLoaded: false,
             error: null,
         };
     },
@@ -176,9 +186,11 @@ Shopware.Component.register('merchant-quote-agent-access', {
                     agentAllowlist: this.toText(config.agentAllowlist),
                 };
                 this.capabilities = Array.isArray(config.enabledCapabilities) ? config.enabledCapabilities : [];
+                this.configLoaded = true;
             } catch (error) {
                 if (this.salesChannelId === requested) {
                     this.error = this.messageFor(error);
+                    this.configLoaded = false;
                 }
             } finally {
                 if (this.salesChannelId === requested) {

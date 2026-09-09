@@ -31,7 +31,7 @@
                     :options="salesChannels.map((channel) => ({ value: channel.id, label: channel.name }))"
                     :model-value="salesChannelId"
                     :disabled="isLoading"
-                    @update:model-value="(value) => { salesChannelId = value; loadConfig(); }"
+                    @update:model-value="(value) => { salesChannelId = value; configLoaded = false; loadConfig(); }"
                 />
 
                 <mt-checkbox
@@ -71,9 +71,16 @@
                     />
                 </div>
 
+                {# configLoaded is load-bearing, not cosmetic: the PUT replaces
+                   enabledCapabilities wholesale, so saving before a config has
+                   ever loaded for this channel — or after a load failed, e.g.
+                   a missing ucp.viewer or a network blip — would PUT whatever
+                   is left in `capabilities` (empty, or a stale other
+                   channel's) and silently disable every capability on this
+                   sales channel. #}
                 <mt-button
                     variant="primary"
-                    :disabled="!canEdit || isLoading || isSaving || !salesChannelId"
+                    :disabled="!canEdit || isLoading || isSaving || !salesChannelId || !configLoaded"
                     @click="save"
                 >
                     {{ $tc('merchant-quote-agent.access.save') }}
