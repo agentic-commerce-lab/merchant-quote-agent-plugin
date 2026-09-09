@@ -93,6 +93,44 @@ final class TerminalOutcomeSubscriptionTest extends IntegrationTestCase
         foreach (['process', 'sent', 'decline'] as $action) {
             $registry->transition(new Transition('quote', $quoteId, $action, 'stateId'), $context);
         }
+
+    }
+
+    /**
+     * The sibling subscriber, proven the same way: a real transition through
+     * the real dispatcher must reach EscalationResolutionSubscriber, which
+     * only fires because services.php registers it — nothing in this test
+     * wires it by hand.
+     */
+    public function testARealTransitionStampsAnOpenEscalation(): void
+    {
+        $context = Context::createDefaultContext();
+        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), $context, 'open');
+        $recordId = Uuid::randomHex();
+
+        self::records()
+            ->create([[
+                'id' => $recordId,
+                'quoteId' => $quoteId,
+                'outcome' => 'escalated',
+            ]], $context);
+
+        $registry = static::getContainer()->get(StateMachineRegistry::class);
+        self::assertInstanceOf(StateMachineRegistry::class, $registry);
+
+        $registry->transition(new Transition('quote', $quoteId, 'admin_cancel', 'stateId'), $context);
+
+        $record = self::records()
+            ->search(new Criteria([$recordId]), $context)
+            ->first();
+        self::assertInstanceOf(QuoteDecisionRecord::class, $record);
+        self::assertSame(
+            'cancelled',
+            $record->resolvedState,
+            'A real transition stamped nothing: EscalationResolutionSubscriber is not registered, '
+            . 'or the core event name does not match.',
+        );
+        self::assertNotNull($record->resolvedAt);
     }
 
     private static function records(): EntityRepository
