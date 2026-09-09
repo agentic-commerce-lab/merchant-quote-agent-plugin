@@ -54,10 +54,10 @@
             <label>Counter-offer ceiling (%)</label>
             <helpText>An ask above the maximum but at or below this gets a deterministic counter at the maximum. Blank means no counter band.</helpText>
         </input-field>
-        <input-field type="price">
+        <input-field type="float">
             <name>maxQuoteValueNet</name>
-            <label>Maximum quote value for negotiation</label>
-            <helpText>Above this net total the quote always escalates. Only the net value is read; the gross box mirrors it because a system-config price carries no tax rate. Use "Maintain currency prices" to set a ceiling per currency — a quote in a currency you left blank escalates, because its ceiling is unknown rather than unlimited. Leave every currency blank for no ceiling at all.</helpText>
+            <label>Maximum quote value for negotiation (net)</label>
+            <helpText>Above this net total the quote always escalates. Stated net, and compared against the quote's net total whatever currency the quote is in — so set it in the currency you actually sell in. Blank means no ceiling at all.</helpText>
         </input-field>
         <input-field type="int">
             <name>validityDays</name>

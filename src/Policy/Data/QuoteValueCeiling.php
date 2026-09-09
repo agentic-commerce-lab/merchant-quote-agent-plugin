@@ -7,27 +7,25 @@ namespace MerchantQuoteAgentPlugin\Policy\Data;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * Above this net total the quote always escalates — one ceiling per currency,
- * because a number without a currency is not a limit.
+ * Above this net total the quote always escalates.
  *
- * The merchant sets it in the admin as a Shopware price field, so the currency
- * symbol is shown next to the box and "Maintain currency prices" fills in the
- * rest. QuoteAgentSettingsReader resolves each entry's currency id to its ISO
- * code before the policy is built, so nothing below the reader has to know
- * that a currency has a uuid.
+ * The admin field is a plain number, which lands here under ANY_CURRENCY and
+ * so applies to a quote in any currency — a shop selling in one currency wants
+ * exactly that, and it is what the merchant typed.
  *
- * A currency the merchant left blank is NOT unlimited: `netFor()` returns null
- * and both call sites escalate, because an unknown ceiling is exactly the case
- * a human should look at. No ceiling anywhere means `QuoteLimits::$valueCeiling`
- * is null instead, and then nothing is checked at all.
+ * An ISO-keyed map is still accepted, set as JSON via `system:config:set`, for
+ * a shop that really does need a different ceiling per currency. There a
+ * currency left out is NOT unlimited: `netFor()` returns null and both call
+ * sites escalate, because an unknown ceiling is exactly the case a human
+ * should look at. No ceiling at all means `QuoteLimits::$valueCeiling` is null
+ * instead, and then nothing is checked.
  */
 final readonly class QuoteValueCeiling
 {
     /**
-     * The reserved key the ported TS fixtures use: a bare `maxQuoteValueNet`
-     * number means "this ceiling, whatever the currency". Real configuration
-     * never produces it — the price field always names a currency — so it is
-     * the fixture shorthand and the pre-price-field behaviour, in one key.
+     * A bare `maxQuoteValueNet` number means "this ceiling, whatever the
+     * currency". That is what the admin's number field produces, and what the
+     * ported TS fixtures already used.
      */
     public const ANY_CURRENCY = '*';
 

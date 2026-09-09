@@ -35,9 +35,10 @@ final class NegotiationPolicyArray
             'validityDays' => RawConfigValue::int($raw, 'validityDays') ?? 0,
         ];
 
-        // Passed straight through: the reader has already resolved the admin's
-        // price field into an ISO-keyed map, and QuoteLimits refuses a
-        // wrong-typed entry per currency so the message names the one at fault.
+        // Passed straight through. The admin field is a plain number; an
+        // ISO-keyed map set via `system:config:set --json` also survives,
+        // and QuoteLimits refuses a wrong-typed entry per currency so the
+        // message names the one at fault.
         $ceiling = RawValue::at($raw, 'maxQuoteValueNet');
         if (\is_array($ceiling)) {
             $price['maxQuoteValueNet'] = $ceiling;

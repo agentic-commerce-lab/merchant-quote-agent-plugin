@@ -30,8 +30,8 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
             'negotiationStrategy' => 'open at 2%',
             'maxDiscountPercent' => 12.0,
             'counterOfferMaxPercent' => 18.0,
-            // The reader hands the factory an ISO-keyed map, already resolved
-            // out of the admin's price field.
+            // The admin's number field produces a bare float; an ISO-keyed
+            // map is still accepted from `system:config:set --json`.
             'maxQuoteValueNet' => ['EUR' => 50_000.0, 'USD' => 55_000.0],
             'validityDays' => 14,
         ];

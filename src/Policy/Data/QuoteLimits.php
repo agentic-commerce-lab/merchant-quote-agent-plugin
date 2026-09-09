@@ -42,9 +42,9 @@ final readonly class QuoteLimits
     }
 
     /**
-     * `maxQuoteValueNet` is either a currency-keyed map (what the reader builds
-     * out of the admin's price field) or a bare number (the ported TS
-     * fixtures), which reads as a ceiling for any currency.
+     * `maxQuoteValueNet` is either a bare number (the admin's field) that reads
+     * as a ceiling for any currency, or a currency-keyed map for a shop that
+     * sets one per ISO code via `system:config:set --json`.
      *
      * @throws \TypeError|\ValueError
      */
