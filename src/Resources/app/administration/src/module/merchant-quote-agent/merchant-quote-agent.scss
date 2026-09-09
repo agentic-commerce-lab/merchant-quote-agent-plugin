@@ -250,20 +250,24 @@
     padding: 0;
 }
 
-.mqa-run {
+/* One rail for all three entry kinds — buyer comment, servicing pass,
+   outcome — because they are one sequence. It used to carry only the passes,
+   in a card of its own, next to a card of comments the reader had to date-match
+   against it by eye. */
+.mqa-entry {
     position: relative;
     padding: 0 0 24px 28px;
     /* The rail. A 1px line through the dots, not a decorative edge: it stops
-       at the last run so the sequence reads as finished. */
+       at the last entry so the sequence reads as finished. */
     border-left: 1px solid var(--color-border-secondary-default);
 }
 
-.mqa-run:last-child {
+.mqa-entry:last-child {
     padding-bottom: 0;
     border-left-color: transparent;
 }
 
-.mqa-run::before {
+.mqa-entry::before {
     content: '';
     position: absolute;
     left: -5px;
@@ -275,19 +279,36 @@
     box-shadow: 0 0 0 3px var(--color-elevation-surface-default);
 }
 
-.mqa-run--positive::before {
+.mqa-entry--positive::before {
     background: var(--color-border-positive-default);
 }
 
-.mqa-run--critical::before {
+.mqa-entry--critical::before {
     background: var(--color-border-critical-default);
 }
 
-.mqa-run--info::before {
+.mqa-entry--info::before {
     background: var(--color-border-brand-default);
 }
 
-.mqa-run__header {
+/* A buyer's comment is the one thing on this rail the shop did not do, so its
+   dot is hollow. The author label says so in words as well — nothing here
+   rests on a 9px circle. */
+.mqa-entry--message::before {
+    background: var(--color-elevation-surface-default);
+    border: 1.5px solid var(--color-border-primary-default);
+}
+
+/* The end of the negotiation, so it reads as a full stop rather than as
+   another step. */
+.mqa-entry--outcome::before {
+    width: 13px;
+    height: 13px;
+    left: -7px;
+    top: 3px;
+}
+
+.mqa-entry__header {
     display: flex;
     align-items: baseline;
     gap: 10px;
@@ -295,22 +316,30 @@
     margin-bottom: 2px;
 }
 
-.mqa-run__index {
-    color: var(--color-text-secondary-default);
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-}
-
-.mqa-run__title {
+.mqa-entry__title {
     color: var(--color-text-primary-default);
     font-size: 15px;
     font-weight: 600;
     margin: 0;
 }
 
-.mqa-run__time {
+.mqa-entry__time {
     color: var(--color-text-secondary-default);
     font-size: 13px;
+}
+
+/* Why the negotiation ended this way. Prose, so prose width. */
+.mqa-entry__why {
+    max-width: 70ch;
+    margin: 4px 0 0;
+    color: var(--color-text-secondary-default);
+    text-wrap: pretty;
+}
+
+.mqa-run__index {
+    color: var(--color-text-secondary-default);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
 }
 
 /* The four lines every answering run shares. One grid, one label column, so
@@ -450,6 +479,20 @@
     overflow-wrap: anywhere;
 }
 
+/* JSON in a 200px column reads as a column of punctuation. The model's raw
+   answer takes the whole grid row and keeps its own line breaks. No height cap:
+   this lives inside a fold that is shut until someone asks for it, and a
+   scrolled-off tail behind macOS's invisible overlay scrollbars reads as
+   truncation rather than as a scroll region. */
+.mqa-tech__row--wide {
+    grid-column: 1 / -1;
+}
+
+.mqa-tech__row--wide .mqa-tech__value {
+    display: block;
+    white-space: pre-wrap;
+}
+
 .mqa-tech__value--mono {
     font-family: ui-monospace, "SF Mono", "Menlo", monospace;
     font-size: 12px;
@@ -470,56 +513,69 @@
     max-height: none;
 }
 
-/* The quote's comment thread. Customer left, agent indented right — the
-   asymmetry does the attribution at a glance, and the author label repeats it
-   in words so nothing rests on position or colour alone. */
-.mqa-thread {
+/* The customer's own sentence, quoted. Left/right attribution is gone with
+   the separate conversation card — only the buyer's comments are entries now,
+   the agent's reply renders inside the pass that composed it — so the bubble
+   only has to read as speech rather than as a field value.
+
+   Prose rules: pretty wrapping and preserved line breaks. A buyer who wrote a
+   list wrote it as a list. */
+.mqa-msg {
+    max-width: 70ch;
+    margin: 6px 0 0;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: var(--color-elevation-surface-sunken);
+    color: var(--color-text-primary-default);
+    white-space: pre-wrap;
+    text-wrap: pretty;
+}
+
+/* What a merchant has to know about a pass before its figures: an earlier
+   attempt that crashed, a reason nothing was written, or a pass that reports
+   success and still needs a person. That last one is why these are here and
+   not in the fold — see passNotes(). */
+.mqa-notes {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    margin: 0;
+    gap: 6px;
+    margin: 8px 0 0;
     padding: 0;
     list-style: none;
 }
 
-.mqa-thread__entry {
-    max-width: 70ch;
-    padding: 12px 16px;
-    border-radius: 8px;
-    background: var(--color-elevation-surface-sunken);
-}
-
-.mqa-thread__entry--agent {
-    margin-left: auto;
-    border: 1px solid var(--color-border-brand-selected);
-    background: var(--color-elevation-surface-raised);
-}
-
-.mqa-thread__meta {
+.mqa-note {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 6px;
-    font-size: 12px;
-}
-
-.mqa-thread__author {
+    flex-direction: column;
+    gap: 2px;
+    max-width: 70ch;
+    padding: 8px 12px;
+    border-left: 3px solid var(--color-border-primary-default);
+    border-radius: 0 4px 4px 0;
+    background: var(--color-elevation-surface-sunken);
+    font-size: 14px;
     color: var(--color-text-primary-default);
-    font-weight: 600;
-}
-
-.mqa-thread__time {
-    color: var(--color-text-secondary-default);
-}
-
-/* The customer's own sentence, so prose rules: pretty wrapping and preserved
-   line breaks. A buyer who wrote a list wrote it as a list. */
-.mqa-thread__text {
-    margin: 0;
-    color: var(--color-text-primary-default);
-    white-space: pre-wrap;
     text-wrap: pretty;
+}
+
+.mqa-note--critical {
+    border-left-color: var(--color-border-critical-default);
+}
+
+.mqa-note--attention {
+    border-left-color: var(--color-border-attention-default);
+}
+
+/* The writes the pass performed, one per line: a merchant reading "nothing
+   changed" wants to see the absence, and a merchant reading three lines wants
+   to see which three. */
+.mqa-changes {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
 /* The escalation sentence sits under the reason badge and above the recorded
