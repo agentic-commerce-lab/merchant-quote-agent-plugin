@@ -6,8 +6,12 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
+use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use Shopware\Core\Checkout\Cart\Price\Struct\CalculatedPrice;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Entity;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 
@@ -44,22 +48,15 @@ final class UpdateLineItemsTest extends IntegrationTestCase
         $before = $gateway->fetchSnapshot($quoteId);
         $line = $this->firstProductLine($before->content->lines);
 
-        $target = round($line->unitPriceNet * 0.9, 2);
+        $target = round($line->unitPriceNet * 0.9, precision: 2);
         $gateway->updateLineItems($quoteId, [
             new QuoteLineItemChange(lineItemId: $line->identity->lineItemId, unitPriceNet: $target),
         ]);
 
         $gateway->recalculate($quoteId);
 
-        $after = $gateway->fetchSnapshot($quoteId);
-        $sameLine = null;
-        foreach ($after->content->lines as $candidate) {
-            if ($candidate->identity->lineItemId === $line->identity->lineItemId) {
-                $sameLine = $candidate;
-            }
-        }
+        $sameLine = $this->lineIn($gateway->fetchSnapshot($quoteId), $line->identity->lineItemId);
 
-        self::assertNotNull($sameLine, 'The repriced line disappeared after recalculate.');
         self::assertEqualsWithDelta(
             $target,
             $sameLine->unitPriceNet,
@@ -102,6 +99,55 @@ final class UpdateLineItemsTest extends IntegrationTestCase
         );
     }
 
+    /**
+     * The mirror, end to end against a real quote: a net ask goes in, lands in
+     * the quote's own tax space (which is what both UIs render), and comes
+     * back out net — hidden while the marker says the agent wrote it, visible
+     * the moment it does not.
+     *
+     * The unit tests pin each half of the conversion against a hand-built 19%
+     * gross fixture; this is the one that would catch the shop disagreeing
+     * with that fixture, which is exactly what `requestedPrice`'s tax space
+     * was wrong about before QuoteLineNet measured it.
+     */
+    public function testAMirroredRequestedPriceRoundTripsAndIsHiddenFromTheAgent(): void
+    {
+        $context = Context::createDefaultContext();
+        $gateway = static::gateway();
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), $context);
+
+        $line = $this->firstProductLine($gateway->fetchSnapshot($quoteId)->content->lines);
+        $lineItemId = $line->identity->lineItemId;
+        $ask = round($line->unitPriceNet * 0.8, precision: 2);
+
+        $gateway->updateQuote($quoteId, new QuoteUpdate(customFields: MirroredAsks::stamp([], [$lineItemId => $ask])));
+        $gateway->updateLineItems($quoteId, [
+            new QuoteLineItemChange(lineItemId: $lineItemId, requestedUnitPriceNet: $ask),
+        ]);
+
+        // Stored in the quote's tax space, so a gross quote holds MORE than
+        // the net ask — never the net number verbatim.
+        $stored = $this->storedRequestedPrice($lineItemId, $context);
+        self::assertNotNull($stored, 'The mirrored ask never reached the line.');
+        self::assertGreaterThanOrEqual($ask - 0.01, $stored);
+
+        self::assertNull(
+            $this->lineIn($gateway->fetchSnapshot($quoteId), $lineItemId)->requestedUnitPrice,
+            'The agent read its own mirrored ask back as if the buyer had made it.',
+        );
+
+        // Marker cleared, nothing else touched: the same stored number now
+        // reads as a buyer ask, and it reads back as the NET one that went in.
+        $gateway->updateQuote($quoteId, new QuoteUpdate(customFields: [MirroredAsks::KEY => null]));
+
+        self::assertEqualsWithDelta(
+            $ask,
+            $this->lineIn($gateway->fetchSnapshot($quoteId), $lineItemId)->requestedUnitPrice,
+            0.01,
+            'The stored ask did not convert back to the net number that was written.',
+        );
+    }
+
     public function testQuantityChangeApplies(): void
     {
         $gateway = static::gateway();
@@ -113,16 +159,9 @@ final class UpdateLineItemsTest extends IntegrationTestCase
             new QuoteLineItemChange(lineItemId: $line->identity->lineItemId, quantity: $line->quantity + 1),
         ]);
 
-        $after = $gateway->fetchSnapshot($quoteId);
-        foreach ($after->content->lines as $candidate) {
-            if ($candidate->identity->lineItemId === $line->identity->lineItemId) {
-                self::assertSame($line->quantity + 1, $candidate->quantity);
+        $after = $this->lineIn($gateway->fetchSnapshot($quoteId), $line->identity->lineItemId);
 
-                return;
-            }
-        }
-
-        self::fail('Line item vanished after a quantity change.');
+        self::assertSame($line->quantity + 1, $after->quantity);
     }
 
     public function testRemovalSoftDeletesTheLine(): void
@@ -140,8 +179,36 @@ final class UpdateLineItemsTest extends IntegrationTestCase
         }
     }
 
+    /** Raw stored `requestedPrice` of a line item, in the quote's own tax space. */
+    private function storedRequestedPrice(string $lineItemId, Context $context): ?float
+    {
+        $requested = $this->storedLineItem($lineItemId, $context)->get('requestedPrice');
+
+        return is_numeric($requested) ? (float) $requested : null;
+    }
+
+    /** @throws \PHPUnit\Framework\AssertionFailedError when the line is gone */
+    private function lineIn(QuoteSnapshot $snapshot, string $lineItemId): QuoteLineSnapshot
+    {
+        foreach ($snapshot->content->lines as $line) {
+            if ($line->identity->lineItemId === $lineItemId) {
+                return $line;
+            }
+        }
+
+        self::fail('The line under test disappeared from the snapshot.');
+    }
+
     /** Raw stored `price` of a line item, in Shopware's own gross space. */
     private function storedPrice(string $lineItemId, Context $context): CalculatedPrice
+    {
+        $price = $this->storedLineItem($lineItemId, $context)->get('price');
+        self::assertInstanceOf(CalculatedPrice::class, $price);
+
+        return $price;
+    }
+
+    private function storedLineItem(string $lineItemId, Context $context): Entity
     {
         /** @var EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $repository */
         $repository = static::getContainer()->get('quote_line_item.repository');
@@ -149,12 +216,9 @@ final class UpdateLineItemsTest extends IntegrationTestCase
             ->search(new Criteria([$lineItemId]), $context)
             ->getEntities()
             ->first();
-        self::assertNotNull($lineItem, 'The line item under test disappeared.');
+        self::assertInstanceOf(Entity::class, $lineItem, 'The line item under test disappeared.');
 
-        $price = $lineItem->get('price');
-        self::assertInstanceOf(CalculatedPrice::class, $price);
-
-        return $price;
+        return $lineItem;
     }
 
     /**

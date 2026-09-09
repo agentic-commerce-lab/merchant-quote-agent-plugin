@@ -158,6 +158,10 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             return new NegotiationPass(NegotiationOutcome::NothingToDo);
         }
 
+        // Before the gate on purpose: an escalated or clarified pass must
+        // leave the buyer's number on the line too. See AskMirror.
+        AskMirror::mirror($gateway, $snapshot, $ask, $this->logger);
+
         $refusal = $ask === null ? null : AskGate::refuse($gateway, $snapshot, $ask, $this->round, $this->logger);
 
         if ($refusal !== null) {
