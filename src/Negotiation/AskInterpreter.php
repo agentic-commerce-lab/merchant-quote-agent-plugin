@@ -41,10 +41,6 @@ final readonly class AskInterpreter
 
         $access = $settings->llm;
 
-        if ($access === null) {
-            throw new ModelUnavailable('No model access is configured for this sales channel.');
-        }
-
         $prompt = $this->prompts->extract();
         $interpretation = $this->platform->object(
             $access,

@@ -45,14 +45,30 @@ final class SellerMandateFactoryTest extends TestCase
     public function testMaxCommitmentIsInMinorUnitsFromTheValueCeiling(): void
     {
         $mandate = self::build(
-            new NegotiationPolicy(price: new QuoteLimits(
-                maxDiscountPercent: 15.0,
-                valueCeiling: new QuoteValueCeiling(net: 7600.0, currencyIso: 'EUR'),
-            )),
+            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 15.0, valueCeiling: new QuoteValueCeiling([
+                'EUR' => 7600.0,
+            ]))),
         );
 
         self::assertSame(760000, $mandate['max_commitment_value']);
         self::assertSame('EUR', $mandate['max_commitment_currency']);
+    }
+
+    public function testTwoPerCurrencyCeilingsPublishNoMaxCommitmentAtAll(): void
+    {
+        // `max_commitment_value` and `max_commitment_currency` are scalars in
+        // the A2CN spec. With a ceiling per currency there is no single honest
+        // pair, and a signed document that picks one arbitrarily is worse than
+        // one that claims nothing.
+        $mandate = self::build(
+            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 15.0, valueCeiling: new QuoteValueCeiling([
+                'EUR' => 7600.0,
+                'USD' => 8200.0,
+            ]))),
+        );
+
+        self::assertArrayNotHasKey('max_commitment_value', $mandate);
+        self::assertArrayNotHasKey('max_commitment_currency', $mandate);
     }
 
     public function testNegotiationBandsPublishTheGrantAndCounterBoundsInBasisPoints(): void
@@ -69,14 +85,15 @@ final class SellerMandateFactoryTest extends TestCase
 
     public function testTheMandatePublishesPriceAuthorityOnly(): void
     {
-        // The signed document used to carry payment and delivery bands. The
-        // agent decides neither -- AskGate escalates every non-price ask, and
-        // QuoteUpdate cannot write a term -- so the claim was unbacked. Bundle
-        // stays: a volume tier is a published rate, not a decision.
+        // The signed document used to carry payment, delivery and bundle
+        // bands. The agent decides none of them -- AskGate escalates every
+        // non-price ask, and QuoteUpdate cannot write a term -- so each claim
+        // was unbacked.
         $mandate = self::build(new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 15.0)));
 
         self::assertArrayNotHasKey('payment', $mandate['negotiation_bands']);
         self::assertArrayNotHasKey('delivery', $mandate['negotiation_bands']);
+        self::assertArrayNotHasKey('bundle', $mandate['negotiation_bands']);
         self::assertSame(1500, $mandate['negotiation_bands']['autoGrantMaxBps']);
     }
 

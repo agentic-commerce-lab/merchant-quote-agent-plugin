@@ -13,6 +13,7 @@ use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use Symfony\Component\HttpClient\Response\MockResponse;
 
 final class ReplyComposerTest extends TestCase
 {
@@ -47,7 +48,7 @@ final class ReplyComposerTest extends TestCase
             ->reply(
                 $gateway,
                 $after,
-                NegotiationFixture::settings(tone: 'formal'),
+                NegotiationFixture::settings(strategy: 'formal'),
                 5.0,
                 SnapshotAdapter::conversation($after),
             );
@@ -93,7 +94,15 @@ final class ReplyComposerTest extends TestCase
         // The bug this replaces: a per-line offer carries no `discountPercent`
         // at all, so the reply used to tell the buyer "0% off this quote" on a
         // quote whose line prices had just been cut by 15%.
-        [$client, $spy] = ScriptedClient::spy([]);
+        //
+        // The two 503s are how the template ships verbatim now that rules-only
+        // mode is gone: there is no configuration in which the reply model is
+        // skipped, only one in which it cannot be reached. One 503 would be
+        // retried and the second exhausts that, so the reword falls back.
+        [$client, $spy] = ScriptedClient::responding([
+            new MockResponse('', ['http_code' => 503]),
+            new MockResponse('', ['http_code' => 503]),
+        ]);
         $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
         $after = self::after(totalNet: 850.0);
 
@@ -101,35 +110,16 @@ final class ReplyComposerTest extends TestCase
             ->reply(
                 $gateway,
                 $after,
-                NegotiationFixture::settings(rulesOnly: true),
+                NegotiationFixture::settings(),
                 ReplyTemplate::reduction(1000.0, 850.0),
                 SnapshotAdapter::conversation($after),
             );
 
-        self::assertSame(0, $spy->calls);
+        self::assertSame(2, $spy->calls, 'The model must be tried, and tried only once more.');
         self::assertSame(
             'We can bring this quote down by 15% to 850.00 EUR. The offer is valid until 2026-09-11.',
             $gateway->comments[0],
         );
-    }
-
-    public function testRulesOnlyUsesTheTemplateWithNoModelCall(): void
-    {
-        [$client, $spy] = ScriptedClient::spy([]);
-        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
-        $after = self::after();
-
-        self::composer($client)
-            ->reply(
-                $gateway,
-                $after,
-                NegotiationFixture::settings(rulesOnly: true),
-                5.0,
-                SnapshotAdapter::conversation($after),
-            );
-
-        self::assertSame(0, $spy->calls);
-        self::assertContains('addComment', $gateway->calls);
     }
 
     public function testAnAlreadyAnsweredQuoteIsNotAnsweredTwice(): void

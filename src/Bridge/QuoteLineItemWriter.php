@@ -51,13 +51,19 @@ final readonly class QuoteLineItemWriter
         private EntityRepository $lineItemRepository,
         private CommercialCapabilities $capabilities,
     ) {
-        $this->taxRules = new QuoteLineTaxRules($lineItemRepository);
+        $this->taxRules = new QuoteLineTaxRules($lineItemRepository, $capabilities);
     }
 
     /** @param list<QuoteLineItemChange> $changes */
     public function write(array $changes, Context $context): void
     {
-        $taxRules = $this->taxRules->forLines($this->repricedIds($changes), $context);
+        // One id list for both reads. Narrowing each to only the lines that
+        // need it saved a query on a quantity-only batch and cost this class
+        // its complexity budget; both readers no-op on an empty list, and a
+        // line that needs neither fact is simply not looked up.
+        $priced = self::pricedIds($changes);
+        $taxRules = $this->taxRules->forLines($priced, $context);
+        $netRatios = $this->taxRules->netRatiosFor($priced, $context);
         $payload = [];
         $deletions = [];
 
@@ -68,7 +74,7 @@ final readonly class QuoteLineItemWriter
                 continue;
             }
 
-            $row = $this->rowFor($change, $taxRules);
+            $row = $this->rowFor($change, $taxRules, $netRatios);
             if ($row !== []) {
                 $payload[] = ['id' => $change->lineItemId, ...$row];
             }
@@ -84,24 +90,32 @@ final readonly class QuoteLineItemWriter
     }
 
     /**
+     * The lines carrying a price of either kind — the quoted one or the
+     * buyer's ask. Both need a fact the database holds: the tax rules a
+     * reprice repeats, and the ratio an ask is converted back through.
+     *
      * @param list<QuoteLineItemChange> $changes
      *
      * @return list<string>
      */
-    private function repricedIds(array $changes): array
+    private static function pricedIds(array $changes): array
     {
         return array_values(array_map(
             static fn(QuoteLineItemChange $change): string => $change->lineItemId,
-            array_filter($changes, static fn(QuoteLineItemChange $change): bool => $change->touchesPrice()),
+            array_filter(
+                $changes,
+                static fn(QuoteLineItemChange $c): bool => $c->touchesPrice() || $c->touchesRequestedPrice(),
+            ),
         ));
     }
 
     /**
      * @param array<string, list<array{taxRate: float, percentage: float}>> $taxRules
+     * @param array<string, float> $netRatios
      *
      * @return array<string, mixed>
      */
-    private function rowFor(QuoteLineItemChange $change, array $taxRules): array
+    private function rowFor(QuoteLineItemChange $change, array $taxRules, array $netRatios): array
     {
         if ($change->isRemoval()) {
             // Soft delete, matching SwagCommercial's own model: the
@@ -119,7 +133,9 @@ final readonly class QuoteLineItemWriter
             $row += $this->priceRow($change, $taxRules[$change->lineItemId] ?? QuoteLineTaxRules::FALLBACK);
         }
 
-        return $row;
+        $ratio = $netRatios[$change->lineItemId] ?? null;
+
+        return $row + QuoteLineTaxRules::requestedPriceRow($change->requestedUnitPriceNet, $ratio);
     }
 
     /**

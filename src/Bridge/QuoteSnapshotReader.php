@@ -65,6 +65,7 @@ final readonly class QuoteSnapshotReader
             totals: new QuoteTotals(
                 totalNet: (float) $quote->get('amountNet'),
                 discount: $this->discountMapper->map($quote->get('discount')),
+                totalGross: (float) $quote->get('amountTotal'),
             ),
             lifecycle: $this->readLifecycle($quote),
             content: new QuoteContent(

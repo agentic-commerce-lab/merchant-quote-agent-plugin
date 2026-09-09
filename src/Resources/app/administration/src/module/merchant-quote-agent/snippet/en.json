@@ -1,7 +1,7 @@
 {
     "merchant-quote-agent": {
         "general": {
-            "mainMenuItemGeneral": "Quote Agent",
+            "mainMenuItemGeneral": "Quote Agent Dashboard",
             "description": "What the quote agent has been doing"
         },
         "outcome": {
@@ -98,7 +98,8 @@
             "granted": "Average discount granted",
             "needsReview": "Waiting on you",
             "ofServiced": "of {total} quotes serviced",
-            "ofCap": "of a {cap} cap"
+            "ofCap": "of a {cap} cap",
+            "orderPlaced": "Orders placed"
         },
         "detail": {
             "pageTitle": "Quote #{quoteNumber}",
@@ -119,13 +120,19 @@
             "missingTitle": "Decision not found",
             "missingSubline": "This record could not be loaded. It may have been deleted.",
             "terminal": {
-                "accepted": "Accepted by buyer",
+                "accepted": "Order placed",
                 "declined": "Declined",
                 "expired": "Expired",
                 "cancelled": "Cancelled",
                 "withdrawn": "Withdrawn"
             },
-            "openQuote": "Open quote"
+            "openQuote": "Open quote",
+            "conversationTitle": "Conversation",
+            "conversationSubtitle": "What the customer wrote, and what the agent replied. Read from the quote itself.",
+            "fromCustomer": "Customer",
+            "fromAgent": "Quote agent",
+            "openOrder": "Open order",
+            "orderPlacedAt": "Order placed {at}"
         },
         "access": {
             "mainMenuItem": "Agent access",
@@ -159,7 +166,19 @@
             "answered": "Answered",
             "awaitingBuyer": "Question asked",
             "noAction": "No action needed",
-            "other": "Unrecognised outcome"
+            "other": "Unrecognised outcome",
+            "orderPlaced": "Order placed"
+        },
+        "escalationWhy": {
+            "anUnstatedAmount": "an amount it could not read as a percentage",
+            "discount_limit_exceeded": "The customer asked for {asked}, which is more than your {cap} maximum discount. Granting more than the cap is a decision only a person can make.",
+            "quote_value_limit_exceeded": "This quote is worth {value}, above the maximum quote value you set for negotiation. Large quotes are handed over whatever the discount asked for.",
+            "currency_mismatch": "No maximum quote value is configured for {currency}, so the agent cannot tell whether this quote is inside your ceiling. Set one for that currency to let it negotiate.",
+            "needs_human_review": "The customer asked for a person, or asked for something outside price and validity — a delivery term, a payment term, or a change to what is being sold. The agent can only negotiate price.",
+            "not_configured": "The agent is switched on but its configuration is incomplete or invalid, so it answered nothing rather than guess. The technical details below name the fields.",
+            "model_unavailable": "The model could not be reached, or answered with something unusable. Nothing was written to the quote.",
+            "proposal_rejected": "The model proposed terms outside the authority your policies allow, so the policy layer refused them. The quote was left untouched.",
+            "verification_failed": "The quote was changed, but re-reading it did not match what had been authorised, so it needs a person to confirm before the customer is told anything."
         }
     }
 }

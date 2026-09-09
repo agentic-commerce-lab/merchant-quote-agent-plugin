@@ -45,7 +45,7 @@ final class NegotiationFixture
         return new QuoteSnapshot(
             identity: new QuoteIdentity('q1', '10001', 'EUR', 'sc1'),
             revision: $revision ?? new QuoteRevision('v1', new \DateTimeImmutable('2026-08-28 10:00:00.000')),
-            totals: new QuoteTotals(totalNet: $totalNet),
+            totals: new QuoteTotals(totalNet: $totalNet, totalGross: $totalNet),
             lifecycle: new QuoteLifecycle(stateTechnicalName: $state, expiresAt: new \DateTimeImmutable(self::EXPIRES)),
             content: new QuoteContent(lines: [new QuoteLineSnapshot(
                 identity: new QuoteLineIdentity('line-1', 'Widget', 'prod-1'),
@@ -90,20 +90,16 @@ final class NegotiationFixture
     }
 
     public static function settings(
-        bool $rulesOnly = false,
         float $maxDiscountPercent = 10.0,
         ?float $counterOfferMaxPercent = 20.0,
         ?string $strategy = null,
-        ?string $tone = null,
     ): QuoteAgentSettings {
         return new QuoteAgentSettings(
             new NegotiationPolicy(price: new QuoteLimits(
                 maxDiscountPercent: $maxDiscountPercent,
                 counterOfferMaxPercent: $counterOfferMaxPercent,
                 validityDays: 14,
-                replyTone: $tone,
             )),
-            rulesOnly: $rulesOnly,
             llm: self::modelAccess(),
             strategyPrompt: $strategy,
         );

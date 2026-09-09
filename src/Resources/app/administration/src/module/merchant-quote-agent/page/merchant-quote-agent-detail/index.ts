@@ -1,8 +1,11 @@
 import template from './merchant-quote-agent-detail.html.twig';
 import {
+    ORDER_PLACED_TERMINAL_STATE,
     answeredTheBuyer,
     askItems,
     bandVariant,
+    conversation,
+    escalationExplanation,
     escalationLabel,
     formatCurrency,
     formatDate,
@@ -25,6 +28,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
         return {
             record: null,
             rounds: [],
+            quote: null,
             isLoading: false,
         };
     },
@@ -32,6 +36,40 @@ Shopware.Component.register('merchant-quote-agent-detail', {
     computed: {
         decisionRepository() {
             return this.repositoryFactory.create('merchant_quote_agent_decision');
+        },
+
+        quoteRepository() {
+            return this.repositoryFactory.create('quote');
+        },
+
+        /**
+         * What the customer actually wrote, next to what the agent made of it.
+         * Empty when the quote could not be read — Commercial absent, or the
+         * role without `quote_comment:read` — and the card hides itself rather
+         * than claiming the conversation was empty.
+         */
+        messages() {
+            return conversation(this.quote?.comments ?? []);
+        },
+
+        /**
+         * The order the customer placed, when they did.
+         *
+         * Route-guarded like `quoteRoute`: an id with nowhere to go is not a
+         * link. `sw.order.detail` is core rather than Commercial, so this is
+         * about the route existing at all, not about which plugins are on.
+         */
+        orderRoute() {
+            if (!this.quote?.orderId || !this.$router.hasRoute?.('sw.order.detail')) {
+                return null;
+            }
+
+            return { name: 'sw.order.detail', params: { id: this.quote.orderId } };
+        },
+
+        /** The success this whole module exists to produce. */
+        orderPlaced() {
+            return this.terminalState === ORDER_PLACED_TERMINAL_STATE;
         },
 
         quoteNumber() {
@@ -91,7 +129,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
 
         statusVariant() {
             if (this.terminalState !== null) {
-                return this.terminalState === 'accepted' ? 'positive' : 'neutral';
+                return this.orderPlaced ? 'positive' : 'neutral';
             }
 
             return this.runs[this.runs.length - 1]?.outcomeVariant ?? 'neutral';
@@ -139,14 +177,40 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                     criteria.addSorting(Criteria.sort('createdAt', 'ASC'));
 
                     this.rounds = Array.from(await this.decisionRepository.search(criteria, Shopware.Context.api));
+                    this.quote = await this.loadQuote(this.record.quoteId);
                 }
             } catch (error) {
                 this.record = null;
                 this.rounds = [];
+                this.quote = null;
                 // eslint-disable-next-line no-console
                 console.error('merchant-quote-agent: failed to load decision flow', error);
             } finally {
                 this.isLoading = false;
+            }
+        },
+
+        /**
+         * The quote itself, for the customer's messages and the order they
+         * placed. Caught separately from the record load and on its own: the
+         * quote entity belongs to Commercial's B2B quote management, which
+         * need not be installed, and the role may hold
+         * `merchant_quote_agent_decision:read` without `quote_comment:read`.
+         * Neither is a reason to show "Decision not found" for a record that
+         * loaded perfectly well, so this degrades to no quote and the cards
+         * that need one hide themselves.
+         */
+        async loadQuote(quoteId) {
+            try {
+                const criteria = new Criteria(1, 1);
+                criteria.addAssociation('comments');
+
+                return await this.quoteRepository.get(quoteId, Shopware.Context.api, criteria);
+            } catch (error) {
+                // eslint-disable-next-line no-console
+                console.warn('merchant-quote-agent: the quote behind this record could not be read', error);
+
+                return null;
             }
         },
 
@@ -182,8 +246,17 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                     ? `${formatCurrency(round.totalNetBefore, round.currencyIso)} → ${formatCurrency(round.totalNetAfter, round.currencyIso)}`
                     : null,
                 escalationReason: round.escalationReason ? escalationLabel(this, round.escalationReason) : null,
+                escalationWhy: escalationExplanation(this, round),
+                // The specifics behind the sentence: the rule that was broken,
+                // in the words the pipeline recorded. Only shown for a pass
+                // that escalated — on a pass that succeeded, `violations` is
+                // the verifier's empty result and means nothing to a merchant.
+                escalationDetail: round.escalationReason && Array.isArray(round.violations) && round.violations.length > 0
+                    ? round.violations.join('; ')
+                    : null,
                 // The buyer's own words are not recorded anywhere; their ask
-                // survives only as `interpretedAsks`, rendered above.
+                // survives only as `interpretedAsks`, rendered above. The
+                // conversation card reads them off the quote instead.
                 reply: round.replyToBuyer || null,
                 technical: this.technical(round),
             };

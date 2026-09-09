@@ -17,6 +17,11 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
  * A null sales-channel id reads the global value, and a sales-channel id falls
  * back to it. That is Shopware's own semantics and the reason a merchant can
  * configure once and override for a pilot channel.
+ *
+ * `maxQuoteValueNet` is the one value this class does more than read. The
+ * admin stores a price field as a list of `{currencyId, net, ...}` rows, and a
+ * currency id is a uuid only Shopware can resolve — so the ISO lookup happens
+ * here, and the factory below stays pure.
  */
 final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSource
 {
@@ -24,7 +29,6 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
 
     private const KEYS = [
         'enabled',
-        'rulesOnlyMode',
         'llmApiKey',
         'llmBaseUrl',
         'llmModel',
@@ -32,15 +36,13 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
         'maxDiscountPercent',
         'counterOfferMaxPercent',
         'maxQuoteValueNet',
-        'maxQuoteValueCurrency',
         'validityDays',
-        'replyTone',
-        'bundleVolumeTiers',
     ];
 
     public function __construct(
         private SystemConfigService $config,
         private QuoteAgentSettingsFactory $factory,
+        private CurrencyIsoResolver $currencies,
     ) {}
 
     /** @throws InvalidQuoteAgentConfiguration */
@@ -51,6 +53,12 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
 
         foreach (self::KEYS as $key) {
             $raw[$key] = $this->config->get(self::DOMAIN . $key, $salesChannelId);
+        }
+
+        $ceiling = $this->currencies->netByIso($raw['maxQuoteValueNet']);
+
+        if ($ceiling !== null) {
+            $raw['maxQuoteValueNet'] = $ceiling;
         }
 
         return $this->factory->fromValues($raw);

@@ -19,11 +19,10 @@ final class PromptComposerTest extends TestCase
         return new PromptComposer('EXTRACT BASE', 'NEGOTIATE BASE', 'REPLY BASE {{tone}} END');
     }
 
-    private static function settings(?string $strategy = null, ?string $tone = null): QuoteAgentSettings
+    private static function settings(?string $strategy = null): QuoteAgentSettings
     {
         return new QuoteAgentSettings(
-            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0, replyTone: $tone)),
-            rulesOnly: false,
+            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0)),
             llm: new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini'),
             strategyPrompt: $strategy,
         );
@@ -51,24 +50,25 @@ final class PromptComposerTest extends TestCase
     }
 
     #[DataProvider('replyToneTestCases')]
-    public function testToneHandling(?string $tone, string $expected, bool $shouldContainTone): void
+    public function testTheReplyToneComesFromTheMerchantStrategy(?string $strategy, string $expected): void
     {
-        $composed = self::composer()->reply(self::settings(tone: $tone))->text;
+        // There is no separate reply-tone setting: the strategy field is the
+        // one place a merchant states how the agent should sound.
+        $composed = self::composer()->reply(self::settings(strategy: $strategy))->text;
 
         self::assertSame($expected, $composed);
-        if ($shouldContainTone) {
-            self::assertStringNotContainsString('{{tone}}', $composed);
-        }
+        self::assertStringNotContainsString('{{tone}}', $composed);
     }
 
     /**
-     * @return array<string, array{0: ?string, 1: string, 2: bool}>
+     * @return array<string, array{0: ?string, 1: string}>
      */
     public static function replyToneTestCases(): array
     {
         return [
-            'tone formal' => ['formal', 'REPLY BASE formal END', true],
-            'tone blank gets neutral' => [null, 'REPLY BASE neutral and professional END', true],
+            'the strategy is the tone' => ['formal, never pushy', 'REPLY BASE formal, never pushy END'],
+            'no strategy gets neutral' => [null, 'REPLY BASE neutral and professional END'],
+            'a blank strategy gets neutral' => ['   ', 'REPLY BASE neutral and professional END'],
         ];
     }
 
@@ -88,8 +88,8 @@ final class PromptComposerTest extends TestCase
         self::assertNotSame($strategyHashA, $strategyHashB);
 
         $composer = self::composer();
-        $toneHashFormal = $composer->reply(self::settings(tone: 'formal'))->hash;
-        $toneHashWarm = $composer->reply(self::settings(tone: 'warm'))->hash;
+        $toneHashFormal = $composer->reply(self::settings(strategy: 'formal'))->hash;
+        $toneHashWarm = $composer->reply(self::settings(strategy: 'warm'))->hash;
 
         self::assertNotSame($toneHashFormal, $toneHashWarm);
         self::assertSame(
@@ -113,6 +113,6 @@ final class PromptComposerTest extends TestCase
 
         self::assertStringStartsWith('You are a merchant\'s B2B sales agent', $composed);
         self::assertStringEndsWith("## Merchant strategy\n\nconcede in 1% steps", $composed);
-        self::assertStringNotContainsString('{{tone}}', $composer->reply(self::settings(tone: 'warm'))->text);
+        self::assertStringNotContainsString('{{tone}}', $composer->reply(self::settings(strategy: 'warm'))->text);
     }
 }

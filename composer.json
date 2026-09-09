@@ -1,11 +1,10 @@
 {
     "name": "shopware/merchant-quote-agent-plugin",
-    "description": "Merchant quote agent plugin",
+    "description": "Quote Agent plugin",
     "type": "shopware-platform-plugin",
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "ext-filter": "*",
         "ext-openssl": "*",
         "cuyz/valinor": "^2.6",
         "doctrine/dbal": "~4.4.0",
@@ -88,8 +87,8 @@
     "extra": {
         "shopware-plugin-class": "MerchantQuoteAgentPlugin\\MerchantQuoteAgentPlugin",
         "label": {
-            "en-GB": "Merchant Quote Agent",
-            "de-DE": "Merchant Quote Agent"
+            "en-GB": "Quote Agent",
+            "de-DE": "Quote Agent"
         },
         "description": {
             "en-GB": "Autonomous B2B quote negotiation within merchant-defined limits."

@@ -22,7 +22,6 @@ final class TotalsOfferVerifier
         return array_values(array_filter([
             DiscountTotalViolation::check($reference, $final, $limits, $allowedExtraDiscountNet),
             ValueCeilingViolation::check($final, $limits),
-            CurrencyMismatchViolation::check($final, $limits),
         ]));
     }
 }

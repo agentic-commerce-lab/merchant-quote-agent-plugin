@@ -7,7 +7,6 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\Response\NegotiateResponse;
-use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
@@ -59,21 +58,7 @@ final readonly class OfferProposer
             ));
         }
 
-        if ($settings->rulesOnly) {
-            return $this->recorded(null, $this->authorize(
-                $settings,
-                $referenceLines,
-                self::deterministicOffer($snapshot, $details),
-                '',
-                null,
-            ));
-        }
-
         $access = $settings->llm;
-
-        if ($access === null) {
-            throw new ModelUnavailable('No model access is configured for this sales channel.');
-        }
 
         $prompt = $this->prompts->negotiate($settings);
         $response = $this->platform->object(
@@ -163,23 +148,6 @@ final readonly class OfferProposer
         }
 
         return ProposedAnswer::offer($offer, $message, $promptHash);
-    }
-
-    /**
-     * Rules-only: the band already priced this, so the band's number IS the
-     * offer. One ternary rather than two on the same condition: propose()
-     * gained a branch computing the baseline's reference lines (#49), and
-     * OfferProposer sits right at the class-scoped complexity cap.
-     */
-    private static function deterministicOffer(
-        PolicySnapshot $snapshot,
-        \MerchantQuoteAgentPlugin\Policy\Data\QuoteAutoReplyDetails $details,
-    ): ProposedOffer {
-        $price = $details->perLineAsks
-            ? new OfferedPrice(linePricesNet: $details->lineUnitPricesNet)
-            : new OfferedPrice(discountPercent: $details->discountPercent);
-
-        return new ProposedOffer(orderTotalNet: $snapshot->totalNet, price: $price);
     }
 
     private static function userPrompt(

@@ -34,6 +34,19 @@
                    parts add up to the whole by construction. #}
                 {% block merchant_quote_agent_list_disposition %}
                 <div class="mqa-standing">
+                    {# Two ledes because they answer different questions. The
+                       queue is what the merchant has to do today; the orders
+                       are whether any of this earned anything, which is the
+                       figure the agent is ultimately judged on. Neither is a
+                       summary of the other. #}
+                    <div class="mqa-standing__lede mqa-standing__lede--won">
+                        <span class="mqa-standing__label">{{ $tc('merchant-quote-agent.figures.orderPlaced') }}</span>
+                        <strong class="mqa-standing__value">{{ orderPlaced }}</strong>
+                        <span class="mqa-standing__of">
+                            {{ $t('merchant-quote-agent.figures.ofServiced', { total: quotes.length }) }}
+                        </span>
+                    </div>
+
                     <div class="mqa-standing__lede">
                         <span class="mqa-standing__label">{{ $tc('merchant-quote-agent.figures.needsReview') }}</span>
                         <strong class="mqa-standing__value">{{ needsReview }}</strong>
@@ -154,7 +167,11 @@
                     {# The reason explains the standing, so it sits with it. #}
                     <template #column-disposition="{ item }">
                         <div class="mqa-cell">
-                            <mt-badge :variant="outcomeVariant(item.latest.outcome)">
+                            {# Both off the disposition. Reading the label from
+                               one value and the colour from another is how an
+                               ordered quote whose last pass escalated came out
+                               as "Order placed" in red. #}
+                            <mt-badge :variant="dispositionVariant(item.disposition)">
                                 {{ dispositionLabel(item.disposition) }}
                             </mt-badge>
                             <span v-if="item.latest.escalationReason" class="mqa-cell__aside">

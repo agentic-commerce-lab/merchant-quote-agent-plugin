@@ -36,6 +36,7 @@ use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialBuyerQuoteGateway;
 use MerchantQuoteAgentPlugin\Command\AgentGrantsCommand;
 use MerchantQuoteAgentPlugin\Command\AllowAnyAgentCommand;
+use MerchantQuoteAgentPlugin\Config\CurrencyIsoResolver;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
@@ -362,6 +363,10 @@ return static function (ContainerConfigurator $configurator): void {
     // The reader stays private: the alias below is what references it, so
     // RemoveUnusedDefinitionsPass no longer prunes it as dead.
     $services->set(QuoteAgentSettingsFactory::class);
+    // The ceiling is an admin price field, so the reader needs the currency
+    // repository to turn its currency ids into the ISO codes the policy
+    // compares against.
+    $services->set(CurrencyIsoResolver::class)->args([service('currency.repository')]);
     $services->set(QuoteAgentSettingsReader::class);
     $services->alias(QuoteAgentSettingsSource::class, QuoteAgentSettingsReader::class);
 

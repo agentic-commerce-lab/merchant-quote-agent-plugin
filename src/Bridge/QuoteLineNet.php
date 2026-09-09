@@ -34,6 +34,13 @@ final readonly class QuoteLineNet
         public float $total,
         public float $unitPrice,
         public ?float $requestedUnitPrice,
+        /**
+         * The factor this line's stored prices were multiplied by to reach net
+         * — 1.0 on a net quote. Published so a WRITE can invert it: a buyer's
+         * ask arrives net from the policy layer and has to land in the same
+         * tax space `requestedUnitPrice` above was read from.
+         */
+        public float $netRatio,
     ) {}
 
     /**
@@ -65,6 +72,7 @@ final readonly class QuoteLineNet
             // the quote's tax space unconverted, and it carries no
             // calculatedTaxes of its own — hence this line's own net ratio.
             requestedUnitPrice: $requested === null ? null : round((float) $requested * $netRatio, precision: 2),
+            netRatio: $netRatio,
         );
     }
 

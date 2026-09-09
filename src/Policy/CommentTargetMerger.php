@@ -9,27 +9,19 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 
 /**
- * Per-line target prices asked in comments behave exactly like the structured
- * "Requested price" field; the structured field wins unless this is a
- * renegotiation round, where the newer comment ask wins.
- *
- * A renegotiation round is `change_requested` on trunk and `reopen` on a
- * released SwagCommercial. Recognising both matters most on the older one,
- * where there is no structured field at all and the comment is the buyer's only
- * ask channel.
+ * Applies the per-line target prices a comment asked for onto a snapshot, and
+ * rescales the buyer's quote-level target off the result. Which targets stand
+ * at all is CommentLineTargets::adoptedBy()'s call.
  *
  * Ported from `mergeCommentTargets` in src/policy/quote-decision.ts.
  */
 final class CommentTargetMerger
 {
-    /** `change_requested` on trunk, `reopen` on a released SwagCommercial. */
-    private const RENEGOTIATION_STATES = ['change_requested', 'reopen'];
-
     private readonly CommentLineTargets $lineTargets;
 
-    public function __construct(?CommentLineTargets $lineTargets = null)
+    public function __construct()
     {
-        $this->lineTargets = $lineTargets ?? new CommentLineTargets();
+        $this->lineTargets = new CommentLineTargets();
     }
 
     public function merge(QuoteSnapshot $snapshot, ?CommentInterpretation $interpretation): QuoteSnapshot
@@ -39,25 +31,35 @@ final class CommentTargetMerger
             return $snapshot;
         }
 
-        $commentWins = \in_array($snapshot->lifecycle->stateTechnicalName, self::RENEGOTIATION_STATES, strict: true);
+        // Guarded on the EXTRACTED targets, not the adopted ones: an ask that
+        // changes no line still rescales the buyer's target off the asks that
+        // DO stand, which is how a structured ask the comment could not
+        // override becomes a quote-level percentage at all. QuoteDeciderTest's
+        // "structured field wins" fixture is the one that measures it.
+        $adopted = $this->lineTargets->adoptedBy($snapshot, $targets);
         $lines = [];
         foreach ($snapshot->lines as $line) {
-            $lines[] = self::withMergedTarget($line, $targets, $commentWins);
+            $target = $adopted[$line->lineItemId()] ?? null;
+            $lines[] = $target === null ? $line : $line->withRequestedUnitPrice($target);
         }
 
         return $snapshot->withLines($lines)->withBuyerTargetNet(self::rescaledBuyerTarget($snapshot, $lines));
     }
 
-    /** @param array<string, float> $targets */
-    private static function withMergedTarget(
-        QuoteLineSnapshot $line,
-        array $targets,
-        bool $commentWins,
-    ): QuoteLineSnapshot {
-        $target = $targets[$line->lineItemId()] ?? null;
-        $staleStructuredAskWins = $line->requestedUnitPrice !== null && !$commentWins;
-
-        return $target === null || $staleStructuredAskWins ? $line : $line->withRequestedUnitPrice($target);
+    /**
+     * The targets this merger would actually apply.
+     *
+     * Public because the mirror that writes a comment target back onto
+     * `quote_line_item.requested_price` must display the number the policy
+     * layer will PRICE against, not the raw extraction: on a line where a
+     * stale structured ask wins, the comment's target is never priced, and a
+     * displayed number the agent ignored is worse than no number at all.
+     *
+     * @return array<string, float> line item id => adopted target unit price, net
+     */
+    public function adopted(QuoteSnapshot $snapshot, ?CommentInterpretation $interpretation): array
+    {
+        return $this->lineTargets->adoptedBy($snapshot, $this->lineTargets->extract($interpretation));
     }
 
     /** @param list<QuoteLineSnapshot> $lines */
