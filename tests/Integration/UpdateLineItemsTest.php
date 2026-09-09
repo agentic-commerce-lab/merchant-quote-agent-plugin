@@ -125,11 +125,19 @@ final class UpdateLineItemsTest extends IntegrationTestCase
             new QuoteLineItemChange(lineItemId: $lineItemId, requestedUnitPriceNet: $ask),
         ]);
 
-        // Stored in the quote's tax space, so a gross quote holds MORE than
-        // the net ask — never the net number verbatim.
-        $stored = $this->storedRequestedPrice($lineItemId, $context);
-        self::assertNotNull($stored, 'The mirrored ask never reached the line.');
-        self::assertGreaterThanOrEqual($ask - 0.01, $stored);
+        // Derived from the line's OWN tax, not asserted as "more than the net
+        // ask": on a 0%-tax line the correct stored value IS the net ask, and
+        // a `>=` assertion would pass even with the conversion deleted. This
+        // form fails if the ratio is applied the wrong way round, or twice.
+        $rate = $this->taxRateOf($lineItemId, $context);
+        $stored = $this->storedLineItem($lineItemId, $context)->get('requestedPrice');
+        self::assertIsNumeric($stored, 'The mirrored ask never reached the line.');
+        self::assertEqualsWithDelta(
+            round($ask * (1 + ($rate / 100)), precision: 2),
+            (float) $stored,
+            0.01,
+            'The stored requested price is not the net ask in the quote\'s tax space.',
+        );
 
         self::assertNull(
             $this->lineIn($gateway->fetchSnapshot($quoteId), $lineItemId)->requestedUnitPrice,
@@ -146,6 +154,32 @@ final class UpdateLineItemsTest extends IntegrationTestCase
             0.01,
             'The stored ask did not convert back to the net number that was written.',
         );
+
+        // Said out loud rather than passed quietly. Everything above holds on
+        // a tax-free line, but the net<->tax-space conversion is an IDENTITY
+        // there, so a green run on such a shop has not exercised it — which is
+        // the one thing this test exists to add over the unit fixtures. Every
+        // product line on `agenticquote` is 0% (11/11 on 2026-09-09), so this
+        // is the normal outcome there, not an edge case.
+        if ($rate === 0.0) {
+            self::markTestIncomplete(
+                'The mirror round trip and the marker are verified, but this quote line is '
+                . 'tax-free, so the net->tax-space conversion ran as an identity and is NOT '
+                . 'verified here. Needs a shop with a taxed quote line.',
+            );
+        }
+    }
+
+    /** The highest tax rate on a line's stored `price`, 0.0 on a tax-free line. */
+    private function taxRateOf(string $lineItemId, Context $context): float
+    {
+        $rate = 0.0;
+
+        foreach ($this->storedPrice($lineItemId, $context)->getTaxRules() as $rule) {
+            $rate = max($rate, $rule->getTaxRate());
+        }
+
+        return $rate;
     }
 
     public function testQuantityChangeApplies(): void
@@ -177,14 +211,6 @@ final class UpdateLineItemsTest extends IntegrationTestCase
         foreach ($gateway->fetchSnapshot($quoteId)->content->lines as $line) {
             self::assertNotSame($victim, $line->identity->lineItemId, 'Removed line still reads back.');
         }
-    }
-
-    /** Raw stored `requestedPrice` of a line item, in the quote's own tax space. */
-    private function storedRequestedPrice(string $lineItemId, Context $context): ?float
-    {
-        $requested = $this->storedLineItem($lineItemId, $context)->get('requestedPrice');
-
-        return is_numeric($requested) ? (float) $requested : null;
     }
 
     /** @throws \PHPUnit\Framework\AssertionFailedError when the line is gone */
