@@ -20,11 +20,11 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity as EntityStruct;
  * read: DAL cannot aggregate inside a JSON column, so anything #21 counts or
  * averages has to be its own column.
  *
- * `terminalState` and `terminalAt` are the only two columns not written by a
- * servicing pass. TerminalOutcomeSubscriber stamps them later, via
- * TerminalOutcomeWriter, when the quote reaches one of the five states that
- * end a negotiation, so a record's insert still has exactly one owner and the
- * outcome is a separate update.
+ * `terminalState`, `terminalAt`, `resolvedAt` and `resolvedState` are the only
+ * four columns not written by a servicing pass. TerminalOutcomeSubscriber
+ * stamps the first two later, via TerminalOutcomeWriter, when the quote
+ * reaches one of the five states that end a negotiation, so a record's insert
+ * still has exactly one owner and the outcome is a separate update.
  *
  * Write-protected to system scope on every field: DecisionRecordWriter writes
  * through Context::createDefaultContext(), which is system scope, while
@@ -165,6 +165,24 @@ class QuoteDecisionRecord extends EntityStruct
     #[Field(type: FieldType::DATETIME, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?\DateTimeImmutable $terminalAt = null;
+
+    /**
+     * When a human first acted on the quote after this pass escalated, and the
+     * state they moved it to. Written by EscalationResolutionSubscriber, never
+     * by a servicing pass.
+     *
+     * Any transition by anyone counts, including the buyer withdrawing the
+     * quote: the core state-change event carries no author, and the only thing
+     * that does — SwagCommercial's `quote_history` — does not exist on 7.12.
+     * `resolvedState` is stored precisely so this stays inspectable.
+     */
+    #[Field(type: FieldType::DATETIME, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?\DateTimeImmutable $resolvedAt = null;
+
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?string $resolvedState = null;
 
     /** @var array<string, mixed>|null */
     #[Field(type: FieldType::JSON, api: ['admin-api' => true, 'store-api' => false])]

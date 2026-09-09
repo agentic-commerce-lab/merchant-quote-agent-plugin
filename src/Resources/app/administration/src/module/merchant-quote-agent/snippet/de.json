@@ -81,7 +81,7 @@
             "deleteTitle": "Audit-Zeilen löschen?",
             "deleteBody": "Damit werden alle {count} erfassten Durchläufe zu Angebot #{quoteNumber} entfernt. Audit-Zeilen lassen sich nicht wiederherstellen.",
             "deleteConfirm": "Löschen",
-            "truncated": "Es werden die {shown} zuletzt bearbeiteten Angebote von {total} Durchläufen in diesem Zeitraum gezeigt. Verkleinere den Zeitraum, um alle zu sehen."
+            "truncated": "Es werden die {shown} zuletzt bearbeiteten Angebote gezeigt. Für den Trend oben wurden {total} Durchläufe aus diesem und dem vorherigen Zeitraum gelesen — verkleinere den Zeitraum, um alle zu sehen."
         },
         "range": {
             "last7": "Letzte 7 Tage",
@@ -90,15 +90,25 @@
         },
         "figures": {
             "title": "Dieser Zeitraum",
-            "received": "Neu eingegangene Angebote",
-            "expiredUnanswered": "Unbeantwortet abgelaufen",
-            "valueHandled": "Bearbeiteter Wert (netto)",
-            "mixedCurrencies": "über mehrere Währungen",
-            "granted": "Durchschnittlich gewährter Rabatt",
-            "needsReview": "Wartet auf dich",
-            "ofServiced": "von {total} bearbeiteten Angeboten",
             "ofCap": "bei einem Limit von {cap}",
-            "orderPlaced": "Bestellungen ausgelöst"
+            "autoExecution": "Automatisierungsquote",
+            "autoExecutionAside": "{escalated} von {total} brauchten einen Menschen",
+            "trendUp": "▲ {delta} gegenüber den vorherigen {days} Tagen",
+            "trendDown": "▼ {delta} gegenüber den vorherigen {days} Tagen",
+            "trendFlat": "unverändert gegenüber den vorherigen {days} Tagen",
+            "resolution": "Bearbeitungszeit bei Eskalation",
+            "withinSla": "{within} von {measured} innerhalb der {sla}-SLA",
+            "noSla": "{measured} bearbeitet, keine SLA festgelegt",
+            "openEscalations": "{open} noch offen",
+            "retention": "Gewährter Rabatt",
+            "retentionBaseline": "vs. {baseline} bei Abschlüssen ohne Agentenbeteiligung",
+            "retentionFootnote": "Auf SwagCommercial 7.12 berücksichtigt der Vergleich nur Rabatte auf Angebotsebene.",
+            "cycleTime": "Abschlussdauer",
+            "cycleBaseline": "vs. {baseline} bei vergleichbarer Abschlussgröße",
+            "noBaseline": "keine vergleichbaren Abschlüsse in diesem Zeitraum",
+            "unavailable": "Nicht verfügbar",
+            "unavailableQuotes": "Berechtigung zum Lesen von Angeboten erforderlich",
+            "unavailableOrders": "Berechtigung zum Lesen von Bestellungen erforderlich"
         },
         "detail": {
             "pageTitle": "Angebot #{quoteNumber}",
@@ -170,6 +180,7 @@
             "needsReview": "Prüfung nötig",
             "answered": "Beantwortet",
             "awaitingBuyer": "Rückfrage gestellt",
+            "closedNoDeal": "Ohne Einigung beendet",
             "noAction": "Kein Handlungsbedarf",
             "other": "Unbekanntes Ergebnis",
             "orderPlaced": "Bestellung ausgelöst"

@@ -81,7 +81,7 @@
             "deleteTitle": "Delete audit rows?",
             "deleteBody": "This removes all {count} recorded passes for quote #{quoteNumber}. Audit rows cannot be rebuilt.",
             "deleteConfirm": "Delete",
-            "truncated": "Showing the {shown} most recently serviced quotes of {total} passes in this period. Narrow the period to see all of them."
+            "truncated": "Showing the {shown} most recently serviced quotes. {total} passes were read across this period and the previous one, used for the trend above — narrow the period to see all of them."
         },
         "range": {
             "last7": "Last 7 days",
@@ -90,15 +90,25 @@
         },
         "figures": {
             "title": "This period",
-            "received": "Quotes created",
-            "expiredUnanswered": "Expired unanswered",
-            "valueHandled": "Value handled (net)",
-            "mixedCurrencies": "across several currencies",
-            "granted": "Average discount granted",
-            "needsReview": "Waiting on you",
-            "ofServiced": "of {total} quotes serviced",
             "ofCap": "of a {cap} cap",
-            "orderPlaced": "Orders placed"
+            "autoExecution": "Auto-execution rate",
+            "autoExecutionAside": "{escalated} of {total} needed a human",
+            "trendUp": "▲ {delta} vs the previous {days} days",
+            "trendDown": "▼ {delta} vs the previous {days} days",
+            "trendFlat": "unchanged vs the previous {days} days",
+            "resolution": "Escalation resolution time",
+            "withinSla": "{within} of {measured} within the {sla} SLA",
+            "noSla": "{measured} resolved, no SLA set",
+            "openEscalations": "{open} still open",
+            "retention": "Discount granted",
+            "retentionBaseline": "vs {baseline} on deals the agent never touched",
+            "retentionFootnote": "On SwagCommercial 7.12 the comparison reads quote-level discounts only.",
+            "cycleTime": "Deal cycle time",
+            "cycleBaseline": "vs {baseline} for comparable deal sizes",
+            "noBaseline": "no comparable deals in this period",
+            "unavailable": "Unavailable",
+            "unavailableQuotes": "Needs permission to read quotes",
+            "unavailableOrders": "Needs permission to read orders"
         },
         "detail": {
             "pageTitle": "Quote #{quoteNumber}",
@@ -170,6 +180,7 @@
             "needsReview": "Needs review",
             "answered": "Answered",
             "awaitingBuyer": "Question asked",
+            "closedNoDeal": "Closed, no deal",
             "noAction": "No action needed",
             "other": "Unrecognised outcome",
             "orderPlaced": "Order placed"
