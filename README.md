@@ -246,6 +246,45 @@ Scope is read but not enforced: Agentic Commerce cannot yet issue
 so any valid token for the customer is accepted and authorization is by quote
 ownership. Enforcement lands with the upstream scope change.
 
+**None of the above matters until the sales channel's Identity Linking
+capability is switched on — and there is no admin control for it.** A buyer
+who completes login and consent on a channel where it is off never gets a
+token: the consent page instead reports *"This authorization link has expired
+or has already been used. Ask the agent for a new one,"* and asking for a
+fresh link changes nothing, because that message has nothing to do with
+expiry. `ConsentGrantCompleter`
+(`src/Identity/Authorization/ConsentGrantCompleter.php`) claims the pending
+authorization handle before it asks Agentic Commerce to grant it, then catches
+every `UcpException` as a refusal and returns null — deliberately, per its
+docblock: an earlier version let an unhandled refusal reach the storefront as
+a 500, by which point the handle was already consumed, so now every refusal
+renders the same terminal "expired or already used" page instead. The handle
+being burned before AC is even consulted is what makes retrying the same URL
+always report "already used", whatever the real cause was. The reason
+survives in only one place, the shop log, as a warning:
+`Agentic Commerce refused an identity-linking grant: Identity linking
+capability is disabled for this sales channel.`, with `client_id` and
+`sales_channel_id` in its context.
+
+There is no admin control to flip because Agentic Commerce's own admin bundle
+does not have one. It splits its capabilities into a list of five that render
+as toggles (`catalog`, `cart`, `discount`, `checkout`, `order` — also the
+defaults) and a second list holding `identity_linking` and
+`payment_tokenization`, each carrying a `reason` string and a docs link
+instead of a checkbox; the function that feeds the toggle UI returns only the
+first list, so the second never renders as editable. Not a bug in this
+plugin, and not something a merchant can fix by clicking anywhere.
+
+Enable it through the same admin API the UI itself uses, gated by the same
+`ucp.viewer` / `ucp.editor` ACLs as the allowlist page below:
+
+    GET /api/_admin/ucp/sales-channels/{salesChannelId}/config     # ucp.viewer
+    PUT /api/_admin/ucp/sales-channels/{salesChannelId}/config     # ucp.editor
+
+PUT takes the whole config object back, not a patch: read it, append
+`"identity_linking"` to `enabledCapabilities`, and PUT the result. Reverting
+is the same call with the entry removed.
+
 ## Deciding which agents may transact
 
 The three UCP allowlists — agent platforms, profile hosts, agent domains — are
