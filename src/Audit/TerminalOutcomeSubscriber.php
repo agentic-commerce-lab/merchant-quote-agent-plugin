@@ -53,6 +53,11 @@ final readonly class TerminalOutcomeSubscriber implements EventSubscriberInterfa
      * The five states that end a negotiation. Only `accepted` is graph-terminal
      * — the other four have a `reopen` or `admin_resend` edge out — so this is
      * a business label, not a property the state machine guarantees.
+     *
+     * Duplicated in the administration bundle as
+     * `ORDER_PLACED_TERMINAL_STATE` + `CLOSED_NO_DEAL` in decision.ts — the two
+     * lists must move together, and there is no shared vocabulary across the
+     * PHP/JS boundary to enforce that mechanically.
      */
     private const TERMINAL_STATES = ['accepted', 'declined', 'expired', 'cancelled', 'withdrawn'];
 

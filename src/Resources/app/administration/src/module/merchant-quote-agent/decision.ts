@@ -51,12 +51,16 @@ export function answeredTheBuyer(outcome: string | null): boolean {
  * An outcome nobody here knows about becomes `other` rather than folding into
  * `noAction`: a silent default is how this module twice ended up rendering a
  * vocabulary the backend had already moved on from.
+ *
+ * `escalated` is deliberately not a key here. Its disposition depends on
+ * `resolvedAt` — a human's answer, not the outcome column — so `disposition()`
+ * decides it above this map, before falling back to this table. Adding it
+ * back here would be a second source of truth for the same outcome.
  */
 const DISPOSITIONS: Record<string, string> = {
     offered: 'answered',
     countered: 'answered',
     replied: 'answered',
-    escalated: 'needsReview',
     clarified: 'awaitingBuyer',
     nothing_to_do: 'noAction',
 };
@@ -75,11 +79,39 @@ const DISPOSITIONS: Record<string, string> = {
  */
 export const ORDER_PLACED_TERMINAL_STATE = 'accepted';
 
-export const DISPOSITION_CLASSES = ['orderPlaced', 'needsReview', 'answered', 'awaitingBuyer', 'noAction', 'other'];
+/**
+ * The four terminal states that are not a sale. Mirrors the non-`accepted`
+ * half of TerminalOutcomeSubscriber::TERMINAL_STATES — the two lists must move
+ * together, and cannot be shared across the PHP/JS boundary.
+ */
+export const CLOSED_NO_DEAL = ['declined', 'expired', 'cancelled', 'withdrawn'];
 
-export function disposition(outcome: string | null, terminalState: string | null = null): string {
+export const DISPOSITION_CLASSES = ['orderPlaced', 'closedNoDeal', 'needsReview', 'answered', 'awaitingBuyer', 'noAction', 'other'];
+
+export function disposition(
+    outcome: string | null,
+    terminalState: string | null = null,
+    resolvedAt: string | null = null,
+): string {
     if (terminalState === ORDER_PLACED_TERMINAL_STATE) {
         return 'orderPlaced';
+    }
+
+    // ANY terminal state outranks the pass outcome, not just `accepted`.
+    // Before this, only `accepted` did, and the result was that an escalated
+    // quote which ended declined, expired, cancelled or withdrawn read "Needs
+    // review" forever — a queue that could never drain, on the grid's default
+    // filter.
+    if (terminalState !== null && CLOSED_NO_DEAL.includes(terminalState)) {
+        return 'closedNoDeal';
+    }
+
+    // An escalation a human has answered is waiting on the BUYER, which is
+    // literally true once the merchant has replied. No class of its own is
+    // needed, and the auto-execution rate still counts the quote against the
+    // agent because that reads the `escalated` flag rather than this.
+    if (outcome === 'escalated') {
+        return resolvedAt ? 'awaitingBuyer' : 'needsReview';
     }
 
     return (outcome && DISPOSITIONS[outcome]) || 'other';
@@ -112,20 +144,45 @@ export function foldToQuotes(decisions: any[]): any[] {
             // was cancelled or accepted mid-pass.
             seen.terminalState = seen.terminalState ?? decision.terminalState ?? null;
             seen.terminalAt = seen.terminalAt ?? decision.terminalAt ?? null;
-            seen.disposition = disposition(seen.latest.outcome, seen.terminalState);
+            // Any pass, for the same reason plus one of its own: a quote that
+            // escalated in round one and was answered in round two DID need a
+            // human, so the auto-execution rate must count it.
+            seen.escalated = seen.escalated || decision.outcome === 'escalated';
+            // The newest escalated pass, since decisions arrive newest-first.
+            // That is also the pass `disposition` asks about, because it only
+            // consults `resolvedAt` when the LATEST pass escalated.
+            if (decision.outcome === 'escalated' && seen.escalatedAt === null) {
+                seen.escalatedAt = decision.createdAt ?? null;
+                seen.resolvedAt = decision.resolvedAt ?? null;
+            }
+            // The newest pass that put an offer in front of the buyer. Price
+            // retention needs the price the buyer actually saw, and the latest
+            // pass may have escalated without offering anything.
+            seen.latestAnswered = seen.latestAnswered ?? (answeredTheBuyer(decision.outcome) ? decision : null);
+            seen.disposition = disposition(seen.latest.outcome, seen.terminalState, seen.resolvedAt);
 
             return;
         }
+
+        const escalated = decision.outcome === 'escalated';
 
         byQuote.set(decision.quoteId, {
             quoteId: decision.quoteId,
             quoteNumber: decision.quoteNumber,
             latest: decision,
+            latestAnswered: answeredTheBuyer(decision.outcome) ? decision : null,
             rounds: 1,
             netBefore,
             terminalState: decision.terminalState ?? null,
             terminalAt: decision.terminalAt ?? null,
-            disposition: disposition(decision.outcome, decision.terminalState ?? null),
+            escalated,
+            escalatedAt: escalated ? decision.createdAt ?? null : null,
+            resolvedAt: escalated ? decision.resolvedAt ?? null : null,
+            disposition: disposition(
+                decision.outcome,
+                decision.terminalState ?? null,
+                escalated ? decision.resolvedAt ?? null : null,
+            ),
         });
     });
 
@@ -151,6 +208,7 @@ const DISPOSITION_VARIANTS: Record<string, string> = {
     answered: 'positive',
     needsReview: 'critical',
     awaitingBuyer: 'info',
+    closedNoDeal: 'neutral',
     noAction: 'neutral',
     other: 'neutral',
 };

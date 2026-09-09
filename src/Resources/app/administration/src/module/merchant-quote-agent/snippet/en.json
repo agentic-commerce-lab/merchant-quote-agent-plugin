@@ -170,6 +170,7 @@
             "needsReview": "Needs review",
             "answered": "Answered",
             "awaitingBuyer": "Question asked",
+            "closedNoDeal": "Closed, no deal",
             "noAction": "No action needed",
             "other": "Unrecognised outcome",
             "orderPlaced": "Order placed"

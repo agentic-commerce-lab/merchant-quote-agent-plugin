@@ -118,11 +118,28 @@ assert.equal(disposition('nothing_to_do', 'accepted'), 'orderPlaced');
 // Every other terminal state leaves the pass's own outcome standing. None of
 // them means an order — verified against the shop: of 75 quotes, the five
 // `accepted` ones are exactly the five carrying an order id.
-assert.equal(disposition('escalated', 'declined'), 'needsReview');
-assert.equal(disposition('offered', 'expired'), 'answered');
-assert.equal(disposition('offered', 'cancelled'), 'answered');
-assert.equal(disposition('offered', 'withdrawn'), 'answered');
+// A terminal state always outranks the pass outcome. Before this, only
+// `accepted` did, so an escalated quote that ended declined, expired,
+// cancelled or withdrawn read "Needs review" forever — and the grid now
+// defaults to that filter.
+assert.equal(disposition('escalated', 'declined'), 'closedNoDeal');
+assert.equal(disposition('escalated', 'expired'), 'closedNoDeal');
+assert.equal(disposition('escalated', 'cancelled'), 'closedNoDeal');
+assert.equal(disposition('escalated', 'withdrawn'), 'closedNoDeal');
+assert.equal(disposition('offered', 'declined'), 'closedNoDeal');
+assert.equal(disposition('nothing_to_do', 'expired'), 'closedNoDeal');
+assert.equal(disposition('offered', 'expired'), 'closedNoDeal');
+assert.equal(disposition('offered', 'cancelled'), 'closedNoDeal');
+assert.equal(disposition('offered', 'withdrawn'), 'closedNoDeal');
 assert.equal(disposition('offered', null), 'answered');
+
+// An escalation a human has answered is waiting on the buyer, not on the
+// merchant. It leaves the review queue without needing a class of its own.
+assert.equal(disposition('escalated', null, null), 'needsReview');
+assert.equal(disposition('escalated', null, '2026-09-09T10:00:00.000+00:00'), 'awaitingBuyer');
+
+// An accepted quote is an order regardless of how it got there.
+assert.equal(disposition('escalated', 'accepted', '2026-09-09T10:00:00.000+00:00'), 'orderPlaced');
 
 // Label and hue come from the same value. The pair below is the regression:
 // the last pass escalated, the customer ordered anyway, and the badge must not
@@ -140,6 +157,8 @@ DISPOSITION_CLASSES.forEach((key) => {
 });
 assert.equal(dispositionVariant('something_new'), 'neutral');
 assert.equal(dispositionVariant(null), 'neutral');
+assert.equal(dispositionVariant('closedNoDeal'), 'neutral');
+assert.ok(DISPOSITION_CLASSES.includes('closedNoDeal'));
 
 // #1017 as it sits in the table: three passes, newest first. The fold keeps the
 // newest as the quote's state, counts the rounds, and takes the quote's own
@@ -184,6 +203,30 @@ assert.equal(
     foldToQuotes([{ quoteId: 'q4', outcome: 'escalated', totalNetBefore: 10 }])[0].disposition,
     'needsReview',
 );
+
+// `escalated` is true if ANY pass escalated, not just the latest: a quote
+// that escalated in round one and was answered in round two did require a
+// human, and the auto-execution rate has to count it.
+const twoRounds = foldToQuotes([
+    { id: 'p2', quoteId: 'q9', outcome: 'offered', totalNetBefore: 100, totalNetAfter: 95, createdAt: '2026-09-02T10:00:00.000+00:00' },
+    { id: 'p1', quoteId: 'q9', outcome: 'escalated', totalNetBefore: 100, createdAt: '2026-09-01T10:00:00.000+00:00' },
+]);
+
+assert.equal(twoRounds.length, 1);
+assert.equal(twoRounds[0].escalated, true);
+assert.equal(twoRounds[0].escalatedAt, '2026-09-01T10:00:00.000+00:00');
+assert.equal(twoRounds[0].disposition, 'answered');
+assert.equal(twoRounds[0].latestAnswered.id, 'p2');
+
+// A quote that only ever escalated has no answered pass at all, which is
+// what excludes it from price retention.
+const onlyEscalated = foldToQuotes([
+    { id: 'p1', quoteId: 'q10', outcome: 'escalated', totalNetBefore: 100, createdAt: '2026-09-01T10:00:00.000+00:00', resolvedAt: '2026-09-01T14:00:00.000+00:00' },
+]);
+
+assert.equal(onlyEscalated[0].latestAnswered, null);
+assert.equal(onlyEscalated[0].resolvedAt, '2026-09-01T14:00:00.000+00:00');
+assert.equal(onlyEscalated[0].disposition, 'awaitingBuyer');
 
 // The partition is exhaustive: every folded quote counts once, so the parts
 // always sum to the whole. This is the property the old figures broke.

@@ -170,6 +170,7 @@
             "needsReview": "Prüfung nötig",
             "answered": "Beantwortet",
             "awaitingBuyer": "Rückfrage gestellt",
+            "closedNoDeal": "Ohne Einigung beendet",
             "noAction": "Kein Handlungsbedarf",
             "other": "Unbekanntes Ergebnis",
             "orderPlaced": "Bestellung ausgelöst"
