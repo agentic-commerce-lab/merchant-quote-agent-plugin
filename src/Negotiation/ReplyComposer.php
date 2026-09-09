@@ -79,10 +79,6 @@ final readonly class ReplyComposer
     ): array {
         $access = $settings->llm;
 
-        if ($settings->rulesOnly || $access === null) {
-            return [$template, null];
-        }
-
         $prompt = $this->prompts->reply($settings);
 
         try {

@@ -61,9 +61,27 @@ const DISPOSITIONS: Record<string, string> = {
     nothing_to_do: 'noAction',
 };
 
-export const DISPOSITION_CLASSES = ['needsReview', 'answered', 'awaitingBuyer', 'noAction', 'other'];
+/**
+ * `accepted` is the quote state SwagCommercial transitions to AFTER the order
+ * exists: both callers of its `accept` action — QuoteOrderRoute and
+ * OrderApproval's PendingOrderPlaceOrderRoute — write `quote.orderId` and only
+ * then transition. Checked against the test shop as well as the code: all five
+ * accepted quotes carry an order id, and all seventy in every other state carry
+ * none.
+ *
+ * So this is not a rename of "accepted" for flavour. It is what the state
+ * means, and it is the one outcome that says the negotiation earned revenue,
+ * which is why it wins over whatever the last pass did.
+ */
+export const ORDER_PLACED_TERMINAL_STATE = 'accepted';
 
-export function disposition(outcome: string | null): string {
+export const DISPOSITION_CLASSES = ['orderPlaced', 'needsReview', 'answered', 'awaitingBuyer', 'noAction', 'other'];
+
+export function disposition(outcome: string | null, terminalState: string | null = null): string {
+    if (terminalState === ORDER_PLACED_TERMINAL_STATE) {
+        return 'orderPlaced';
+    }
+
     return (outcome && DISPOSITIONS[outcome]) || 'other';
 }
 
@@ -87,6 +105,14 @@ export function foldToQuotes(decisions: any[]): any[] {
             // The quote's own value, not the latest pass's: a later pass can
             // start from an already-discounted total.
             seen.netBefore = Math.max(seen.netBefore, netBefore);
+            // Any pass, not just the newest. TerminalOutcomeWriter stamps the
+            // newest record at the time of the transition, and a pass that was
+            // already in flight then inserts a newer one behind it — so
+            // reading only `latest` loses the outcome on exactly the quote that
+            // was cancelled or accepted mid-pass.
+            seen.terminalState = seen.terminalState ?? decision.terminalState ?? null;
+            seen.terminalAt = seen.terminalAt ?? decision.terminalAt ?? null;
+            seen.disposition = disposition(seen.latest.outcome, seen.terminalState);
 
             return;
         }
@@ -97,7 +123,9 @@ export function foldToQuotes(decisions: any[]): any[] {
             latest: decision,
             rounds: 1,
             netBefore,
-            disposition: disposition(decision.outcome),
+            terminalState: decision.terminalState ?? null,
+            terminalAt: decision.terminalAt ?? null,
+            disposition: disposition(decision.outcome, decision.terminalState ?? null),
         });
     });
 
@@ -106,6 +134,29 @@ export function foldToQuotes(decisions: any[]): any[] {
 
 export function outcomeVariant(outcome: string | null): string {
     return (outcome && OUTCOME_VARIANTS[outcome]) || 'neutral';
+}
+
+/**
+ * The badge hue for a disposition, which is NOT the hue for the last pass's
+ * outcome.
+ *
+ * They used to be read separately — the label off the disposition, the colour
+ * off `latest.outcome` — and agreed only because the two maps happened to run
+ * parallel. They stopped agreeing the moment `orderPlaced` could outrank the
+ * pass: a quote that escalated and was then ordered read "Order placed" in
+ * critical red. One value, one lookup.
+ */
+const DISPOSITION_VARIANTS: Record<string, string> = {
+    orderPlaced: 'positive',
+    answered: 'positive',
+    needsReview: 'critical',
+    awaitingBuyer: 'info',
+    noAction: 'neutral',
+    other: 'neutral',
+};
+
+export function dispositionVariant(key: string | null): string {
+    return (key && DISPOSITION_VARIANTS[key]) || 'neutral';
 }
 
 export function bandVariant(band: string | null): string {
@@ -134,6 +185,57 @@ export function outcomeLabel(vm: any, outcome: string | null): string {
 
 export function escalationLabel(vm: any, reason: string | null): string {
     return labelled(vm, 'escalation', reason);
+}
+
+/**
+ * Why a human was asked, in a sentence, with this pass's own numbers in it.
+ *
+ * The reason column is an enum and its label is four words — "Discount above
+ * the cap" tells a merchant which bucket the pass fell into and nothing about
+ * what to do. Everything needed to say more was already recorded: the cap in
+ * force, what the buyer asked for, the quote's value, and `violations`, which
+ * carries the escalation detail (DecisionRecorder::recordProposal writes it
+ * there).
+ *
+ * Nothing new is stored for this. The sentence is composed from the row, so it
+ * works on rows already in the table.
+ */
+export function escalationExplanation(vm: any, round: any): string | null {
+    const reason = round.escalationReason;
+
+    if (!reason) {
+        return null;
+    }
+
+    const key = `merchant-quote-agent.escalationWhy.${reason}`;
+    const asked = askedDiscountPercent(round.interpretedAsks);
+    const sentence = vm.$t(key, {
+        asked: asked === null ? vm.$tc('merchant-quote-agent.escalationWhy.anUnstatedAmount') : formatPercent(asked),
+        cap: formatPercent(round.maxDiscountPercent),
+        value: formatCurrency(round.totalNetBefore, round.currencyIso),
+        currency: round.currencyIso || '–',
+    });
+
+    // A reason with no sentence of its own is a real gap — the enum grew and
+    // the snippets did not — so fall back to the short label rather than
+    // printing a snippet path at the merchant.
+    return sentence === key ? escalationLabel(vm, reason) : sentence;
+}
+
+/**
+ * What the buyer asked for as a discount, across both recorded ask shapes.
+ * Null when they asked in some other way (a per-line target price, "best
+ * price"), which is why the sentences that use it have an unstated-amount
+ * wording to fall back on.
+ */
+function askedDiscountPercent(asks: any): number | null {
+    if (!asks || typeof asks !== 'object') {
+        return null;
+    }
+
+    const value = asks.targetDiscountPercent ?? asks.price?.additionalDiscountPercent;
+
+    return typeof value === 'number' ? value : null;
 }
 
 export function triggerLabel(vm: any, reason: string | null): string {
@@ -277,6 +379,39 @@ export function askItems(vm: any, asks: any): { label: string; value: string }[]
     add('humanReview', list(asks.humanReviewRequests));
 
     return items;
+}
+
+/**
+ * The quote's comment thread, attributed and oldest first.
+ *
+ * The buyer's own words are not in the decision table and deliberately stay
+ * out of it — only their interpreted ask is recorded. They ARE on the quote,
+ * where SwagCommercial keeps them, so the page reads them from there: no new
+ * column, no copy of a customer's text in a second place, and the thread is
+ * whatever the quote currently says rather than a snapshot that can drift.
+ *
+ * Authorship follows QuoteComment::isAuthored() exactly: a comment with any of
+ * createdById / customerId / employeeId is a person's, and one with none of
+ * them is the agent's. That is not elegant, it is what SwagCommercial writes —
+ * issue #3 measured all three as null on an agent comment and AddCommentTest
+ * pins it. If this and the backend ever disagree, the page would credit the
+ * agent's own words to the customer, so the two must move together.
+ */
+export function conversation(comments: any[]): any[] {
+    if (!Array.isArray(comments)) {
+        return [];
+    }
+
+    return comments
+        .map((comment) => ({
+            id: comment.id,
+            text: (comment.comment ?? '').trim(),
+            fromAgent: !comment.createdById && !comment.customerId && !comment.employeeId,
+            createdAt: comment.createdAt ?? null,
+            lineItemId: comment.quoteLineItemId ?? null,
+        }))
+        .filter((entry) => entry.text !== '')
+        .sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')));
 }
 
 /** The same asks as one scannable line, for a grid cell. */

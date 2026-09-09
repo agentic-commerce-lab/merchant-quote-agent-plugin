@@ -55,7 +55,6 @@ final class ServicingConfigGateTest extends IntegrationTestCase
         $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
         $config = self::config();
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'enabled', true);
-        $config->set(QuoteAgentSettingsReader::DOMAIN . 'rulesOnlyMode', false);
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmApiKey', '');
 
         $pipeline = self::countingPipeline();

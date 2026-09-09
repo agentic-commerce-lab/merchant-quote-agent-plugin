@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
@@ -192,17 +193,12 @@ final class RecordedPassTest extends TestCase
 
     public function testAModelFailureWritesARecordWithTheEscalatedOutcome(): void
     {
-        // No model access configured is the deterministic way to reach
-        // ModelUnavailable: it fails before any HTTP call is made, unlike an
-        // empty ScriptedClient queue, which throws OutOfBoundsException
-        // (uncaught by the pipeline) rather than ModelUnavailable.
-        $harness = PipelineHarness::with([]);
-        $settings = new QuoteAgentSettings(
-            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 10.0)),
-            rulesOnly: false,
-            llm: null,
-            strategyPrompt: null,
-        );
+        // An unusable extract answer is the deterministic way to reach
+        // ModelUnavailable now that settings always carry model access: the
+        // interpreter cannot map it and raises, unlike an empty ScriptedClient
+        // queue, which throws LogicException the pipeline does not catch.
+        $harness = PipelineHarness::with(['not json at all']);
+        $settings = NegotiationFixture::settings();
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
         ]);

@@ -28,23 +28,20 @@ final class RawConfigValue
     }
 
     /**
-     * Null only when no key is configured at all. Rules-only mode still
-     * reads a buyer's free-text ask through a model, so it needs access too
-     * — only the decision and the reply stay deterministic.
+     * Only ever called once `credentialProblems()` has come back empty, so the
+     * key is non-blank here by construction.
      *
      * @param array<string, mixed> $raw
      */
-    public static function llm(array $raw, #[\SensitiveParameter] string $apiKey): ?ModelAccess
+    public static function llm(array $raw, #[\SensitiveParameter] string $apiKey): ModelAccess
     {
-        return $apiKey === ''
-            ? null
-            : new ModelAccess($apiKey, self::baseUrl($raw), self::stringOrEmpty($raw, 'llmModel'));
+        return new ModelAccess($apiKey, self::baseUrl($raw), self::stringOrEmpty($raw, 'llmModel'));
     }
 
     /**
-     * The two checks a model call needs regardless of rules-only mode:
-     * a key to authenticate with, and a model name to send the request to.
-     * Split out of the factory to keep its cyclomatic complexity down.
+     * The two checks a model call needs: a key to authenticate with, and a
+     * model name to send the request to. Split out of the factory to keep its
+     * cyclomatic complexity down.
      *
      * @param array<string, mixed> $raw
      *
@@ -55,9 +52,7 @@ final class RawConfigValue
         $problems = [];
 
         if ($apiKey === '') {
-            $problems[] =
-                'No LLM API key is set. The agent needs one even in rules-only mode: '
-                . 'interpreting a buyer\'s free-text ask is a model call, only the decision is deterministic.';
+            $problems[] = 'No LLM API key is set. The agent cannot interpret a buyer\'s ask without one.';
         }
 
         if (self::string($raw, 'llmModel') === null) {

@@ -24,18 +24,16 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
     {
         $raw = [
             'enabled' => true,
-            'rulesOnlyMode' => false,
             'llmApiKey' => 'sk-test',
             'llmBaseUrl' => 'https://api.openai.com/v1',
             'llmModel' => 'gpt-4o-mini',
             'negotiationStrategy' => 'open at 2%',
             'maxDiscountPercent' => 12.0,
             'counterOfferMaxPercent' => 18.0,
-            'maxQuoteValueNet' => 50_000.0,
-            'maxQuoteValueCurrency' => 'EUR',
+            // The reader hands the factory an ISO-keyed map, already resolved
+            // out of the admin's price field.
+            'maxQuoteValueNet' => ['EUR' => 50_000.0, 'USD' => 55_000.0],
             'validityDays' => 14,
-            'replyTone' => 'formal',
-            'bundleVolumeTiers' => "10:5\n50:7.5",
         ];
 
         $factory = new QuoteAgentSettingsFactory(
@@ -52,13 +50,14 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         self::assertNotNull($settings);
         self::assertSame(12.0, $settings->policy->price->maxDiscountPercent);
         self::assertSame(18.0, $settings->policy->price->counterOfferMaxPercent);
-        self::assertSame(50_000.0, $settings->policy->price->valueCeiling?->net);
-        self::assertSame('EUR', $settings->policy->price->valueCeiling?->currencyIso);
+        self::assertSame(50_000.0, $settings->policy->price->valueCeiling?->netFor('EUR'));
+        self::assertSame(55_000.0, $settings->policy->price->valueCeiling?->netFor('USD'));
+        self::assertNull(
+            $settings->policy->price->valueCeiling?->netFor('GBP'),
+            'A currency the merchant left blank has an unknown ceiling, not an absent one.',
+        );
         self::assertSame(14, $settings->policy->price->validityDays);
-        self::assertSame('formal', $settings->policy->price->replyTone);
-        self::assertCount(2, $settings->policy->bundle->volumeTiers ?? []);
-        self::assertSame(50, $settings->policy->bundle?->volumeTiers[1]->minQty);
-        self::assertSame('sk-test', $settings->llm?->apiKey);
+        self::assertSame('sk-test', $settings->llm->apiKey);
         self::assertSame('open at 2%', $settings->strategyPrompt);
     }
 
@@ -70,19 +69,7 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
             'enabled' => false,
             'maxDiscountPercent' => 500.0,
             'llmApiKey' => '',
-            'bundleVolumeTiers' => 'nonsense',
         ]));
-    }
-
-    public function testABlankSubPolicySectionBecomesNullRatherThanAnAllNullObject(): void
-    {
-        $settings = self::build(['bundleVolumeTiers' => '']);
-
-        self::assertNotNull($settings);
-        self::assertNull(
-            $settings->policy->bundle,
-            'A blank tier field must be no bundle policy, not a policy of empty tiers.',
-        );
     }
 
     public function testAnUntouchedInstallEscalatesEverythingRatherThanFailing(): void
@@ -91,9 +78,7 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
             'maxDiscountPercent' => null,
             'counterOfferMaxPercent' => null,
             'maxQuoteValueNet' => null,
-            'maxQuoteValueCurrency' => null,
             'validityDays' => null,
-            'replyTone' => null,
         ]);
 
         self::assertNotNull($settings);
@@ -113,15 +98,11 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
     public static function invalidConfigurations(): iterable
     {
         yield 'discount cap over 100' => [['maxDiscountPercent' => 150.0], 'price.maxDiscountPercent'];
-        yield 'bad ceiling currency' => [['maxQuoteValueCurrency' => 'NOPE'], 'price.valueCeiling.currencyIso'];
-        yield 'tier percent over 100' => [['bundleVolumeTiers' => '10:150'], 'bundle.volumeTiers[0].discountPercent'];
-        yield 'malformed tier line' => [['bundleVolumeTiers' => "10:5\nbroken"], 'line 2'];
         yield 'ceiling wrong type' => [['maxQuoteValueNet' => '50000'], 'maxQuoteValueNet'];
-        yield 'wrong-typed ceiling currency' => [['maxQuoteValueCurrency' => 978], 'maxQuoteValueCurrency'];
+        yield 'ceiling map with a wrong-typed entry' => [['maxQuoteValueNet' => ['EUR' => 'lots']], 'EUR'];
         // The silent fallback #5 removes: a blank key is never a quiet switch
         // to deterministic decisions, even in rules-only mode.
         yield 'blank API key' => [['llmApiKey' => '   '], 'API key'];
-        yield 'rules-only mode still needs a key' => [['rulesOnlyMode' => true, 'llmApiKey' => ''], 'API key'];
         yield 'blank model name' => [['llmModel' => ''], 'model'];
     }
 
@@ -139,17 +120,10 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
 
     public function testEveryProblemIsReportedAtOnce(): void
     {
-        try {
-            self::build(['maxDiscountPercent' => 150.0, 'maxQuoteValueCurrency' => 'NOPE']);
-            self::fail('Invalid configuration was accepted.');
-        } catch (InvalidQuoteAgentConfiguration $e) {
-            self::assertCount(2, $e->problems);
-        }
-
-        // Cross-mechanism: the volume-tier parser and the validator collect
+        // Cross-mechanism: the validator and the credential check collect
         // independently, and neither short-circuits the other.
         try {
-            self::build(['bundleVolumeTiers' => 'broken', 'maxDiscountPercent' => 150.0]);
+            self::build(['maxDiscountPercent' => 150.0, 'llmModel' => '']);
             self::fail('Invalid configuration was accepted.');
         } catch (InvalidQuoteAgentConfiguration $e) {
             self::assertCount(2, $e->problems);
@@ -161,6 +135,6 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         $settings = self::build();
 
         self::assertNotNull($settings);
-        self::assertSame('gpt-4o-mini', $settings->llm?->model);
+        self::assertSame('gpt-4o-mini', $settings->llm->model);
     }
 }

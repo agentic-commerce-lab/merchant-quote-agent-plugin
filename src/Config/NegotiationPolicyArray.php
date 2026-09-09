@@ -8,6 +8,11 @@ namespace MerchantQuoteAgentPlugin\Config;
  * Assembles the array `NegotiationPolicy::fromArray()` expects out of the
  * flat raw config values. Split out of QuoteAgentSettingsFactory so its own
  * per-field null-handling doesn't add to that class's complexity budget.
+ *
+ * Only `price` is left to assemble. Payment and delivery went when it became
+ * clear AskGate escalates every non-price ask; the published volume tiers went
+ * the same way, one step later, once they were a mandate claim with no
+ * behaviour behind them.
  */
 final class NegotiationPolicyArray
 {
@@ -15,71 +20,31 @@ final class NegotiationPolicyArray
 
     /**
      * @param array<string, mixed> $raw
-     * @param list<array{minQty: int, discountPercent: float}> $tiers
      *
      * @return array<string, mixed>
      *
      * @throws \TypeError see RawValueGuard
      */
-    public static function build(array $raw, array $tiers): array
+    public static function build(array $raw): array
     {
-        return array_filter(
-            [
-                'price' => self::price($raw),
-                'bundle' => self::section(['volumeTiers' => $tiers === [] ? null : $tiers]),
-            ],
-            static fn(mixed $section): bool => $section !== null,
-        );
-    }
-
-    /**
-     * @param array<string, mixed> $raw
-     *
-     * @return array<string, mixed>
-     *
-     * @throws \TypeError see RawValueGuard
-     */
-    private static function price(array $raw): array
-    {
-        $ceilingNet = RawConfigValue::float($raw, 'maxQuoteValueNet');
-
         $price = [
             // Null means the merchant cleared the field. Zero is the safe
             // reading: every price ask escalates.
             'maxDiscountPercent' => RawConfigValue::float($raw, 'maxDiscountPercent') ?? 0.0,
             'counterOfferMaxPercent' => RawConfigValue::float($raw, 'counterOfferMaxPercent'),
             'validityDays' => RawConfigValue::int($raw, 'validityDays') ?? 0,
-            'replyTone' => RawConfigValue::string($raw, 'replyTone'),
         ];
 
-        if ($ceilingNet !== null) {
-            $price['maxQuoteValueNet'] = $ceilingNet;
-            // Guarded rather than read through RawConfigValue::string(): a
-            // numeric ISO 4217 code (978) would coerce to null, and a null
-            // currency makes both CurrencyMismatch checks return early — a
-            // EUR ceiling would then be compared against a JPY total.
-            $price['maxQuoteValueCurrency'] = RawValueGuard::string(
-                RawValue::at($raw, 'maxQuoteValueCurrency'),
-                'maxQuoteValueCurrency',
-            );
+        // Passed straight through: the reader has already resolved the admin's
+        // price field into an ISO-keyed map, and QuoteLimits refuses a
+        // wrong-typed entry per currency so the message names the one at fault.
+        $ceiling = RawValue::at($raw, 'maxQuoteValueNet');
+        if (\is_array($ceiling)) {
+            $price['maxQuoteValueNet'] = $ceiling;
+        } elseif (($net = RawConfigValue::float($raw, 'maxQuoteValueNet')) !== null) {
+            $price['maxQuoteValueNet'] = $net;
         }
 
-        return $price;
-    }
-
-    /**
-     * A sub-policy is emitted only when the merchant set at least one of its
-     * fields, so a blank field group means null rather than a policy of
-     * zeroes. Only `bundle` remains to emit.
-     *
-     * @param array<string, mixed> $fields
-     *
-     * @return array<string, mixed>|null
-     */
-    private static function section(array $fields): ?array
-    {
-        $set = array_filter($fields, static fn(mixed $value): bool => $value !== null);
-
-        return $set === [] ? null : $set;
+        return ['price' => $price];
     }
 }

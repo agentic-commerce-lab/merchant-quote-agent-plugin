@@ -26,11 +26,27 @@ final class QuoteBandDecider
     public function decide(QuoteSnapshot $effective, QuoteLimits $limits): QuoteDecision
     {
         $ceiling = $limits->valueCeiling;
-        if ($ceiling !== null && $effective->totalNet > ($ceiling->net + Epsilon::RATE)) {
-            return QuoteDecision::escalate(new QuoteEscalationDetails(
-                reason: QuoteEscalationReason::QuoteValueLimitExceeded,
-                requestedDiscountPercent: MoneyMath::requestedDiscount($effective),
-            ));
+
+        if ($ceiling !== null) {
+            $ceilingNet = $ceiling->netFor($effective->currencyIso);
+
+            // No entry for this currency escalates rather than passing: the
+            // merchant set ceilings and did not set one here, so the limit is
+            // unknown, and treating unknown as unlimited is how a 500k quote
+            // gets auto-answered in a currency nobody configured.
+            if ($ceilingNet === null) {
+                return QuoteDecision::escalate(new QuoteEscalationDetails(
+                    reason: QuoteEscalationReason::CurrencyMismatch,
+                    requestedDiscountPercent: MoneyMath::requestedDiscount($effective),
+                ));
+            }
+
+            if ($effective->totalNet > ($ceilingNet + Epsilon::RATE)) {
+                return QuoteDecision::escalate(new QuoteEscalationDetails(
+                    reason: QuoteEscalationReason::QuoteValueLimitExceeded,
+                    requestedDiscountPercent: MoneyMath::requestedDiscount($effective),
+                ));
+            }
         }
 
         $discountPercent = max(0.0, MoneyMath::requestedDiscount($effective) ?? 0.0);

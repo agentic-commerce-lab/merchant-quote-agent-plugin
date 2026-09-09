@@ -12,8 +12,17 @@
            two gives a keyboard user two tab stops for one action. mt-button
            takes no router-link prop, so the push is explicit. #}
         <mt-button
-            v-if="quoteRoute"
+            v-if="orderPlaced && orderRoute"
             variant="primary"
+            size="small"
+            @click="$router.push(orderRoute)"
+        >
+            {{ $tc('merchant-quote-agent.detail.openOrder') }}
+        </mt-button>
+
+        <mt-button
+            v-if="quoteRoute"
+            :variant="orderPlaced && orderRoute ? 'secondary' : 'primary'"
             size="small"
             @click="$router.push(quoteRoute)"
         >
@@ -38,6 +47,9 @@
                            simply wrong. #}
                         <span class="mqa-figure__aside">
                             <template v-if="isInFlight">{{ $tc('merchant-quote-agent.detail.stillOpen') }}</template>
+                            <template v-else-if="orderPlaced">
+                                {{ $t('merchant-quote-agent.detail.orderPlacedAt', { at: formatDate(terminalAt) }) }}
+                            </template>
                             <template v-else>{{ formatDate(terminalAt) }}</template>
                         </span>
                     </div>
@@ -77,6 +89,42 @@
                     :title="$tc('merchant-quote-agent.detail.missingTitle')"
                     :subline="$tc('merchant-quote-agent.detail.missingSubline')"
                 />
+            </sw-card>
+            {% endblock %}
+
+            {# What the customer actually said. The timeline below shows what the
+               agent made of it, which is unreadable without this: an ask
+               recorded as "discount: 8.0%" was a sentence first, and a merchant
+               judging whether the agent read it correctly needs the sentence.
+
+               Read off the quote, never copied into the decision table — see
+               `conversation()`. Hidden rather than empty when the quote cannot
+               be read, because "no messages" and "no permission to see the
+               messages" are not the same statement. #}
+            {% block merchant_quote_agent_detail_conversation %}
+            <sw-card
+                v-if="record && messages.length"
+                :title="$tc('merchant-quote-agent.detail.conversationTitle')"
+                :subtitle="$tc('merchant-quote-agent.detail.conversationSubtitle')"
+            >
+                <ol class="mqa-thread">
+                    <li
+                        v-for="message in messages"
+                        :key="message.id"
+                        class="mqa-thread__entry"
+                        :class="message.fromAgent ? 'mqa-thread__entry--agent' : 'mqa-thread__entry--customer'"
+                    >
+                        <div class="mqa-thread__meta">
+                            <span class="mqa-thread__author">
+                                {{ message.fromAgent
+                                    ? $tc('merchant-quote-agent.detail.fromAgent')
+                                    : $tc('merchant-quote-agent.detail.fromCustomer') }}
+                            </span>
+                            <span class="mqa-thread__time">{{ formatDate(message.createdAt) }}</span>
+                        </div>
+                        <p class="mqa-thread__text">{{ message.text }}</p>
+                    </li>
+                </ol>
             </sw-card>
             {% endblock %}
 
@@ -127,9 +175,19 @@
                                 </dd>
                             </template>
 
+                            {# The label alone said which bucket the pass fell
+                               into. What a merchant needs is why, with this
+                               pass's numbers in it, and then the specific rule
+                               underneath. All of it was already recorded. #}
                             <template v-if="run.escalationReason">
                                 <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.escalationReason') }}</dt>
-                                <dd class="mqa-run__fact-value">{{ run.escalationReason }}</dd>
+                                <dd class="mqa-run__fact-value">
+                                    <mt-badge variant="critical">{{ run.escalationReason }}</mt-badge>
+                                    <span class="mqa-run__why">{{ run.escalationWhy }}</span>
+                                    <span v-if="run.escalationDetail" class="mqa-run__quiet">
+                                        {{ run.escalationDetail }}
+                                    </span>
+                                </dd>
                             </template>
 
                             <template v-if="run.reply">

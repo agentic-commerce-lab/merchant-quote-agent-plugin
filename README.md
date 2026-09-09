@@ -352,9 +352,8 @@ ceiling on a pilot channel first.
 
 **The agent ships switched off, and a fresh install answers nothing.** That is
 deliberate on two counts: `enabled` defaults to false, and `maxDiscountPercent`
-defaults to `0` with every non-price dimension blank, so even once enabled the
-agent escalates every ask until you set bands. A silent agent is far more often
-"not configured yet" than "broken".
+defaults to `0`, so even once enabled the agent escalates every ask until you
+set bands. A silent agent is far more often "not configured yet" than "broken".
 
 **You supply the model credentials.** The API key is yours, so per-tenant model
 cost is not the plugin's, and the base URL lets you point at Azure, your own
@@ -367,10 +366,13 @@ secret a Shopware plugin holds.
 enabled channel with no key, or no model name, is a misconfiguration: the agent
 escalates the quote with a comment and logs which fields are wrong.
 
-**Rules-only mode still needs a key.** It means *no model decides or writes* —
-the band picks the number and a template writes the reply — but reading a
-buyer's free-text ask is itself a model call, and nothing else can do it. There
-is no mode in which the agent negotiates without an API key.
+**There is no mode that negotiates without a model.** Rules-only mode used to
+offer one: the band picked the number and a template wrote the reply. It still
+needed a key, because reading a buyer's free-text ask is itself a model call
+and nothing else can do it — so it never removed the dependency it looked like
+it removed, only the model's judgement inside a band the policy layer enforces
+either way. A model that cannot be reached escalates the quote; it does not
+silently fall back to deterministic pricing.
 
 **Configuring from the CLI needs `--json`.** `bin/console system:config:set <key>
 <value>` stores the raw *string* unless you pass `--json`, and a string is not
@@ -381,10 +383,16 @@ true` stores `"true"`, which is not the boolean `true` and so reads as switched
 off — silently. Always write `bin/console system:config:set --json <key>
 <value>`, e.g. `--json ...validityDays 30`.
 
-**Invalid configuration is refused whole.** A discount cap above 100, a bad
-ceiling currency or a volume-tier line that does not parse makes the whole
-sales channel unusable and escalates, rather than applying the half of the
-policy that happened to be valid.
+**Invalid configuration is refused whole.** A discount cap above 100, or a
+wrong-typed value from the CLI, makes the whole sales channel unusable and
+escalates, rather than applying the half of the policy that happened to be
+valid.
+
+**The quote value ceiling is set per currency.** It is a Shopware price field,
+so the currency symbol shows next to the box and *Maintain currency prices*
+fills in the rest; only the net value is read. A quote in a currency you left
+blank escalates rather than passing, because an unknown ceiling is not an
+unlimited one. Leave every currency blank for no ceiling at all.
 
 ## How the agent negotiates
 

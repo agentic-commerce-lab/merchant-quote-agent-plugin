@@ -47,8 +47,13 @@ final readonly class PromptComposer
 
     public function reply(QuoteAgentSettings $settings): ComposedPrompt
     {
-        $tone = $settings->policy->price->replyTone;
-        $tone = $tone === null || trim($tone) === '' ? self::NEUTRAL_TONE : trim($tone);
+        // The reply's tone comes from the same strategy field that tunes the
+        // negotiation prompt; there is no separate tone setting any more. The
+        // reply model can only reword -- ReplyTemplate::keepsTheFacts() sends
+        // the template instead if a number moved -- so a strategy that talks
+        // about percentages cannot price anything from here.
+        $strategy = $settings->strategyPrompt;
+        $tone = $strategy === null || trim($strategy) === '' ? self::NEUTRAL_TONE : trim($strategy);
 
         return new ComposedPrompt(str_replace(self::TONE_PLACEHOLDER, $tone, $this->replyBase));
     }

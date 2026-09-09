@@ -18,25 +18,11 @@ final class QuoteAgentSettingsTest extends TestCase
         $policy = new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0));
         $llm = new ModelAccess('sk-test', 'https://api.openai.com/v1', 'gpt-4o-mini');
 
-        $settings = new QuoteAgentSettings($policy, rulesOnly: false, llm: $llm, strategyPrompt: 'concede slowly');
+        $settings = new QuoteAgentSettings($policy, llm: $llm, strategyPrompt: 'concede slowly');
 
         self::assertSame($policy, $settings->policy);
         self::assertSame($llm, $settings->llm);
-        self::assertFalse($settings->rulesOnly);
         self::assertSame('concede slowly', $settings->strategyPrompt);
-    }
-
-    public function testRulesOnlySettingsMayCarryNoModelAccessAtAll(): void
-    {
-        $settings = new QuoteAgentSettings(
-            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0)),
-            rulesOnly: true,
-            llm: null,
-            strategyPrompt: null,
-        );
-
-        self::assertTrue($settings->rulesOnly);
-        self::assertNull($settings->llm);
     }
 
     public function testTheExceptionKeepsEveryProblemAndListsThemInItsMessage(): void
