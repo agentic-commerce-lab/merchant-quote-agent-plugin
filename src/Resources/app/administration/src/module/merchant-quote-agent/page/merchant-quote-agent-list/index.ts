@@ -89,7 +89,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
          * `rangeFilter`, which is the period itself.
          */
         trendRangeFilter() {
-            const from = new Date(this.windowStart());
+            const from = new Date(this.windowStart);
             from.setDate(from.getDate() - this.rangeDays);
 
             return Criteria.range('createdAt', { gte: from.toISOString() });
@@ -97,19 +97,19 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
         /** The range every quote-side query on this page shares. */
         rangeFilter() {
-            return Criteria.range('createdAt', { gte: this.windowStart().toISOString() });
+            return Criteria.range('createdAt', { gte: this.windowStart.toISOString() });
         },
 
         /** The passes inside the period the page describes. */
         currentPasses() {
-            const start = this.windowStart().getTime();
+            const start = this.windowStart.getTime();
 
             return this.passes.filter((pass) => Date.parse(pass.createdAt) >= start);
         },
 
         /** The equal-length window before it, for the trend only. */
         previousPasses() {
-            const start = this.windowStart().getTime();
+            const start = this.windowStart.getTime();
 
             return this.passes.filter((pass) => Date.parse(pass.createdAt) < start);
         },
