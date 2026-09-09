@@ -94,4 +94,17 @@ final class CustomerBriefTest extends TestCase
 
         self::assertStringNotContainsString('granted', CustomerBrief::of($summary));
     }
+
+    public function testAGenuineZeroGrantStillRendersUnlikeAnUnknownOne(): void
+    {
+        // null means "we don't know"; 0.0 means "we held firm and granted
+        // nothing" -- a real, reportable data point. The live test shop's
+        // merchant_quote_agent_decision table has both: a `!==null` check is
+        // required, a truthy check would silently drop this branch since 0.0 is
+        // falsy in PHP.
+        $summary = new CustomerSummary(quotes: new QuoteStats(seen: 2, lastGrantedDiscountPercent: 0.0));
+
+        self::assertStringContainsString('0.00%', CustomerBrief::of($summary));
+        self::assertStringContainsString('the discount actually granted last time was', CustomerBrief::of($summary));
+    }
 }
