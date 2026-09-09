@@ -499,7 +499,8 @@ dimension available without a customer-segment model. **On SwagCommercial
 does not exist on that version, so a merchant there who negotiates by editing
 individual line prices rather than setting a quote-level discount reads as 0%
 baseline discount. That understates the baseline and so makes the agent look
-better than it is — the safe direction to be wrong in — and the tile carries a
+worse than it is — the safe direction to be wrong in, since it errs against
+the thing being evaluated rather than flattering it — and the tile carries a
 footnote naming the 7.12 lane whenever a baseline is shown. **On SwagCommercial
 7.13, `totalLineItemDiscount` exists and is genuinely folded into the
 baseline**, so the caveat does not bind there — a shop running 7.13 is reading

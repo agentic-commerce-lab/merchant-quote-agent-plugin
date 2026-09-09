@@ -228,6 +228,18 @@ assert.equal(onlyEscalated[0].latestAnswered, null);
 assert.equal(onlyEscalated[0].resolvedAt, '2026-09-01T14:00:00.000+00:00');
 assert.equal(onlyEscalated[0].disposition, 'awaitingBuyer');
 
+// A quote that escalated twice: the `seen.escalatedAt === null` guard exists
+// so the newest escalated pass wins and an older one can't overwrite it with
+// a stale resolution.
+const escalatedTwice = foldToQuotes([
+    { id: 'p3', quoteId: 'q11', outcome: 'escalated', totalNetBefore: 100, createdAt: '2026-09-05T10:00:00.000+00:00', resolvedAt: '2026-09-05T14:00:00.000+00:00' },
+    { id: 'p2', quoteId: 'q11', outcome: 'offered', totalNetBefore: 100, totalNetAfter: 90, createdAt: '2026-09-03T10:00:00.000+00:00' },
+    { id: 'p1', quoteId: 'q11', outcome: 'escalated', totalNetBefore: 100, createdAt: '2026-09-01T10:00:00.000+00:00', resolvedAt: '2026-09-01T14:00:00.000+00:00' },
+]);
+
+assert.equal(escalatedTwice[0].escalatedAt, '2026-09-05T10:00:00.000+00:00', 'The newer escalation must win, not the older.');
+assert.equal(escalatedTwice[0].resolvedAt, '2026-09-05T14:00:00.000+00:00', 'Its resolvedAt must come from the same pass as escalatedAt.');
+
 // The partition is exhaustive: every folded quote counts once, so the parts
 // always sum to the whole. This is the property the old figures broke.
 const counts = folded.reduce((acc, q) => ({ ...acc, [q.disposition]: (acc[q.disposition] ?? 0) + 1 }), {});
