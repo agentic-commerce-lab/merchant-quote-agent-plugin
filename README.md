@@ -500,7 +500,13 @@ does not exist on that version, so a merchant there who negotiates by editing
 individual line prices rather than setting a quote-level discount reads as 0%
 baseline discount. That understates the baseline and so makes the agent look
 better than it is — the safe direction to be wrong in — and the tile carries a
-footnote saying as much whenever a baseline is shown.
+footnote naming the 7.12 lane whenever a baseline is shown. **On SwagCommercial
+7.13, `totalLineItemDiscount` exists and is genuinely folded into the
+baseline**, so the caveat does not bind there — a shop running 7.13 is reading
+a footnote about a limitation of the older lane, not one in its own numbers.
+The footnote is worded to name the version rather than detected at runtime: an
+earlier design considered showing it only when the fallback actually fired,
+and dropped that in favour of a plain, always-true sentence.
 
 **Deal cycle time** is the mean time from RFQ submission to a confirmed order,
 same agent-vs-baseline, same value-range match as price retention. It reads

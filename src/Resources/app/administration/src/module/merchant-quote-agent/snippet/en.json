@@ -102,7 +102,7 @@
             "openEscalations": "{open} still open",
             "retention": "Discount granted",
             "retentionBaseline": "vs {baseline} on deals the agent never touched",
-            "retentionFootnote": "The comparison reads quote-level discounts only.",
+            "retentionFootnote": "On SwagCommercial 7.12 the comparison reads quote-level discounts only.",
             "cycleTime": "Deal cycle time",
             "cycleBaseline": "vs {baseline} for comparable deal sizes",
             "noBaseline": "no comparable deals in this period",
