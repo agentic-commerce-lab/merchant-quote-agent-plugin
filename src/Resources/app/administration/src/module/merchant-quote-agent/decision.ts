@@ -426,3 +426,146 @@ export function askSummary(vm: any, asks: any): string {
 
     return items.length > 2 ? `${head} +${items.length - 2}` : head;
 }
+
+/**
+ * What a pass actually changed on the quote, in the merchant's words.
+ *
+ * These are the write names OfferApplier records as it performs them — claim,
+ * updateLineItems, updateQuote, recalculate — and they were only ever on the
+ * page as raw method names inside the collapsed technical fold. Whether the
+ * agent touched the quote at all is not a technical detail.
+ *
+ * An unmapped name falls back to itself: a write the applier learned and the
+ * snippets did not is a real gap, and showing `updateSomething` beats
+ * silently dropping the fact that something was written.
+ */
+export function writeLabels(vm: any, writes: any): string[] {
+    if (!Array.isArray(writes)) {
+        return [];
+    }
+
+    return writes.map((name) => labelled(vm, 'write', String(name)));
+}
+
+type PassNote = { key: string; text: string; variant: string; detail: string | null };
+
+/**
+ * The merchant-facing notes on a pass beyond its outcome badge: whether an
+ * earlier attempt died, why a pass answered nothing, and whether the pass
+ * still needs a person despite reporting success.
+ *
+ * That last one is the reason this exists. A pass can grant a discount, post
+ * the reply, and fail to reach `replied` — see
+ * DecisionRecorder::recordReplyTransitionFailed() — which sets `violations`
+ * and NO escalation reason. Live quote #1021 read as a green "Offer sent"
+ * with the buyer holding a discount they could not accept, and the only trace
+ * sat in the technical fold nobody opens.
+ *
+ * Nothing is emitted for a pass that escalated: escalationExplanation()
+ * already gives it a sentence with its own numbers in it, and repeating the
+ * flags underneath would say the same thing in weaker words.
+ */
+export function passNotes(vm: any, round: any): PassNote[] {
+    const note = (
+        key: string,
+        variant: string,
+        values: Record<string, unknown> | null = null,
+        detail: string | null = null,
+    ): PassNote => ({
+        key,
+        variant,
+        detail,
+        text: values
+            ? vm.$t(`merchant-quote-agent.note.${key}`, values)
+            : vm.$tc(`merchant-quote-agent.note.${key}`),
+    });
+
+    const notes: PassNote[] = [];
+
+    // ServiceQuoteHandler's crash budget, not a delivery count: a positive
+    // attempt means an earlier pass on this quote killed the worker process.
+    if (typeof round.attempt === 'number' && round.attempt > 0) {
+        notes.push(note('attemptRetried', 'attention', { count: round.attempt }));
+    }
+
+    if (round.outcome === 'nothing_to_do') {
+        notes.push(note('nothingToDo', 'neutral'));
+    }
+
+    if (round.escalationReason) {
+        return notes;
+    }
+
+    if (round.authorized === false) {
+        notes.push(note('notAuthorized', 'critical'));
+    }
+
+    if (round.verified === false) {
+        notes.push(note('notVerified', 'critical'));
+    }
+
+    if (Array.isArray(round.violations) && round.violations.length > 0) {
+        notes.push(note('needsAttention', 'critical', null, round.violations.join('; ')));
+    }
+
+    return notes;
+}
+
+/**
+ * Why the negotiation ended the way it did, or null when the state has no
+ * sentence of its own — a terminal state is an enum, and printing the raw
+ * value where a sentence belongs reads as a bug rather than as an
+ * explanation. The short label above it already names the state.
+ */
+export function terminalExplanation(vm: any, state: string | null): string | null {
+    if (!state) {
+        return null;
+    }
+
+    const key = `merchant-quote-agent.detail.terminalWhy.${state}`;
+    const sentence = vm.$tc(key);
+
+    return sentence === key ? null : sentence;
+}
+
+/**
+ * The one sequence the detail page renders: what the buyer wrote, what each
+ * pass did about it, and how the quote ended, in the order it happened.
+ *
+ * Two cards said the same sentence twice — the agent's quote comment in one,
+ * the pass's `replyToBuyer` in the other — and left the merchant to line up
+ * timestamps by eye to see which comment caused which pass. So the agent's
+ * comments are dropped here on purpose: that text renders inside the pass
+ * that wrote it, where the decision behind it also lives.
+ *
+ * Sorted on the recorded instant. Ties keep buyer comments ahead of passes,
+ * because Array.sort is stable and the comments are inserted first — a pass
+ * that answers a comment within the same second is still the answer to it.
+ * An entry with no timestamp sorts last rather than first: `terminalState`
+ * and `terminalAt` are stamped together, but a row carrying only the state
+ * still describes the end of the negotiation, not its beginning.
+ */
+export function mergeStream(
+    messages: any[],
+    runs: any[],
+    terminal: { state: string | null; at: string | null } | null,
+): any[] {
+    const entries: any[] = [
+        ...messages
+            .filter((message) => !message.fromAgent)
+            .map((message) => ({ kind: 'message', key: message.id, at: message.createdAt, variant: 'neutral', message })),
+        ...runs.map((run) => ({ kind: 'pass', key: run.id, at: run.raw.createdAt, variant: run.outcomeVariant, run })),
+    ];
+
+    if (terminal?.state) {
+        entries.push({
+            kind: 'outcome',
+            key: 'outcome',
+            at: terminal.at,
+            variant: terminal.state === ORDER_PLACED_TERMINAL_STATE ? 'positive' : 'neutral',
+            state: terminal.state,
+        });
+    }
+
+    return entries.sort((a, b) => String(a.at ?? '￿').localeCompare(String(b.at ?? '￿')));
+}

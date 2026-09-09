@@ -23,7 +23,11 @@ import {
     foldToQuotes,
     formatDuration,
     formatPercent,
+    mergeStream,
     outcomeVariant,
+    passNotes,
+    terminalExplanation,
+    writeLabels,
 } from './decision.ts';
 
 /**
@@ -256,5 +260,101 @@ assert.equal(formatDuration(0), '0 ms');
 assert.equal(formatDuration(999), '999 ms');
 assert.equal(formatDuration(22556), '22.6 s');
 assert.equal(formatDuration(null), '–');
+
+// ------------------------------------------------------------- pass notes
+
+// A pass that escalated explains itself in a sentence carrying its own
+// numbers — see escalationExplanation(). Repeating the flags underneath it
+// would say the same thing again in weaker words.
+assert.deepEqual(
+    passNotes(vm, {
+        outcome: 'escalated',
+        escalationReason: 'verification_failed',
+        verified: false,
+        violations: ['line 1 is above the cap'],
+    }),
+    [],
+);
+
+// #1021, and the reason this exists: granted, replied, and the transition to
+// `replied` never landed. Nothing escalated, so `violations` is the only
+// record that a person is needed — and it used to show up nowhere but the
+// collapsed technical fold, under a green "Offer sent".
+assert.deepEqual(
+    passNotes(vm, {
+        outcome: 'offered',
+        authorized: true,
+        verified: true,
+        violations: ['Reply posted but admin_resend from reopen did not reach replied.'],
+    }),
+    [{
+        key: 'needsAttention',
+        variant: 'critical',
+        text: 'needsAttention',
+        detail: 'Reply posted but admin_resend from reopen did not reach replied.',
+    }],
+);
+
+// Why two near-identical passes exist: the earlier one killed the worker.
+assert.deepEqual(passNotes(vm, { outcome: 'offered', attempt: 2 }).map((note) => note.text), ['2 attemptRetried']);
+
+// A pass with nothing to answer says so, rather than showing one bare header.
+assert.deepEqual(passNotes(vm, { outcome: 'nothing_to_do', attempt: 0 }).map((note) => note.key), ['nothingToDo']);
+
+// A pass that did its job has nothing to add.
+assert.deepEqual(passNotes(vm, { outcome: 'offered', authorized: true, verified: true, violations: [] }), []);
+
+// ----------------------------------------------------------------- writes
+
+// The write names OfferApplier records, in the order it performed them.
+assert.deepEqual(writeLabels(vm, ['claim', 'updateQuote', 'recalculate']), ['claim', 'updateQuote', 'recalculate']);
+assert.deepEqual(writeLabels(vm, ['brandNewWrite']), ['brandNewWrite'], 'An unmapped write is shown, not dropped.');
+assert.deepEqual(writeLabels(vm, null), [], 'A pass that wrote nothing has no changes row.');
+
+// --------------------------------------------------------------- outcomes
+
+assert.equal(terminalExplanation(vm, 'accepted'), 'accepted');
+assert.equal(terminalExplanation(vm, null), null);
+assert.equal(
+    terminalExplanation({ $tc: (key) => key }, 'accepted'),
+    null,
+    'A state with no sentence of its own gets none, rather than a snippet path.',
+);
+
+// ------------------------------------------------------------------ stream
+
+const stream = mergeStream(
+    [
+        { id: 'c1', text: 'Can you do 12%?', fromAgent: false, createdAt: '2026-09-08T09:00:00+00:00' },
+        { id: 'c2', text: 'We can bring this down by 5%.', fromAgent: true, createdAt: '2026-09-08T09:05:00+00:00' },
+    ],
+    [
+        { id: 'r1', outcomeVariant: 'positive', raw: { createdAt: '2026-09-08T09:00:00+00:00' } },
+        { id: 'r2', outcomeVariant: 'critical', raw: { createdAt: '2026-09-08T09:20:00+00:00' } },
+    ],
+    { state: 'accepted', at: '2026-09-08T10:00:00+00:00' },
+);
+
+// The buyer's comment and the pass it triggered share an instant, and the
+// comment came first: it is what the pass is answering.
+assert.deepEqual(stream.map((entry) => entry.key), ['c1', 'r1', 'r2', 'outcome']);
+assert.deepEqual(stream.map((entry) => entry.kind), ['message', 'pass', 'pass', 'outcome']);
+assert.deepEqual(stream.map((entry) => entry.variant), ['neutral', 'positive', 'critical', 'positive']);
+
+// The agent's quote comment is not an entry of its own: that sentence is the
+// pass's `replyToBuyer` and renders inside the pass that wrote it.
+assert.ok(!stream.some((entry) => entry.key === 'c2'), 'The agent is not quoted twice.');
+
+// A quote still in flight has no closing entry.
+assert.deepEqual(mergeStream([], [], null), []);
+
+// A terminal state stamped without a timestamp still closes the rail.
+assert.deepEqual(
+    mergeStream([], [{ id: 'r1', outcomeVariant: 'neutral', raw: { createdAt: '2026-09-08T09:00:00+00:00' } }], {
+        state: 'expired',
+        at: null,
+    }).map((entry) => entry.kind),
+    ['pass', 'outcome'],
+);
 
 console.log('decision.ts: ok');

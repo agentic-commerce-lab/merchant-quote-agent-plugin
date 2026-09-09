@@ -92,122 +92,165 @@
             </sw-card>
             {% endblock %}
 
-            {# What the customer actually said. The timeline below shows what the
-               agent made of it, which is unreadable without this: an ask
-               recorded as "discount: 8.0%" was a sentence first, and a merchant
-               judging whether the agent read it correctly needs the sentence.
+            {# One card, one sequence. The conversation and the timeline were
+               two cards describing the same events, which cost twice: the
+               agent's sentence appeared in both — once as its quote comment,
+               once as the pass's `replyToBuyer` — and seeing which comment
+               caused which pass meant lining timestamps up by eye across a
+               card boundary. Merged, a buyer's ask is followed by the pass
+               that answered it. See `mergeStream()`.
 
-               Read off the quote, never copied into the decision table — see
-               `conversation()`. Hidden rather than empty when the quote cannot
-               be read, because "no messages" and "no permission to see the
-               messages" are not the same statement. #}
-            {% block merchant_quote_agent_detail_conversation %}
+               Buyer comments are read off the quote and never out of the
+               decision table: their own words are deliberately not recorded
+               there, only the interpreted ask. So when the quote cannot be
+               read — Commercial absent, or the role without
+               `quote_comment:read` — those entries are simply missing and the
+               passes still carry everything they recorded. #}
+            {% block merchant_quote_agent_detail_history %}
             <sw-card
-                v-if="record && messages.length"
-                :title="$tc('merchant-quote-agent.detail.conversationTitle')"
-                :subtitle="$tc('merchant-quote-agent.detail.conversationSubtitle')"
+                v-if="record"
+                :title="$tc('merchant-quote-agent.detail.historyTitle')"
+                :subtitle="$tc('merchant-quote-agent.detail.historySubtitle')"
             >
-                <ol class="mqa-thread">
-                    <li
-                        v-for="message in messages"
-                        :key="message.id"
-                        class="mqa-thread__entry"
-                        :class="message.fromAgent ? 'mqa-thread__entry--agent' : 'mqa-thread__entry--customer'"
-                    >
-                        <div class="mqa-thread__meta">
-                            <span class="mqa-thread__author">
-                                {{ message.fromAgent
-                                    ? $tc('merchant-quote-agent.detail.fromAgent')
-                                    : $tc('merchant-quote-agent.detail.fromCustomer') }}
-                            </span>
-                            <span class="mqa-thread__time">{{ formatDate(message.createdAt) }}</span>
-                        </div>
-                        <p class="mqa-thread__text">{{ message.text }}</p>
-                    </li>
-                </ol>
-            </sw-card>
-            {% endblock %}
-
-            {# One card holding one sequence. Every run used to be its own card,
-               which gave a pass that did nothing the same weight as the round
-               that made the offer. #}
-            {% block merchant_quote_agent_detail_timeline %}
-            <sw-card v-if="record" :title="$tc('merchant-quote-agent.detail.flowTitle')">
                 <ol class="mqa-timeline">
                     <li
-                        v-for="run in runs"
-                        :key="run.id"
-                        class="mqa-run"
-                        :class="`mqa-run--${run.outcomeVariant}`"
+                        v-for="entry in stream"
+                        :key="entry.key"
+                        class="mqa-entry"
+                        :class="[`mqa-entry--${entry.kind}`, `mqa-entry--${entry.variant}`]"
                     >
-                        <div class="mqa-run__header">
-                            <span class="mqa-run__index">{{ run.index }}</span>
-                            <h4 class="mqa-run__title">{{ run.title }}</h4>
-                            <mt-badge :variant="run.outcomeVariant">{{ run.outcomeLabel }}</mt-badge>
-                            <span class="mqa-run__time">{{ run.timestamp }}</span>
-                        </div>
-
-                        <dl v-if="!run.isNoop" class="mqa-run__facts">
-                            {# What the buyer asked for. Only ever recorded in
-                               structured form, so this is all of it. #}
-                            <template v-if="run.asks.length">
-                                <template v-for="ask in run.asks" :key="ask.label">
-                                    <dt class="mqa-run__fact-label">{{ ask.label }}</dt>
-                                    <dd class="mqa-run__fact-value mqa-run__fact-value--numeric">{{ ask.value }}</dd>
-                                </template>
-                            </template>
-
-                            <template v-if="run.band">
-                                <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.bandLabel') }}</dt>
-                                <dd class="mqa-run__fact-value">
-                                    <mt-badge :variant="run.bandVariant">{{ run.band }}</mt-badge>
-                                    <span class="mqa-run__quiet">
-                                        {{ $t('merchant-quote-agent.figures.ofCap', { cap: run.cap }) }}
-                                    </span>
-                                </dd>
-                            </template>
-
-                            <template v-if="run.granted">
-                                <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.granted') }}</dt>
-                                <dd class="mqa-run__fact-value mqa-run__fact-value--numeric">
-                                    <span class="mqa-run__granted">{{ run.granted }}</span>
-                                    <span v-if="run.totals" class="mqa-run__quiet">{{ run.totals }}</span>
-                                </dd>
-                            </template>
-
-                            {# The label alone said which bucket the pass fell
-                               into. What a merchant needs is why, with this
-                               pass's numbers in it, and then the specific rule
-                               underneath. All of it was already recorded. #}
-                            <template v-if="run.escalationReason">
-                                <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.escalationReason') }}</dt>
-                                <dd class="mqa-run__fact-value">
-                                    <mt-badge variant="critical">{{ run.escalationReason }}</mt-badge>
-                                    <span class="mqa-run__why">{{ run.escalationWhy }}</span>
-                                    <span v-if="run.escalationDetail" class="mqa-run__quiet">
-                                        {{ run.escalationDetail }}
-                                    </span>
-                                </dd>
-                            </template>
-
-                            <template v-if="run.reply">
-                                <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.replyLabel') }}</dt>
-                                <dd class="mqa-run__fact-value mqa-run__message">{{ run.reply }}</dd>
-                            </template>
-                        </dl>
-
-                        <details class="mqa-tech">
-                            <summary>{{ $tc('merchant-quote-agent.detail.technicalDetails') }}</summary>
-                            <div class="mqa-tech__grid">
-                                <div v-for="row in run.technical" :key="row.label">
-                                    <span class="mqa-tech__label">{{ row.label }}</span>
-                                    <span
-                                        class="mqa-tech__value"
-                                        :class="{ 'mqa-tech__value--mono': row.mono }"
-                                    >{{ row.value }}</span>
-                                </div>
+                        {# What the customer actually said. The pass below shows
+                           what the agent made of it, which is unreadable
+                           without this: an ask recorded as "discount: 8.0%" was
+                           a sentence first, and a merchant judging whether the
+                           agent read it correctly needs the sentence. #}
+                        <template v-if="entry.kind === 'message'">
+                            <div class="mqa-entry__header">
+                                <h4 class="mqa-entry__title">{{ $tc('merchant-quote-agent.detail.fromCustomer') }}</h4>
+                                <span class="mqa-entry__time">{{ formatDate(entry.at) }}</span>
                             </div>
-                        </details>
+                            <p class="mqa-msg">{{ entry.message.text }}</p>
+                        </template>
+
+                        {# How it ended. The summary card above says the same
+                           state, but the sequence used to trail off after the
+                           last pass — so a quote that was ordered two days
+                           later read as though nothing had happened since. #}
+                        <template v-else-if="entry.kind === 'outcome'">
+                            <div class="mqa-entry__header">
+                                <h4 class="mqa-entry__title">{{ terminalTitle(entry.state) }}</h4>
+                                <span class="mqa-entry__time">{{ formatDate(entry.at) }}</span>
+                            </div>
+                            <p v-if="terminalWhy(entry.state)" class="mqa-entry__why">{{ terminalWhy(entry.state) }}</p>
+                        </template>
+
+                        <template v-else>
+                            <div class="mqa-entry__header">
+                                <span class="mqa-run__index">{{ entry.run.index }}</span>
+                                <h4 class="mqa-entry__title">{{ entry.run.title }}</h4>
+                                <mt-badge :variant="entry.run.outcomeVariant">{{ entry.run.outcomeLabel }}</mt-badge>
+                                <span class="mqa-entry__time">{{ entry.run.timestamp }}</span>
+                            </div>
+
+                            {# The headline caveat about this pass, above its
+                               figures: a pass that reports an offer sent and
+                               still needs a person has to say so before the
+                               numbers, not inside a fold. #}
+                            <ul v-if="entry.run.notes.length" class="mqa-notes">
+                                <li
+                                    v-for="note in entry.run.notes"
+                                    :key="note.key"
+                                    class="mqa-note"
+                                    :class="`mqa-note--${note.variant}`"
+                                >
+                                    <span>{{ note.text }}</span>
+                                    <span v-if="note.detail" class="mqa-run__quiet">{{ note.detail }}</span>
+                                </li>
+                            </ul>
+
+                            <dl v-if="!entry.run.isNoop" class="mqa-run__facts">
+                                {# What the buyer asked for, as the agent read
+                                   it. Only ever recorded in structured form,
+                                   so this is all of it. #}
+                                <template v-if="entry.run.asks.length">
+                                    <template v-for="ask in entry.run.asks" :key="ask.label">
+                                        <dt class="mqa-run__fact-label">{{ ask.label }}</dt>
+                                        <dd class="mqa-run__fact-value mqa-run__fact-value--numeric">{{ ask.value }}</dd>
+                                    </template>
+                                </template>
+
+                                <template v-if="entry.run.band">
+                                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.bandLabel') }}</dt>
+                                    <dd class="mqa-run__fact-value">
+                                        <mt-badge :variant="entry.run.bandVariant">{{ entry.run.band }}</mt-badge>
+                                        <span class="mqa-run__quiet">
+                                            {{ $t('merchant-quote-agent.figures.ofCap', { cap: entry.run.cap }) }}
+                                        </span>
+                                    </dd>
+                                </template>
+
+                                <template v-if="entry.run.granted">
+                                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.granted') }}</dt>
+                                    <dd class="mqa-run__fact-value mqa-run__fact-value--numeric">
+                                        <span class="mqa-run__granted">{{ entry.run.granted }}</span>
+                                        <span v-if="entry.run.totals" class="mqa-run__quiet">{{ entry.run.totals }}</span>
+                                    </dd>
+                                </template>
+
+                                {# Whether the agent touched the quote at all,
+                                   and how. Recorded since the table existed
+                                   and only ever shown as raw method names
+                                   inside the technical fold. #}
+                                <template v-if="entry.run.changes.length">
+                                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.changesLabel') }}</dt>
+                                    <dd class="mqa-run__fact-value">
+                                        <ul class="mqa-changes">
+                                            <li v-for="change in entry.run.changes" :key="change">{{ change }}</li>
+                                        </ul>
+                                    </dd>
+                                </template>
+
+                                {# The label alone said which bucket the pass
+                                   fell into. What a merchant needs is why, with
+                                   this pass's numbers in it, and then the
+                                   specific rule underneath. All of it was
+                                   already recorded. #}
+                                <template v-if="entry.run.escalationReason">
+                                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.escalationReason') }}</dt>
+                                    <dd class="mqa-run__fact-value">
+                                        <mt-badge variant="critical">{{ entry.run.escalationReason }}</mt-badge>
+                                        <span class="mqa-run__why">{{ entry.run.escalationWhy }}</span>
+                                        <span v-if="entry.run.escalationDetail" class="mqa-run__quiet">
+                                            {{ entry.run.escalationDetail }}
+                                        </span>
+                                    </dd>
+                                </template>
+
+                                {# The agent's own sentence, in the pass that
+                                   composed it rather than in a second card. #}
+                                <template v-if="entry.run.reply">
+                                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.replyLabel') }}</dt>
+                                    <dd class="mqa-run__fact-value mqa-run__message">{{ entry.run.reply }}</dd>
+                                </template>
+                            </dl>
+
+                            <details class="mqa-tech">
+                                <summary>{{ $tc('merchant-quote-agent.detail.technicalDetails') }}</summary>
+                                <div class="mqa-tech__grid">
+                                    <div
+                                        v-for="row in entry.run.technical"
+                                        :key="row.label"
+                                        :class="{ 'mqa-tech__row--wide': row.wide }"
+                                    >
+                                        <span class="mqa-tech__label">{{ row.label }}</span>
+                                        <span
+                                            class="mqa-tech__value"
+                                            :class="{ 'mqa-tech__value--mono': row.mono }"
+                                        >{{ row.value }}</span>
+                                    </div>
+                                </div>
+                            </details>
+                        </template>
                     </li>
                 </ol>
             </sw-card>

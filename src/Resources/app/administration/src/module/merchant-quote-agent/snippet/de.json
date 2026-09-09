@@ -15,7 +15,7 @@
         "escalation": {
             "discount_limit_exceeded": "Rabatt über dem Limit",
             "quote_value_limit_exceeded": "Angebotswert über der Obergrenze",
-            "needs_human_review": "Käufer möchte einen Menschen",
+            "needs_human_review": "Kunde möchte einen Menschen",
             "currency_mismatch": "Währung passt nicht",
             "not_configured": "Agent nicht konfiguriert",
             "model_unavailable": "Modell nicht erreichbar",
@@ -24,7 +24,7 @@
         },
         "trigger": {
             "state_entered": "Angebot hat den Status gewechselt",
-            "comment_written": "Käufer hat kommentiert"
+            "comment_written": "Der Kunde hat einen Kommentar geschrieben"
         },
         "ask": {
             "discount": "Gewünschter Rabatt",
@@ -57,21 +57,20 @@
             "duration": "Dauer des Durchlaufs",
             "authorized": "Autorisiert",
             "verified": "Verifiziert",
-            "writes": "Geschrieben",
-            "violations": "Richtlinienverstöße",
             "revision": "Angebotsrevision",
             "promptHashes": "Prompt-Hashes (extract / negotiate / reply)",
             "errorClass": "Fehler",
             "errorChain": "Fehlerkette",
             "yes": "Ja",
-            "no": "Nein"
+            "no": "Nein",
+            "rawProposal": "Antwort des Modells"
         },
         "list": {
             "gridTitle": "Bearbeitete Angebote",
             "columnCreatedAt": "Letzte Aktivität",
             "columnQuoteNumber": "Angebot",
             "columnOutcome": "Ergebnis",
-            "columnBuyerAsk": "Käuferwunsch",
+            "columnBuyerAsk": "Kundenwunsch",
             "columnMerchantOffer": "Gewährt",
             "filterLabel": "Ergebnis",
             "filterAll": "Alle Ergebnisse",
@@ -107,15 +106,14 @@
             "status": "Status",
             "stillOpen": "Noch offen",
             "passes": "Bearbeitungsdurchläufe",
-            "passesAnswered": "{count} haben dem Käufer geantwortet",
+            "passesAnswered": "{count} haben dem Kunden geantwortet",
             "lastActivity": "Letzte Aktivität",
             "offeredNet": "Letztes Angebot (netto)",
             "offeredDiscount": "Gewährter Rabatt",
             "granted": "Gewährt",
-            "flowTitle": "Verlauf",
             "bandLabel": "Verhandlungs-Rahmen",
             "escalationReason": "Eskalationsgrund",
-            "replyLabel": "An den Käufer gesendete Antwort",
+            "replyLabel": "An den Kunden gesendete Antwort",
             "technicalDetails": "Technische Details",
             "missingTitle": "Entscheidung nicht gefunden",
             "missingSubline": "Dieser Datensatz konnte nicht geladen werden. Möglicherweise wurde er gelöscht.",
@@ -127,12 +125,19 @@
                 "withdrawn": "Zurückgezogen"
             },
             "openQuote": "Angebot öffnen",
-            "conversationTitle": "Konversation",
-            "conversationSubtitle": "Was der Kunde geschrieben hat und was der Agent geantwortet hat. Direkt vom Angebot gelesen.",
             "fromCustomer": "Kunde",
-            "fromAgent": "Quote Agent",
             "openOrder": "Bestellung öffnen",
-            "orderPlacedAt": "Bestellung ausgelöst am {at}"
+            "orderPlacedAt": "Bestellung ausgelöst am {at}",
+            "historyTitle": "Verlauf",
+            "historySubtitle": "Was der Kunde gefragt hat, was der Agent daraufhin getan hat und warum – in der Reihenfolge des Geschehens.",
+            "changesLabel": "Am Angebot geändert",
+            "terminalWhy": {
+                "accepted": "Der Kunde hat dieses Angebot angenommen, die Bestellung existiert.",
+                "declined": "Der Kunde hat das Angebot abgelehnt.",
+                "expired": "Das Angebot ist abgelaufen, ohne bestellt zu werden.",
+                "cancelled": "Das Angebot wurde storniert, bevor es bestellt wurde.",
+                "withdrawn": "Das Angebot wurde zurückgezogen, bevor der Kunde darauf reagiert hat."
+            }
         },
         "access": {
             "mainMenuItem": "Agent-Zugriff",
@@ -179,6 +184,19 @@
             "model_unavailable": "Das Modell war nicht erreichbar oder hat unbrauchbar geantwortet. Am Angebot wurde nichts geändert.",
             "proposal_rejected": "Das Modell hat Konditionen vorgeschlagen, die außerhalb der von Ihren Richtlinien erlaubten Befugnis liegen. Die Policy-Schicht hat sie abgelehnt, das Angebot blieb unverändert.",
             "verification_failed": "Das Angebot wurde geändert, beim erneuten Lesen stimmte es aber nicht mit dem Autorisierten überein. Ein Mensch muss das prüfen, bevor der Kunde etwas erfährt."
+        },
+        "write": {
+            "claim": "Angebot in Prüfung gesetzt",
+            "updateLineItems": "Neue Einzelpreise auf den angefragten Positionen gesetzt",
+            "updateQuote": "Rabatt und neues Gültigkeitsdatum angewendet",
+            "recalculate": "Angebotssummen neu berechnet"
+        },
+        "note": {
+            "attemptRetried": "Ein früherer Durchlauf zu diesem Angebot ist abgebrochen, bevor er fertig war (bisher {count}). Dieser Durchlauf hat neu begonnen.",
+            "nothingToDo": "Es gab nichts zu beantworten: keine neue Kundenanfrage, die der Agent lesen konnte, und kein offener Preiswunsch auf einer Position. Das Angebot blieb unverändert.",
+            "notAuthorized": "Der Agent hat Konditionen vorgeschlagen, die Ihre Richtlinien nicht erlauben. Es wurde nichts freigegeben, das Angebot blieb unverändert.",
+            "notVerified": "Das Angebot wurde geändert, aber die anschließende Prüfung stimmte nicht mit dem Freigegebenen überein.",
+            "needsAttention": "Dieser Durchlauf meldet Erfolg, ist aber nicht sauber zu Ende gelaufen. Prüfen Sie das Angebot, bevor Sie sich darauf verlassen."
         }
     }
 }

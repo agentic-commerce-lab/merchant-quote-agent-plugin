@@ -15,7 +15,7 @@
         "escalation": {
             "discount_limit_exceeded": "Discount above the cap",
             "quote_value_limit_exceeded": "Quote value above the ceiling",
-            "needs_human_review": "Buyer asked for a human",
+            "needs_human_review": "Customer asked for a human",
             "currency_mismatch": "Currency mismatch",
             "not_configured": "Agent not configured",
             "model_unavailable": "Model unavailable",
@@ -24,7 +24,7 @@
         },
         "trigger": {
             "state_entered": "Quote changed state",
-            "comment_written": "Buyer wrote a comment"
+            "comment_written": "The customer wrote a comment"
         },
         "ask": {
             "discount": "Discount asked",
@@ -57,21 +57,20 @@
             "duration": "Pass duration",
             "authorized": "Authorized",
             "verified": "Verified",
-            "writes": "Wrote",
-            "violations": "Policy violations",
             "revision": "Quote revision",
             "promptHashes": "Prompt hashes (extract / negotiate / reply)",
             "errorClass": "Error",
             "errorChain": "Error chain",
             "yes": "Yes",
-            "no": "No"
+            "no": "No",
+            "rawProposal": "The model's own answer"
         },
         "list": {
             "gridTitle": "Quotes serviced",
             "columnCreatedAt": "Last activity",
             "columnQuoteNumber": "Quote",
             "columnOutcome": "Outcome",
-            "columnBuyerAsk": "Buyer asked",
+            "columnBuyerAsk": "Customer asked",
             "columnMerchantOffer": "Granted",
             "filterLabel": "Outcome",
             "filterAll": "All outcomes",
@@ -107,15 +106,14 @@
             "status": "Status",
             "stillOpen": "Still open",
             "passes": "Servicing passes",
-            "passesAnswered": "{count} answered the buyer",
+            "passesAnswered": "{count} answered the customer",
             "lastActivity": "Last activity",
             "offeredNet": "Latest offer (net)",
             "offeredDiscount": "Discount granted",
             "granted": "Granted",
-            "flowTitle": "Timeline",
             "bandLabel": "Policy band",
             "escalationReason": "Escalation reason",
-            "replyLabel": "Reply sent to the buyer",
+            "replyLabel": "Reply sent to the customer",
             "technicalDetails": "Technical details",
             "missingTitle": "Decision not found",
             "missingSubline": "This record could not be loaded. It may have been deleted.",
@@ -127,12 +125,19 @@
                 "withdrawn": "Withdrawn"
             },
             "openQuote": "Open quote",
-            "conversationTitle": "Conversation",
-            "conversationSubtitle": "What the customer wrote, and what the agent replied. Read from the quote itself.",
             "fromCustomer": "Customer",
-            "fromAgent": "Quote agent",
             "openOrder": "Open order",
-            "orderPlacedAt": "Order placed {at}"
+            "orderPlacedAt": "Order placed {at}",
+            "historyTitle": "History",
+            "historySubtitle": "What the customer asked, what the agent did about it, and why — in the order it happened.",
+            "changesLabel": "Changed on the quote",
+            "terminalWhy": {
+                "accepted": "The customer accepted this quote, and their order exists.",
+                "declined": "The customer turned the offer down.",
+                "expired": "The quote passed its validity date without being ordered.",
+                "cancelled": "The quote was cancelled before it was ordered.",
+                "withdrawn": "The offer was withdrawn before the customer acted on it."
+            }
         },
         "access": {
             "mainMenuItem": "Agent access",
@@ -179,6 +184,19 @@
             "model_unavailable": "The model could not be reached, or answered with something unusable. Nothing was written to the quote.",
             "proposal_rejected": "The model proposed terms outside the authority your policies allow, so the policy layer refused them. The quote was left untouched.",
             "verification_failed": "The quote was changed, but re-reading it did not match what had been authorised, so it needs a person to confirm before the customer is told anything."
+        },
+        "write": {
+            "claim": "Moved the quote into review",
+            "updateLineItems": "Set new unit prices on the requested lines",
+            "updateQuote": "Applied the discount and a new validity date",
+            "recalculate": "Recalculated the quote totals"
+        },
+        "note": {
+            "attemptRetried": "An earlier attempt on this quote crashed before it finished ({count} so far). This pass started over.",
+            "nothingToDo": "There was nothing to answer: no new customer request the agent could read, and no open price target on any line. The quote was left untouched.",
+            "notAuthorized": "The agent proposed terms your policies do not allow, so nothing was authorised and the quote was left untouched.",
+            "notVerified": "The quote was changed, but re-reading it afterwards did not match what had been authorised.",
+            "needsAttention": "This pass reported success but did not finish cleanly. Check the quote before relying on it."
         }
     }
 }

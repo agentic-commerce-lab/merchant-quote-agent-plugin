@@ -11,10 +11,14 @@ import {
     formatDate,
     formatDuration,
     formatPercent,
+    mergeStream,
     outcomeLabel,
     outcomeVariant,
+    passNotes,
+    terminalExplanation,
     terminalLabel,
     triggerLabel,
+    writeLabels,
 } from '../../decision';
 
 const { Criteria } = Shopware.Data;
@@ -92,6 +96,15 @@ Shopware.Component.register('merchant-quote-agent-detail', {
         },
 
         /**
+         * One sequence: the buyer's comments, the passes that answered them,
+         * and the outcome that ended the negotiation. See `mergeStream()` for
+         * why the agent's own comments are not entries of their own.
+         */
+        stream() {
+            return mergeStream(this.messages, this.runs, { state: this.terminalState, at: this.terminalAt });
+        },
+
+        /**
          * The last pass that actually made an offer — not simply the last pass.
          * The summary used to read the latest one, so a negotiation whose most
          * recent pass escalated reported no offer at all.
@@ -161,6 +174,15 @@ Shopware.Component.register('merchant-quote-agent-detail', {
         formatCurrency,
         formatDate,
         formatPercent,
+
+        /** The outcome entry that closes the stream: the state, then why. */
+        terminalTitle(state) {
+            return terminalLabel(this, state);
+        },
+
+        terminalWhy(state) {
+            return terminalExplanation(this, state);
+        },
 
         async load() {
             this.isLoading = true;
@@ -245,6 +267,11 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 totals: answered && round.totalNetBefore !== null && round.totalNetAfter !== null
                     ? `${formatCurrency(round.totalNetBefore, round.currencyIso)} → ${formatCurrency(round.totalNetAfter, round.currencyIso)}`
                     : null,
+                // What the pass actually did to the quote, and what a person
+                // still has to look at. Both were recorded from the start and
+                // both sat in the collapsed technical fold.
+                changes: writeLabels(this, round.writes),
+                notes: passNotes(this, round),
                 escalationReason: round.escalationReason ? escalationLabel(this, round.escalationReason) : null,
                 escalationWhy: escalationExplanation(this, round),
                 // The specifics behind the sentence: the rule that was broken,
@@ -283,8 +310,6 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 { key: 'duration', value: formatDuration(round.durationMs) },
                 { key: 'authorized', value: this.bool(round.authorized) },
                 { key: 'verified', value: this.bool(round.verified) },
-                { key: 'writes', value: this.joined(round.writes) },
-                { key: 'violations', value: this.joined(round.violations) },
                 { key: 'revision', value: round.revisionVersionId || '–', mono: true },
                 {
                     key: 'promptHashes',
@@ -294,6 +319,13 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                     mono: true,
                 },
             ];
+
+            // The model's own answer, recorded on every pass since the table
+            // existed and rendered nowhere. Wide because it is JSON: in a
+            // 200px grid cell it reads as a column of punctuation.
+            if (round.rawProposal) {
+                rows.push({ key: 'rawProposal', value: round.rawProposal, mono: true, wide: true });
+            }
 
             if (round.errorClass) {
                 rows.push({ key: 'errorClass', value: round.errorClass, mono: true });
@@ -313,6 +345,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 label: this.$tc(`merchant-quote-agent.tech.${row.key}`),
                 value: row.value,
                 mono: row.mono === true,
+                wide: row.wide === true,
             }));
         },
 
@@ -323,10 +356,6 @@ Shopware.Component.register('merchant-quote-agent-detail', {
             }
 
             return this.$tc(`merchant-quote-agent.tech.${value ? 'yes' : 'no'}`);
-        },
-
-        joined(values) {
-            return Array.isArray(values) && values.length > 0 ? values.join(', ') : '–';
         },
     },
 });
