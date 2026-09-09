@@ -11,6 +11,8 @@
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { historySummary, historyReads } from './history.ts';
 import {
     DISPOSITION_CLASSES,
     answeredTheBuyer,
@@ -413,3 +415,73 @@ assert.deepEqual(
 );
 
 console.log('decision.ts: ok');
+
+// History is recorded evidence: unknown values must never become invented zeros.
+const history = {
+    available: true, quotesSeen: 7, quotesConverted: 3, quotesLost: 2,
+    offersMade: 5, offersAccepted: 3, lastGrantedDiscountPercent: 0,
+    orderCount: 4, lifetimeNet: 1234.56, lastOrderAt: '2026-09-08T10:00:00+00:00',
+    rounds: [
+        { kind: 'orders', productId: null, result: 'INTERNAL orders\nOrder #42: 12.50 net' },
+        { kind: 'product_purchases', productId: 'product-1', result: 'INTERNAL: Refused off-quote product.' },
+    ],
+};
+assert.equal(historySummary(vm, history), [
+    'quotesSeen: 7', 'quotesConverted: 3', 'quotesLost: 2', 'offersMade: 5',
+    'offersAccepted: 3', 'lastGrantedDiscount: 0.00%', 'orderCount: 4',
+    'lifetimeNet: 1234.56', 'lastOrderAt: 2026-09-08T10:00:00+00:00',
+].join('\n'));
+assert.equal(historyReads(vm, history),
+    '1 round: orders\nINTERNAL orders\nOrder #42: 12.50 net\n\n2 round: product_purchases · productId: product-1\nINTERNAL: Refused off-quote product.');
+for (const missing of [null, undefined]) {
+    assert.equal(historySummary(vm, missing), '–');
+    assert.equal(historyReads(vm, missing), '–');
+}
+for (const malformed of [[], 'invalid', 42, {}]) {
+    assert.equal(historySummary(vm, malformed), 'unknown');
+}
+assert.equal(historySummary(vm, { available: false, reason: 'Customer is missing.' }), 'unavailable: Customer is missing.');
+assert.equal(historySummary(vm, { available: false }), 'unavailable: unknown');
+const emptyHistory = {
+    ...history, quotesSeen: 0, quotesConverted: 0, quotesLost: 0, offersMade: 0,
+    offersAccepted: 0, lastGrantedDiscountPercent: null, orderCount: 0, lifetimeNet: 0,
+    lastOrderAt: null, rounds: [],
+};
+assert.ok(historySummary(vm, emptyHistory).startsWith('none\nquotesSeen: 0'));
+assert.ok(historySummary(vm, emptyHistory).includes('lastGrantedDiscount: unknown'));
+assert.ok(historySummary(vm, emptyHistory).includes('lifetimeNet: 0.00'));
+assert.ok(historySummary(vm, emptyHistory).endsWith('lastOrderAt: none'));
+assert.equal(historyReads(vm, emptyHistory), 'none');
+const malformedSummary = historySummary(vm, {
+    ...history, quotesSeen: '7', quotesConverted: -1, quotesLost: 2.5,
+    offersMade: Infinity, offersAccepted: NaN, lastGrantedDiscountPercent: null,
+    orderCount: null, lifetimeNet: true, lastOrderAt: 'invalid',
+});
+assert.equal(malformedSummary.split('\n').length, 9);
+assert.ok(malformedSummary.split('\n').every((line) => line.endsWith(': unknown')));
+assert.equal(historyReads(vm, { rounds: {} }), 'unknown');
+assert.equal(historyReads(vm, {}), '–');
+assert.equal(historyReads(vm, { rounds: [null, [], { kind: 'future_kind', result: {} }] }),
+    '1 round: unknown\nunknown\n\n2 round: unknown\nunknown\n\n3 round: unknown\nunknown');
+assert.equal(historyReads(vm, { rounds: [{ kind: 'quote_history', productId: {}, result: '<script>alert(1)</script>' }] }),
+    '1 round: quote_history\n<script>alert(1)</script>', 'Stored text stays data for escaped template interpolation.');
+const snippets = ['en', 'de'].map((locale) => JSON.parse(readFileSync(new URL(`./snippet/${locale}.json`, import.meta.url)))['merchant-quote-agent']);
+assert.deepStrictEqual(Object.keys(snippets[0].history).sort(), Object.keys(snippets[1].history).sort());
+for (const snippet of snippets) {
+    for (const key of ['customer', 'accountHistory', 'historyReads']) assert.ok(snippet.tech[key]);
+    for (const key of ['unknown', 'none', 'unavailable', 'round', 'productId', 'quote_history', 'orders', 'product_purchases', 'lastOrderAt']) assert.ok(snippet.history[key]);
+}
+
+assert.ok(!historySummary(vm, { available: true, quotesSeen: 0, orderCount: 0 }).startsWith('none'));
+assert.ok(historySummary(vm, { ...history, lastOrderAt: '123' }).endsWith('lastOrderAt: unknown'));
+for (const snippet of snippets) {
+    const localized = {
+        $tc: (key) => snippet.history[key.split('.').pop()],
+        $t: (key, values) => snippet.history[key.split('.').pop()].replace('{count}', String(values.count)),
+    };
+    assert.ok(historyReads(localized, history).startsWith(snippet.history.round.replace('{count}', '1')));
+    assert.ok(historyReads(localized, history).includes(snippet.history.product_purchases));
+    assert.equal(historyReads(localized, emptyHistory), snippet.history.none);
+    assert.equal(historySummary(localized, { available: false, reason: 'Recorded reason' }), `${snippet.history.unavailable}: Recorded reason`);
+}
+console.log('history.ts: ok');
