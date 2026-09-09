@@ -28,6 +28,15 @@ final class DraftMirrorsEntityTest extends TestCase
      */
     private const WRITTEN_BY_THE_TERMINAL_SUBSCRIBER = ['terminalState', 'terminalAt'];
 
+    /**
+     * Written by EscalationResolutionSubscriber, through
+     * EscalationResolutionWriter, after a human resolves an escalation, never
+     * by a pass. Same reasoning as WRITTEN_BY_THE_TERMINAL_SUBSCRIBER: a draft
+     * is one pass's insert, and the resolution is a later update by a
+     * different owner.
+     */
+    private const WRITTEN_BY_THE_ESCALATION_RESOLUTION_SUBSCRIBER = ['resolvedAt', 'resolvedState'];
+
     /** The draft's own stopwatch; DecisionRecordWriter excludes it, not a column. */
     private const DRAFT_ONLY_WORKING_FIELDS = ['startedAt'];
 
@@ -43,7 +52,11 @@ final class DraftMirrorsEntityTest extends TestCase
 
     public function testEveryEntityFieldIsADraftPropertyOrExplicitlyReserved(): void
     {
-        $excluded = [self::ID_IS_WRITER_GENERATED, ...self::WRITTEN_BY_THE_TERMINAL_SUBSCRIBER];
+        $excluded = [
+            self::ID_IS_WRITER_GENERATED,
+            ...self::WRITTEN_BY_THE_TERMINAL_SUBSCRIBER,
+            ...self::WRITTEN_BY_THE_ESCALATION_RESOLUTION_SUBSCRIBER,
+        ];
 
         self::assertEmpty(
             array_diff($this->entityFieldNames(), $this->draftPropertyNames(), $excluded),

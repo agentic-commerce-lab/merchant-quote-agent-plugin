@@ -5,6 +5,8 @@ declare(strict_types=1);
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
+use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriter;
+use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriterInterface;
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeSubscriber;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
@@ -273,6 +275,9 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(TerminalOutcomeWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
     $services->alias(TerminalOutcomeWriterInterface::class, TerminalOutcomeWriter::class);
     $services->set(TerminalOutcomeSubscriber::class);
+
+    $services->set(EscalationResolutionWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
+    $services->alias(EscalationResolutionWriterInterface::class, EscalationResolutionWriter::class);
 
     // --- A2CN / Protocol -----------------------------------------------
     // The evidence layer (src/Protocol/): signed negotiation acts on a quote.
