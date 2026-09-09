@@ -446,6 +446,69 @@ fills in the rest; only the net value is read. A quote in a currency you left
 blank escalates rather than passing, because an unknown ceiling is not an
 unlimited one. Leave every currency blank for no ceiling at all.
 
+## Reading the dashboard
+
+The module's list page (**Merchant Quote Agent** in the admin menu) opens
+filtered to *Needs review* and leads with four figures, each scoped to the
+period picked in the smart bar. A figure with nothing to measure reports
+absent (`–`, "no baseline", "n/a") rather than a confident zero — a merchant
+without `quote:read` or `order:read` must see the gap, not a number that looks
+real.
+
+**Auto-execution rate** is the share of the period's serviced quotes the agent
+never escalated. The denominator is every quote serviced, not only the
+concluded ones: restricting it to closed negotiations would drop quotes still
+sitting in the review queue out of the count, which would make a shop with ten
+stuck escalations report 100%. The aside always shows the raw count
+(`n of m escalated`) beside the rate, and a trend line compares it against the
+previous period of the same length.
+
+**Escalation resolution time** is the mean time from an escalation to the deal
+desk's own resolving transition, over escalations that have one. **It only
+covers escalations resolved after the `resolved_at` migration
+(`Migration1789000000AddEscalationResolution`) shipped** — nothing is
+backfilled, so escalations raised earlier report as `n still open` rather than
+silently vanishing from the average. Resolution is detected off SwagCommercial's
+own quote state machine, not off anything this plugin writes when it escalates:
+`QuoteEscalator` only sets a `customFields` marker and posts a buyer-facing
+comment, it never transitions the quote, so the only observable sign of a human
+acting is the state change that follows. **The core
+`state_machine.quote.state_changed` event carries no author**, so a transition
+by *anyone* — the deal desk sending a revised offer, or a buyer withdrawing the
+quote — closes the escalation; `resolved_state` is stored precisely so that
+stays inspectable rather than hidden behind a single "resolved" bit. The one
+exception is the agent's own mid-pass transitions (`process`, `sent`), which
+carry `AgentContext::STATE` and are skipped — without that guard, an escalated
+quote's very next agent pass would stamp itself as the human resolution and
+report escalations "resolved" in minutes by the agent that raised them. Set an
+**Escalation SLA (hours)** in the plugin's config to turn the average into
+"n of m within the SLA"; leave it blank and the tile reports the average with
+no verdict attached.
+
+**Price retention** is the discount granted on the agent's deals against the
+discount granted on deals it never touched, matched to the same net-value
+range so the comparison is apples to apples. **This is not gross margin: it is
+the original price against the price sold, and it does not attempt to be
+margin** — neither this plugin nor a typical B2B catalog carries a
+cost-of-goods figure to net against, so there is nothing to compute margin
+from. The baseline side is **quotes the agent never touched** in the same
+period, i.e. every accepted quote without a servicing pass on it, restricted
+to the net-value band the agent's own deals span — the one comparable
+dimension available without a customer-segment model. **On SwagCommercial
+7.12 the baseline sees quote-level discounts only**: `totalLineItemDiscount`
+does not exist on that version, so a merchant there who negotiates by editing
+individual line prices rather than setting a quote-level discount reads as 0%
+baseline discount. That understates the baseline and so makes the agent look
+better than it is — the safe direction to be wrong in — and the tile carries a
+footnote saying as much whenever a baseline is shown.
+
+**Deal cycle time** is the mean time from RFQ submission to a confirmed order,
+same agent-vs-baseline, same value-range match as price retention. It reads
+`requestedAt` where that field exists and falls back to `createdAt` where it
+doesn't (SwagCommercial 7.12) — a read-only fallback, never something the page
+filters or writes on, so its absence there is just a less precise start point,
+not a missing figure.
+
 ## How the agent negotiates
 
 Each servicing pass runs six stages: read the quote, interpret the buyer's ask,
