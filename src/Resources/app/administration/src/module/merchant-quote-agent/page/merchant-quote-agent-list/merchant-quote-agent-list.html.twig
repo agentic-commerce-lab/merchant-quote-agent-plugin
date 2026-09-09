@@ -27,100 +27,117 @@
         <sw-card-view>
             {% block merchant_quote_agent_list_figures %}
             <sw-card :title="$tc('merchant-quote-agent.figures.title')" :is-loading="isLoading">
-                {# One quote can be answered on one pass and escalated on
-                   another, so counting "ever answered" against "ever escalated"
-                   put it in both and the shares summed past 100%. Each quote is
-                   now classified once, by where it currently stands, so the
-                   parts add up to the whole by construction. #}
-                {% block merchant_quote_agent_list_disposition %}
-                <div class="mqa-standing">
-                    {# Two ledes because they answer different questions. The
-                       queue is what the merchant has to do today; the orders
-                       are whether any of this earned anything, which is the
-                       figure the agent is ultimately judged on. Neither is a
-                       summary of the other. #}
-                    <div class="mqa-standing__lede mqa-standing__lede--won">
-                        <span class="mqa-standing__label">{{ $tc('merchant-quote-agent.figures.orderPlaced') }}</span>
-                        <strong class="mqa-standing__value">{{ orderPlaced }}</strong>
-                        <span class="mqa-standing__of">
-                            {{ $t('merchant-quote-agent.figures.ofServiced', { total: quotes.length }) }}
-                        </span>
-                    </div>
-
-                    <div class="mqa-standing__lede">
-                        <span class="mqa-standing__label">{{ $tc('merchant-quote-agent.figures.needsReview') }}</span>
-                        <strong class="mqa-standing__value">{{ needsReview }}</strong>
-                        <span class="mqa-standing__of">
-                            {{ $t('merchant-quote-agent.figures.ofServiced', { total: quotes.length }) }}
-                        </span>
-                    </div>
-
-                    {# Emphasis, not a category per class: the merchant's job is
-                       the queue waiting on them, so that one segment carries the
-                       hue and the remainder is de-emphasised. The counts below
-                       are always present, so nothing is encoded by colour alone. #}
-                    <div
-                        class="mqa-standing__bar"
-                        role="img"
-                        :aria-label="$t('merchant-quote-agent.figures.ofServiced', { total: quotes.length })"
-                    >
-                        <div
-                            class="mqa-standing__fill"
-                            :style="{ width: needsReviewShare + '%' }"
-                        ></div>
-                    </div>
-
-                    <dl class="mqa-standing__rest">
-                        <template v-for="entry in restOfPartition" :key="entry.key">
-                            <dt>{{ dispositionLabel(entry.key) }}</dt>
-                            <dd>{{ entry.count }}</dd>
-                        </template>
-                    </dl>
-                </div>
-                {% endblock %}
-
-                <hr class="mqa-rule" />
-
-                {% block merchant_quote_agent_list_intake %}
+                {# Four measures, each with the comparison that makes it mean
+                   something: a rate needs a trend, a duration needs an SLA, and a
+                   discount or a cycle time needs the deals the agent never touched.
+                   A figure with no comparison available says so rather than standing
+                   alone as if it were self-evident. #}
                 <div class="mqa-figures">
-                    <div v-if="intake" class="mqa-figure">
-                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.received') }}</span>
-                        <span class="mqa-figure__value">{{ intake.created }}</span>
-                    </div>
-
-                    <div v-if="intake" class="mqa-figure">
-                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.expiredUnanswered') }}</span>
-                        <span class="mqa-figure__value">{{ intake.expiredUnanswered }}</span>
-                    </div>
-
-                    <div class="mqa-figure">
-                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.valueHandled') }}</span>
-                        <span class="mqa-figure__value">
-                            <template v-if="valueCurrency">{{ formatCurrency(valueHandled, valueCurrency) }}</template>
-                            <template v-else>{{ valueHandled.toFixed(2) }}</template>
-                        </span>
-                        <span v-if="!valueCurrency && valueHandled > 0" class="mqa-figure__aside">
-                            {{ $tc('merchant-quote-agent.figures.mixedCurrencies') }}
-                        </span>
-                    </div>
-
-                    {# A ratio against a limit reads as a meter. Two bare numbers
-                       side by side made "3.2%" and "a 12.5% cap" look like
-                       unrelated figures rather than spend against headroom. #}
+                    {% block merchant_quote_agent_list_auto_execution %}
                     <div class="mqa-figure mqa-figure--meter">
-                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.granted') }}</span>
-                        <span class="mqa-figure__value">{{ formatPercent(granted) }}</span>
-                        <template v-if="capUsedShare !== null">
-                            <span class="mqa-figure__aside">
-                                {{ $t('merchant-quote-agent.figures.ofCap', { cap: formatPercent(cap) }) }}
-                            </span>
-                            <div class="mqa-meter">
-                                <div class="mqa-meter__fill" :style="{ width: capUsedShare + '%' }"></div>
-                            </div>
-                        </template>
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.autoExecution') }}</span>
+                        <span class="mqa-figure__value">{{ formatPercent(autoExecution.rate) }}</span>
+                        <span class="mqa-figure__aside">
+                            {{ $t('merchant-quote-agent.figures.autoExecutionAside', {
+                                escalated: autoExecution.escalated,
+                                total: autoExecution.total,
+                            }) }}
+                        </span>
+                        {# The share is also drawn, because a rate reads faster as a
+                           bar. The count above it is always present, so nothing is
+                           encoded by colour alone. #}
+                        <div v-if="autoExecution.rate !== null" class="mqa-meter">
+                            <div class="mqa-meter__fill" :style="{ width: autoExecution.rate + '%' }"></div>
+                        </div>
+                        <span v-if="autoExecutionDelta !== null" class="mqa-figure__aside mqa-trend">
+                            <template v-if="Math.abs(autoExecutionDelta) < 0.05">
+                                {{ $t('merchant-quote-agent.figures.trendFlat', { days: rangeDays }) }}
+                            </template>
+                            <template v-else-if="autoExecutionDelta > 0">
+                                {{ $t('merchant-quote-agent.figures.trendUp', {
+                                    delta: formatPercent(autoExecutionDelta),
+                                    days: rangeDays,
+                                }) }}
+                            </template>
+                            <template v-else>
+                                {{ $t('merchant-quote-agent.figures.trendDown', {
+                                    delta: formatPercent(-autoExecutionDelta),
+                                    days: rangeDays,
+                                }) }}
+                            </template>
+                        </span>
                     </div>
+                    {% endblock %}
+
+                    {% block merchant_quote_agent_list_resolution %}
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.resolution') }}</span>
+                        <span class="mqa-figure__value">{{ formatSpan(escalations.meanMs) }}</span>
+                        <span v-if="escalations.withinSla !== null" class="mqa-figure__aside">
+                            {{ $t('merchant-quote-agent.figures.withinSla', {
+                                within: escalations.withinSla,
+                                measured: escalations.measured,
+                                sla: formatSpan(slaHours * 3600000),
+                            }) }}
+                        </span>
+                        <span v-else class="mqa-figure__aside">
+                            {{ $t('merchant-quote-agent.figures.noSla', { measured: escalations.measured }) }}
+                        </span>
+                        {# Reported beside the average, not folded into it. At release
+                           every escalation raised before the resolved_at migration is
+                           open, and a backlog has to read as a backlog rather than
+                           quietly vanishing from the average. #}
+                        <span v-if="escalations.open > 0" class="mqa-figure__aside">
+                            {{ $t('merchant-quote-agent.figures.openEscalations', { open: escalations.open }) }}
+                        </span>
+                    </div>
+                    {% endblock %}
+
+                    {% block merchant_quote_agent_list_retention %}
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.retention') }}</span>
+                        <span class="mqa-figure__value">
+                            <template v-if="dealsUnavailable">{{ $tc('merchant-quote-agent.figures.unavailable') }}</template>
+                            <template v-else>{{ formatPercent(retention.agentDiscount) }}</template>
+                        </span>
+                        <span v-if="dealsUnavailable" class="mqa-figure__aside">
+                            {{ $tc('merchant-quote-agent.figures.unavailableQuotes') }}
+                        </span>
+                        <span v-else-if="retention.baselineDiscount !== null" class="mqa-figure__aside">
+                            {{ $t('merchant-quote-agent.figures.retentionBaseline', {
+                                baseline: formatPercent(retention.baselineDiscount),
+                            }) }}
+                        </span>
+                        <span v-else class="mqa-figure__aside">
+                            {{ $tc('merchant-quote-agent.figures.noBaseline') }}
+                        </span>
+                        <span v-if="!dealsUnavailable && retention.baselineDiscount !== null" class="mqa-figure__aside">
+                            {{ $tc('merchant-quote-agent.figures.retentionFootnote') }}
+                        </span>
+                    </div>
+                    {% endblock %}
+
+                    {% block merchant_quote_agent_list_cycle_time %}
+                    <div class="mqa-figure">
+                        <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.figures.cycleTime') }}</span>
+                        <span class="mqa-figure__value">
+                            <template v-if="dealsUnavailable">{{ $tc('merchant-quote-agent.figures.unavailable') }}</template>
+                            <template v-else>{{ formatSpan(cycleTime.agentMs) }}</template>
+                        </span>
+                        <span v-if="dealsUnavailable" class="mqa-figure__aside">
+                            {{ $tc('merchant-quote-agent.figures.unavailableQuotes') }}
+                        </span>
+                        <span v-else-if="cycleTime.baselineMs !== null" class="mqa-figure__aside">
+                            {{ $t('merchant-quote-agent.figures.cycleBaseline', {
+                                baseline: formatSpan(cycleTime.baselineMs),
+                            }) }}
+                        </span>
+                        <span v-else class="mqa-figure__aside">
+                            {{ $tc('merchant-quote-agent.figures.noBaseline') }}
+                        </span>
+                    </div>
+                    {% endblock %}
                 </div>
-                {% endblock %}
             </sw-card>
             {% endblock %}
 

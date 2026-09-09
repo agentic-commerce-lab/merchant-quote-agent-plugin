@@ -1,6 +1,5 @@
 import template from './merchant-quote-agent-list.html.twig';
 import {
-    ANSWERED_OUTCOMES,
     answeredTheBuyer,
     askSummary,
     dispositionVariant,
@@ -10,9 +9,18 @@ import {
     formatDate,
     formatDateShort,
     formatPercent,
+    ORDER_PLACED_TERMINAL_STATE,
     outcomeLabel,
     outcomeVariant,
 } from '../../decision';
+import {
+    autoExecutionRate,
+    dealCycleTime,
+    escalationResolution,
+    formatSpan,
+    priceRetention,
+    splitDeals,
+} from '../../measures';
 
 const { Criteria } = Shopware.Data;
 
@@ -24,8 +32,21 @@ const { Criteria } = Shopware.Data;
  * than this in 90 days, is a server-side latest-pass-per-quote read — DAL
  * `grouping` is not it: it returns the FIRST row per group regardless of
  * sorting and drops the total count.
+ *
+ * The read covers TWICE the selected range, because the auto-execution rate is
+ * only meaningful as a trend and the previous equal-length window is the
+ * comparison. The rows and every current-period figure filter to the recent
+ * half. So the effective ceiling is half of PASS_LIMIT per window, which the
+ * truncation banner already reports.
  */
 const PASS_LIMIT = 500;
+
+/**
+ * Accepted quotes in the period, both agent-negotiated and not. Far smaller
+ * than the pass read — most quotes never reach `accepted` — so this ceiling is
+ * generous rather than tight.
+ */
+const QUOTE_LIMIT = 500;
 const PAGE_SIZE = 25;
 
 Shopware.Component.register('merchant-quote-agent-list', {
@@ -37,10 +58,12 @@ Shopware.Component.register('merchant-quote-agent-list', {
         return {
             passes: [],
             passTotal: 0,
-            intake: null,
+            quoteRows: null,
+            orderDates: new Map(),
+            slaHours: null,
             isLoading: false,
             rangeDays: 30,
-            dispositionFilter: 'all',
+            dispositionFilter: 'needsReview',
             page: 1,
             pendingDelete: null,
         };
@@ -51,103 +74,97 @@ Shopware.Component.register('merchant-quote-agent-list', {
             return this.repositoryFactory.create('merchant_quote_agent_decision');
         },
 
-        /** The range every query on this page shares, so the figures and the rows agree. */
-        rangeFilter() {
+        /** The start of the period the page describes. */
+        windowStart() {
             const from = new Date();
+            from.setDate(from.getDate() - this.rangeDays);
+
+            return from;
+        },
+
+        /**
+         * The range the PASS query shares — twice the period, so the trend has
+         * a previous window to compare against. Quote-side queries use
+         * `rangeFilter`, which is the period itself.
+         */
+        trendRangeFilter() {
+            const from = new Date(this.windowStart());
             from.setDate(from.getDate() - this.rangeDays);
 
             return Criteria.range('createdAt', { gte: from.toISOString() });
         },
 
+        /** The range every quote-side query on this page shares. */
+        rangeFilter() {
+            return Criteria.range('createdAt', { gte: this.windowStart().toISOString() });
+        },
+
+        /** The passes inside the period the page describes. */
+        currentPasses() {
+            const start = this.windowStart().getTime();
+
+            return this.passes.filter((pass) => Date.parse(pass.createdAt) >= start);
+        },
+
+        /** The equal-length window before it, for the trend only. */
+        previousPasses() {
+            const start = this.windowStart().getTime();
+
+            return this.passes.filter((pass) => Date.parse(pass.createdAt) < start);
+        },
+
         /** One row per quote, newest activity first. */
         quotes() {
-            return foldToQuotes(this.passes);
+            return foldToQuotes(this.currentPasses);
+        },
+
+        quotesByQuoteId() {
+            return new Map(this.quotes.map((quote) => [quote.quoteId, quote]));
         },
 
         isTruncated() {
             return this.passTotal > PASS_LIMIT;
         },
 
-        /**
-         * The disposition partition. Every serviced quote is in exactly one
-         * class, so these always sum to `quotes.length`.
-         */
-        partition() {
-            return this.quotes.reduce((counts, quote) => {
-                counts[quote.disposition] = (counts[quote.disposition] ?? 0) + 1;
-
-                return counts;
-            }, {});
-        },
-
-        needsReview() {
-            return this.partition.needsReview ?? 0;
+        autoExecution() {
+            return autoExecutionRate(this.quotes);
         },
 
         /**
-         * Quotes the agent negotiated that the customer then ordered. The one
-         * figure on this page that measures the agent earning money rather
-         * than the agent being busy, so it is stated as a count and a share of
-         * everything serviced.
+         * Movement against the previous equal-length window. Null when there
+         * is nothing to compare against, so a first-week dashboard shows the
+         * rate without inventing a trend for it.
          */
-        orderPlaced() {
-            return this.partition.orderPlaced ?? 0;
-        },
+        autoExecutionDelta() {
+            const previous = autoExecutionRate(foldToQuotes(this.previousPasses));
 
-        orderPlacedShare() {
-            return this.quotes.length > 0 ? (this.orderPlaced / this.quotes.length) * 100 : 0;
-        },
-
-        /** Everything that is not waiting on the merchant, as one share. */
-        needsReviewShare() {
-            return this.quotes.length > 0 ? (this.needsReview / this.quotes.length) * 100 : 0;
-        },
-
-        /**
-         * The classes other than the accented one, for the text breakdown.
-         * `other` only appears when it has a member — it means an outcome this
-         * page does not know, which is worth seeing rather than hiding.
-         */
-        restOfPartition() {
-            return ['answered', 'awaitingBuyer', 'noAction', 'other']
-                .map((key) => ({ key, count: this.partition[key] ?? 0 }))
-                .filter((entry) => entry.key !== 'other' || entry.count > 0);
-        },
-
-        /** Net value of the quotes the agent touched, counted once per quote. */
-        valueHandled() {
-            return this.quotes.reduce((sum, quote) => sum + quote.netBefore, 0);
-        },
-
-        /** The currency is only claimed when the period has exactly one. */
-        valueCurrency() {
-            const seen = new Set(this.passes.map((pass) => pass.currencyIso).filter(Boolean));
-
-            return seen.size === 1 ? [...seen][0] : null;
-        },
-
-        /** Averaged over the passes that granted something, not over all passes. */
-        granted() {
-            return this.averageOver(
-                this.passes.filter((pass) => answeredTheBuyer(pass.outcome)),
-                'discountPercentGranted',
-            );
-        },
-
-        cap() {
-            return this.averageOver(
-                this.passes.filter((pass) => answeredTheBuyer(pass.outcome)),
-                'maxDiscountPercent',
-            );
-        },
-
-        /** How much of the allowed discount was actually spent. */
-        capUsedShare() {
-            if (this.granted === null || !this.cap) {
+            if (previous.rate === null || this.autoExecution.rate === null) {
                 return null;
             }
 
-            return Math.min(100, (this.granted / this.cap) * 100);
+            return this.autoExecution.rate - previous.rate;
+        },
+
+        escalations() {
+            return escalationResolution(this.currentPasses, this.slaHours);
+        },
+
+        /** The accepted quotes, split into the agent's and the untouched baseline. */
+        deals() {
+            return splitDeals(this.quoteRows ?? [], this.orderDates, this.quotesByQuoteId);
+        },
+
+        /** True when the quote read failed or never ran — tiles show unavailable, not zero. */
+        dealsUnavailable() {
+            return this.quoteRows === null;
+        },
+
+        retention() {
+            return priceRetention(this.deals.agent, this.deals.baseline);
+        },
+
+        cycleTime() {
+            return dealCycleTime(this.deals.agent, this.deals.baseline);
         },
 
         filteredQuotes() {
@@ -203,7 +220,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
         dispositionFilterOptions() {
             return [
                 { value: 'all', label: this.$tc('merchant-quote-agent.list.filterAll') },
-                ...['orderPlaced', 'needsReview', 'answered', 'awaitingBuyer', 'noAction'].map((key) => ({
+                ...['orderPlaced', 'needsReview', 'answered', 'awaitingBuyer', 'closedNoDeal', 'noAction'].map((key) => ({
                     value: key,
                     label: this.$tc(`merchant-quote-agent.disposition.${key}`),
                 })),
@@ -231,6 +248,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
         formatDate,
         formatDateShort,
         formatPercent,
+        formatSpan,
         outcomeVariant,
         dispositionVariant,
         answeredTheBuyer,
@@ -255,7 +273,13 @@ Shopware.Component.register('merchant-quote-agent-list', {
             this.isLoading = true;
 
             try {
-                await Promise.all([this.loadPasses(), this.loadIntake()]);
+                // The SLA and the passes are independent; the order dates need
+                // the quote rows first, so those two are sequential.
+                await Promise.all([
+                    this.loadPasses(),
+                    this.loadSla(),
+                    this.loadQuotes().then(() => this.loadOrderDates()),
+                ]);
             } finally {
                 this.isLoading = false;
             }
@@ -263,7 +287,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
         async loadPasses() {
             const criteria = new Criteria(1, PASS_LIMIT);
-            criteria.addFilter(this.rangeFilter);
+            criteria.addFilter(this.trendRangeFilter);
             // Newest first is what foldToQuotes needs to pick each quote's
             // current state.
             criteria.addSorting(Criteria.sort('createdAt', 'DESC'));
@@ -283,57 +307,96 @@ Shopware.Component.register('merchant-quote-agent-list', {
         },
 
         /**
-         * The quote-side figures. Separated because they read another plugin's
-         * entity, which may be absent or unreadable while everything above
-         * still works.
+         * The period's accepted quotes, agent-negotiated or not — the split is
+         * by whether decision rows exist for them, which the page already
+         * knows. Only accepted quotes matter: an unbought discount is not
+         * realized and an unconfirmed deal has no cycle time.
+         *
+         * `requestedAt` and `totalLineItemDiscount` do not exist on
+         * SwagCommercial 7.12. They are READ here and never filtered or sorted
+         * on, so on 7.12 they arrive undefined and measures.ts falls back,
+         * rather than the whole query failing.
          */
-        async loadIntake() {
+        async loadQuotes() {
             try {
                 const quoteRepository = this.repositoryFactory.create('quote');
 
-                const created = new Criteria(1, 1);
-                created.addFilter(this.rangeFilter);
-                created.addAggregation(Criteria.count('created', 'id'));
+                const criteria = new Criteria(1, QUOTE_LIMIT);
+                criteria.addFilter(this.rangeFilter);
+                criteria.addFilter(Criteria.equals('stateMachineState.technicalName', ORDER_PLACED_TERMINAL_STATE));
+                criteria.addSorting(Criteria.sort('createdAt', 'DESC'));
 
-                const expired = new Criteria(1, 1);
-                expired.addFilter(this.rangeFilter);
-                expired.addFilter(Criteria.equals('stateMachineState.technicalName', 'expired'));
-                expired.addAggregation(Criteria.terms('expiredQuotes', 'id'));
+                const result = await quoteRepository.search(criteria, Shopware.Context.api);
 
-                const [createdResult, expiredResult] = await Promise.all([
-                    quoteRepository.search(created, Shopware.Context.api),
-                    quoteRepository.search(expired, Shopware.Context.api),
-                ]);
-
-                const answered = new Set(
-                    this.passes.filter((pass) => answeredTheBuyer(pass.outcome)).map((pass) => pass.quoteId),
-                );
-
-                this.intake = {
-                    created: createdResult.aggregations?.created?.count ?? 0,
-                    expiredUnanswered: (expiredResult.aggregations?.expiredQuotes?.buckets ?? [])
-                        .filter((bucket) => !answered.has(bucket.key)).length,
-                };
+                this.quoteRows = Array.from(result);
             } catch (error) {
                 // Nulled rather than zeroed: a viewer without `quote:read`
-                // should see the figure absent, not see "0 created".
-                this.intake = null;
+                // should see the figures absent, not see a 0% discount and a
+                // zero-day cycle.
+                this.quoteRows = null;
                 // eslint-disable-next-line no-console
                 console.error('merchant-quote-agent: quote figures unavailable', error);
             }
         },
 
-        averageOver(rows, field) {
-            const values = rows
-                .map((row) => row[field])
-                .filter((value) => value !== null && value !== undefined)
-                .map(Number);
+        /**
+         * When each accepted quote's order was placed, which is the confirmed
+         * end of the deal cycle.
+         *
+         * A second read rather than an association: `quote.order` is declared
+         * WITHOUT ApiAware on both 7.12 and 7.13, so the admin API cannot
+         * traverse it. `quote.orderId` is ApiAware, so the ids come from the
+         * quote read and the dates from the core order repository.
+         */
+        async loadOrderDates() {
+            const ids = (this.quoteRows ?? []).map((row) => row.orderId).filter(Boolean);
 
-            if (values.length === 0) {
-                return null;
+            if (ids.length === 0) {
+                this.orderDates = new Map();
+
+                return;
             }
 
-            return values.reduce((sum, value) => sum + value, 0) / values.length;
+            try {
+                const orderRepository = this.repositoryFactory.create('order');
+
+                const criteria = new Criteria(1, ids.length);
+                criteria.setIds(ids);
+
+                const result = await orderRepository.search(criteria, Shopware.Context.api);
+
+                this.orderDates = new Map(
+                    Array.from(result).map((order) => [order.id, order.orderDateTime]),
+                );
+            } catch (error) {
+                // Emptied, not nulled: the quotes were readable, so every
+                // other measure still stands. Deal cycle time alone goes
+                // unavailable, because no deal has a confirmed date.
+                this.orderDates = new Map();
+                // eslint-disable-next-line no-console
+                console.error('merchant-quote-agent: order dates unavailable', error);
+            }
+        },
+
+        /**
+         * The escalation SLA, read straight from system config at global
+         * scope. It benchmarks a figure on this page and steers nothing in the
+         * pipeline, which is why it is not part of QuoteAgentSettings.
+         */
+        async loadSla() {
+            try {
+                const values = await Shopware.Service('systemConfigApiService')
+                    .getValues('MerchantQuoteAgentPlugin.config');
+                const value = values?.['MerchantQuoteAgentPlugin.config.escalationSlaHours'];
+
+                this.slaHours = typeof value === 'number' && value > 0 ? value : null;
+            } catch (error) {
+                // No SLA means the tile reports the measured time with no
+                // verdict, which is the same as a shop that left it blank.
+                this.slaHours = null;
+                // eslint-disable-next-line no-console
+                console.error('merchant-quote-agent: escalation SLA unavailable', error);
+            }
         },
 
         /**
