@@ -127,6 +127,13 @@
                         <span v-if="dealsUnavailable" class="mqa-figure__aside">
                             {{ $tc('merchant-quote-agent.figures.unavailableQuotes') }}
                         </span>
+                        {# Order dates specifically missing, not "no deals": without
+                           `order:read` every confirmedAt comes back empty and the
+                           tile would otherwise read as a quiet zero-comparable
+                           period rather than the permission gap it actually is. #}
+                        <span v-else-if="orderDatesUnavailable" class="mqa-figure__aside">
+                            {{ $tc('merchant-quote-agent.figures.unavailableOrders') }}
+                        </span>
                         <span v-else-if="cycleTime.baselineMs !== null" class="mqa-figure__aside">
                             {{ $t('merchant-quote-agent.figures.cycleBaseline', {
                                 baseline: formatSpan(cycleTime.baselineMs),

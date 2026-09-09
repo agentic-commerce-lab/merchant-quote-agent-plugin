@@ -81,7 +81,7 @@
             "deleteTitle": "Audit-Zeilen löschen?",
             "deleteBody": "Damit werden alle {count} erfassten Durchläufe zu Angebot #{quoteNumber} entfernt. Audit-Zeilen lassen sich nicht wiederherstellen.",
             "deleteConfirm": "Löschen",
-            "truncated": "Es werden die {shown} zuletzt bearbeiteten Angebote von {total} Durchläufen in diesem Zeitraum gezeigt. Verkleinere den Zeitraum, um alle zu sehen."
+            "truncated": "Es werden die {shown} zuletzt bearbeiteten Angebote gezeigt. Für den Trend oben wurden {total} Durchläufe aus diesem und dem vorherigen Zeitraum gelesen — verkleinere den Zeitraum, um alle zu sehen."
         },
         "range": {
             "last7": "Letzte 7 Tage",
@@ -90,6 +90,7 @@
         },
         "figures": {
             "title": "Dieser Zeitraum",
+            "ofCap": "bei einem Limit von {cap}",
             "autoExecution": "Automatisierungsquote",
             "autoExecutionAside": "{escalated} von {total} brauchten einen Menschen",
             "trendUp": "▲ {delta} gegenüber den vorherigen {days} Tagen",

@@ -81,7 +81,7 @@
             "deleteTitle": "Delete audit rows?",
             "deleteBody": "This removes all {count} recorded passes for quote #{quoteNumber}. Audit rows cannot be rebuilt.",
             "deleteConfirm": "Delete",
-            "truncated": "Showing the {shown} most recently serviced quotes of {total} passes in this period. Narrow the period to see all of them."
+            "truncated": "Showing the {shown} most recently serviced quotes. {total} passes were read across this period and the previous one, used for the trend above — narrow the period to see all of them."
         },
         "range": {
             "last7": "Last 7 days",
@@ -90,6 +90,7 @@
         },
         "figures": {
             "title": "This period",
+            "ofCap": "of a {cap} cap",
             "autoExecution": "Auto-execution rate",
             "autoExecutionAside": "{escalated} of {total} needed a human",
             "trendUp": "▲ {delta} vs the previous {days} days",

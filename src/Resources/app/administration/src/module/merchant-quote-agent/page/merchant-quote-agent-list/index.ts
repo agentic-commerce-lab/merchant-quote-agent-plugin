@@ -60,6 +60,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
             passTotal: 0,
             quoteRows: null,
             orderDates: new Map(),
+            orderDatesUnavailable: false,
             slaHours: null,
             isLoading: false,
             rangeDays: 30,
@@ -136,6 +137,15 @@ Shopware.Component.register('merchant-quote-agent-list', {
          * rate without inventing a trend for it.
          */
         autoExecutionDelta() {
+            // A truncated read drops the OLDEST rows first (loadPasses sorts
+            // newest-first), which are the previous window's — so past
+            // PASS_LIMIT the previous window is a partial sample, not a
+            // shorter one. Reporting a trend against it would be a specific,
+            // wrong number rather than an absent one.
+            if (this.isTruncated) {
+                return null;
+            }
+
             const previous = autoExecutionRate(foldToQuotes(this.previousPasses));
 
             if (previous.rate === null || this.autoExecution.rate === null) {
@@ -353,6 +363,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
             if (ids.length === 0) {
                 this.orderDates = new Map();
+                this.orderDatesUnavailable = false;
 
                 return;
             }
@@ -368,11 +379,14 @@ Shopware.Component.register('merchant-quote-agent-list', {
                 this.orderDates = new Map(
                     Array.from(result).map((order) => [order.id, order.orderDateTime]),
                 );
+                this.orderDatesUnavailable = false;
             } catch (error) {
                 // Emptied, not nulled: the quotes were readable, so every
-                // other measure still stands. Deal cycle time alone goes
-                // unavailable, because no deal has a confirmed date.
+                // other measure still stands. `orderDatesUnavailable` is what
+                // the cycle-time tile checks instead, so a `order:read` 403
+                // reads as "can't tell" rather than "genuinely no deals".
                 this.orderDates = new Map();
+                this.orderDatesUnavailable = true;
                 // eslint-disable-next-line no-console
                 console.error('merchant-quote-agent: order dates unavailable', error);
             }
