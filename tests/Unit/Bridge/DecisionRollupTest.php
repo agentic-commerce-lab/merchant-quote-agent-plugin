@@ -91,4 +91,35 @@ final class DecisionRollupTest extends TestCase
         self::assertSame(2.5, $rollup->lastGrantedDiscountPercent);
         self::assertSame(['q1' => 5.0, 'q3' => 2.5], $rollup->grantedByQuote);
     }
+
+    public function testAPendingDecisionWithBothColumnsNullSitsAlongsideRealGrantsWithoutBecomingZero(): void
+    {
+        // The real table is mostly pending rows: escalated, not yet ruled on,
+        // both `authorized` and `discount_percent_granted` NULL. NULL must stay
+        // NULL here -- a pending row folding into 0/0.0 would misreport "we
+        // denied this" or "we granted nothing" for a quote nobody has decided.
+        $rows = [
+            [
+                'quote_id' => 'q1',
+                'authorized' => null,
+                'discount_percent_granted' => null,
+                'created_at' => '2026-08-01 10:00:00.000',
+            ],
+            [
+                'quote_id' => 'q2',
+                'authorized' => 1,
+                'discount_percent_granted' => 0.0,
+                'created_at' => '2026-08-02 10:00:00.000',
+            ],
+        ];
+
+        $rollup = DecisionRollup::of($rows);
+
+        self::assertSame(1, $rollup->offersMade);
+        self::assertSame(['q2'], $rollup->quoteIdsWithOffers);
+        // A granted 0% is real information, not "we don't know" -- it must not
+        // collide with, or be dropped alongside, q1's genuine NULL.
+        self::assertSame(['q2' => 0.0], $rollup->grantedByQuote);
+        self::assertSame(0.0, $rollup->lastGrantedDiscountPercent);
+    }
 }

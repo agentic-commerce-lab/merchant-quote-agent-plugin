@@ -39,7 +39,11 @@ final readonly class DecisionAggregate
             return new DecisionRollup();
         }
 
-        /** @var list<array{quote_id: string, authorized: int|null, discount_percent_granted: float|null, created_at: string}> $rows */
+        // Shopware's connection sets PDO::ATTR_STRINGIFY_FETCHES, so every scalar
+        // column below arrives as a string, never as int/float/null-preserving
+        // native types. Cast here, at the query boundary, so DecisionRollup::of()
+        // stays a pure function over the types its signature actually promises.
+        /** @var list<array{quote_id: string, authorized: string|null, discount_percent_granted: string|null, created_at: string}> $rows */
         $rows = $this->connection->fetchAllAssociative(
             'SELECT LOWER(HEX(`quote_id`)) AS `quote_id`, `authorized`, `discount_percent_granted`, `created_at`'
             . ' FROM `merchant_quote_agent_decision` WHERE `quote_id` IN (:ids)',
@@ -47,6 +51,13 @@ final readonly class DecisionAggregate
             ['ids' => ArrayParameterType::BINARY],
         );
 
-        return DecisionRollup::of($rows);
+        return DecisionRollup::of(array_map(static fn(array $row): array => [
+            'quote_id' => (string) $row['quote_id'],
+            'authorized' => $row['authorized'] === null ? null : (int) $row['authorized'],
+            'discount_percent_granted' => $row['discount_percent_granted'] === null
+                ? null
+                : (float) $row['discount_percent_granted'],
+            'created_at' => (string) $row['created_at'],
+        ], $rows));
     }
 }

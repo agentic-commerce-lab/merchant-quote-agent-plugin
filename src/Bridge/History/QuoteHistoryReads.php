@@ -25,7 +25,7 @@ final readonly class QuoteHistoryReads
     /** How many past quotes the model is shown. Enough to see a pattern, small enough to stay a prompt block. */
     private const LIMIT = 25;
 
-    /** A quote in one of these ended without a deal. Mirrors TerminalOutcomeWriter::TERMINAL_STATES minus `accepted`. */
+    /** A quote in one of these ended without a deal. Mirrors TerminalOutcomeSubscriber::TERMINAL_STATES minus `accepted`. */
     private const LOST_STATES = ['declined', 'expired', 'cancelled', 'withdrawn'];
 
     /** @param EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $quotes */
