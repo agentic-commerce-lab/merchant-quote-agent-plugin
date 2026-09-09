@@ -64,7 +64,7 @@ final readonly class ReplyComposer
 
         $gateway->addComment($after->identity->quoteId, $text);
         $this->recorder->recordReply($text, $hash);
-        $this->send($gateway, $after->identity->quoteId);
+        $this->send($gateway, $after->identity->quoteId, $after->lifecycle->stateTechnicalName);
 
         return $hash;
     }
@@ -106,19 +106,54 @@ final readonly class ReplyComposer
 
     /**
      * Public because the recovery path calls it: see
-     * OfferRound::finishStrandedReply(). Swallowing the illegal transition is
-     * the point — the comment is already with the buyer, so a state we cannot
-     * move is worth a log line and nothing more.
+     * OfferRound::finishStrandedReply(). Picks the transition that reaches
+     * `replied` for the state the quote is ACTUALLY in when the reply lands —
+     * which is not necessarily the state the pass started in, since a
+     * successful claim earlier in the pass (OfferApplier) can move `open` to
+     * `in_review`. `sent` works from `open`/`in_review`; the renegotiation
+     * states have no `sent` at all and need `admin_resend` instead — `reopen`
+     * on released SwagCommercial (≤6.7.12), `change_requested` on trunk.
+     *
+     * An illegal transition here is NOT swallowed as harmless. It used to be,
+     * on the reasoning that "the comment is already with the buyer, so a
+     * state we cannot move is worth a log line and nothing more" — but
+     * reaching `replied` is what makes the offer ACCEPTABLE, and that
+     * reasoning is exactly how live quote #1021 was stranded: 10% granted,
+     * reply sent, state stuck at `reopen`, no accept path, nothing said out
+     * loud. A buyer told they got a discount who then cannot order is worse
+     * than an escalation. So a failed transition now logs at error level and
+     * marks the audit record as an incomplete pass — the buyer-facing
+     * comment still stands either way, but the pass does not get to report
+     * success quietly.
      */
-    public function send(QuoteGatewayInterface $gateway, string $quoteId): void
+    public function send(QuoteGatewayInterface $gateway, string $quoteId, string $state): void
     {
+        $action = self::transitionFor($state);
+
         try {
-            $gateway->transition($quoteId, QuoteTransition::Sent);
+            $gateway->transition($quoteId, $action);
         } catch (IllegalTransitionException $e) {
-            $this->logger->info('The quote could not be moved to replied; the comment stands.', [
+            $this->logger->error('The quote could not be moved to replied; the buyer has a discount they cannot accept.', [
                 'quoteId' => $quoteId,
+                'state' => $state,
+                'action' => $action->value,
                 'exception' => $e,
             ]);
+
+            $this->recorder->recordReplyTransitionFailed(sprintf(
+                'Reply posted but %s from %s did not reach replied.',
+                $action->value,
+                $state,
+            ));
         }
+    }
+
+    /** The renegotiation states share `admin_resend` as their only exit to `replied`; everything else uses `sent`. */
+    private static function transitionFor(string $state): QuoteTransition
+    {
+        return match ($state) {
+            'reopen', 'change_requested' => QuoteTransition::AdminResend,
+            default => QuoteTransition::Sent,
+        };
     }
 }

@@ -142,7 +142,7 @@ final readonly class OfferRound
             'quoteId' => $snapshot->identity->quoteId,
         ]);
 
-        $this->reply->send($gateway, $snapshot->identity->quoteId);
+        $this->reply->send($gateway, $snapshot->identity->quoteId, $snapshot->lifecycle->stateTechnicalName);
     }
 
     /** A quote the agent has answered before carries the servicing fingerprint. */
