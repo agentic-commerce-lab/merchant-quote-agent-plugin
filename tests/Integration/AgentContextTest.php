@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\AgentContext;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
@@ -18,7 +19,7 @@ use Symfony\Component\EventDispatcher\EventDispatcherInterface;
  * The suspected risk — that QuoteCommenter's `$context->scope(Context::CRUD_API_SCOPE, ...)`
  * strips a state added outside any scope — does NOT happen; STATE survives it.
  *
- * The real risk is elsewhere: an agent comment write fires TWO
+ * The real risk is elsewhere: on trunk, an agent comment write fires TWO
  * `quote_comment.written` events, not one. SwagCommercial's
  * QuoteHistoryWriter::trackComment() mirrors every Live-version comment into
  * the quote's snapshot version via createSnapshotQuoteComments(), which
@@ -29,11 +30,29 @@ use Symfony\Component\EventDispatcher\EventDispatcherInterface;
  * therefore also filters by version — Defaults::LIVE_VERSION only — rather
  * than relying on the stamp alone; this test pins the fact that decision
  * depends on.
+ *
+ * QuoteHistoryWriter is trunk-only, so a released SwagCommercial (≤6.7.12)
+ * fires only the one Live-version event — there is no snapshot lane to mirror
+ * into. The event count is asserted PER PROFILE, via `CommercialCapabilities`,
+ * rather than skipped on legacy: the trigger's version filter still matters on
+ * trunk, and skipping there would stop proving it. `CommercialCapabilities`
+ * has no flag dedicated to "has QuoteHistoryWriter", but `CapabilityProbeTest`
+ * pins that every shop's four flags move together as one of exactly two known
+ * profiles (`::modern()` or `::legacy()`), so comparing against `::modern()`
+ * is a correct, if indirect, way to tell them apart here.
  */
 final class AgentContextTest extends IntegrationTestCase
 {
     public function testAnAgentCommentWriteStampsTheLiveEventOnlyAndMirrorsUnstampedToSnapshot(): void
     {
+        $capabilities = static::getContainer()->get(CommercialCapabilities::class);
+        self::assertInstanceOf(CommercialCapabilities::class, $capabilities);
+        // `==`, not `===`: CommercialCapabilities::modern() builds a fresh instance
+        // every call, so a reference comparison would never match — see
+        // CapabilityProbeTest, which needs assertContainsEquals() for the same reason.
+        /** @mago-expect lint:identity-comparison */
+        $hasSnapshotMirror = $capabilities == CommercialCapabilities::modern();
+
         $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
         $dispatcher = static::getContainer()->get('event_dispatcher');
         self::assertInstanceOf(EventDispatcherInterface::class, $dispatcher);
@@ -56,12 +75,16 @@ final class AgentContextTest extends IntegrationTestCase
         }
 
         self::assertCount(
-            2,
+            $hasSnapshotMirror ? 2 : 1,
             $observed,
-            'Expected exactly two quote_comment.written events for one addComment() call: the '
-            . 'Live-version insert and QuoteHistoryWriter\'s snapshot mirror. A different count means '
-            . 'this pinned mirroring behaviour has changed and the trigger\'s version filter needs '
-            . 're-checking.',
+            $hasSnapshotMirror
+                ? 'Expected exactly two quote_comment.written events for one addComment() call: the '
+                . 'Live-version insert and QuoteHistoryWriter\'s snapshot mirror. A different count means '
+                . 'this pinned mirroring behaviour has changed and the trigger\'s version filter needs '
+                . 're-checking.'
+                : 'Expected exactly one quote_comment.written event: this shop has no '
+                . 'QuoteHistoryWriter snapshot mirror (CommercialCapabilities do not match ::modern()), so '
+                . 'only the Live-version insert should fire.',
         );
 
         $live = array_values(array_filter(
@@ -79,6 +102,17 @@ final class AgentContextTest extends IntegrationTestCase
             'The Live-version event lost AgentContext::STATE. The trigger\'s own-write suppression '
             . 'depends on this.',
         );
+
+        if (!$hasSnapshotMirror) {
+            self::assertCount(
+                0,
+                $snapshot,
+                'A snapshot-version quote_comment.written event was observed on a shop with no '
+                . 'QuoteHistoryWriter snapshot mirror (CommercialCapabilities do not match ::modern()).',
+            );
+
+            return;
+        }
 
         self::assertCount(1, $snapshot, 'No snapshot-version quote_comment.written event observed.');
         self::assertFalse(

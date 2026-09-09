@@ -60,6 +60,7 @@ throughout and every one of its fifteen consuming files handles null, with
 | 8 | `quote_line_item.deletedAt` named in a DAL criteria filter | absent | `SwagCommercialBuyerQuoteGateway:357` throws `UnmappedFieldException` |
 | 9 | `stateMachineState` association on the load route | not added | `CommercialQuoteSnapshotMapper:40` publishes `state: null` |
 | 10 | `quote_line_item.requestedPrice`, written by the ask mirror | absent | `QuoteLineItemWriter:138` write rejected |
+| 11 | `config.xml`'s `<card><subtitle>` element | not in the schema | plugin fails to install: `[ERROR 1871] Element 'subtitle': This element is not expected.` |
 
 Verified present on both: `quote.discount`, the `quote.state` machine,
 `QuoteManipulation::addProduct`/`addCustomLineItem`,
@@ -152,6 +153,23 @@ this plugin touches is a fresh place parallel work can reintroduce a hard
 dependency on it, invisibly, through a clean merge — the gate has to be applied
 to new work as it lands, not just to the code that existed when the gate was
 built.
+
+Breakage 11 is the most severe entry in this table, even though it touches
+none of the quote domain: every other row degrades a feature at runtime on a
+shop that is already installed and running, while this one blocks
+installation outright, on any 6.7.12 shop, before a merchant ever gets to see
+the plugin work at all. It also shares breakage 10's origin rather than 1–9's:
+it arrived by **merging `main`**, not from reading the trunk diff or running
+the suite. `main`'s `8261271` ("refactor(config): restructure the admin…")
+added a `<subtitle>` to the "A2CN identity" card in `config.xml` against a
+`shopware/core` newer than this branch's floor; `subtitle` was only added to
+`config.xsd` after 6.7.12, so the merge produced a `config.xml` this branch
+could not actually install on the shop range it exists to support. Unlike
+breakage 10, this one is not fixed case-by-case: the schema itself is now
+covered by a unit test that validates `config.xml` against a vendored copy of
+6.7.12.1's `config.xsd` (`tests/Unit/Config/ConfigXmlSchemaTest.php`), so the
+next element a parallel merge adds ahead of the floor fails a fast unit test
+instead of surfacing as an installation failure on a merchant's shop.
 
 ## Goals
 
@@ -308,6 +326,33 @@ reasoning is worth recording because the first draft of this spec changed both:
 three read mappers and the buyer gateway. That is still enough to justify naming
 the fact once rather than scattering `has()` checks, but it is a smaller claim
 than the first draft made.
+
+### Discovery honesty is a second edge
+
+Not found by reading the spec — found by an agent hitting the dead end in
+practice, then tracing the resulting "authorization link expired" consent-page
+error back to its real cause in the shop log, an hour later.
+
+`QuoteCapabilityProfileContributor` re-adds `com.shopware.quote` to the
+published UCP profile unconditionally (see its class docblock above for why it
+has to re-add anything at all). But a buyer agent cannot use that capability
+without an identity-linking access token, and Agentic Commerce's
+`identity_linking` capability is off by default and configured per sales
+channel. Advertising the quote capability on a shop that has not turned
+identity linking on is the same honesty failure as the OpenAPI document and
+extract prompt question above, just reaching a different surface: discovery is
+the only signal a buyer agent gets, and a capability it cannot obtain a token
+for is a dead end it cannot diagnose from the outside.
+
+The fix mirrors `RuntimeConfiguration::isCapabilityEnabled()`'s own semantics
+in `ProfileBuildInput::$enabledCapabilities`: an empty list means the shop
+never restricted capabilities at all, not that none are enabled, so it must
+still advertise the quote capability. Only a non-empty list that omits
+`dev.ucp.common.identity_linking` suppresses the descriptor. Getting that
+inverted would silently kill the feature on every shop that has never touched
+capability restriction, which is the common case — a worse regression than
+the bug being fixed. This is buyer-discovery-only: the merchant-side servicing
+loop never needs a buyer token and is unaffected.
 
 ## Testing
 

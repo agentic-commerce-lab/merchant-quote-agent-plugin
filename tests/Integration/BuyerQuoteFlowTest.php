@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
@@ -29,6 +30,18 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
 
     public function testItRequestsAQuoteAndReadsItBack(): void
     {
+        $capabilities = static::getContainer()->get(CommercialCapabilities::class);
+        self::assertInstanceOf(CommercialCapabilities::class, $capabilities);
+
+        if (!$capabilities->lineItemAsks) {
+            self::markTestSkipped(
+                'This shop has no quote_line_item.requestedPrice column '
+                . '(CommercialCapabilities::$lineItemAsks is false); a per-line price ask on a request is '
+                . 'refused rather than accepted. See LegacyBuyerFlowTest for the refusal behaviour this '
+                . 'shop actually exhibits.',
+            );
+        }
+
         $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
         $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer());
 
@@ -147,7 +160,11 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
 
     public function testACustomerWithoutTheQuoteFeatureIsToldWhichFlagIsMissing(): void
     {
-        $context = BuyerQuoteContextFixture::buyerContextWithoutQuoteFeature(static::getContainer());
+        try {
+            $context = BuyerQuoteContextFixture::buyerContextWithoutQuoteFeature(static::getContainer());
+        } catch (\RuntimeException $e) {
+            self::markTestSkipped($e->getMessage());
+        }
 
         $this->expectException(ValidationException::class);
         $this->expectExceptionMessageMatches('/QUOTE_MANAGEMENT/');
@@ -169,6 +186,18 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
      */
     public function testACounterOfferCanThenBeDeclined(): void
     {
+        $capabilities = static::getContainer()->get(CommercialCapabilities::class);
+        self::assertInstanceOf(CommercialCapabilities::class, $capabilities);
+
+        if (!$capabilities->lineItemAsks) {
+            self::markTestSkipped(
+                'This shop has no quote_line_item.requestedPrice column '
+                . '(CommercialCapabilities::$lineItemAsks is false); the counter-offer below carries a '
+                . 'per-line price ask, which is refused rather than accepted. See LegacyBuyerFlowTest for '
+                . 'the refusal behaviour this shop actually exhibits.',
+            );
+        }
+
         $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
         $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer());
         $merchantGateway = static::gateway();

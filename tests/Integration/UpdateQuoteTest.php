@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 use MerchantQuoteAgentPlugin\Bridge\Data\Discount;
 use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
+use Shopware\Core\Checkout\Cart\Price\Struct\CartPrice;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -78,11 +79,31 @@ final class UpdateQuoteTest extends IntegrationTestCase
      * gross total, so strictly less than it comes off the net total. If anyone
      * later "fixes" this by scaling the value on our side, the first assertion
      * breaks by the VAT rate.
+     *
+     * Requires a GROSS quote: `QuoteFixture::anyQuoteId()` picks whichever
+     * editable quote sorts first, with no control over tax mode, and this
+     * shop's quotes are not all gross. Skipped rather than weakened when the
+     * picked quote is net — `LegacyGrossQuoteTest` proves the same
+     * gross-consumption behaviour on a quote it creates specifically to be
+     * gross.
      */
     public function testAnAbsoluteDiscountIsConsumedAsGrossNotNet(): void
     {
         $gateway = static::gateway();
-        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
+        $context = Context::createDefaultContext();
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), $context);
+
+        $taxStatus = $this->quoteTaxStatus($quoteId, $context);
+
+        if ($taxStatus !== CartPrice::TAX_STATE_GROSS) {
+            self::markTestSkipped(sprintf(
+                'The fixture quote\'s taxStatus is "%s", not "gross" — this assertion only holds in gross '
+                . 'mode. See LegacyGrossQuoteTest, which proves the same gross-consumption behaviour on a '
+                . 'quote it creates specifically to be gross.',
+                $taxStatus ?? 'null',
+            ));
+        }
+
         $subtotalNet = $this->quoteFloat($quoteId, 'subtotalNet');
         // Derived from the quote rather than hardcoded at 1.19, and invariant
         // under whatever discount the fixture already carried, since a
@@ -181,5 +202,21 @@ final class UpdateQuoteTest extends IntegrationTestCase
         self::assertNotNull($quote, 'The quote under test disappeared.');
 
         return (float) $quote->get($field);
+    }
+
+    /** Raw `taxStatus` off the quote entity itself — the read model does not carry it. */
+    private function quoteTaxStatus(string $quoteId, Context $context): ?string
+    {
+        /** @var EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $repository */
+        $repository = static::getContainer()->get('quote.repository');
+        $quote = $repository
+            ->search(new Criteria([$quoteId]), $context)
+            ->getEntities()
+            ->first();
+        self::assertNotNull($quote, 'The quote under test disappeared.');
+
+        $taxStatus = $quote->get('taxStatus');
+
+        return \is_string($taxStatus) ? $taxStatus : null;
     }
 }

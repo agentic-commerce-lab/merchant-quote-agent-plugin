@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use Shopware\Core\Checkout\Cart\Price\Struct\CalculatedPrice;
+use Shopware\Core\Checkout\Cart\Price\Struct\CartPrice;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -73,12 +74,37 @@ final class UpdateLineItemsTest extends IntegrationTestCase
      * to be the written net grossed up by the line's own tax rate. If the
      * writer ever went back to storing gross, the stored value would equal the
      * written number instead, and this fails by the VAT rate.
+     *
+     * Requires a GROSS quote: `QuoteFixture::anyQuoteId()` picks whichever
+     * editable quote sorts first, with no control over tax mode, and this
+     * shop's quotes are not all gross. Skipped rather than weakened when the
+     * picked quote is net — `LegacyGrossQuoteTest` proves the same gross-up on
+     * a quote it creates specifically to be gross.
      */
     public function testARepricedLineIsStoredGrossedUp(): void
     {
         $context = Context::createDefaultContext();
         $gateway = static::gateway();
         $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), $context);
+
+        /** @var EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $quoteRepository */
+        $quoteRepository = static::getContainer()->get('quote.repository');
+        $quote = $quoteRepository
+            ->search(new Criteria([$quoteId]), $context)
+            ->getEntities()
+            ->first();
+        self::assertNotNull($quote, 'The quote under test disappeared.');
+
+        $taxStatus = $quote->get('taxStatus');
+
+        if ($taxStatus !== CartPrice::TAX_STATE_GROSS) {
+            self::markTestSkipped(sprintf(
+                'The fixture quote\'s taxStatus is "%s", not "gross" — this assertion only holds in gross '
+                . 'mode. See LegacyGrossQuoteTest, which proves the same gross-up on a quote it creates '
+                . 'specifically to be gross.',
+                $taxStatus,
+            ));
+        }
 
         $line = $this->firstProductLine($gateway->fetchSnapshot($quoteId)->content->lines);
         $rules = $this->storedPrice($line->identity->lineItemId, $context)->getTaxRules();
