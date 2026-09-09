@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
@@ -23,9 +24,11 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use PHPUnit\Framework\TestCase;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\Test\TestCaseBase\DatabaseTransactionBehaviour;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelTestBehaviour;
 use Shopware\Core\System\StateMachine\StateMachineRegistry;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
  * Base for every bridge integration test. Each test runs in a transaction that
@@ -58,6 +61,30 @@ abstract class IntegrationTestCase extends TestCase
         self::assertIsObject($service, sprintf('Service "%s" resolved to a non-object.', $id));
 
         return $service;
+    }
+
+    /**
+     * A repository by its string service id, typed for callers that build a
+     * collaborator graph by hand (e.g. history reads, whose EntityRepository
+     * generic parameter forbids autowiring — see QuoteHistoryReads).
+     *
+     * @return EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection>
+     */
+    protected static function repository(ContainerInterface $container, string $id): EntityRepository
+    {
+        $repository = $container->get($id);
+        self::assertInstanceOf(EntityRepository::class, $repository, sprintf('Service "%s" is not a repository.', $id));
+
+        return $repository;
+    }
+
+    /** The shop's own DBAL connection, for reads a plain repository search cannot express. */
+    protected static function connection(ContainerInterface $container): Connection
+    {
+        $connection = $container->get(Connection::class);
+        self::assertInstanceOf(Connection::class, $connection);
+
+        return $connection;
     }
 
     /**

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
@@ -25,6 +26,10 @@ use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteAccess;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteLinePricing;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteSnapshotMapper;
 use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;
+use MerchantQuoteAgentPlugin\Bridge\History\CustomerHistoryFactory;
+use MerchantQuoteAgentPlugin\Bridge\History\DecisionAggregate;
+use MerchantQuoteAgentPlugin\Bridge\History\OrderHistoryReads;
+use MerchantQuoteAgentPlugin\Bridge\History\QuoteHistoryReads;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -426,6 +431,29 @@ return static function (ContainerConfigurator $configurator): void {
     ]);
     $services->set(QuoteWriter::class)->args([service('quote.repository')]);
     $services->set(QuoteStateTransitioner::class);
+
+    // Company history (#100). Registered here, inside the isAvailableByClass()
+    // guard, because `quote.repository` is SwagCommercial's — and the whole
+    // negotiation stack below is guarded the same way, so OfferProposer can
+    // take the factory as a plain non-nullable dependency.
+    //
+    // `order.repository` and `order_line_item.repository` are core, but they
+    // belong to the same collaborator and splitting the block would only
+    // separate three lines that change together.
+    $services->set(DecisionAggregate::class)->args([service(Connection::class)]);
+    $services->set(QuoteHistoryReads::class)->args([
+        service('quote.repository'),
+        service(DecisionAggregate::class),
+    ]);
+    $services->set(OrderHistoryReads::class)->args([
+        service('order.repository'),
+        service('order_line_item.repository'),
+    ]);
+    $services->set(CustomerHistoryFactory::class)->args([
+        service(QuoteHistoryReads::class),
+        service(OrderHistoryReads::class),
+        service(QuoteVersionResolver::class),
+    ]);
 
     // The four commercial services, referenced by the string ids on
     // CommercialAvailability because their classes are not ours to name with
