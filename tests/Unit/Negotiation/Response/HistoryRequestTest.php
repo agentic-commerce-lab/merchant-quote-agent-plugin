@@ -68,6 +68,23 @@ final class HistoryRequestTest extends TestCase
         self::assertStringContainsString('product_purchases', $schema);
     }
 
+    /**
+     * `historyRequest.kind` is required (it has a default instance, not a
+     * nullable field, so the parent schema marks it required) and its `enum`
+     * is otherwise an absolute whitelist of the three kinds. Without `null`
+     * in that list, a provider enforcing the schema strictly cannot accept
+     * "I don't want history" at all -- every negotiate response would be
+     * forced to request history, exhausting the round budget and escalating
+     * every quote.
+     */
+    public function testTheKindEnumAdmitsNullSoDecliningHistoryIsLegal(): void
+    {
+        $schema = (new ResponseFormatFactory())->create(NegotiateResponse::class)['json_schema']['schema'];
+        $kind = $schema['properties']['historyRequest']['properties']['kind'];
+
+        self::assertContains(null, $kind['enum'] ?? [], 'the model must be able to legally decline history.');
+    }
+
     private static function read(string $json): NegotiateResponse
     {
         return ScriptedClient::returning([$json])->object(

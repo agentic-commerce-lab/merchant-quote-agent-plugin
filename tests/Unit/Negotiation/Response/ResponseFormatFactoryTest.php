@@ -79,6 +79,24 @@ final class ResponseFormatFactoryTest extends TestCase
     }
 
     /**
+     * The general rule, pinned on a property that already existed before
+     * `historyRequest`: `enum` is an absolute whitelist regardless of `type`,
+     * so a nullable backed enum whose `enum` list omits `null` cannot legally
+     * be unset under a provider that enforces the schema strictly. Symfony AI
+     * derives the nullable `type` but never adds `null` to the `enum` beside
+     * it — `PaymentAsk::$requestedTerm` was silently suffering exactly this
+     * before this rewrite existed.
+     */
+    public function testANullableBackedEnumAdmitsNullInTheEnumList(): void
+    {
+        $schema = (new ResponseFormatFactory())->create(CommentInterpretation::class)['json_schema']['schema'];
+        $requestedTerm = $schema['properties']['negotiation']['properties']['payment']['properties']['requestedTerm'];
+
+        self::assertContains(null, $requestedTerm['enum'] ?? [], 'a nullable enum must legally admit null.');
+        self::assertContains('prepaid', $requestedTerm['enum'] ?? [], 'the real values must still be there.');
+    }
+
+    /**
      * @param array<array-key, mixed> $node
      *
      * @return list<string>
