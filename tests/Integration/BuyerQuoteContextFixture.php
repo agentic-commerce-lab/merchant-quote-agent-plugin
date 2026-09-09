@@ -31,6 +31,16 @@ final class BuyerQuoteContextFixture
         return self::contextFor($container, BuyerQuoteFixture::anyCustomerWithoutQuoteFeature($container));
     }
 
+    /**
+     * Same as {@see buyerContext()} but for a specific customer id, for tests
+     * that need a particular customer's tax mode or customer group rather
+     * than whichever quote-capable customer the shop happens to have first.
+     */
+    public static function contextForCustomer(ContainerInterface $container, string $customerId): SalesChannelContext
+    {
+        return self::contextFor($container, $customerId);
+    }
+
     private static function contextFor(ContainerInterface $container, string $customerId): SalesChannelContext
     {
         $resolver = $container->get(SalesChannelContextResolver::class);
