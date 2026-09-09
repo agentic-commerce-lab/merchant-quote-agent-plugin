@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Bridge\History;
 
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
+use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
 use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryInterface;
 use MerchantQuoteAgentPlugin\Negotiation\NoCustomerHistory;
 
@@ -17,7 +18,7 @@ use MerchantQuoteAgentPlugin\Negotiation\NoCustomerHistory;
  * of a model response, and CustomerHistoryInterface has no method that takes a
  * customer at all.
  */
-final readonly class CustomerHistoryFactory
+final readonly class CustomerHistoryFactory implements CustomerHistoryFactoryInterface
 {
     public function __construct(
         private QuoteHistoryReads $quotes,
@@ -26,6 +27,7 @@ final readonly class CustomerHistoryFactory
     ) {}
 
     /** @param string $customerId the quote's own customer; '' when the row is broken */
+    #[\Override]
     public function for(string $customerId): CustomerHistoryInterface
     {
         $scope = new CustomerScope($customerId, $this->versions);

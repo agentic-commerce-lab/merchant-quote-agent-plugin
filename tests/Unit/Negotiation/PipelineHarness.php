@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
+use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
@@ -90,8 +91,11 @@ final class PipelineHarness
     }
 
     /** @param list<string> $replies in call order: extract, negotiate, reply */
-    public static function with(array $replies, float $reReadTotalNet = 950.0): self
-    {
+    public static function with(
+        array $replies,
+        float $reReadTotalNet = 950.0,
+        ?CustomerHistoryFactoryInterface $historyFactory = null,
+    ): self {
         $writer = new FakeDecisionWriter();
         $recorder = new DecisionRecorder($writer);
         [$client, $spy] = ScriptedClient::spy($replies, $recorder);
@@ -109,7 +113,13 @@ final class PipelineHarness
         ]);
 
         $round = new OfferRound(
-            new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder),
+            new OfferProposer(
+                $client,
+                $prompts,
+                new OfferAuthorizer(),
+                $recorder,
+                $historyFactory ?? new FakeCustomerHistoryFactory(),
+            ),
             new OfferApplier(new OfferVerifier(), $logger, $recorder),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             $escalator,

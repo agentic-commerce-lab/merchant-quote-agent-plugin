@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationContext;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
@@ -28,6 +29,7 @@ final class OfferProposerTest extends TestCase
             self::prompts(),
             new OfferAuthorizer(),
             new DecisionRecorder(new FakeDecisionWriter()),
+            new FakeCustomerHistoryFactory(),
         );
     }
 
@@ -54,7 +56,7 @@ final class OfferProposerTest extends TestCase
                 NegotiationFixture::settings(),
                 SnapshotAdapter::toPolicy($snapshot),
                 self::grantDecision(),
-                SnapshotAdapter::conversation($snapshot),
+                new NegotiationContext($snapshot->identity->customerId, SnapshotAdapter::conversation($snapshot)),
             );
 
         self::assertNotNull($answer->offer);
@@ -80,7 +82,7 @@ final class OfferProposerTest extends TestCase
                 NegotiationFixture::settings(),
                 SnapshotAdapter::toPolicy($snapshot),
                 self::grantDecision(),
-                SnapshotAdapter::conversation($snapshot),
+                new NegotiationContext($snapshot->identity->customerId, SnapshotAdapter::conversation($snapshot)),
             );
 
         self::assertNotNull($answer->offer);
@@ -113,7 +115,7 @@ final class OfferProposerTest extends TestCase
                 NegotiationFixture::settings(),
                 SnapshotAdapter::toPolicy($snapshot),
                 self::grantDecision(),
-                SnapshotAdapter::conversation($snapshot),
+                new NegotiationContext($snapshot->identity->customerId, SnapshotAdapter::conversation($snapshot)),
             );
 
         self::assertNotNull($answer->offer);
@@ -135,7 +137,7 @@ final class OfferProposerTest extends TestCase
                 NegotiationFixture::settings(strategy: 'concede in 1% steps'),
                 SnapshotAdapter::toPolicy($snapshot),
                 self::grantDecision(),
-                SnapshotAdapter::conversation($snapshot),
+                new NegotiationContext($snapshot->identity->customerId, SnapshotAdapter::conversation($snapshot)),
             );
 
         self::assertStringContainsString('concede in 1% steps', $spy->systemPrompts[0]);
@@ -154,7 +156,7 @@ final class OfferProposerTest extends TestCase
                 NegotiationFixture::settings(),
                 SnapshotAdapter::toPolicy($snapshot),
                 self::grantDecision(),
-                SnapshotAdapter::conversation($snapshot),
+                new NegotiationContext($snapshot->identity->customerId, SnapshotAdapter::conversation($snapshot)),
             );
 
         self::assertNull($answer->offer);
@@ -173,7 +175,7 @@ final class OfferProposerTest extends TestCase
                 NegotiationFixture::settings(),
                 SnapshotAdapter::toPolicy($snapshot),
                 self::grantDecision(),
-                SnapshotAdapter::conversation($snapshot),
+                new NegotiationContext($snapshot->identity->customerId, SnapshotAdapter::conversation($snapshot)),
             );
 
         self::assertNull($answer->offer);

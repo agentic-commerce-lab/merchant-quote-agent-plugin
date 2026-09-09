@@ -69,6 +69,7 @@ use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestContro
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
+use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
 use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
@@ -454,6 +455,7 @@ return static function (ContainerConfigurator $configurator): void {
         service(OrderHistoryReads::class),
         service(QuoteVersionResolver::class),
     ]);
+    $services->alias(CustomerHistoryFactoryInterface::class, CustomerHistoryFactory::class);
 
     // The four commercial services, referenced by the string ids on
     // CommercialAvailability because their classes are not ours to name with

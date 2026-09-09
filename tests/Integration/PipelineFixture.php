@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
+use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
@@ -97,8 +98,11 @@ trait PipelineFixture
         $recorder = static::getContainer()->get(DecisionRecorder::class);
         self::assertInstanceOf(DecisionRecorder::class, $recorder);
 
+        $historyFactory = static::getContainer()->get(CustomerHistoryFactoryInterface::class);
+        self::assertInstanceOf(CustomerHistoryFactoryInterface::class, $historyFactory);
+
         $round = new OfferRound(
-            new OfferProposer($client, $prompts, $authorizer, $recorder),
+            new OfferProposer($client, $prompts, $authorizer, $recorder, $historyFactory),
             new OfferApplier($verifier, $logger, $recorder),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             $escalator,
