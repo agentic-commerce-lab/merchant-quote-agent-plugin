@@ -3,21 +3,17 @@
  * quote list, the raw passes, and the quote/order rows.
  *
  * Separate from decision.ts, which is already at the house file-length target:
- * this module imports the vocabulary from there and nothing flows back, so the
- * two stay one-directional.
+ * folding these in would push it well past 600 lines. This module reads the
+ * fields decision.ts's foldToQuotes() already computed (`.escalated`,
+ * `.netBefore`, `.latestAnswered`, `.disposition`) rather than importing any
+ * of its functions, so nothing here depends on decision.ts and nothing flows
+ * back either way.
  *
  * Every measure returns `null` rather than `0` when it has nothing to measure.
  * That distinction is the whole point on this page: a merchant without
  * `quote:read` must see a figure absent, not a confident zero, and so must a
  * period with no deals in it.
  */
-
-// Extension kept explicit (unlike the page-level imports of this module,
-// which are extensionless and let webpack resolve them) because this file is
-// also loaded directly by Node for measures.check.mjs, and Node's ESM loader
-// — unlike webpack — requires a specifier extension to resolve a relative
-// import. decision.check.mjs already established this convention.
-import { answeredTheBuyer } from './decision.ts';
 
 interface Deal {
     quoteId: string;
