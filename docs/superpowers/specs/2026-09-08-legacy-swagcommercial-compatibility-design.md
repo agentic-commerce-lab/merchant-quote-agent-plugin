@@ -61,6 +61,7 @@ throughout and every one of its fifteen consuming files handles null, with
 | 9 | `stateMachineState` association on the load route | not added | `CommercialQuoteSnapshotMapper:40` publishes `state: null` |
 | 10 | `quote_line_item.requestedPrice`, written by the ask mirror | absent | `QuoteLineItemWriter:138` write rejected |
 | 11 | `config.xml`'s `<card><subtitle>` element | not in the schema | plugin fails to install: `[ERROR 1871] Element 'subtitle': This element is not expected.` |
+| 12 | `reopen`'s only exit is `admin_resend`, not `sent` | state machine shape | `OfferApplier`'s claim and `ReplyComposer`'s send both fail silently; quote never reaches `replied` |
 
 Verified present on both: `quote.discount`, the `quote.state` machine,
 `QuoteManipulation::addProduct`/`addCustomLineItem`,
@@ -170,6 +171,36 @@ covered by a unit test that validates `config.xml` against a vendored copy of
 6.7.12.1's `config.xsd` (`tests/Unit/Config/ConfigXmlSchemaTest.php`), so the
 next element a parallel merge adds ahead of the floor fails a fast unit test
 instead of surfacing as an installation failure on a merchant's shop.
+
+Breakage 12 is the most commercially damaging entry in this table, even though
+every other row either blocks a feature or fatals loudly and this one does
+neither: the negotiation *succeeds*. `OfferApplier::claim()` drives `process`
+to move the quote into review, and `ReplyComposer::send()` drives `sent` once
+the reply is posted, both wrapping `IllegalTransitionException` and treating it
+as harmless — `claim()` as "already claimed, continue with the offer", `send()`
+as "the comment is already with the buyer, so a state we cannot move is worth a
+log line and nothing more." On trunk that reasoning holds: `change_requested`
+has a `process` edge, so the claim succeeds and `sent` works from the
+resulting `in_review`. On released SwagCommercial (≤6.7.12), `reopen`'s only
+exit is `admin_resend` — `process` is illegal from there, so the claim fails
+silently, and `sent` is then illegal too, so the reply transition fails
+silently as well. Two independently reasonable exception swallows compounded
+into one unreasonable outcome: the agent grants a discount, writes a comment
+telling the buyer exactly what they got, and the quote is left in `reopen`
+with no accept path behind that comment. This was not caught by any test —
+every unit test built the quote in `in_review` and every integration test ran
+against a schema where the claim succeeds — it was found by a merchant
+looking at a real quote, `01a085ee828b708a8e4e506e8051e1c8` (#1021): 10%
+granted, reply sent, state stuck at `reopen`. Fixed by giving
+`QuoteTransition` an `AdminResend` case (the name is shared by both machines,
+`reopen` on ≤6.7.12 and `change_requested` on trunk) and having
+`ReplyComposer::send()` choose the transition for the state the quote is
+ACTUALLY in when the reply lands — not necessarily the state the pass started
+in, since a successful claim can move `open` to `in_review` first. Just as
+important as the added transition: a failure to reach `replied` no longer logs
+at `info` and returns quietly. It logs at `error`, and the audit record itself
+is marked so the pass cannot report success while the buyer holds an offer
+they cannot accept.
 
 ## Goals
 

@@ -29,6 +29,15 @@ use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
  * One method per collaborator, each taking the value object that collaborator
  * already produces. A setter per field would trip `too-many-methods`, and this
  * is the better API regardless.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10) and each record* method
+ * contributes exactly one branch: the `$this->draft === null` guard that lets
+ * every stage call every method regardless of whether a pass is under way.
+ * recordReplyTransitionFailed() is the one that tips this over — it exists
+ * because ReplyComposer::send() failing to reach `replied` must show up in
+ * the audit record, not just the log, and splitting it into its own class
+ * for one more guard clause would be the worse trade.
  */
 final class DecisionRecorder
 {
@@ -125,6 +134,23 @@ final class DecisionRecorder
 
         $this->draft->replyToBuyer = $comment;
         $this->draft->replyPromptHash = $promptHash;
+    }
+
+    /**
+     * The pass authorized and verified an offer, told the buyer, and STILL
+     * did not finish: `replied` is what makes that offer acceptable, and this
+     * is the one signal that it was not reached. Appended to `violations`
+     * rather than given its own column — the field #21 already reads to
+     * explain a pass that needs a human's attention, and this is exactly
+     * that, even though nothing here was rejected by policy.
+     */
+    public function recordReplyTransitionFailed(string $detail): void
+    {
+        if ($this->draft === null) {
+            return;
+        }
+
+        $this->draft->violations = [...($this->draft->violations ?? []), $detail];
     }
 
     public function recordModelCall(

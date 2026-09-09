@@ -25,10 +25,10 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  * like any other transition.
  *
  * NO AgentContext::STATE guard, unlike QuoteServicingTrigger. The agent
- * currently drives only two transitions — `process` in OfferApplier and
- * `sent` in ReplyComposer — and neither is terminal, so this subscriber
- * cannot hear its own writes today. A guard that can never fire would be
- * worse than this comment.
+ * currently drives only three transitions — `process` in OfferApplier and
+ * `sent`/`admin_resend` in ReplyComposer — and none of them is terminal, so
+ * this subscriber cannot hear its own writes today. A guard that can never
+ * fire would be worse than this comment.
  *
  * That "currently" is load-bearing: QuoteTransition also defines `Decline`
  * and `RequestChange`, with no production caller yet. `Decline` targets
