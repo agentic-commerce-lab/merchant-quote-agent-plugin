@@ -68,11 +68,10 @@
 
     <card>
         <title>A2CN identity</title>
-        <subtitle>Advanced. Only read when this shop publishes a signed A2CN seller mandate; leave it alone otherwise.</subtitle>
         <input-field type="text">
             <name>a2cnOrganizationName</name>
             <label>Organization name published in the A2CN seller mandate</label>
-            <helpText>Leave empty to publish the sales channel name.</helpText>
+            <helpText>Leave empty to publish the sales channel name. Advanced: only read when this shop publishes a signed A2CN seller mandate, so leave it alone otherwise.</helpText>
         </input-field>
     </card>
 

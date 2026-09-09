@@ -32,6 +32,8 @@
         "captainhook/captainhook": "^5.25",
         "captainhook/hook-installer": "^1.0",
         "carthage-software/mago": "^1.30",
+        "ext-dom": "*",
+        "ext-libxml": "*",
         "ext-pdo": "*",
         "phauthentic/cognitive-code-analysis": "^1.11",
         "phpunit/phpunit": "^11.5",
