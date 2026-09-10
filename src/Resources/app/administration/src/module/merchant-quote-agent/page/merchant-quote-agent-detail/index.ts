@@ -256,7 +256,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 // band and no model. It gets one line instead of the same card
                 // as a round that negotiated.
                 isNoop: !answered && round.outcome === 'nothing_to_do',
-                title: triggerLabel(this, round.triggerReason),
+                title: this.$tc('merchant-quote-agent.detail.agentTitle'),
                 timestamp: formatDate(round.createdAt),
                 outcomeLabel: outcomeLabel(this, round.outcome),
                 outcomeVariant: outcomeVariant(round.outcome),
@@ -323,13 +323,6 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                     mono: true,
                 },
             ];
-
-            // The model's own answer, recorded on every pass since the table
-            // existed and rendered nowhere. Wide because it is JSON: in a
-            // 200px grid cell it reads as a column of punctuation.
-            if (round.rawProposal) {
-                rows.push({ key: 'rawProposal', value: round.rawProposal, mono: true, wide: true });
-            }
 
             if (round.errorClass) {
                 rows.push({ key: 'errorClass', value: round.errorClass, mono: true });
