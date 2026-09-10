@@ -36,13 +36,15 @@ use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
  * append behind this token is idempotent on `message_id`, so a replayed
  * request writes nothing and answers the same 200. Add a store if a token
  * ever authorizes something that is NOT idempotent.
+ *
+ * Not `final`: the tests substitute it.
  */
-final readonly class A2cnBearerJwt
+class A2cnBearerJwt
 {
     private const PREFIX = 'Bearer ';
 
     public function __construct(
-        private DidWebResolver $resolver,
+        private readonly DidWebResolver $resolver,
     ) {}
 
     public function issuerOf(string $authorizationHeader, string $audience, \DateTimeImmutable $now): ?string

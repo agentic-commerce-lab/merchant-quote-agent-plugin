@@ -33,12 +33,14 @@ use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
  *   2. recompute the hash from the act's own signed view and compare — without
  *      this, a signature that is valid over some OTHER object would pass,
  *   3. verify the JWS and require its payload to be exactly that hash.
+ *
+ * Not `final`: the tests substitute it.
  */
-final readonly class ActVerifier
+class ActVerifier
 {
     public function __construct(
-        private DidWebResolver $resolver,
-        private ProtocolHash $hash,
+        private readonly DidWebResolver $resolver,
+        private readonly ProtocolHash $hash,
     ) {}
 
     public function reasonItDoesNotVerify(Act $act): ?string

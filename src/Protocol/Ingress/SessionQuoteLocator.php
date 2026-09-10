@@ -34,13 +34,15 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
  * `$quotes` is nullable and last, like every other gateway-shaped dependency
  * in this module: the repository is resolved by string id and is absent on a
  * shop without SwagCommercial.
+ *
+ * Not `final`: the tests substitute it.
  */
-final readonly class SessionQuoteLocator
+class SessionQuoteLocator
 {
     /** @param EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection>|null $quotes */
     public function __construct(
-        private ActStoreInterface $store,
-        private ?EntityRepository $quotes = null,
+        private readonly ActStoreInterface $store,
+        private readonly ?EntityRepository $quotes = null,
     ) {}
 
     public function quoteIdFor(string $sessionId): ?string

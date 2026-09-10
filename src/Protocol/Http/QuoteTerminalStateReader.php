@@ -66,6 +66,31 @@ class QuoteTerminalStateReader
         );
     }
 
+    /**
+     * @return array<string, mixed>|null
+     *
+     * @throws QuoteStateUnavailable
+     */
+    public function customFieldsFor(string $quoteId): ?array
+    {
+        if ($this->gateway === null) {
+            throw new QuoteStateUnavailable(\sprintf('No quote gateway available to read quote "%s".', $quoteId));
+        }
+
+        try {
+            $snapshot = $this->gateway->fetchSnapshot($quoteId);
+        } catch (QuoteNotFoundException) {
+            return null;
+        } catch (\Throwable $error) {
+            throw new QuoteStateUnavailable(
+                \sprintf('Unable to read the state of quote "%s".', $quoteId),
+                previous: $error,
+            );
+        }
+
+        return $snapshot->lifecycle->customFields;
+    }
+
     private static function lastAcceptance(ActChain $chain): ?Act
     {
         $acceptance = null;

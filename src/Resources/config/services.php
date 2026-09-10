@@ -97,7 +97,9 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteHandler;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\OfferVisibleStateSubscriber;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
+use MerchantQuoteAgentPlugin\Protocol\Http\A2cnBearerJwt;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnDiscoveryController;
+use MerchantQuoteAgentPlugin\Protocol\Http\A2cnMessagesController;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnRecordsController;
 use MerchantQuoteAgentPlugin\Protocol\Http\MandateDocumentResponder;
 use MerchantQuoteAgentPlugin\Protocol\Http\QuoteTerminalStateReader;
@@ -809,4 +811,6 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(RecordPartiesResolver::class);
     $services->set(RecordResponder::class);
     $services->set(A2cnRecordsController::class)->tag('controller.service_arguments');
+    $services->set(A2cnBearerJwt::class);
+    $services->set(A2cnMessagesController::class)->tag('controller.service_arguments');
 };
