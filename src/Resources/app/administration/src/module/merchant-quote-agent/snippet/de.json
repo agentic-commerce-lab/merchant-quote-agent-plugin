@@ -163,7 +163,7 @@
             "remoteProfileAllowlistHelp": "Hosts, deren Agent-Profil dieser Shop abrufen darf. Profile werden ausschließlich über HTTPS abgerufen.",
             "agentAllowlistLabel": "Agent-Domains",
             "agentAllowlistHelp": "Domains, deren Agenten mit diesem Verkaufskanal handeln dürfen.",
-            "save": "Allowlists speichern",
+            "save": "Speichern",
             "forbidden": "Zum Speichern wird das Agentic-Commerce-Recht ucp.editor benötigt.",
             "failed": "Die Anfrage ist fehlgeschlagen.",
             "cardTitle": "Agent-Zugriff",
@@ -177,7 +177,9 @@
                 "explicit": "aus dieser Liste",
                 "platform": "aus Agent-Plattformen",
                 "channel": "aus der Domain dieses Kanals"
-            }
+            },
+            "organizationNameLabel": "Organisationsname im A2CN-Verkäufermandat",
+            "organizationNameHelp": "Wird im signierten A2CN-Verkäufermandat dieses Verkaufskanals veröffentlicht, das Käufer-Agenten abrufen, um zu sehen, mit wem sie es zu tun haben. Leer lassen, um den Shopnamen aus Einstellungen → Shop → Grundlagen zu veröffentlichen."
         },
         "disposition": {
             "needsReview": "Prüfung nötig",

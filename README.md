@@ -1,9 +1,15 @@
 # Merchant Quote Agent Plugin
 
 Shopware 6.7 plugin: the merchant-side quote negotiation agent on top of
-SwagCommercial's B2B QuoteManagement, exposed to buyer agents through Agentic
-Commerce's UCP surface. Design documents live in `docs/`; decisions in
-`docs/adr/`.
+SwagCommercial's B2B QuoteManagement. Design documents live in `docs/`;
+decisions in `docs/adr/`.
+
+**Agentic Commerce is optional.** Install it and buyer agents can request and
+negotiate quotes themselves over UCP. Leave it out and the agent still services
+every quote a buyer creates by hand in the storefront — same policy, same
+replies, same escalations, same decision log. What the plugin does not register
+without it is listed under [Without the Agentic Commerce
+plugin](#without-the-agentic-commerce-plugin).
 
 ## Test shop
 
@@ -144,7 +150,39 @@ shop can still write the file — keep the `rm` in the runbook, just not in the
 install path.
 
 Prerequisites are the plugin's, not the zip's: SwagCommercial with the
-QuoteManagement licence active, and SwagAgenticCommerce.
+QuoteManagement licence active. SwagAgenticCommerce as well if you want the
+UCP surface — see below.
+
+### Without the Agentic Commerce plugin
+
+The plugin installs and runs on a shop that does not have SwagAgenticCommerce,
+or that has it deactivated. The gate asks whether that plugin's `UcpSdkBundle`
+is in `kernel.bundles`, so no configuration switches it: what is registered
+decides. (Not `class_exists` — the plugin is normally `composer require`d into
+`vendor/`, so its class stays loadable after a deactivation. See ADR 0001.)
+
+**Off:** the `/ucp/quotes` endpoints and the two capability descriptors that
+advertise them; identity linking (the authorization and consent routes, and the
+readers behind them — they read that plugin's OAuth tables); the
+`merchant-quote-agent:allow-any-agent` and `merchant-quote-agent:grants`
+console commands; the **Agent access** page in Settings; and the entire A2CN
+evidence layer, including the three `.well-known` documents.
+
+A2CN goes with the surface rather than standing on its own because it cannot
+start without a buyer agent. `SellerActEmitter` reads the chain from the quote's
+`a2cn_session` custom field, nothing in this plugin ever writes that field, and
+the counterparty that does can only reach the shop over UCP. With no session it
+returns `inert()` forever — so all that was left was three documents advertising
+`endpoint` and `records_url` to any agent that crawled them, on a shop where no
+agent can negotiate.
+
+**On:** everything a hand-made quote goes through — servicing, negotiation,
+escalation, the decision log and its dashboard — plus the quote contract
+documents under `/.well-known/ucp/schemas/`, which describe the capability
+rather than serving it.
+
+Installing SwagAgenticCommerce later needs nothing from this plugin but a cache
+clear: the container is rebuilt, and the UCP surface appears.
 
 Requires SwagCommercial with B2B quote management licensed
 (`QUOTE_MANAGEMENT-6302947`), version **6.7.1.2 or newer**. The plugin probes
@@ -230,6 +268,9 @@ that lands mid-pass is serviced rather than dropped.
 
 ## Buyer-facing quote endpoints
 
+This whole section needs the Agentic Commerce plugin; without it none of these
+routes exist.
+
 Buyer agents reach the quote capability at `/ucp/quotes` (see
 `/.well-known/ucp/schemas/quote.openapi.json` for the contract). Every request
 needs two headers: `UCP-Agent`, which the UCP SDK enforces for everything under
@@ -306,6 +347,9 @@ whole array back. Sending `["identity_linking"]` alone would silently disable
 `catalog`, `cart`, `discount`, `checkout` and `order` too.
 
 ## Deciding which agents may transact
+
+Also Agentic Commerce territory: with that plugin absent there are no agents to
+admit, and the page described here is not in Settings at all.
 
 The three UCP allowlists — agent platforms, profile hosts, agent domains — are
 edited per sales channel under **Agent access** in this plugin's admin module
@@ -412,10 +456,25 @@ carries no `profile=` parameter produces no widening, by design.
 
 ## Configuring the agent
 
-Everything is in the plugin's own settings, per sales channel:
-**Settings → Extensions → Merchant Quote Agent**. A sales channel inherits the
-global value until you override it, so you can configure once and raise the
-ceiling on a pilot channel first.
+Everything the agent decides by is in the plugin's own settings, per sales
+channel: **Settings → Extensions → Merchant Quote Agent**. A sales channel
+inherits the global value until you override it, so you can configure once and
+raise the ceiling on a pilot channel first.
+
+One field is not there: the **organization name published in the A2CN seller
+mandate** lives on the **Agent access** page instead, because it is only ever
+read when the shop publishes that mandate, and the whole A2CN layer is off
+without the Agentic Commerce plugin. It is the same `system_config` key as
+before (`MerchantQuoteAgentPlugin.config.a2cnOrganizationName`), so anything
+already set still applies — but it is now per sales channel only, where the
+plugin config page could also set a global default. A value set globally still
+shows on every channel, and saving copies it onto that channel. Editing it needs
+`system_config:update`, not the page's `ucp.editor`.
+
+Left empty, it publishes the shop name from **Settings → Shop → Basic
+information**, then the sales channel's name, then `Merchant`. The field's
+placeholder shows whichever of those applies, so "leave this empty" is a visible
+choice rather than a guess.
 
 **The agent ships switched off, and a fresh install answers nothing.** That is
 deliberate on two counts: `enabled` defaults to false, and `maxDiscountPercent`
@@ -600,6 +659,11 @@ second discount on the first — and the buyer is never messaged twice.
 ## A2CN evidence
 
 Full design: `docs/superpowers/specs/2026-09-04-a2cn-protocol-module-design.md`.
+
+**Needs the Agentic Commerce plugin.** Nothing in this section is registered
+without it — see [Without the Agentic Commerce
+plugin](#without-the-agentic-commerce-plugin) for why the evidence layer cannot
+stand alone.
 
 Nothing here is gated by a toggle: the presence of `a2cn_session` on a quote —
 written by whichever buyer agent opened the negotiation — is the gate itself.

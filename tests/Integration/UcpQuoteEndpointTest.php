@@ -37,6 +37,8 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
     {
         parent::setUp();
 
+        self::requireUcpSurface();
+
         if (!CommercialAvailability::isLicensed()) {
             self::markTestSkipped('SwagCommercial quote management is not licensed in this shop.');
         }

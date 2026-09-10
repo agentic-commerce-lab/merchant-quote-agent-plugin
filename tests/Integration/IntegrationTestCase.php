@@ -23,6 +23,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteWriters;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialQuoteGateway;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
+use MerchantQuoteAgentPlugin\Ucp\UcpAvailability;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\Test\TestCaseBase\DatabaseTransactionBehaviour;
@@ -38,6 +39,24 @@ abstract class IntegrationTestCase extends TestCase
 {
     use KernelTestBehaviour;
     use DatabaseTransactionBehaviour;
+
+    /**
+     * Skip when this shop has no UCP surface.
+     *
+     * Agentic Commerce is optional (ADR 0001's 2026-09-10 amendment), so a shop
+     * without it is a supported configuration and not a broken one — but the
+     * agent-facing services these suites resolve are deliberately absent there,
+     * and so is the whole A2CN evidence layer, which cannot start without a
+     * buyer agent to open a session.
+     * Asks the container the same question `UcpAvailability` asks it, so this
+     * skips exactly when the gate in `services.php` closed.
+     */
+    protected static function requireUcpSurface(): void
+    {
+        if (!UcpAvailability::isRegistered(static::getContainer())) {
+            self::markTestSkipped('This shop has no UCP surface: the Agentic Commerce plugin is not active.');
+        }
+    }
 
     /**
      * Fetch a service by raw id. Commercial services are not typed here on

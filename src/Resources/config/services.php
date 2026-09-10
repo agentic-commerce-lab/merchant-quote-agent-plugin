@@ -127,15 +127,20 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteContractController;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteLineItemValidator;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
+use MerchantQuoteAgentPlugin\Ucp\UcpAvailability;
 use Shopware\Core\Framework\DataAbstractionLayer\DefinitionInstanceRegistry;
 use Shopware\Core\Framework\Event\BusinessEventCollector;
 use Shopware\Core\Framework\Notification\NotificationService;
+use Shopware\Core\System\SalesChannel\Context\SalesChannelContextService;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Ucp\Sdk\Internal\Security\DefaultJsonCanonicalization;
+use Ucp\Sdk\Internal\Security\DefaultSigningKeyManager;
 use Ucp\Sdk\Internal\Service\UrlSafetyValidator;
+use Ucp\Sdk\Service\DeterministicJsonInterface;
 use Ucp\Sdk\Service\RuntimeConfigurationResolverInterface;
 use Ucp\Sdk\Service\SigningKeyManagerInterface;
 
@@ -146,122 +151,151 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
 
     $services->defaults()->autowire()->autoconfigure();
 
-    // Autoconfiguration adds `ucp_sdk.capability` (the SDK registers it for
-    // every CapabilityInterface), which is what gets the descriptor into the
-    // SDK's CapabilityRegistry. The gateway is ignoreOnInvalid() so a shop
-    // without SwagCommercial still compiles: the capability's own guard turns
-    // the resulting null into a 501, not a container error.
-    $services->set(QuoteCapability::class)->arg(
-        '$gateway',
-        service(BuyerQuoteGatewayInterface::class)->ignoreOnInvalid(),
-    );
-    $services->set(QuoteRequestValidator::class);
-    $services->set(QuoteLineItemValidator::class);
-    $services->set(QuoteFieldAssertions::class);
-
-    // Must run AFTER the Agentic Commerce plugin's capability filter, which
-    // strips descriptors it does not own. Its contributor sits at the default
-    // priority, so anything negative lands behind it. autoconfigure(false)
-    // avoids a second tag at the default priority.
-    $services->set(QuoteCapabilityProfileContributor::class)->autoconfigure(false)->tag('ucp_sdk.profile_contributor', [
-        'priority' => -256,
-    ]);
-
-    // The two documents the descriptor advertises. Served by this plugin because
-    // this plugin publishes the descriptor: whoever advertises the URLs owes the
-    // shop the files behind them.
+    // The two documents the UCP descriptor advertises. Served by this plugin
+    // because this plugin publishes the descriptor: whoever advertises the URLs
+    // owes the shop the files behind them. Registered even without a UCP surface,
+    // like the routes that expose them: the files are static and depend on
+    // nothing, so there is nothing here for the gate below to switch off.
     $services
         ->set(QuoteContractController::class)
         ->arg('$schemaPath', __DIR__ . '/../schema/quote.openapi.json')
         ->arg('$specPath', __DIR__ . '/../schema/quote.spec.html')
         ->tag('controller.service_arguments');
 
-    if (CommercialAvailability::isAvailableByClass()) {
-        $services->set(UcpQuoteController::class)->tag('controller.service_arguments');
-    }
-
-    // Buyer-side sales-channel resolution. Autowired: Connection and the
-    // context service are both core services.
-    $services->set(SalesChannelContextResolver::class);
+    // Buyer-side sales-channel resolution. Outside the UCP gate below even
+    // though every consumer of the interface is behind it: the dev-only
+    // order-history locator names the CLASS, so gating this would take that
+    // locator down with it on a shop without the Agentic Commerce plugin.
+    //
+    // $contextService is named rather than autowired because core does NOT
+    // alias SalesChannelContextServiceInterface — the Agentic Commerce plugin
+    // does, in its own services.php, and autowiring here was quietly living off
+    // that. Deactivating that plugin then failed the whole container rebuild on
+    // "no such service exists" for the interface. Naming core's concrete id
+    // fixes it without defining a competing alias, and loses nothing when the
+    // plugin IS there: decoration rewrites that id too, so SwagCommercial's
+    // context-service decorators still apply.
+    $services->set(SalesChannelContextResolver::class)->arg(
+        '$contextService',
+        service(SalesChannelContextService::class),
+    );
     $services->alias(CustomerContextResolverInterface::class, SalesChannelContextResolver::class);
 
-    // Identity: bearer token → customer context. The reader is the only class
-    // that knows Agentic Commerce's OAuth schema (issue #13 retires it).
-    $services->set(AcOAuthAccessTokenReader::class);
-    $services->alias(AccessTokenSubjectReaderInterface::class, AcOAuthAccessTokenReader::class);
-    $services->set(AgentCustomerAuthenticator::class);
-    $services->set(AgentAccessFlags::class);
-    $services->set(AllowAnyAgentCommand::class)->tag('console.command');
+    // --- UCP surface -----------------------------------------------------
+    // Everything in here needs the UCP SDK bundle, which the Agentic Commerce
+    // plugin is what registers. Without it the services below decorate, inject
+    // and alias ids that are not in the container at all, and the OAuth tables
+    // the identity-linking flow reads do not exist either. A shop without it is
+    // not a degraded shop: quotes a buyer creates by hand are serviced,
+    // escalated and audited exactly as before — only the agent-facing surface
+    // is switched off. isRegistered(), not class existence: see UcpAvailability
+    // on the deactivation that a class-existence gate breaks.
+    if (UcpAvailability::isRegistered($container)) {
+        // Autoconfiguration adds `ucp_sdk.capability` (the SDK registers it for
+        // every CapabilityInterface), which is what gets the descriptor into the
+        // SDK's CapabilityRegistry. The gateway is ignoreOnInvalid() so a shop
+        // without SwagCommercial still compiles: the capability's own guard turns
+        // the resulting null into a 501, not a container error.
+        $services->set(QuoteCapability::class)->arg(
+            '$gateway',
+            service(BuyerQuoteGatewayInterface::class)->ignoreOnInvalid(),
+        );
+        $services->set(QuoteRequestValidator::class);
+        $services->set(QuoteLineItemValidator::class);
+        $services->set(QuoteFieldAssertions::class);
 
-    // Widens the SDK's per-request profile-host and agent-domain gates on sales
-    // channels whose allow-any-agent flag is on. Decorates the interface the
-    // Agentic Commerce plugin aliases, the same seam that plugin uses for
-    // AgentProfileFetcherInterface.
-    $services->set(AgentAdmittingRuntimeConfigurationResolver::class)->decorate(RuntimeConfigurationResolverInterface::class)->arg(
-        '$inner',
-        service('.inner'),
-    );
+        // Must run AFTER the Agentic Commerce plugin's capability filter, which
+        // strips descriptors it does not own. Its contributor sits at the default
+        // priority, so anything negative lands behind it. autoconfigure(false)
+        // avoids a second tag at the default priority.
+        $services->set(QuoteCapabilityProfileContributor::class)->autoconfigure(
+            false,
+        )->tag('ucp_sdk.profile_contributor', [
+            'priority' => -256,
+        ]);
 
-    // The SDK's profile-fetch validator, rebuilt per request so an
-    // allow-any-agent channel can admit the host the request presents. This
-    // REPLACES the SDK bundle's own definition of the service, because the class
-    // is final and injected concretely, so it cannot be decorated. Whoever
-    // defines this id last wins: AgentAccessWiringTest fails loudly if that
-    // stops being us.
-    //
-    // Non-shared: a shared instance would be built once from whichever request
-    // NOTE: this does not make the widening per-request in production -- the
-    // shared consumers above it bake in the first instance. See
-    // AgentProfileHostValidatorFactory's docblock and the README.
-    //
-    // was in scope at the first fetch and then reused for every later request
-    // on that worker (FrankenPHP, RoadRunner), so the widening would stick to
-    // the first agent that happened to ask. Private, like the bundle's own
-    // definition — HttpAgentProfileFetcher injects this id concretely, so it
-    // is referenced and nothing prunes it.
-    $services->set(AgentProfileHostValidatorFactory::class);
-    $services
-        ->set(UrlSafetyValidator::class)
-        ->factory([service(AgentProfileHostValidatorFactory::class), 'create'])
-        ->share(false);
+        if (CommercialAvailability::isAvailableByClass()) {
+            $services->set(UcpQuoteController::class)->tag('controller.service_arguments');
+        }
 
-    // The operational off-switch (issue #49-adjacent): list and revoke grants
-    // from the console. No storefront self-service page exists yet, so this is
-    // the only way to revoke — registered unconditionally, like the reader
-    // above, since it does not depend on SwagCommercial.
-    $services->set(AcAgentGrantReader::class);
-    $services->alias(AgentGrantReaderInterface::class, AcAgentGrantReader::class);
-    $services->set(AgentGrantsCommand::class)->tag('console.command');
+        // Identity: bearer token → customer context. The reader is the only class
+        // that knows Agentic Commerce's OAuth schema (issue #13 retires it).
+        $services->set(AcOAuthAccessTokenReader::class);
+        $services->alias(AccessTokenSubjectReaderInterface::class, AcOAuthAccessTokenReader::class);
+        $services->set(AgentCustomerAuthenticator::class);
+        $services->set(AgentAccessFlags::class);
+        $services->set(AllowAnyAgentCommand::class)->tag('console.command');
 
-    $services->set(DbalPendingAuthorizationStore::class);
-    $services->alias(PendingAuthorizationStoreInterface::class, DbalPendingAuthorizationStore::class);
-    $services->set(PayloadFields::class);
-    $services->set(RedirectUriRule::class);
-    $services->set(AgentAuthorizationRegistrar::class);
-    $services->set(AgentAuthorizationContextFactory::class);
-    $services->set(SalesChannelDomainUrlReader::class);
-    $services->set(ConsentRequestGuard::class);
-    // Agentic Commerce aliases RuntimeConfigurationResolverInterface to its own
-    // ShopwareRuntimeConfigurationResolver (its services.php:342) — the same
-    // property that makes IdentityLinkingCapabilityInterface injectable above,
-    // so this needs no implementation of ours. Consent cannot work without it:
-    // see AgentAuthorizationContextFactory on why a null runtimeConfiguration
-    // makes AC refuse every grant.
-    $services->set(RequestRuntimeConfigurationReader::class);
-    // LoggerInterface is autowired, as it is for TerminalOutcomeSubscriber.
-    $services->set(ConsentGrantCompleter::class);
-    $services->set(AgentAuthorizationRequestController::class)->tag('controller.service_arguments');
+        // Widens the SDK's per-request profile-host and agent-domain gates on sales
+        // channels whose allow-any-agent flag is on. Decorates the interface the
+        // Agentic Commerce plugin aliases, the same seam that plugin uses for
+        // AgentProfileFetcherInterface.
+        $services->set(AgentAdmittingRuntimeConfigurationResolver::class)->decorate(RuntimeConfigurationResolverInterface::class)->arg(
+            '$inner',
+            service('.inner'),
+        );
 
-    // The consent page. Unlike the plain controllers above, this one extends
-    // StorefrontController (a Symfony AbstractController), which needs the
-    // container injected via setContainer() and the service made public —
-    // matching how shopware/storefront registers its own controllers (see
-    // AccountProfileController in vendor/shopware/storefront/DependencyInjection/controller.php).
-    $services
-        ->set(AgentConsentController::class)
-        ->public()
-        ->tag('controller.service_arguments')
-        ->call('setContainer', [service('service_container')]);
+        // The SDK's profile-fetch validator, rebuilt per request so an
+        // allow-any-agent channel can admit the host the request presents. This
+        // REPLACES the SDK bundle's own definition of the service, because the class
+        // is final and injected concretely, so it cannot be decorated. Whoever
+        // defines this id last wins: AgentAccessWiringTest fails loudly if that
+        // stops being us.
+        //
+        // Non-shared: a shared instance would be built once from whichever request
+        // NOTE: this does not make the widening per-request in production -- the
+        // shared consumers above it bake in the first instance. See
+        // AgentProfileHostValidatorFactory's docblock and the README.
+        //
+        // was in scope at the first fetch and then reused for every later request
+        // on that worker (FrankenPHP, RoadRunner), so the widening would stick to
+        // the first agent that happened to ask. Private, like the bundle's own
+        // definition — HttpAgentProfileFetcher injects this id concretely, so it
+        // is referenced and nothing prunes it.
+        $services->set(AgentProfileHostValidatorFactory::class);
+        $services
+            ->set(UrlSafetyValidator::class)
+            ->factory([service(AgentProfileHostValidatorFactory::class), 'create'])
+            ->share(false);
+
+        // The operational off-switch (issue #49-adjacent): list and revoke grants
+        // from the console. No storefront self-service page exists yet, so this is
+        // the only way to revoke — registered alongside the reader above, since
+        // it does not depend on SwagCommercial, only on the grants themselves.
+        $services->set(AcAgentGrantReader::class);
+        $services->alias(AgentGrantReaderInterface::class, AcAgentGrantReader::class);
+        $services->set(AgentGrantsCommand::class)->tag('console.command');
+
+        $services->set(DbalPendingAuthorizationStore::class);
+        $services->alias(PendingAuthorizationStoreInterface::class, DbalPendingAuthorizationStore::class);
+        $services->set(PayloadFields::class);
+        $services->set(RedirectUriRule::class);
+        $services->set(AgentAuthorizationRegistrar::class);
+        $services->set(AgentAuthorizationContextFactory::class);
+        $services->set(SalesChannelDomainUrlReader::class);
+        $services->set(ConsentRequestGuard::class);
+        // Agentic Commerce aliases RuntimeConfigurationResolverInterface to its own
+        // ShopwareRuntimeConfigurationResolver (its services.php:342) — the same
+        // property that makes IdentityLinkingCapabilityInterface injectable above,
+        // so this needs no implementation of ours. Consent cannot work without it:
+        // see AgentAuthorizationContextFactory on why a null runtimeConfiguration
+        // makes AC refuse every grant.
+        $services->set(RequestRuntimeConfigurationReader::class);
+        // LoggerInterface is autowired, as it is for TerminalOutcomeSubscriber.
+        $services->set(ConsentGrantCompleter::class);
+        $services->set(AgentAuthorizationRequestController::class)->tag('controller.service_arguments');
+
+        // The consent page. Unlike the plain controllers above, this one extends
+        // StorefrontController (a Symfony AbstractController), which needs the
+        // container injected via setContainer() and the service made public —
+        // matching how shopware/storefront registers its own controllers (see
+        // AccountProfileController in vendor/shopware/storefront/DependencyInjection/controller.php).
+        $services
+            ->set(AgentConsentController::class)
+            ->public()
+            ->tag('controller.service_arguments')
+            ->call('setContainer', [service('service_container')]);
+    }
 
     // The audit trail (issue #19). Registered unconditionally — a decision
     // record is written by the plugin's own servicing pass, not by the
@@ -289,90 +323,14 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->alias(EscalationResolutionWriterInterface::class, EscalationResolutionWriter::class);
     $services->set(EscalationResolutionSubscriber::class);
 
-    // --- A2CN / Protocol -----------------------------------------------
-    // The evidence layer (src/Protocol/): signed negotiation acts on a quote.
-    // Registered unconditionally, above the SwagCommercial gate below —
-    // nothing in this block depends on Shopware or SwagCommercial. Later
-    // A2CN tasks append their services to this same block.
-    $services->set(ProtocolHash::class);
-    $services->set(TermsFactory::class);
-
-    // The evidence mirror (Task 13): our own copy of the act chain, plus the
-    // violations and human approval receipts that are only ours.
-    $services->set(DbalActStore::class);
-    $services->alias(ActStoreInterface::class, DbalActStore::class);
-
-    // The installation's signing key and published did:web identity (Task 14).
-    // Public: the plugin class fetches A2cnKeyStore from the container during
-    // activate(), where the compiled container's private-service fence would
-    // otherwise apply. `logger` itself is a private alias Symfony removes when
-    // it compiles, so the same hook reaches PSR-3 through a public alias of
-    // our own — its only user is the fail-open catch in activate().
-    $services->set(A2cnKeyStore::class)->public();
-    $services->alias(MerchantQuoteAgentPlugin::LIFECYCLE_LOGGER_ID, 'logger')->public();
-    $services->set(A2cnIdentityResolver::class);
-
-    // Counterparty did:web verification-key resolution. A plain HTTP client is
-    // registered explicitly under our own service id, the same way and for the
-    // same reason as merchant_quote_agent.model_http_client further down:
-    // Shopware does not guarantee a shared `http_client` service exists, and
-    // this fetch needs its own timeout, redirect and streaming controls
-    // regardless (see DidWebDocumentFetcher) — reusing a shared client would
-    // risk a different default silently applying to a counterparty-controlled
-    // URL. SigningKeyManagerInterface is a public alias the UCP SDK bundle
-    // registers onto DefaultSigningKeyManager.
-    $services->set('merchant_quote_agent.a2cn.http_client', HttpClientInterface::class)->factory([
-        HttpClient::class,
-        'create',
-    ]);
-    $services->set(DidWebResolver::class)->args([
-        service('merchant_quote_agent.a2cn.http_client'),
-        service(SigningKeyManagerInterface::class),
-        service('logger'),
-    ]);
-
-    // The evidence checks and the inspector that runs them. Order is
-    // normative and spelled out here rather than as a tag priority, so a
-    // reviewer reads the specification in the code that enforces it: every
-    // local comparison before the one check that resolves a did:web document
-    // over the network.
-    $services->set(SessionIdCheck::class);
-    $services->set(DuplicateSequenceCheck::class);
-    $services->set(ChainLengthCheck::class);
-    $services->set(BuyerTermsCheck::class);
-    $services->set(BuyerSignatureCheck::class);
-    $services->set(EvidenceInspector::class)->args([[
-        service(SessionIdCheck::class),
-        service(DuplicateSequenceCheck::class),
-        service(ChainLengthCheck::class),
-        service(BuyerTermsCheck::class),
-        service(BuyerSignatureCheck::class),
-    ]]);
-
-    // Building and signing the seller's own act (Task 15).
-    $services->set(ActSigner::class);
-    $services->set(SellerActFactory::class);
-
-    // The evidence mirror facade for the emitter (Task 16). Depends only on
-    // ActStoreInterface, so — unlike SellerActEmitter below — it belongs in
-    // this unconditional block rather than behind the SwagCommercial gate.
-    $services->set(ChainMirror::class);
-
-    // The end-of-session records (Task 18): pure derivations over the act
-    // chain, no SwagCommercial dependency, so — like everything else in this
-    // block — registered unconditionally.
-    $services->set(OfferChainHash::class);
-    $services->set(TransactionRecord::class);
-    $services->set(AuditLog::class);
-
-    // Configuration (issue #5), moved here from inside the CommercialAvailability
-    // guard below: the signed seller mandate (Task 20) needs a sales channel's
-    // NegotiationPolicy on every installation, not just one with SwagCommercial
-    // licensed — the reader itself touches only SystemConfigService and the
-    // validator, neither of which needs SwagCommercial. Autowired: the factory
-    // takes ValidatorInterface, which Shopware aliases to HappyPathValidator —
-    // harmless, because a validate() call with no explicit constraints
-    // delegates straight to the real Symfony validator.
+    // Configuration (issue #5). Outside every gate below: the negotiation
+    // policy is what the agent decides by, so it is needed on any shop that
+    // services a quote at all — with or without SwagCommercial licensed, with
+    // or without a UCP surface. The reader touches only SystemConfigService and
+    // the validator, neither of which needs either plugin. Autowired: the
+    // factory takes ValidatorInterface, which Shopware aliases to
+    // HappyPathValidator — harmless, because a validate() call with no explicit
+    // constraints delegates straight to the real Symfony validator.
     //
     // The reader stays private: the alias below is what references it, so
     // RemoveUnusedDefinitionsPass no longer prunes it as dead.
@@ -380,24 +338,114 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(QuoteAgentSettingsReader::class);
     $services->alias(QuoteAgentSettingsSource::class, QuoteAgentSettingsReader::class);
 
-    // The signed seller mandate and its discovery documents (Task 20): pure
-    // derivations over NegotiationPolicy plus this installation's own key and
-    // identity, no SwagCommercial dependency, so registered unconditionally
-    // like the rest of this block. The controller is imported OUTSIDE the
-    // CommercialAvailability gate in routes.php for the same reason.
-    $services->set(SellerMandateFactory::class);
-    $services->set(MandateSigner::class);
-    $services->set(MandateDocumentResponder::class);
-    $services->set(A2cnDiscoveryController::class)->tag('controller.service_arguments');
+    // --- A2CN / Protocol -----------------------------------------------
+    // The evidence layer (src/Protocol/): signed negotiation acts on a quote.
+    //
+    // Gated on the UCP surface, all of it. The layer looks self-contained —
+    // nothing in it touches SwagCommercial — but it has no way to start
+    // without a buyer agent: SellerActEmitter reads the chain from the quote's
+    // `a2cn_session` custom field, NOTHING in this plugin ever writes that
+    // field, and the counterparty that does can only reach the shop over UCP.
+    // With no session the emitter returns inert() forever, the session and
+    // record endpoints have nothing to answer for, and the five evidence checks
+    // have nothing to check. What was left was three `.well-known` documents
+    // advertising `endpoint` and `records_url` to any agent that crawled them —
+    // a signed promise the shop cannot honour. So it goes with the surface it
+    // belongs to.
+    //
+    // ProtocolHash and A2cnKeyStore also take DeterministicJsonInterface and
+    // SigningKeyManagerInterface, which only the SDK bundle aliases, so this
+    // gate is what lets them stay plain autowired services.
+    if (UcpAvailability::isRegistered($container)) {
+        $services->set(ProtocolHash::class);
+        $services->set(TermsFactory::class);
 
-    // Advertises the mandate capability in the UCP discovery document. Must
-    // run AFTER the Agentic Commerce plugin's capability filter, exactly like
-    // QuoteCapabilityProfileContributor above: its contributor sits at the
-    // default priority, so anything negative lands behind it.
-    // autoconfigure(false) avoids a second tag at the default priority.
-    $services->set(A2cnMandateProfileContributor::class)->autoconfigure(false)->tag('ucp_sdk.profile_contributor', [
-        'priority' => -256,
-    ]);
+        // The evidence mirror (Task 13): our own copy of the act chain, plus the
+        // violations and human approval receipts that are only ours.
+        $services->set(DbalActStore::class);
+        $services->alias(ActStoreInterface::class, DbalActStore::class);
+
+        // The installation's signing key and published did:web identity (Task 14).
+        // Public: the plugin class fetches A2cnKeyStore from the container during
+        // activate(), where the compiled container's private-service fence would
+        // otherwise apply. `logger` itself is a private alias Symfony removes when
+        // it compiles, so the same hook reaches PSR-3 through a public alias of
+        // our own — its only user is the fail-open catch in activate().
+        $services->set(A2cnKeyStore::class)->public();
+        $services->alias(MerchantQuoteAgentPlugin::LIFECYCLE_LOGGER_ID, 'logger')->public();
+        $services->set(A2cnIdentityResolver::class);
+
+        // Counterparty did:web verification-key resolution. A plain HTTP client is
+        // registered explicitly under our own service id, the same way and for the
+        // same reason as merchant_quote_agent.model_http_client further down:
+        // Shopware does not guarantee a shared `http_client` service exists, and
+        // this fetch needs its own timeout, redirect and streaming controls
+        // regardless (see DidWebDocumentFetcher) — reusing a shared client would
+        // risk a different default silently applying to a counterparty-controlled
+        // URL. SigningKeyManagerInterface is a public alias the UCP SDK bundle
+        // registers onto DefaultSigningKeyManager.
+        $services->set('merchant_quote_agent.a2cn.http_client', HttpClientInterface::class)->factory([
+            HttpClient::class,
+            'create',
+        ]);
+        $services->set(DidWebResolver::class)->args([
+            service('merchant_quote_agent.a2cn.http_client'),
+            service(SigningKeyManagerInterface::class),
+            service('logger'),
+        ]);
+
+        // The evidence checks and the inspector that runs them. Order is
+        // normative and spelled out here rather than as a tag priority, so a
+        // reviewer reads the specification in the code that enforces it: every
+        // local comparison before the one check that resolves a did:web document
+        // over the network.
+        $services->set(SessionIdCheck::class);
+        $services->set(DuplicateSequenceCheck::class);
+        $services->set(ChainLengthCheck::class);
+        $services->set(BuyerTermsCheck::class);
+        $services->set(BuyerSignatureCheck::class);
+        $services->set(EvidenceInspector::class)->args([[
+            service(SessionIdCheck::class),
+            service(DuplicateSequenceCheck::class),
+            service(ChainLengthCheck::class),
+            service(BuyerTermsCheck::class),
+            service(BuyerSignatureCheck::class),
+        ]]);
+
+        // Building and signing the seller's own act (Task 15).
+        $services->set(ActSigner::class);
+        $services->set(SellerActFactory::class);
+
+        // The evidence mirror facade for the emitter (Task 16). Depends only on
+        // ActStoreInterface, so — unlike SellerActEmitter below — it belongs in
+        // this block rather than behind the SwagCommercial gate as well.
+        $services->set(ChainMirror::class);
+
+        // The end-of-session records (Task 18): pure derivations over the act
+        // chain, no SwagCommercial dependency, so — like everything else in this
+        // block — they need only the UCP surface.
+        $services->set(OfferChainHash::class);
+        $services->set(TransactionRecord::class);
+        $services->set(AuditLog::class);
+
+        // The signed seller mandate and its discovery documents (Task 20): pure
+        // derivations over NegotiationPolicy plus this installation's own key and
+        // identity, no SwagCommercial dependency, so imported outside the
+        // CommercialAvailability gate in configureRoutes() — but inside this one.
+        $services->set(SellerMandateFactory::class);
+        $services->set(MandateSigner::class);
+        $services->set(MandateDocumentResponder::class);
+        $services->set(A2cnDiscoveryController::class)->tag('controller.service_arguments');
+
+        // Advertises the mandate capability in the UCP discovery document. Must run
+        // AFTER the Agentic Commerce plugin's capability filter, exactly like
+        // QuoteCapabilityProfileContributor: its contributor sits at the default
+        // priority, so anything negative lands behind it. autoconfigure(false)
+        // avoids a second tag at the default priority.
+        $services->set(A2cnMandateProfileContributor::class)->autoconfigure(false)->tag('ucp_sdk.profile_contributor', [
+            'priority' => -256,
+        ]);
+    }
     // --- end A2CN / Protocol ---------------------------------------------
 
     // Stage one of ADR 0001's two-stage gate: class existence decides whether
@@ -581,8 +629,15 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
 
     // The A2CN trigger (Task 17): same core event, inside this same guard for
     // the same reason as QuoteServicingTrigger above — a shop without
-    // SwagCommercial has no `quote.state` state machine to fire it on.
-    $services->set(OfferVisibleStateSubscriber::class)->args([service('messenger.default_bus'), service('logger')]);
+    // SwagCommercial has no `quote.state` state machine to fire it on. Also
+    // inside the UCP gate, like the rest of the evidence layer: with no surface
+    // there is no act chain for the message it dispatches to advance.
+    if (UcpAvailability::isRegistered($container)) {
+        $services->set(OfferVisibleStateSubscriber::class)->args([
+            service('messenger.default_bus'),
+            service('logger'),
+        ]);
+    }
 
     // Whether a quote may be serviced at all, and with which settings (#5).
     $services->set(QuoteEscalator::class)->args([service(EscalationNotifierInterface::class)]);
@@ -656,10 +711,18 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service(QuoteServicingPipelineInterface::class)->ignoreOnInvalid(),
     ]);
 
+    // The A2CN services that ALSO need SwagCommercial, so they sit here rather
+    // than in the evidence block above. Both gates apply: the quote gateway
+    // comes from SwagCommercial, the act chain they operate on comes from a
+    // buyer agent over UCP.
+    if (!UcpAvailability::isRegistered($container)) {
+        return;
+    }
+
     // The emitter (Task 16) depends on QuoteGatewayInterface, which only
     // exists where SwagCommercial does — registered here, inside the same
-    // gate as the other gateway consumers above, rather than in the
-    // unconditional A2CN block. `ignoreOnInvalid()` kept for consistency with
+    // gate as the other gateway consumers above, rather than in the A2CN
+    // block. `ignoreOnInvalid()` kept for consistency with
     // ServiceQuoteHandler above even though this reference never actually goes
     // invalid (QuoteGatewayInterface is always defined, factory-backed); the
     // null case that matters for this shop is the factory's return value, which
@@ -690,10 +753,9 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // `$gateway` turns an unlicensed shop into a 502, not a container error.
     //
     // RecordResponder has no SwagCommercial dependency of its own — every
-    // collaborator it takes is from the unconditional A2CN block above — but
-    // it exists only to serve A2cnRecordsController, so it is registered here
-    // beside it rather than scattered up with the block it happens to depend
-    // on.
+    // collaborator it takes is from the A2CN block above — but it exists only
+    // to serve A2cnRecordsController, so it is registered here beside it rather
+    // than scattered up with the block it happens to depend on.
     $services->set(QuoteTerminalStateReader::class)->args([
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
     ]);

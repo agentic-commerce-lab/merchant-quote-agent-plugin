@@ -21,6 +21,13 @@ use Ucp\Sdk\Service\RuntimeConfigurationResolverInterface;
  */
 final class AgentAccessWiringTest extends IntegrationTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        self::requireUcpSurface();
+    }
+
     private const AGENT_URI = 'https://agent.example/.well-known/ucp';
 
     private ?string $restoreSalesChannelId = null;

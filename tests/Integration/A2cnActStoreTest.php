@@ -19,6 +19,13 @@ use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\ProtocolFixtures;
  */
 final class A2cnActStoreTest extends IntegrationTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        self::requireUcpSurface();
+    }
+
     private const QUOTE_ID = '0189d1c8f4f27c3ea0d4a5b6c7d8e9f0';
 
     public function testAppendingTheSameActTwiceIsANoOp(): void

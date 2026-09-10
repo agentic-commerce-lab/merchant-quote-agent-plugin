@@ -6,6 +6,8 @@ namespace MerchantQuoteAgentPlugin;
 
 use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
+use MerchantQuoteAgentPlugin\Ucp\AgentFacingRoutes;
+use MerchantQuoteAgentPlugin\Ucp\UcpAvailability;
 use Override;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Plugin;
@@ -13,14 +15,19 @@ use Shopware\Core\Framework\Plugin\Context\ActivateContext;
 use Shopware\Core\Framework\Plugin\Context\UninstallContext;
 use Shopware\Core\Framework\Plugin\Context\UpdateContext;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
+use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
 
 /**
  * Merchant-side quote agent: reacts to B2B quote lifecycle events, negotiates
  * within merchant-defined limits, and escalates anything outside them.
  *
- * Requires SwagCommercial (B2B quote management) and the Agentic Commerce
- * plugin — the latter is what imports the UCP SDK's routes into Shopware, so
- * without it there is no UCP surface for this plugin to extend.
+ * Requires SwagCommercial (B2B quote management) for the quote entities it
+ * services. The Agentic Commerce plugin is optional: it is what imports the UCP
+ * SDK's routes into Shopware, so it decides whether an agent can request a
+ * quote of its own accord. Without it, a buyer's hand-made quote is serviced,
+ * decided, escalated and audited exactly the same — the UCP endpoints, identity
+ * linking and the Agent Access settings page are simply not registered. See
+ * MerchantQuoteAgentPlugin\Ucp\UcpAvailability and ADR 0001.
  *
  * Services are loaded from Resources/config/services.php by Bundle::build().
  *
@@ -69,6 +76,30 @@ class MerchantQuoteAgentPlugin extends Plugin
      * log through PSR-3 at all.
      */
     public const LIFECYCLE_LOGGER_ID = 'merchant_quote_agent.lifecycle_logger';
+
+    /**
+     * The agent-facing routes, imported only where the UCP SDK bundle is.
+     *
+     * They live here rather than in Resources/config/routes.php because that
+     * file is handed a RoutingConfigurator and nothing else, and the gate needs
+     * the container's bundle list — the classpath cannot answer the question
+     * (see UcpAvailability). Here `$this->container` is the booted container,
+     * which is exactly the one whose services these routes resolve against, so
+     * the router and the service graph cannot disagree.
+     *
+     * Ungated, they 500 rather than 404 on a shop without the plugin: the
+     * controllers behind them are not registered there. Which routes those are
+     * lives in AgentFacingRoutes, next to the gate list it mirrors.
+     */
+    #[Override]
+    public function configureRoutes(RoutingConfigurator $routes, string $environment): void
+    {
+        parent::configureRoutes($routes, $environment);
+
+        if (UcpAvailability::isRegistered($this->container)) {
+            AgentFacingRoutes::import($routes, $this->getPath());
+        }
+    }
 
     /**
      * Key generation happens HERE and deliberately not in install(): during
@@ -178,8 +209,21 @@ class MerchantQuoteAgentPlugin extends Plugin
      */
     private function generateSigningKey(): void
     {
+        // has() before get(): on a shop with no UCP surface the whole evidence
+        // layer is ungenerated (see UcpAvailability), so this id does not
+        // exist. get() would throw ServiceNotFoundException, the catch below
+        // would swallow it, and every activate and update on such a shop would
+        // log "A2CN signing key generation failed" — an error about a feature
+        // that shop deliberately does not have. Nothing to generate is not a
+        // failure. Installing Agentic Commerce later brings the layer back, and
+        // update()/activate() generate the key then.
+        $container = $this->container;
+        if ($container?->has(A2cnKeyStore::class) !== true) {
+            return;
+        }
+
         try {
-            $keys = $this->container?->get(A2cnKeyStore::class);
+            $keys = $container->get(A2cnKeyStore::class);
             if ($keys instanceof A2cnKeyStore) {
                 $keys->generateIfAbsent();
             }

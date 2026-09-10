@@ -19,6 +19,8 @@ final class A2cnKeyStoreTest extends IntegrationTestCase
     {
         parent::setUp();
 
+        self::requireUcpSurface();
+
         // Same reasoning as PluginConfigTest: DatabaseTransactionBehaviour
         // rolls the database back between tests, but a set()/delete() in one
         // test primes MemoizedSystemConfigStore and CachedSystemConfigLoader
