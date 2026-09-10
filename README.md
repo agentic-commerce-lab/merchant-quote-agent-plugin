@@ -16,9 +16,14 @@ replies, same escalations, same decision log. What is not registered without it
 is listed under
 [Without Agentic Commerce](docs/end-to-end.md#11-without-agentic-commerce).
 
-**Start here: [`docs/end-to-end.md`](docs/end-to-end.md)** — the full process
-with a TL;DR at the top: triggers, the pass, the model calls, escalation,
-configuration, the dashboard, the A2CN evidence trail, and operating it.
+**Building or operating it? [`docs/end-to-end.md`](docs/end-to-end.md)** — the
+full process with a TL;DR at the top: triggers, the pass, the model calls,
+escalation, configuration, the dashboard, the A2CN evidence trail, and running
+it in production.
+
+**Running the shop? [`docs/for-merchants.md`](docs/for-merchants.md)** — the same
+story without the code: what to set up, how it decides, what always goes to a
+person, what it costs, and what reaches your AI provider.
 
 ## Requirements
 
@@ -147,7 +152,8 @@ confirm the capability matrix still matches what each release declares.
 
 | Document | What it covers |
 |---|---|
-| [`docs/end-to-end.md`](docs/end-to-end.md) | **The whole process, with a TL;DR.** Start here. |
+| [`docs/end-to-end.md`](docs/end-to-end.md) | **The whole process, with a TL;DR.** Start here if you build or operate it. |
+| [`docs/for-merchants.md`](docs/for-merchants.md) | **The same story for whoever runs the shop.** No code: setup, decisions, escalations, costs, data. |
 | [`docs/adr/`](docs/adr/) | Architectural decisions. |
 | [`docs/2026-08-25-quote-agent-shopware-plugin-design.md`](docs/2026-08-25-quote-agent-shopware-plugin-design.md) | Why this is a plugin rather than a hosted app. |
 | [`docs/superpowers/specs/`](docs/superpowers/specs/) | Per-feature design records, one per issue. |
