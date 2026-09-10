@@ -67,6 +67,13 @@ use Ucp\Sdk\Model\Security\PublicSigningKey;
  */
 final class A2cnEmissionTest extends IntegrationTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        self::requireUcpSurface();
+    }
+
     public function testAnEmittedActLandsWithoutDisturbingSiblingKeys(): void
     {
         $gateway = static::gateway();

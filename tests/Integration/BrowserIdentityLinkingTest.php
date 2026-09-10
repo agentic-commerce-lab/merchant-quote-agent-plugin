@@ -24,6 +24,13 @@ use Ucp\Sdk\Model\RequestContext;
  */
 final class BrowserIdentityLinkingTest extends IntegrationTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        self::requireUcpSurface();
+    }
+
     private function store(): PendingAuthorizationStoreInterface
     {
         $store = static::getContainer()->get(PendingAuthorizationStoreInterface::class);
