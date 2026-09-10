@@ -71,6 +71,19 @@
                     />
                 </div>
 
+                {# Our own config, not Agentic Commerce's — see the page's
+                   docblock on why it lives on this screen. Editing it needs
+                   system_config:update rather than ucp.editor, so a user who
+                   may edit one and not the other sees the 403 on save. #}
+                <mt-text-field
+                    :label="$tc('merchant-quote-agent.access.organizationNameLabel')"
+                    :help-text="$tc('merchant-quote-agent.access.organizationNameHelp')"
+                    :placeholder="organizationFallback"
+                    :disabled="!canEdit || isLoading"
+                    :model-value="organizationName"
+                    @update:model-value="(value) => { organizationName = value; }"
+                />
+
                 {# configLoaded is load-bearing, not cosmetic: the PUT replaces
                    enabledCapabilities wholesale, so saving before a config has
                    ever loaded for this channel — or after a load failed, e.g.

@@ -163,7 +163,7 @@
             "remoteProfileAllowlistHelp": "Hosts whose agent profile this shop may fetch. Profiles are fetched over HTTPS only.",
             "agentAllowlistLabel": "Agent domains",
             "agentAllowlistHelp": "Domains whose agents may transact with this sales channel.",
-            "save": "Save allowlists",
+            "save": "Save",
             "forbidden": "Saving needs the Agentic Commerce ucp.editor privilege.",
             "failed": "The request failed.",
             "cardTitle": "Agent access",
@@ -177,7 +177,9 @@
                 "explicit": "from this list",
                 "platform": "from Agent platforms",
                 "channel": "from this channel’s domain"
-            }
+            },
+            "organizationNameLabel": "Organization name in the A2CN seller mandate",
+            "organizationNameHelp": "Published in this sales channel’s signed A2CN seller mandate, which buyer agents fetch to see who they are dealing with. Leave empty to publish the shop name from Settings → Shop → Basic information."
         },
         "disposition": {
             "needsReview": "Needs review",

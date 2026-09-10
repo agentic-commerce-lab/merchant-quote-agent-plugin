@@ -1,8 +1,25 @@
 import template from './merchant-quote-agent-access.html.twig';
 
 /**
- * Edits the three UCP allowlists, plus the Identity Linking capability, for
- * one sales channel.
+ * The same system_config key `A2cnIdentityResolver::ORGANIZATION_CONFIG_KEY`
+ * reads, and the domain it lives under. Unchanged from when the plugin config
+ * page owned this field, so nothing on the PHP side had to move with it.
+ */
+const ORGANIZATION_DOMAIN = 'MerchantQuoteAgentPlugin.config';
+const ORGANIZATION_KEY = `${ORGANIZATION_DOMAIN}.a2cnOrganizationName`;
+
+/**
+ * What A2cnOrganizationNameReader falls back to when the field is left blank —
+ * the shop's own name from Settings → Shop → Basic information. Read here only
+ * to place it in the input's placeholder, so "leave this empty" shows what will
+ * actually be published rather than making the merchant go and look.
+ */
+const SHOP_NAME_DOMAIN = 'core.basicInformation';
+const SHOP_NAME_KEY = `${SHOP_NAME_DOMAIN}.shopName`;
+
+/**
+ * Edits the three UCP allowlists, the Identity Linking capability, and the A2CN
+ * organization name, for one sales channel.
  *
  * The data belongs to the Agentic Commerce plugin, so this page drives that
  * plugin's own admin API rather than writing its table: the PUT goes through its
@@ -19,6 +36,24 @@ import template from './merchant-quote-agent-access.html.twig';
  *
  * Saving needs that plugin's `ucp.editor` privilege, which is separate from this
  * plugin's own. A 403 from it is shown as-is rather than reported as success.
+ *
+ * The organization name is the exception: it is OUR config, in system_config
+ * under the same key the plugin config page used to write
+ * (`MerchantQuoteAgentPlugin.config.a2cnOrganizationName`), so
+ * `A2cnIdentityResolver` reads it unchanged. It lives here rather than on the
+ * plugin config page because it is only ever read when the shop publishes an
+ * A2CN seller mandate, and that whole layer is off without the Agentic Commerce
+ * plugin — a config field for a feature the shop does not have is a question a
+ * merchant should not be asked. Two consequences worth knowing: it is now
+ * per-sales-channel only, where the plugin config page could also set one
+ * global default (a value already set globally still shows here, because the
+ * GET below inherits, and saving copies it onto the channel); and it needs
+ * `system_config:update`, not `ucp.editor`.
+ *
+ * ponytail: the two writes in save() are not atomic — the UCP PUT can land and
+ * the config POST fail, or the reverse. Both surface the error, and neither can
+ * corrupt the other's data. A single transactional endpoint would need a
+ * controller of our own; add one if partial saves ever actually bite.
  */
 Shopware.Component.register('merchant-quote-agent-access', {
     template,
@@ -31,6 +66,8 @@ Shopware.Component.register('merchant-quote-agent-access', {
             salesChannelId: null,
             lists: { platformAllowlist: '', remoteProfileAllowlist: '', agentAllowlist: '' },
             capabilities: [],
+            organizationName: '',
+            shopName: '',
             profileDomain: null,
             isLoading: false,
             isSaving: false,
@@ -79,6 +116,16 @@ Shopware.Component.register('merchant-quote-agent-access', {
 
         selectedChannel() {
             return this.salesChannels.find((channel) => channel.id === this.salesChannelId) ?? null;
+        },
+
+        /**
+         * What an empty organization name publishes, mirroring
+         * A2cnOrganizationNameReader's own order: the shop name, then the sales
+         * channel's name, then a literal the reader only reaches when the shop
+         * names itself nowhere.
+         */
+        organizationFallback() {
+            return this.shopName || this.selectedChannel?.name || 'Merchant';
         },
 
         /**
@@ -133,6 +180,20 @@ Shopware.Component.register('merchant-quote-agent-access', {
             return this.syncService.getBasicHeaders();
         },
 
+        /**
+         * `inherit`, so a value set globally — on the old plugin config page for
+         * the organization name, or in Basic information for the shop name —
+         * appears here instead of looking lost.
+         */
+        async loadSystemConfig(domain, key, salesChannelId) {
+            const { data } = await this.httpClient.get('_action/system-config', {
+                params: { domain, salesChannelId, inherit: true },
+                headers: this.headers(),
+            });
+
+            return data?.[key] ?? '';
+        },
+
         async loadSalesChannels() {
             this.isLoading = true;
             this.error = null;
@@ -165,14 +226,21 @@ Shopware.Component.register('merchant-quote-agent-access', {
             this.error = null;
 
             try {
-                const { data } = await this.httpClient.get(
-                    `_admin/ucp/sales-channels/${requested}/config`,
-                    { headers: this.headers() },
-                );
+                const [{ data }, organizationName, shopName] = await Promise.all([
+                    this.httpClient.get(
+                        `_admin/ucp/sales-channels/${requested}/config`,
+                        { headers: this.headers() },
+                    ),
+                    this.loadSystemConfig(ORGANIZATION_DOMAIN, ORGANIZATION_KEY, requested),
+                    this.loadSystemConfig(SHOP_NAME_DOMAIN, SHOP_NAME_KEY, requested),
+                ]);
 
                 if (this.salesChannelId !== requested) {
                     return;
                 }
+
+                this.organizationName = organizationName;
+                this.shopName = shopName;
 
                 const config = data?.data ?? data ?? {};
 
@@ -216,6 +284,18 @@ Shopware.Component.register('merchant-quote-agent-access', {
                     },
                     { headers: this.headers() },
                 );
+
+                // Trimmed to null rather than '': the resolver's "leave empty
+                // to publish the sales channel name" fallback tests for a
+                // non-empty string, and storing '' would work but leaves a row
+                // that reads as a deliberate blank name.
+                const name = String(this.organizationName ?? '').trim();
+                await this.httpClient.post(
+                    '_action/system-config',
+                    { [ORGANIZATION_KEY]: name === '' ? null : name },
+                    { params: { salesChannelId }, headers: this.headers() },
+                );
+
                 await this.loadConfig();
             } catch (error) {
                 this.error = this.messageFor(error);
