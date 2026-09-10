@@ -85,9 +85,17 @@ This is why `orders()` and `productPurchases()` associate `orderCustomer` even t
 
 ### Containment on the way out
 
-The brief reaches exactly one model call. `AskInterpreter` (extract) does not receive it — it interprets the buyer's text and needs no account context. `ReplyComposer` does not receive it either, so the only place brief content could reach a buyer is the `message` the negotiate call writes, and `ReplyTemplate::keepsTheFacts()` already substitutes the template when a number moved.
+The brief reaches exactly one model call. `AskInterpreter` (extract) does not receive it — it interprets the buyer's text and needs no account context. `ReplyComposer` does not receive it either.
 
-The prompt marks the brief **INTERNAL**: it informs posture and may never be quoted, summarised or acknowledged in `message`. The decision-table signals are the part that must never surface — telling a buyer "you accepted our first counter four times out of five" hands them the playbook. This is a prompt rule, and a prompt rule is not a guarantee; the injection test in "Testing" is what tells us when a model breaks it.
+**Two separate properties live here, and conflating them overstates what is proven. Keep them apart.**
+
+**1. Buyer disclosure is architecturally closed.** `ProposedAnswer::$modelMessage` has no consumers anywhere in `src/`: the negotiate model's prose is recorded in `raw_proposal` for audit and otherwise discarded. Only the structured offer terms survive, and `ReplyComposer::reply()` composes a template from verified facts (reduction percent, total, currency, expiry) and sends **that template** — never the model's message — as the reply model's prompt; if the reworded text drops a fact, the template ships instead. Escalation posts a fixed constant. So the brief cannot reach the buyer **even if the model completely ignores the INTERNAL instruction**. An earlier draft of this spec credited `ReplyTemplate::keepsTheFacts()` with this; that is not the mechanism. The mechanism is that buyer-facing text is regenerated rather than forwarded.
+
+**2. Whether the model OBEYS the INTERNAL rule is a separate, unproven question.** The prompt marks the brief internal: it informs posture and may never be quoted, summarised or acknowledged in `message`. The decision-table signals are the part that must never surface — telling a buyer "you accepted our first counter four times out of five" hands them the playbook. That is a prompt rule, and a prompt rule is not a guarantee.
+
+The scripted acceptance tests do **not** establish it. Their deliberately contaminated proposal proves downstream containment (property 1), not that the model declines to write private figures in the first place. Testing property 2 needs a real provider call: `LiveHistoryMessageTest` sends the production negotiate prompt with a real brief over synthetic data, asks a hostile buyer for every private figure, and inspects the returned `message` directly, before any reply composition. It is opt-in because it costs a paid call, and **no such call has been made** — so property 2 is UNVERIFIED, by design and openly. `HistoryMessagePrivacyTest` validates that assertion offline against deliberate disclosures; that proves the detector works, not that the model behaves.
+
+The practical consequence: a model that ignores the rule leaks nothing to the buyer, but it does write private figures into `raw_proposal`, which is merchant-visible and intended to be. Nothing there is exposed to the buyer's side.
 
 ## Components
 
@@ -225,7 +233,7 @@ ServiceQuoteHandler
 
 | Risk | Mitigation |
 | --- | --- |
-| The INTERNAL rule is a prompt instruction, not enforcement | The injection acceptance test is the detector. If it fails in practice, the mechanical fallback is to escalate when `message` contains a figure that appears only in the brief — deferred because numeric provenance over free prose will produce false escalations. |
+| The INTERNAL rule is a prompt instruction, not enforcement | **Buyer disclosure does not depend on it** — see "Containment on the way out", property 1: the model's `message` reaches no consumer and the reply is regenerated from verified facts. What the rule governs is whether private figures land in `raw_proposal`, which is merchant-visible by design. `LiveHistoryMessageTest` is the detector for the rule itself and is opt-in/unrun, so the rule's effectiveness is openly UNVERIFIED. The mechanical fallback (escalate when `message` carries a figure present only in the brief) stays deferred, and is now clearly optional rather than the last line of defence. |
 | Two extra rounds widen the cost of a pass | The brief is free (it rides calls that already happen). Only a model that asks pays, the cap is 2, and `history_reads` records how often it happens so the cap can be tuned on evidence. |
 | The dev shop's counts are unverified this session | Re-measure quote, customer and order counts before implementation; the version-filter test depends on a multi-version quote actually existing. |
 | `order_line_item` association path may differ from the assumption | It has an integration test rather than a unit test for exactly this reason, and the bridge has hit this class of bug before. |
