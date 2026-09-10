@@ -24,6 +24,11 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
  *
  * Field names verified against a live shop (36 quotes) during Task 4: all as
  * SwagCommercial's QuoteDefinition declares them, no corrections needed.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10); mapping the DAL entity's
+ * associations and nullable fields (currency, customer, state, customFields)
+ * into typed DTOs takes one null/type check per mapped field.
  */
 final readonly class QuoteSnapshotReader
 {
@@ -52,6 +57,7 @@ final readonly class QuoteSnapshotReader
         $criteria->addAssociation('comments');
         $criteria->addAssociation('stateMachineState');
         $criteria->addAssociation('currency');
+        $criteria->addAssociation('customer');
 
         $quote = $this->quoteRepository->search($criteria, $versionedContext)->getEntities()->first();
 
@@ -81,6 +87,8 @@ final readonly class QuoteSnapshotReader
         $iso = $currency instanceof Entity ? (string) $currency->get('isoCode') : '';
         $salesChannelId = $quote->get('salesChannelId');
         $customerId = $quote->get('customerId');
+        $customer = $quote->get('customer');
+        $company = $customer instanceof Entity ? $customer->get('company') : null;
 
         return new QuoteIdentity(
             quoteId: $quoteId,
@@ -88,6 +96,7 @@ final readonly class QuoteSnapshotReader
             currencyIso: $iso,
             salesChannelId: \is_string($salesChannelId) ? $salesChannelId : '',
             customerId: \is_string($customerId) ? $customerId : '',
+            companyName: \is_string($company) ? $company : '',
         );
     }
 

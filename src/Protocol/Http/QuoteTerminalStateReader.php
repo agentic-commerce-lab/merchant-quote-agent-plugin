@@ -63,6 +63,7 @@ class QuoteTerminalStateReader
             quoteNumber: $snapshot->identity->quoteNumber,
             salesChannelId: $snapshot->identity->salesChannelId,
             acceptance: self::lastAcceptance($chain),
+            buyerOrganizationName: $snapshot->identity->companyName,
         );
     }
 

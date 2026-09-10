@@ -14,11 +14,17 @@ use MerchantQuoteAgentPlugin\Protocol\Act\Act;
  */
 final readonly class QuoteTerminalState
 {
+    /**
+     * @mago-expect lint:excessive-parameter-list
+     * Promoted read-model fields are its interface; named arguments keep
+     * callers explicit.
+     */
     public function __construct(
         public string $state,
         public bool $expired,
         public string $quoteNumber,
         public string $salesChannelId,
         public ?Act $acceptance,
+        public string $buyerOrganizationName = '',
     ) {}
 }

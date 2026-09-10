@@ -15,6 +15,14 @@ final readonly class QuoteIdentity
      *
      * Defaulted to '' because it is read off the entity and a shop with a
      * broken row must degrade to "no history", never to an unfiltered read.
+     *
+     * `companyName`: the company's own name, for the parties block of an A2CN
+     * record; blank when the account has none, which is a fact about the
+     * account and not an error.
+     *
+     * @mago-expect lint:excessive-parameter-list
+     * Promoted read-model fields are its interface; named arguments keep
+     * callers explicit.
      */
     public function __construct(
         public string $quoteId,
@@ -22,5 +30,6 @@ final readonly class QuoteIdentity
         public string $currencyIso,
         public string $salesChannelId = '',
         public string $customerId = '',
+        public string $companyName = '',
     ) {}
 }
