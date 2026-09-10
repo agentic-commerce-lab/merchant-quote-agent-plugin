@@ -115,6 +115,7 @@
         },
         "detail": {
             "pageTitle": "Quote #{quoteNumber}",
+            "agentTitle": "Quote Agent",
             "summaryTitle": "Negotiation",
             "status": "Status",
             "stillOpen": "Still open",

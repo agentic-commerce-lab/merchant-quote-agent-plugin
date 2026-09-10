@@ -468,6 +468,9 @@ assert.equal(historyReads(vm, { rounds: [{ kind: 'quote_history', productId: {},
 const snippets = ['en', 'de'].map((locale) => JSON.parse(readFileSync(new URL(`./snippet/${locale}.json`, import.meta.url)))['merchant-quote-agent']);
 assert.deepStrictEqual(Object.keys(snippets[0].history).sort(), Object.keys(snippets[1].history).sort());
 for (const snippet of snippets) {
+    assert.ok(snippet.detail.agentTitle, "detail.agentTitle snippet missing");
+}
+for (const snippet of snippets) {
     for (const key of ['customer', 'accountHistory', 'historyReads']) assert.ok(snippet.tech[key]);
     for (const key of ['unknown', 'none', 'unavailable', 'round', 'productId', 'quote_history', 'orders', 'product_purchases', 'lastOrderAt']) assert.ok(snippet.history[key]);
 }
