@@ -89,11 +89,11 @@ final readonly class A2cnMessagesController
         }
 
         $issuer = $this->tokens->issuerOf((string) $request->headers->get('Authorization', ''), $identity->did, $now);
-        $act = self::act($request);
         if ($issuer === null) {
             return self::refuse(new InboundActRefusal(401, 'invalid_jwt'));
         }
 
+        $act = InboundActPayload::from($request);
         if ($act === null) {
             return self::refuse(new InboundActRefusal(400, 'invalid_act'));
         }
@@ -130,6 +130,8 @@ final readonly class A2cnMessagesController
                 sellerDid: $sellerDid,
                 issuerDid: $issuerDid,
             ));
+        } catch (QuoteStateUnavailable) {
+            return self::refuse(new InboundActRefusal(502, 'quote_state_unavailable'));
         } finally {
             $lock->release();
         }
@@ -143,7 +145,7 @@ final readonly class A2cnMessagesController
         // chain's parsed Act on replay.
         $fresh = $result === $act;
 
-        return self::accepted(
+        return self::respond(
             [
                 'session_id' => $sessionId,
                 'accepted' => [
@@ -155,26 +157,15 @@ final readonly class A2cnMessagesController
         );
     }
 
-    private static function act(Request $request): ?Act
-    {
-        $payload = json_decode($request->getContent(), associative: true);
-
-        return \is_array($payload) ? Act::fromArray($payload) : null;
-    }
-
     private static function refuse(InboundActRefusal $refusal): JsonResponse
     {
-        return self::stamp(JsonEnvelope::noStore($refusal->toArray(), $refusal->status));
+        return self::respond($refusal->toArray(), $refusal->status);
     }
 
     /** @param array<string, mixed> $body */
-    private static function accepted(array $body, int $status): JsonResponse
+    private static function respond(array $body, int $status): JsonResponse
     {
-        return self::stamp(JsonEnvelope::noStore($body, $status));
-    }
-
-    private static function stamp(JsonResponse $response): JsonResponse
-    {
+        $response = JsonEnvelope::noStore($body, $status);
         $response->headers->set('Content-Type', self::CONTENT_TYPE);
 
         return $response;

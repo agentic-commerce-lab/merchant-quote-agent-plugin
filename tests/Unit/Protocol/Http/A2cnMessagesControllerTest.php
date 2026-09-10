@@ -44,6 +44,7 @@ final class A2cnMessagesControllerTest extends TestCase
     public ?string $locatorQuoteId = self::QUOTE_ID;
     public ?QuoteTerminalState $quoteTerminalState = null;
     public bool $throwOnQuoteState = false;
+    public bool $throwOnCustomFields = false;
     /** @var array<string, mixed>|null */
     public ?array $customFields = [];
     public bool $hasIdentity = true;
@@ -62,6 +63,7 @@ final class A2cnMessagesControllerTest extends TestCase
             acceptance: null,
         );
         $this->throwOnQuoteState = false;
+        $this->throwOnCustomFields = false;
         $this->customFields = [];
         $this->hasIdentity = true;
         $this->locks = new QuoteServicingLock(new LockFactory(new InMemoryStore()), 'in-memory');
@@ -117,6 +119,30 @@ final class A2cnMessagesControllerTest extends TestCase
         self::assertSame([], $this->gateway?->updates);
     }
 
+    public function testItRefusesWhenCustomFieldsThrowsQuoteStateUnavailableAndReleasesLock(): void
+    {
+        $this->throwOnCustomFields = true;
+        $act = ProtocolFixtures::buyerAct(1, $this->session());
+
+        $response = $this->controller()->messages($this->session(), Request::create(
+            '/a2cn/sessions/' . $this->session() . '/messages',
+            'POST',
+            server: ['HTTP_AUTHORIZATION' => 'Bearer ' . self::TOKEN],
+            content: (string) json_encode($act),
+        ));
+
+        self::assertSame(502, $response->getStatusCode());
+        self::assertSame('application/a2cn+json', $response->headers->get('Content-Type'));
+        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+
+        $body = json_decode((string) $response->getContent(), associative: true);
+        self::assertIsArray($body);
+        self::assertSame('quote_state_unavailable', $body['status']);
+
+        \assert($this->locks !== null);
+        self::assertTrue($this->locks->for(self::QUOTE_ID)->acquire());
+    }
+
     /** @param \Closure(self): Request $requestFactory */
     #[DataProvider('refusalCases')]
     public function testItRefusesInvalidRequests(
@@ -145,6 +171,17 @@ final class A2cnMessagesControllerTest extends TestCase
             static fn(self $test): Request => Request::create(
                 '/a2cn/sessions/' . $test->session() . '/messages',
                 'POST',
+                content: (string) json_encode(ProtocolFixtures::buyerAct(1, $test->session())),
+            ),
+        ];
+
+        yield 'invalid bearer token' => [
+            401,
+            'invalid_jwt',
+            static fn(self $test): Request => Request::create(
+                '/a2cn/sessions/' . $test->session() . '/messages',
+                'POST',
+                server: ['HTTP_AUTHORIZATION' => 'Bearer invalid-token'],
                 content: (string) json_encode(ProtocolFixtures::buyerAct(1, $test->session())),
             ),
         ];
@@ -302,12 +339,14 @@ final class A2cnMessagesControllerTest extends TestCase
         $state = $this->quoteTerminalState;
         $customFields = $this->customFields;
         $throwOnState = $this->throwOnQuoteState;
+        $throwOnCustomFields = $this->throwOnCustomFields;
 
         $quotes = new class extends QuoteTerminalStateReader {
             public ?QuoteTerminalState $state = null;
             /** @var array<string, mixed>|null */
             public ?array $customFields = [];
             public bool $throwOnState = false;
+            public bool $throwOnCustomFields = false;
 
             public function __construct() {}
 
@@ -322,12 +361,17 @@ final class A2cnMessagesControllerTest extends TestCase
 
             public function customFieldsFor(string $quoteId): ?array
             {
+                if ($this->throwOnCustomFields) {
+                    throw new QuoteStateUnavailable('boom');
+                }
+
                 return $this->customFields;
             }
         };
         $quotes->state = $state;
         $quotes->customFields = $customFields;
         $quotes->throwOnState = $throwOnState;
+        $quotes->throwOnCustomFields = $throwOnCustomFields;
 
         $identities = new class($this->hasIdentity) extends A2cnIdentityResolver {
             public function __construct(
