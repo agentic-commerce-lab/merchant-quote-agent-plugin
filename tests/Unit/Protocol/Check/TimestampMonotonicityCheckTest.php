@@ -47,6 +47,41 @@ final class TimestampMonotonicityCheckTest extends TestCase
         self::assertStringContainsString(':2', (string) $violation->messageId);
     }
 
+    public function testItSkipsAnActWhoseTimestampCannotBeParsed(): void
+    {
+        // The unreadable act sits BETWEEN two well-ordered acts. An
+        // implementation that treated the unparsable timestamp as 0 would
+        // report an inversion at sequence 2 (0 < sequence 1's instant); one
+        // that treated it as "now" would leave $previous poisoned and report
+        // an inversion at sequence 3 instead. Either mutation must fail this
+        // assertion — TimestampFormatCheck owns the complaint about how
+        // sequence 2 is written, this check must stay silent about it.
+        $session = SessionId::forQuote(self::QUOTE_ID);
+
+        $buyerOne = ProtocolFixtures::buyerAct(1, $session);
+        $buyerOne['timestamp'] = '2026-09-10T09:42:07Z';
+
+        $buyerTwo = ProtocolFixtures::buyerAct(2, $session);
+        $buyerTwo['timestamp'] = 'not-a-timestamp';
+
+        $seller = ProtocolFixtures::sellerAct(3, $session);
+        $seller['timestamp'] = '2026-09-10T09:45:00Z';
+
+        $violation = (new TimestampMonotonicityCheck())->check(
+            ActChain::read([
+                ActKey::SESSION_KEY => $session,
+                ActKey::for(1, ActRole::Buyer) => $buyerOne,
+                ActKey::for(2, ActRole::Buyer) => $buyerTwo,
+                ActKey::for(3, ActRole::Seller) => $seller,
+            ]),
+            ProtocolFixtures::snapshot(self::QUOTE_ID),
+            ProtocolFixtures::SELLER,
+            ProtocolFixtures::at(),
+        );
+
+        self::assertNull($violation);
+    }
+
     private function check(string $first, string $second): ?ProtocolViolation
     {
         $session = SessionId::forQuote(self::QUOTE_ID);
