@@ -63,7 +63,6 @@
             "errorChain": "Error chain",
             "yes": "Yes",
             "no": "No",
-            "rawProposal": "The model's own answer",
             "customer": "Customer (company)",
             "accountHistory": "Account history shown to the agent",
             "historyReads": "History the agent asked for"

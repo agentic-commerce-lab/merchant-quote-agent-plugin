@@ -239,10 +239,6 @@ Shopware.Component.register('merchant-quote-agent-detail', {
 
         /**
          * One servicing pass, ready to render.
-         *
-         * The title comes from why the pass ran, not from its position: a pass
-         * numbered three is not therefore a buyer counter-offer, and labelling
-         * it as one described conversations that never happened.
          */
         formatRun(round, index) {
             const answered = answeredTheBuyer(round.outcome);
