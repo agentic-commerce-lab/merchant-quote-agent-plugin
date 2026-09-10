@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
+use MerchantQuoteAgentPlugin\Bridge\AgentContext;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -37,7 +38,8 @@ final class TerminalOutcomeSubscriptionTest extends IntegrationTestCase
     public function testARealTerminalTransitionStampsTheRecord(): void
     {
         $context = Context::createDefaultContext();
-        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), $context, 'open');
+        $context->addState(Context::SKIP_TRIGGER_FLOW);
+        $quoteId = $this->newOpenQuoteId();
         $recordId = Uuid::randomHex();
 
         self::records()
@@ -67,13 +69,16 @@ final class TerminalOutcomeSubscriptionTest extends IntegrationTestCase
         // The subscriber fires, finds no record, and must neither throw nor
         // invent a row. The transition itself has to succeed.
         $context = Context::createDefaultContext();
-        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), $context, 'open');
-
-        self::driveOpenQuoteToDeclined($quoteId, $context);
+        $context->addState(Context::SKIP_TRIGGER_FLOW);
+        $quoteId = $this->newOpenQuoteId();
 
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('quoteId', $quoteId));
+        self::assertSame(0, self::records()->searchIds($criteria, $context)->getTotal());
 
+        self::driveOpenQuoteToDeclined($quoteId, $context);
+
+        self::assertSame('declined', static::gateway()->fetchSnapshot($quoteId)->lifecycle->stateTechnicalName);
         self::assertSame(0, self::records()->searchIds($criteria, $context)->getTotal());
     }
 
@@ -81,9 +86,8 @@ final class TerminalOutcomeSubscriptionTest extends IntegrationTestCase
      * `open --process--> in_review --sent--> replied --decline--> declined`,
      * through the raw core registry rather than the bridge's
      * QuoteStateTransitioner: see the class docblock for why this path was
-     * chosen over `admin_cancel`. The two intermediate transitions fire
-     * `in_review`/`replied` mail flows exactly like TransitionTest's do, and
-     * are harmless there for the same two reasons documented on that class.
+     * chosen over `admin_cancel`. The context skips mail flows while the
+     * real state-change subscribers still receive every transition.
      */
     private static function driveOpenQuoteToDeclined(string $quoteId, Context $context): void
     {
@@ -104,7 +108,8 @@ final class TerminalOutcomeSubscriptionTest extends IntegrationTestCase
     public function testARealTransitionStampsAnOpenEscalation(): void
     {
         $context = Context::createDefaultContext();
-        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), $context, 'open');
+        $context->addState(Context::SKIP_TRIGGER_FLOW);
+        $quoteId = $this->newOpenQuoteId();
         $recordId = Uuid::randomHex();
 
         self::records()
@@ -130,6 +135,22 @@ final class TerminalOutcomeSubscriptionTest extends IntegrationTestCase
             . 'or the core event name does not match.',
         );
         self::assertNotNull($record->resolvedAt);
+    }
+
+    /** A new quote has no decision rows, regardless of the shop's pre-existing audit history. */
+    private function newOpenQuoteId(): string
+    {
+        $container = static::getContainer();
+        $context = BuyerQuoteContextFixture::buyerContext($container);
+        $context->addState(AgentContext::STATE, Context::SKIP_TRIGGER_FLOW);
+        $quote = $this->buyerGateway()->requestQuote(
+            $context,
+            [['product_id' => BuyerQuoteFixture::anyPurchasableProductId($container), 'quantity' => 1]],
+            null,
+        );
+        self::assertSame('open', $quote->state);
+
+        return $quote->id;
     }
 
     private static function records(): EntityRepository

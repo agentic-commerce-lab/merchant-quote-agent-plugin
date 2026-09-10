@@ -30,6 +30,8 @@ final class DecisionDraft
 
     public ?string $salesChannelId = null;
 
+    public ?string $customerId = null;
+
     public ?string $currencyIso = null;
 
     public ?string $triggerReason = null;
@@ -82,6 +84,9 @@ final class DecisionDraft
 
     /** @var array<string, mixed>|null */
     public ?array $interpretedAsks = null;
+
+    /** @var array<string, mixed>|null */
+    public ?array $historyReads = null;
 
     public ?string $rawProposal = null;
 

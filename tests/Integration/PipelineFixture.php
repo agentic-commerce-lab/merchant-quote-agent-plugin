@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Bridge\AgentContext;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
+use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
@@ -22,9 +24,9 @@ use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\ScriptedClient;
 use Psr\Log\NullLogger;
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 
 /**
  * Shared by every integration test that needs a real pipeline against the
@@ -42,16 +44,20 @@ trait PipelineFixture
         $comments = static::getContainer()->get('quote_comment.repository');
         self::assertInstanceOf(EntityRepository::class, $comments);
 
-        $customers = static::getContainer()->get('customer.repository');
-        self::assertInstanceOf(EntityRepository::class, $customers);
-        $customerId = $customers->searchIds(new Criteria(), Context::createDefaultContext())->firstId();
-        self::assertIsString($customerId, 'The shop has no customer to attribute a buyer comment to.');
+        $customerId = self::connection(static::getContainer())
+            ->fetchOne('SELECT LOWER(HEX(customer_id)) FROM quote WHERE id = UNHEX(:quote) AND version_id = UNHEX(:live)', [
+                'quote' => $quoteId,
+                'live' => Defaults::LIVE_VERSION,
+            ]);
+        self::assertIsString($customerId, 'The quote must have an actual buyer owner.');
+        $context = AgentContext::create();
+        $context->addState(Context::SKIP_TRIGGER_FLOW);
 
         $comments->create([[
             'quoteId' => $quoteId,
             'comment' => $text,
             'customerId' => $customerId,
-        ]], Context::createDefaultContext());
+        ]], $context);
     }
 
     /** Built directly rather than read from config: this test is proving the pipeline, not the reader. */
@@ -76,7 +82,15 @@ trait PipelineFixture
      */
     protected static function pipelineWith(array $replies): NegotiationPipeline
     {
-        $client = ScriptedClient::returning($replies);
+        return self::pipelineWithSpy($replies)[0];
+    }
+
+    /**
+     * @param list<string> $replies
+     * @return array{0: NegotiationPipeline, 1: ScriptedClient}
+     */
+    protected static function pipelineWithSpy(array $replies): array
+    {
         $logger = new NullLogger();
 
         $prompts = static::getContainer()->get(PromptComposer::class);
@@ -96,21 +110,27 @@ trait PipelineFixture
 
         $recorder = static::getContainer()->get(DecisionRecorder::class);
         self::assertInstanceOf(DecisionRecorder::class, $recorder);
+        [$client, $spy] = ScriptedClient::spy($replies, $recorder);
+
+        $historyFactory = static::getContainer()->get(CustomerHistoryFactoryInterface::class);
+        self::assertInstanceOf(CustomerHistoryFactoryInterface::class, $historyFactory);
 
         $round = new OfferRound(
-            new OfferProposer($client, $prompts, $authorizer, $recorder),
+            new OfferProposer($client, $prompts, $authorizer, $recorder, $historyFactory),
             new OfferApplier($verifier, $logger, $recorder),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             $escalator,
             $logger,
         );
 
-        return new NegotiationPipeline(
+        $pipeline = new NegotiationPipeline(
             new AskInterpreter($client, $prompts, $recorder),
             $decider,
             $round,
             $recorder,
             $logger,
         );
+
+        return [$pipeline, $spy];
     }
 }

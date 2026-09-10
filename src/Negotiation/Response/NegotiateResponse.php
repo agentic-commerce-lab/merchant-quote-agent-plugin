@@ -24,7 +24,20 @@ final readonly class NegotiateResponse
         public string $message = '',
         public ?string $escalationReason = null,
         public OfferTerms $terms = new OfferTerms(),
+        public HistoryRequest $historyRequest = new HistoryRequest(),
     ) {}
+
+    /**
+     * Checked BEFORE `action` in the loop, so a request beats both an offer and
+     * an escalation. A model that is still asking for data has not finished
+     * deciding, and acting on half-formed terms is how a buyer gets told about a
+     * concession the model would not have made with the account in front of it.
+     * The two-round cap is what keeps that from being unbounded.
+     */
+    public function wantsHistory(): bool
+    {
+        return $this->historyRequest->isSet();
+    }
 
     public function escalates(): bool
     {

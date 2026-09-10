@@ -63,7 +63,10 @@
             "errorChain": "Fehlerkette",
             "yes": "Ja",
             "no": "Nein",
-            "rawProposal": "Antwort des Modells"
+            "rawProposal": "Antwort des Modells",
+            "customer": "Kunde (Firma)",
+            "accountHistory": "Kundenhistorie, die dem Agenten gezeigt wurde",
+            "historyReads": "Vom Agenten angeforderte Historie"
         },
         "list": {
             "gridTitle": "Bearbeitete Angebote",
@@ -208,6 +211,27 @@
             "notAuthorized": "Der Agent hat Konditionen vorgeschlagen, die Ihre Richtlinien nicht erlauben. Es wurde nichts freigegeben, das Angebot blieb unverändert.",
             "notVerified": "Das Angebot wurde geändert, aber die anschließende Prüfung stimmte nicht mit dem Freigegebenen überein.",
             "needsAttention": "Dieser Durchlauf meldet Erfolg, ist aber nicht sauber zu Ende gelaufen. Prüfen Sie das Angebot, bevor Sie sich darauf verlassen."
+        },
+        "history": {
+            "currencyUnknown": "Währung unbekannt",
+            "noRecordedReduction": "Keine protokollierte Preisreduzierung eines Durchlaufs",
+            "unknown": "Unbekannt / nicht erfasst",
+            "none": "Keine",
+            "unavailable": "Nicht verfügbar",
+            "round": "Abfrage {count}",
+            "productId": "Produkt-ID",
+            "quote_history": "Angebotshistorie",
+            "orders": "Letzte Bestellungen",
+            "product_purchases": "Produktkäufe",
+            "quotesSeen": "Erfasste Angebote",
+            "quotesConverted": "In Bestellungen umgewandelte Angebote",
+            "quotesLost": "Verlorene Angebote",
+            "offersMade": "Autorisierte Angebotsvorschläge (Durchläufe)",
+            "offersAccepted": "Angenommene Angebote mit autorisiertem Vorschlag",
+            "lastGrantedDiscount": "Zuletzt protokollierte Preisreduzierung eines Durchlaufs (bezogen auf dessen Ausgangswert)",
+            "orderCount": "Bestellungen",
+            "lifetimeNet": "Bisheriger Bestellwert (netto)",
+            "lastOrderAt": "Letztes Bestelldatum"
         }
     }
 }

@@ -1,4 +1,5 @@
 import template from './merchant-quote-agent-detail.html.twig';
+import { historySummary, historyReads } from '../../history';
 import {
     ORDER_PLACED_TERMINAL_STATE,
     answeredTheBuyer,
@@ -310,6 +311,9 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 { key: 'duration', value: formatDuration(round.durationMs) },
                 { key: 'authorized', value: this.bool(round.authorized) },
                 { key: 'verified', value: this.bool(round.verified) },
+                { key: 'customer', value: typeof round.customerId === 'string' && round.customerId ? round.customerId : '–', mono: true },
+                { key: 'accountHistory', value: historySummary(this, round.historyReads), wide: true },
+                { key: 'historyReads', value: historyReads(this, round.historyReads), wide: true },
                 { key: 'revision', value: round.revisionVersionId || '–', mono: true },
                 {
                     key: 'promptHashes',

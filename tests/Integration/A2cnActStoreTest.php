@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
-use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Protocol\Act\Act;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
 use MerchantQuoteAgentPlugin\Protocol\Check\ProtocolViolation;
@@ -24,7 +23,7 @@ final class A2cnActStoreTest extends IntegrationTestCase
 
     public function testAppendingTheSameActTwiceIsANoOp(): void
     {
-        $store = new DbalActStore(self::connection());
+        $store = new DbalActStore(self::connection(self::getContainer()));
         $session = SessionId::forQuote(self::QUOTE_ID);
         $act = Act::fromArray(ProtocolFixtures::sellerAct(1, $session));
         self::assertNotNull($act);
@@ -47,7 +46,7 @@ final class A2cnActStoreTest extends IntegrationTestCase
      */
     public function testTwoActsAtOneSequenceWithDifferentRolesBothSurvive(): void
     {
-        $store = new DbalActStore(self::connection());
+        $store = new DbalActStore(self::connection(self::getContainer()));
         $session = SessionId::forQuote(self::QUOTE_ID);
 
         foreach ([ActRole::Seller, ActRole::Buyer] as $role) {
@@ -71,7 +70,7 @@ final class A2cnActStoreTest extends IntegrationTestCase
 
     public function testItReadsActsBackInSequenceOrder(): void
     {
-        $store = new DbalActStore(self::connection());
+        $store = new DbalActStore(self::connection(self::getContainer()));
         $session = SessionId::forQuote(self::QUOTE_ID);
         foreach ([2, 1] as $sequence) {
             $act = Act::fromArray(ProtocolFixtures::sellerAct($sequence, $session));
@@ -87,7 +86,7 @@ final class A2cnActStoreTest extends IntegrationTestCase
 
     public function testItStoresViolationsAndReceipts(): void
     {
-        $store = new DbalActStore(self::connection());
+        $store = new DbalActStore(self::connection(self::getContainer()));
         $session = SessionId::forQuote(self::QUOTE_ID);
 
         $store->appendViolation(
@@ -110,17 +109,9 @@ final class A2cnActStoreTest extends IntegrationTestCase
 
     public function testAnUnknownSessionIsEmptyRatherThanAnError(): void
     {
-        $store = new DbalActStore(self::connection());
+        $store = new DbalActStore(self::connection(self::getContainer()));
 
         self::assertSame([], $store->listBySession(SessionId::forQuote('ffffffffffffffffffffffffffffffff')));
         self::assertNull($store->quoteIdForSession('not-a-session'));
-    }
-
-    private static function connection(): Connection
-    {
-        $connection = self::getContainer()->get(Connection::class);
-        self::assertInstanceOf(Connection::class, $connection);
-
-        return $connection;
     }
 }

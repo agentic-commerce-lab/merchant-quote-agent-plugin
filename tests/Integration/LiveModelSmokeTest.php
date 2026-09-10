@@ -14,8 +14,8 @@ use Psr\Log\NullLogger;
 use Symfony\Component\HttpClient\HttpClient;
 
 /**
- * The only test that talks to a real provider, and the only thing that would
- * catch one changing its response shape. Opt-in: it must never gate CI or the
+ * A real-provider response-shape smoke test. LiveHistoryMessageTest separately
+ * checks negotiate-message privacy. Opt-in: this must never gate CI or the
  * stress run, and it costs real money each time it runs.
  *
  *   QUOTE_AGENT_LIVE_KEY=sk-... QUOTE_AGENT_LIVE_MODEL=gpt-4o-mini \

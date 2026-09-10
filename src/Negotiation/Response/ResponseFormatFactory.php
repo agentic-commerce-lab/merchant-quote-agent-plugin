@@ -31,6 +31,16 @@ use Symfony\AI\Platform\StructuredOutput\ResponseFormatFactoryInterface;
  * and dropping the attribute to please a schema generator would take the
  * validation with it. Applied to every node, so a constraint added to any DTO
  * later is covered without anyone remembering this exists.
+ *
+ * Also admits `null` into every `enum` whose `type` permits it. `enum` is an
+ * absolute whitelist in JSON Schema regardless of `type`, and Symfony AI
+ * derives a nullable `type` from a nullable backed-enum property without ever
+ * adding `null` to the `enum` list beside it. Left alone, a provider that
+ * enforces the schema strictly cannot accept "unset" for that property at
+ * all: the property is required and every legal value names something.
+ *
+ * Transformations are delegated to ExclusiveBound and AdmitNullInEnum to
+ * keep this class inside the complexity gate.
  */
 final readonly class ResponseFormatFactory implements ResponseFormatFactoryInterface
 {
@@ -72,6 +82,8 @@ final readonly class ResponseFormatFactory implements ResponseFormatFactoryInter
         foreach (self::EXCLUSIVE_BOUNDS as $exclusive => $inclusive) {
             $node = ExclusiveBound::rewrite($node, $exclusive, $inclusive);
         }
+
+        $node = AdmitNullInEnum::rewrite($node);
 
         foreach ($node as $key => $value) {
             if (\is_array($value)) {

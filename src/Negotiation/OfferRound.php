@@ -41,15 +41,18 @@ final readonly class OfferRound
         NegotiationDecision $decision,
         ?string $extractHash,
     ): NegotiationPass {
-        $conversation = SnapshotAdapter::conversation($snapshot);
-        $baseline = QuoteBaseline::read($snapshot);
-        $answer = $this->proposer->propose(
-            $settings,
-            SnapshotAdapter::toPolicy($snapshot),
-            $decision->price,
-            $conversation,
-            $baseline,
+        $context = new NegotiationContext(
+            $snapshot->identity->customerId,
+            $snapshot->identity->quoteId,
+            SnapshotAdapter::conversation($snapshot),
+            QuoteBaseline::read($snapshot),
         );
+        if ($context->customerId === '') {
+            $this->logger->warning('The quote carries no customer id; negotiating without account history.', [
+                'quoteId' => $snapshot->identity->quoteId,
+            ]);
+        }
+        $answer = $this->proposer->propose($settings, SnapshotAdapter::toPolicy($snapshot), $decision->price, $context);
 
         if ($answer->offer === null) {
             // The detail stays here, in the log: QuoteEscalator writes to the
@@ -62,7 +65,11 @@ final readonly class OfferRound
             return $this->escalated($gateway, $snapshot, $answer->escalation, $extractHash, $answer->promptHash);
         }
 
-        if ($answer->offer->price->linePricesNet !== null && $baseline === null && self::servicedBefore($snapshot)) {
+        if (
+            $answer->offer->price->linePricesNet !== null
+            && $context->baseline === null
+            && self::servicedBefore($snapshot)
+        ) {
             // #49 anchors per-line offers to a stored baseline, so round two
             // is no longer a human's — except on quotes serviced before that
             // baseline existed. Those have no anchor, so a per-line offer on
@@ -106,10 +113,10 @@ final readonly class OfferRound
             $applied->after,
             $settings,
             ReplyTemplate::reduction(
-                $baseline?->totalNet ?? $snapshot->totals->totalNet,
+                $context->baseline?->totalNet ?? $snapshot->totals->totalNet,
                 $applied->after->totals->totalNet,
             ),
-            $conversation,
+            $context->conversation,
         );
 
         return new NegotiationPass(

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationContext;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Negotiation\QuoteBaselineLines;
@@ -31,6 +32,7 @@ final class OfferProposerBaselineTest extends TestCase
             new PromptComposer('EXTRACT', 'NEGOTIATE BASE', 'REPLY {{tone}}'),
             new OfferAuthorizer(),
             new DecisionRecorder(new FakeDecisionWriter()),
+            new FakeCustomerHistoryFactory(),
         );
     }
 
@@ -67,8 +69,12 @@ final class OfferProposerBaselineTest extends TestCase
                 NegotiationFixture::settings(),
                 SnapshotAdapter::toPolicy($snapshot),
                 self::grantDecision(),
-                SnapshotAdapter::conversation($snapshot),
-                $baseline,
+                new NegotiationContext(
+                    $snapshot->identity->customerId,
+                    $snapshot->identity->quoteId,
+                    SnapshotAdapter::conversation($snapshot),
+                    $baseline,
+                ),
             );
 
         self::assertNull(
@@ -95,8 +101,12 @@ final class OfferProposerBaselineTest extends TestCase
                 NegotiationFixture::settings(),
                 SnapshotAdapter::toPolicy($snapshot),
                 self::grantDecision(),
-                SnapshotAdapter::conversation($snapshot),
-                $baseline,
+                new NegotiationContext(
+                    $snapshot->identity->customerId,
+                    $snapshot->identity->quoteId,
+                    SnapshotAdapter::conversation($snapshot),
+                    $baseline,
+                ),
             );
 
         self::assertNotNull($answer->offer, 'An 85 line against a 90 baseline is 5.6% off, inside a 10% cap.');

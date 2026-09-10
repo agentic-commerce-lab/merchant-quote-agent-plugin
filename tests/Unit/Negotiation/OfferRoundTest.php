@@ -50,7 +50,7 @@ final class OfferRoundTest extends TestCase
         $prompts = new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
 
         $round = new OfferRound(
-            new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder),
+            new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder, new FakeCustomerHistoryFactory()),
             new OfferApplier(new OfferVerifier(), $logger, $recorder),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             new QuoteEscalator(),

@@ -10,7 +10,6 @@ use MerchantQuoteAgentPlugin\Negotiation\Response\ChatEnvelope;
 use MerchantQuoteAgentPlugin\Negotiation\Response\ModelAnswerSerializer;
 use MerchantQuoteAgentPlugin\Negotiation\Response\ResponseFormatFactory;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\HttpClient\Retry\GenericRetryStrategy;
 use Symfony\Component\HttpClient\RetryableHttpClient;
 use Symfony\Component\Serializer\Exception\ExceptionInterface as SerializerException;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as TransportException;
@@ -45,28 +44,16 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * ships no recipe of its own (verified against a shop's symfony.lock), so that
  * dependency is safe to keep.
  *
- * Exactly ONE retry. A servicing pass makes up to three calls and the quote
- * lock's TTL is 300 seconds; at a 30s timeout plus one 2s backoff, three calls
- * worst-case is already about three minutes. A second retry would risk the
- * lock expiring mid-pass, which is a far worse failure than escalating.
+ * Exactly ONE retry, sharing a 30s total transport duration with the first
+ * attempt. At most 2s backoff is admitted. Five logical calls (extraction,
+ * three negotiate calls, reply) therefore budget at most 160s for the model,
+ * leaving time for DAL reads and writes inside the 300s quote lock TTL.
  */
 final readonly class ModelPlatform
 {
     private const TIMEOUT_SECONDS = 30;
 
-    private const RETRY_DELAY_MILLISECONDS = 2_000;
-
     private const MAX_RETRIES = 1;
-
-    /**
-     * GenericRetryStrategy's own defaults restrict transport failures and most
-     * 5xx to idempotent methods, which would leave a POST — every call we make
-     * — retried on almost nothing. Listing the codes bare lifts that
-     * restriction, and it is safe precisely here: a chat completion has no
-     * side effect on the provider, so a duplicate request costs a second call
-     * and nothing else. `0` is the strategy's marker for a transport failure.
-     */
-    private const RETRY_ON = [0, 423, 425, 429, 500, 502, 503, 504, 507, 510];
 
     private HttpClientInterface $http;
 
@@ -75,21 +62,16 @@ final readonly class ModelPlatform
         LoggerInterface $logger,
         private DecisionRecorder $recorder,
     ) {
-        // The retry is the transport's job: a flat 2s backoff (multiplier 1.0,
-        // no jitter) keeps the worst case the docblock above computes, and
-        // GenericRetryStrategy retries only what is actually transient. A
-        // malformed envelope is not, and retrying it would fail the same way.
+        // Symfony subtracts elapsed request time from max_duration on retry.
+        // An idle timeout alone does not bound a slowly arriving response.
+        // ModelRetryStrategy also refuses long provider Retry-After values,
+        // which RetryableHttpClient otherwise honors without a delay cap.
         //
         // One consequence worth knowing when reading the audit trail: a retried
         // call's modelLatencyMs includes the failed attempt and the backoff.
         $this->http = new RetryableHttpClient(
-            $http->withOptions(['timeout' => self::TIMEOUT_SECONDS]),
-            new GenericRetryStrategy(
-                self::RETRY_ON,
-                delayMs: self::RETRY_DELAY_MILLISECONDS,
-                multiplier: 1.0,
-                jitter: 0.0,
-            ),
+            $http->withOptions(['timeout' => self::TIMEOUT_SECONDS, 'max_duration' => self::TIMEOUT_SECONDS]),
+            new ModelRetryStrategy(),
             self::MAX_RETRIES,
             $logger,
         );

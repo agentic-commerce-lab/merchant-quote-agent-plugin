@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\History\CrossCustomerRead;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Policy\Data\Band;
@@ -66,7 +67,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         }
     }
 
-    /** Catches ModelUnavailable; every other throwable belongs to the caller. */
+    /** Known model and account-boundary failures escalate; other failures belong to the caller. */
     private function run(
         QuoteSnapshot $snapshot,
         QuoteGatewayInterface $gateway,
@@ -74,13 +75,12 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
     ): NegotiationPass {
         try {
             return $this->negotiate($snapshot, $gateway, $settings);
-        } catch (ModelUnavailable $e) {
-            $this->logger->error('The model was unavailable, so this quote goes to a human.', [
-                'quoteId' => $snapshot->identity->quoteId,
-                'exception' => $e,
-            ]);
-
-            return $this->round->escalated($gateway, $snapshot, QuoteEscalationReason::ModelUnavailable, null, null);
+        } catch (ModelUnavailable|CrossCustomerRead $e) {
+            return (new NegotiationFailure($this->round, $this->recorder, $this->logger))->escalate(
+                $gateway,
+                $snapshot,
+                $e,
+            );
         }
     }
 

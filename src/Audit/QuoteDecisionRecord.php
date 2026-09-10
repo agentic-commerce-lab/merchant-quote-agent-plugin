@@ -60,6 +60,10 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $salesChannelId = null;
 
+    #[Field(type: FieldType::UUID, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?string $customerId = null;
+
     #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 3)]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $currencyIso = null;
@@ -188,6 +192,11 @@ class QuoteDecisionRecord extends EntityStruct
     #[Field(type: FieldType::JSON, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?array $interpretedAsks = null;
+
+    /** @var array<string, mixed>|null */
+    #[Field(type: FieldType::JSON, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?array $historyReads = null;
 
     #[Field(type: FieldType::TEXT, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]

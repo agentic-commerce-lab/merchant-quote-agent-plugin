@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Bridge\AgentContext;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Data\Discount;
 use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
@@ -15,6 +16,8 @@ use Shopware\Core\Checkout\Cart\Price\Struct\CartPrice;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\Uuid\Uuid;
+use Shopware\Core\System\SalesChannel\SalesChannelContext;
 
 /**
  * Proves the branch's central finding on a real, released SwagCommercial
@@ -23,16 +26,12 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
  * `QuoteFixture::anyQuoteId()` never picked a gross one and both levers'
  * gross-specific assertions were untested.
  *
- * A gross-capable customer (customer group `display_gross = TRUE`,
- * `QUOTE_MANAGEMENT` enabled) was created for this. It has no quotes yet, so
- * this test creates one through the plugin's own buyer gateway rather than
- * relying on `QuoteFixture` to find one.
+ * Builds a transaction-scoped gross customer group for a quote-capable
+ * customer, then creates a quote through the real buyer gateway. No remote
+ * shop's hardcoded customer ID or persistent tax-mode setup is required.
  */
 final class LegacyGrossQuoteTest extends IntegrationTestCase
 {
-    /** The gross-capable customer set up on the live shop for this test. */
-    private const GROSS_CUSTOMER_ID = '01a084c27b2f7e9d9050df8f58809c64';
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -44,7 +43,7 @@ final class LegacyGrossQuoteTest extends IntegrationTestCase
 
     public function testBothMerchantLeversWorkOnAGrossQuote(): void
     {
-        $context = BuyerQuoteContextFixture::contextForCustomer(static::getContainer(), self::GROSS_CUSTOMER_ID);
+        $context = self::grossContext();
         $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer());
 
         $created = $this->buyerGateway()->requestQuote(
@@ -53,17 +52,33 @@ final class LegacyGrossQuoteTest extends IntegrationTestCase
             'Gross-mode lever proof.',
         );
 
-        if ($created->taxStatus !== CartPrice::TAX_STATE_GROSS) {
-            self::markTestSkipped(sprintf(
-                'Quote taxStatus is "%s", not "gross" — the customer group behind customer %s '
-                . '(display_gross) is not producing a gross quote. Check that group\'s display_gross flag.',
-                $created->taxStatus ?? 'null',
-                self::GROSS_CUSTOMER_ID,
-            ));
-        }
+        self::assertSame(CartPrice::TAX_STATE_GROSS, $created->taxStatus);
 
         $this->assertRepricedLineSurvivesAsGrossedUpNet($created->id);
         $this->assertAbsoluteDiscountIsConsumedAsGross($created->id);
+    }
+
+    private static function grossContext(): SalesChannelContext
+    {
+        $container = static::getContainer();
+        $customerId = BuyerQuoteFixture::anyQuoteCapableCustomerId($container);
+        $groupId = Uuid::randomHex();
+        $writeContext = Context::createDefaultContext();
+        self::repository($container, 'customer_group.repository')
+            ->create([[
+                'id' => $groupId,
+                'name' => 'Gross quote integration fixture',
+                'displayGross' => true,
+            ]], $writeContext);
+        self::repository($container, 'customer.repository')
+            ->update([[
+                'id' => $customerId,
+                'groupId' => $groupId,
+            ]], $writeContext);
+        $context = BuyerQuoteContextFixture::contextForCustomer($container, $customerId);
+        $context->addState(AgentContext::STATE, Context::SKIP_TRIGGER_FLOW);
+
+        return $context;
     }
 
     /**

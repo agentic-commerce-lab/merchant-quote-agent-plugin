@@ -6,7 +6,6 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
-use MerchantQuoteAgentPlugin\Negotiation\Response\NegotiateResponse;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
@@ -31,23 +30,17 @@ final readonly class OfferProposer
         private PromptComposer $prompts,
         private OfferAuthorizer $authorizer,
         private DecisionRecorder $recorder,
+        private CustomerHistoryFactoryInterface $historyFactory,
     ) {}
 
-    /**
-     * @param ?QuoteBaselineLines $baseline the quote's prices as the agent
-     *     first found them (#49). Null on the first pass, where the current
-     *     lines ARE the original ones.
-     *
-     * @throws ModelUnavailable
-     */
+    /** @throws ModelUnavailable */
     public function propose(
         QuoteAgentSettings $settings,
         PolicySnapshot $snapshot,
         QuoteDecision $decision,
-        BuyerConversation $conversation,
-        ?QuoteBaselineLines $baseline = null,
+        NegotiationContext $context,
     ): ProposedAnswer {
-        $referenceLines = $baseline === null ? $snapshot->lines : $baseline->linesMergedWith($snapshot->lines);
+        $referenceLines = $context->baseline?->linesMergedWith($snapshot->lines) ?? $snapshot->lines;
         $details = $decision->autoReply;
 
         if ($details === null) {
@@ -58,15 +51,26 @@ final readonly class OfferProposer
             ));
         }
 
-        $access = $settings->llm;
-
         $prompt = $this->prompts->negotiate($settings);
-        $response = $this->platform->object(
-            $access,
-            $prompt->text,
-            self::userPrompt($settings, $snapshot, $decision, $conversation),
-            NegotiateResponse::class,
+        $rounds = new HistoryRounds(
+            $this->platform,
+            $this->recorder,
+            $this->historyFactory->for($context->customerId, $context->quoteId),
         );
+
+        try {
+            $response = $rounds->negotiate(
+                $settings->llm,
+                $prompt,
+                self::userPrompt($settings, $snapshot, $decision, $context->conversation),
+                $snapshot->lines,
+            );
+        } catch (HistoryBudgetExhausted $e) {
+            return $this->recorded(
+                (string) json_encode($e->response),
+                ProposedAnswer::escalate(QuoteEscalationReason::NeedsHumanReview, $e->getMessage(), $prompt->hash),
+            );
+        }
 
         // ponytail: the audit column holds what the model proposed, and under a
         // strict JSON schema the mapped object IS that answer — so re-encoding
@@ -157,8 +161,9 @@ final readonly class OfferProposer
         BuyerConversation $conversation,
     ): string {
         $lines = array_map(static fn(PolicyQuoteLineSnapshot $l): string => sprintf(
-            '%s | %s | %d | %.2f',
+            '%s | %s | %s | %d | %.2f',
             $l->lineItemId(),
+            $l->identity->productId ?? '',
             $l->label() ?? '',
             $l->quantity,
             $l->unitPriceNet,
@@ -171,7 +176,7 @@ final readonly class OfferProposer
         // The authority covers every dimension the response schema allows, not
         // just the discount cap: see AuthorityBrief for what silence cost.
         return sprintf(
-            "Quote total (net): %.2f %s\n\nLine items (id | label | quantity | unit price net):\n%s\n\nYOUR AUTHORITY:\n%s\n\n"
+            "Quote total (net): %.2f %s\n\nLine items (lineItemId | productId | label | quantity | unit price net):\n%s\n\nYOUR AUTHORITY:\n%s\n\n"
             . "Your earlier replies on this quote:\n%s\n\nBuyer's latest comment:\n%s",
             $snapshot->totalNet,
             $snapshot->currencyIso,

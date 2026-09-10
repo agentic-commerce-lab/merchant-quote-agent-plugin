@@ -63,7 +63,10 @@
             "errorChain": "Error chain",
             "yes": "Yes",
             "no": "No",
-            "rawProposal": "The model's own answer"
+            "rawProposal": "The model's own answer",
+            "customer": "Customer (company)",
+            "accountHistory": "Account history shown to the agent",
+            "historyReads": "History the agent asked for"
         },
         "list": {
             "gridTitle": "Quotes serviced",
@@ -208,6 +211,27 @@
             "notAuthorized": "The agent proposed terms your policies do not allow, so nothing was authorised and the quote was left untouched.",
             "notVerified": "The quote was changed, but re-reading it afterwards did not match what had been authorised.",
             "needsAttention": "This pass reported success but did not finish cleanly. Check the quote before relying on it."
+        },
+        "history": {
+            "currencyUnknown": "Currency unknown",
+            "noRecordedReduction": "No recorded pass reduction",
+            "unknown": "Unknown / not recorded",
+            "none": "None",
+            "unavailable": "Unavailable",
+            "round": "Read {count}",
+            "productId": "Product ID",
+            "quote_history": "Quote history",
+            "orders": "Recent orders",
+            "product_purchases": "Product purchases",
+            "quotesSeen": "Quotes seen",
+            "quotesConverted": "Quotes converted",
+            "quotesLost": "Quotes lost",
+            "offersMade": "Authorized proposal passes",
+            "offersAccepted": "Accepted quotes with an authorized proposal",
+            "lastGrantedDiscount": "Latest recorded pass reduction (of that pass’s opening total)",
+            "orderCount": "Orders placed",
+            "lifetimeNet": "Lifetime order value (net)",
+            "lastOrderAt": "Last order date"
         }
     }
 }

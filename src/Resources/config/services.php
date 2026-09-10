@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
@@ -25,6 +26,10 @@ use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteAccess;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteLinePricing;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteSnapshotMapper;
 use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;
+use MerchantQuoteAgentPlugin\Bridge\History\CustomerHistoryFactory;
+use MerchantQuoteAgentPlugin\Bridge\History\DecisionAggregate;
+use MerchantQuoteAgentPlugin\Bridge\History\OrderHistoryReads;
+use MerchantQuoteAgentPlugin\Bridge\History\QuoteHistoryReads;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -64,6 +69,7 @@ use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestContro
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
+use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
 use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
@@ -124,7 +130,9 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use Shopware\Core\Framework\DataAbstractionLayer\DefinitionInstanceRegistry;
 use Shopware\Core\Framework\Event\BusinessEventCollector;
 use Shopware\Core\Framework\Notification\NotificationService;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Ucp\Sdk\Internal\Service\UrlSafetyValidator;
@@ -133,7 +141,7 @@ use Ucp\Sdk\Service\SigningKeyManagerInterface;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
-return static function (ContainerConfigurator $configurator): void {
+return static function (ContainerConfigurator $configurator, ContainerBuilder $container): void {
     $services = $configurator->services();
 
     $services->defaults()->autowire()->autoconfigure();
@@ -427,6 +435,30 @@ return static function (ContainerConfigurator $configurator): void {
     $services->set(QuoteWriter::class)->args([service('quote.repository')]);
     $services->set(QuoteStateTransitioner::class);
 
+    // Company history (#100). Registered here, inside the isAvailableByClass()
+    // guard, because `quote.repository` is SwagCommercial's — and the whole
+    // negotiation stack below is guarded the same way, so OfferProposer can
+    // take the factory as a plain non-nullable dependency.
+    //
+    // `order.repository` and `order_line_item.repository` are core, but they
+    // belong to the same collaborator and splitting the block would only
+    // separate three lines that change together.
+    $services->set(DecisionAggregate::class)->args([service(Connection::class)]);
+    $services->set(QuoteHistoryReads::class)->args([
+        service('quote.repository'),
+        service(DecisionAggregate::class),
+    ]);
+    $services->set(OrderHistoryReads::class)->args([
+        service('order.repository'),
+        service('order_line_item.repository'),
+    ]);
+    $services->set(CustomerHistoryFactory::class)->args([
+        service(QuoteHistoryReads::class),
+        service(OrderHistoryReads::class),
+        service(QuoteVersionResolver::class),
+    ]);
+    $services->alias(CustomerHistoryFactoryInterface::class, CustomerHistoryFactory::class);
+
     // The four commercial services, referenced by the string ids on
     // CommercialAvailability because their classes are not ours to name with
     // `::class`. ignoreOnInvalid() rather than a plain reference because an
@@ -501,6 +533,23 @@ return static function (ContainerConfigurator $configurator): void {
         ->arg('$quoteOrderRoute', service(CommercialAvailability::QUOTE_ORDER_ROUTE)->nullOnInvalid());
 
     $services->alias(BuyerQuoteGatewayInterface::class, SwagCommercialBuyerQuoteGateway::class);
+
+    // Only the installed dev/test seeder can reach this narrow locator. The
+    // gateway, resolver, transitioner and Commercial route remain private.
+    // Shopware's Bundle creates PhpFileLoader without its environment argument,
+    // so ContainerConfigurator::env() is null even in dev/test kernels.
+    if (\in_array($container->getParameter('kernel.environment'), ['dev', 'test'], strict: true)) {
+        $services
+            ->set('merchant_quote_agent.dev.order_history', ServiceLocator::class)
+            ->args([[
+                BuyerQuoteGatewayInterface::class => service(BuyerQuoteGatewayInterface::class),
+                SalesChannelContextResolver::class => service(SalesChannelContextResolver::class),
+                QuoteStateTransitioner::class => service(QuoteStateTransitioner::class),
+                CommercialAvailability::QUOTE_ORDER_ROUTE => service(CommercialAvailability::QUOTE_ORDER_ROUTE),
+            ]])
+            ->tag('container.service_locator')
+            ->public();
+    }
 
     // Servicing (issue #4): trigger, queue and lock. Inside the guard because
     // a shop without SwagCommercial has no quotes to service.
