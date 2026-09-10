@@ -18,6 +18,10 @@ final class HistoryLoopTest extends TestCase
         self::assertSame(1, $h->history->summaryCalls);
         self::assertSame(1, $h->spy->calls);
         self::assertStringContainsString('INTERNAL', $h->spy->userPrompts[0]);
+        // The serviced quote must be handed to the factory for exclusion, or
+        // "history" silently includes the quote under negotiation and the model
+        // can read its own applied discount back as an unspent precedent.
+        self::assertSame([NegotiationFixture::snapshot()->identity->quoteId], $h->factory->excludedQuotes);
         self::assertStringContainsString('lineItemId | productId | label', $h->spy->userPrompts[0]);
         self::assertStringContainsString('line-1 | prod-1 | Widget', $h->spy->userPrompts[0]);
         self::assertNotNull($h->writer->drafts[0]->historyReads);

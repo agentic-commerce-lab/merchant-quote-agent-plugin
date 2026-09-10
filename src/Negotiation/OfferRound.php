@@ -43,6 +43,7 @@ final readonly class OfferRound
     ): NegotiationPass {
         $context = new NegotiationContext(
             $snapshot->identity->customerId,
+            $snapshot->identity->quoteId,
             SnapshotAdapter::conversation($snapshot),
             QuoteBaseline::read($snapshot),
         );

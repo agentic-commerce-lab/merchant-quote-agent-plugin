@@ -185,7 +185,7 @@ final class OrderCriteriaTest extends TestCase
 
     private function scope(): CustomerScope
     {
-        return new CustomerScope('customer-1', new QuoteVersionResolver());
+        return new CustomerScope('customer-1', '', new QuoteVersionResolver());
     }
 
     /** @return EntitySearchResult<covariant EntityCollection> */

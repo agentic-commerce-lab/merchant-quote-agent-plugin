@@ -9,6 +9,7 @@ final readonly class NegotiationContext
 {
     public function __construct(
         public string $customerId,
+        public string $quoteId,
         public BuyerConversation $conversation,
         public ?QuoteBaselineLines $baseline = null,
     ) {}

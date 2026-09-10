@@ -53,7 +53,11 @@ final class HistoryProposerHarness
             $settings,
             $policy,
             $decision,
-            new NegotiationContext($snapshot->identity->customerId, SnapshotAdapter::conversation($snapshot)),
+            new NegotiationContext(
+                $snapshot->identity->customerId,
+                $snapshot->identity->quoteId,
+                SnapshotAdapter::conversation($snapshot),
+            ),
         );
         $this->recorder->finish(null);
 

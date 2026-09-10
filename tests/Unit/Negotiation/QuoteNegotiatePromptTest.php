@@ -29,4 +29,19 @@ final class QuoteNegotiatePromptTest extends TestCase
         self::assertStringContainsString('a third request sends the quote to a human', $prompt);
         self::assertStringContainsString('"historyRequest": {"kind": null, "productId": null}', $prompt);
     }
+
+    public function testThePromptSeparatesThisQuoteFromTheAccountHistory(): void
+    {
+        // The buyer's "you already gave us 15%" case. Nothing in code can tell
+        // the model which quote a cited figure belongs to -- the reads exclude
+        // the serviced quote, but a buyer can still name a number from either
+        // side -- so the prompt has to, and this is the only place that rule
+        // exists. Losing it silently reopens the double-concession path.
+        $prompt = (string) file_get_contents(__DIR__ . '/../../../config/agents/quote-negotiate-agent.prompt.md');
+
+        self::assertStringContainsString('History is OTHER quotes. This quote is not in it.', $prompt);
+        self::assertStringContainsString('A discount in the history is already spent.', $prompt);
+        self::assertStringContainsString('discount the same', $prompt);
+        self::assertStringContainsString('ask them rather than guessing', $prompt);
+    }
 }

@@ -41,7 +41,7 @@ final class CustomerBriefTest extends TestCase
     {
         $brief = CustomerBrief::of(self::summary());
 
-        self::assertStringContainsString('12 recent quotes', $brief);
+        self::assertStringContainsString('12 previous quotes', $brief);
         self::assertStringContainsString('3 became orders', $brief);
         self::assertStringContainsString('5 ended without a deal', $brief);
     }
@@ -70,14 +70,28 @@ final class CustomerBriefTest extends TestCase
         self::assertStringContainsString('INTERNAL', CustomerBrief::of(self::summary()));
     }
 
-    public function testANewAccountSaysSoRatherThanRenderingZeroes(): void
+    public function testAnAccountWithNoPriorRecordRendersNoBlockAtAll(): void
     {
-        // "0 recent quotes, 0 orders, lifetime 0.00" reads like a data failure.
-        // Describe the absent records without inferring whether this is first contact.
-        $brief = CustomerBrief::of(new CustomerSummary());
+        // The serviced quote is excluded from its own history, so `seen` is 0 on
+        // a first-ever quote and this branch is reachable again. Emitting
+        // nothing beats emitting "0 previous quotes: 0 became orders, 0 ended
+        // without a deal", which reads as a POOR track record rather than no
+        // track record -- on exactly the quote where the agent is opening a
+        // relationship. With no block, the model negotiates on the quote in
+        // front of it, which is all there is to go on.
+        self::assertSame('', CustomerBrief::of(new CustomerSummary()));
+    }
 
-        self::assertStringContainsString('no quotes and no orders recorded', $brief);
-        self::assertStringNotContainsString('lifetime', $brief);
+    public function testOrdersAloneStillRenderWithoutAnyPreviousQuotes(): void
+    {
+        // A first quote from an account that has bought before is not a blank
+        // slate, and the order record must survive the skip above.
+        $brief = CustomerBrief::of(
+            new CustomerSummary(orders: new OrderStats(3, 4200.0, new \DateTimeImmutable('2026-05-02'), 'EUR')),
+        );
+
+        self::assertStringContainsString('3 orders', $brief);
+        self::assertStringNotContainsString('previous quotes', $brief);
     }
 
     public function testAnUnavailableSummaryRendersNothingAtAll(): void

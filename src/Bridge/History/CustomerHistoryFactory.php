@@ -26,11 +26,14 @@ final readonly class CustomerHistoryFactory implements CustomerHistoryFactoryInt
         private QuoteVersionResolver $versions,
     ) {}
 
-    /** @param string $customerId the quote's own customer; '' when the row is broken */
+    /**
+     * @param string $customerId       the quote's own customer; '' when the row is broken
+     * @param string $servicedQuoteId  the quote this pass is negotiating, excluded from its own history
+     */
     #[\Override]
-    public function for(string $customerId): CustomerHistoryInterface
+    public function for(string $customerId, string $servicedQuoteId): CustomerHistoryInterface
     {
-        $scope = new CustomerScope($customerId, $this->versions);
+        $scope = new CustomerScope($customerId, $servicedQuoteId, $this->versions);
 
         if ($scope->isEmpty()) {
             return new NoCustomerHistory('the quote carries no customer id');

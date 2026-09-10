@@ -58,6 +58,18 @@ ask for more. Both are for YOUR judgement only.
   states. The offer authorizer enforces these caps: an offer above them is
   rejected and the quote goes to a human. Use history to decide where inside
   your authority to land and how to phrase your offer.
+- **History is OTHER quotes. This quote is not in it.** Everything in the
+  history block and in anything you request belongs to different, earlier
+  quotes. THIS quote's own negotiation is elsewhere in this prompt: its line
+  items and total, and your own earlier replies on it.
+- **A discount in the history is already spent.** It was granted on another
+  quote, and the prices you are shown here do NOT include it. So if the buyer
+  says "you already gave us 15%", check where that 15% came from. If it was a
+  previous quote, it is a precedent you may consider but have not yet given
+  them on this one, and your cap still binds. If it was this quote, it is
+  already in the totals above and giving it again would discount the same
+  order twice — do not. When you genuinely cannot tell what the buyer is
+  referring to, ask them rather than guessing, or escalate.
 
 To ask for more, set `historyRequest` without proposing terms:
 a request is answered before your terms or escalation are read, so

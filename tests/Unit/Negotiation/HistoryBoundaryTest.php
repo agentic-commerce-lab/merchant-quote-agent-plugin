@@ -25,7 +25,7 @@ final class HistoryBoundaryTest extends TestCase
             $settings,
             $policy,
             $decision,
-            new NegotiationContext('cust-1', SnapshotAdapter::conversation($snapshot)),
+            new NegotiationContext('cust-1', $snapshot->identity->quoteId, SnapshotAdapter::conversation($snapshot)),
         );
         self::assertSame(QuoteEscalationReason::NeedsHumanReview, $answer->escalation);
         self::assertSame([], $h->factory->boundTo);

@@ -40,8 +40,17 @@ final class CustomerBrief
 
         $lines = [...self::quoteLines($summary), ...self::orderLines($summary)];
 
+        // Nothing prior to say, so say nothing. This branch was unreachable
+        // while the serviced quote counted itself: `seen` was never 0, so a
+        // brand-new account's first quote rendered "1 previous quotes ... 0
+        // became orders, 0 ended without a deal" — which reads as a POOR
+        // track record rather than no track record, on exactly the quote
+        // where the agent should know it is opening a relationship. With the
+        // quote excluded from its own history the branch is live again, and
+        // an empty block beats a misleading one: the model then negotiates
+        // on the quote in front of it, which is all there is to go on.
         if ($lines === []) {
-            return self::HEADING . "\n- no quotes and no orders recorded on this account";
+            return '';
         }
 
         return self::HEADING . "\n" . implode("\n", $lines);
@@ -57,7 +66,7 @@ final class CustomerBrief
         }
 
         $lines = [sprintf(
-            '- %d recent quotes on this account: %d became orders, %d ended without a deal',
+            '- %d previous quotes on this account: %d became orders, %d ended without a deal',
             $quotes->seen,
             $quotes->converted,
             $quotes->lost,

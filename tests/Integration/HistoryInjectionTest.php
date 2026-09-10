@@ -37,7 +37,17 @@ final class HistoryInjectionTest extends IntegrationTestCase
         $record = self::historyRecord($before);
         self::assertHistoryRounds($record, $spy, ['quote_history', 'orders']);
         self::assertSame(\count($orders), $record->historyReads['orderCount']);
-        self::assertStringContainsString('quote ' . $before->identity->quoteNumber, $spy->userPrompts[2]);
+        // The quote under negotiation must NOT appear in its own account
+        // history. Otherwise a buyer writing "you already gave us 15%" is
+        // indistinguishable from a spent precedent on a closed quote, and
+        // granting it again discounts a total that already came down by it --
+        // the double-concession QuoteBaseline (#49) prevents, arriving through a
+        // side channel. This assertion used to require the opposite.
+        self::assertStringNotContainsString(
+            'quote ' . $before->identity->quoteNumber,
+            $spy->userPrompts[2],
+            'The serviced quote leaked into its own history block.',
+        );
         foreach (array_slice($orders, offset: 0, length: 10) as $order) {
             self::assertStringContainsString('order ' . $order['number'] . ',', $spy->userPrompts[3]);
             self::assertStringContainsString(

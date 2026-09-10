@@ -110,7 +110,7 @@ final readonly class QuoteHistoryReads
      */
     private function load(CustomerScope $scope): array
     {
-        $criteria = $scope->criteria('customerId');
+        $criteria = $scope->quoteCriteria();
         $criteria->addAssociation('stateMachineState');
         $criteria->addAssociation('currency');
         $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::DESCENDING));

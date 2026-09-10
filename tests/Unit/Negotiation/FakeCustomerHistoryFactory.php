@@ -13,14 +13,18 @@ final class FakeCustomerHistoryFactory implements CustomerHistoryFactoryInterfac
     /** @var list<string> */
     public array $boundTo = [];
 
+    /** @var list<string> the serviced quote id each call was told to exclude */
+    public array $excludedQuotes = [];
+
     public function __construct(
         public CustomerHistoryInterface $history = new NoCustomerHistory('test has no history'),
     ) {}
 
     #[\Override]
-    public function for(string $customerId): CustomerHistoryInterface
+    public function for(string $customerId, string $servicedQuoteId): CustomerHistoryInterface
     {
         $this->boundTo[] = $customerId;
+        $this->excludedQuotes[] = $servicedQuoteId;
 
         return $this->history;
     }

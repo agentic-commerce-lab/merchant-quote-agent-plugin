@@ -15,7 +15,13 @@ use Shopware\Core\Defaults;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 
-/** Real-shop company boundaries and values, checked against independent SQL. */
+/** Real-shop company boundaries and values, checked against independent SQL.  *
+ * @mago-expect lint:too-many-methods
+ * Each test proves one isolation or accuracy property against the real shop.
+ * They share the same expensive fixtures (a seeded second company with its own
+ * orders), so splitting the class would duplicate that setup rather than
+ * clarify anything.
+ */
 final class CustomerHistoryTest extends IntegrationTestCase
 {
     private static function factory(): CustomerHistoryFactory
@@ -68,7 +74,7 @@ final class CustomerHistoryTest extends IntegrationTestCase
     {
         // The failure that matters: a broken row must not become an unfiltered
         // read over every company in the shop.
-        $history = self::factory()->for('');
+        $history = self::factory()->for('', '');
 
         self::assertInstanceOf(NoCustomerHistory::class, $history);
         self::assertFalse($history->summary()->available);
@@ -91,12 +97,54 @@ final class CustomerHistoryTest extends IntegrationTestCase
             . 'unproven. Create one with QuoteFixture::quoteIdWithSnapshotLane() and re-run.',
         );
 
-        $seen = self::factory()->for($customerId)->summary()->quotes->seen;
+        $seen = self::factory()->for($customerId, '')->summary()->quotes->seen;
 
         // The read is capped at 25, so assert the property rather than equality
         // when the company has more live quotes than that.
         self::assertSame(min($liveCount, 25), $seen);
         self::assertLessThan($rowCount, $seen, 'A snapshot version was counted as a second quote.');
+    }
+
+    public function testTheServicedQuoteIsAbsentFromItsOwnHistory(): void
+    {
+        // "History" must mean OTHER quotes. If the quote under negotiation shows
+        // up in its own account history, a buyer writing "you already gave us
+        // 15%" is indistinguishable from a spent precedent on a closed quote --
+        // and granting it again discounts a total that already came down by it.
+        // That is the double-concession QuoteBaseline (#49) prevents, arriving
+        // through a side channel.
+        $customers = self::customersByQuoteCount();
+        self::assertNotSame([], $customers);
+        [$customerId, $liveCount] = $customers[0];
+        self::assertGreaterThan(1, $liveCount, 'This proof needs a customer with more than one quote.');
+
+        $numbers = self::quoteNumbersOf($customerId);
+        self::assertNotSame([], $numbers);
+
+        // Service each of this customer's quotes in turn: every one must be
+        // missing from the history read taken while it is the serviced quote.
+        $ids = self::connection(static::getContainer())
+            ->fetchAllAssociative('SELECT LOWER(HEX(id)) AS id, quote_number FROM quote'
+            . ' WHERE customer_id = UNHEX(:customer) AND version_id = UNHEX(:live) LIMIT 5', [
+                'customer' => $customerId,
+                'live' => Defaults::LIVE_VERSION,
+            ]);
+        self::assertNotSame([], $ids);
+
+        foreach ($ids as $row) {
+            $entries = self::factory()
+                ->for($customerId, (string) $row['id'])
+                ->quotes();
+            $seen = array_map(static fn(object $e): string => $e->quoteNumber, $entries);
+
+            self::assertNotContains(
+                (string) $row['quote_number'],
+                $seen,
+                sprintf('Quote %s appeared in its own history.', (string) $row['quote_number']),
+            );
+            // The exclusion must remove exactly one quote, not the whole account.
+            self::assertSame(min($liveCount, 25) - 1, \count($entries));
+        }
     }
 
     public function testASecondCompanysQuotesAreAbsent(): void
@@ -114,7 +162,7 @@ final class CustomerHistoryTest extends IntegrationTestCase
         $theirNumbers = self::quoteNumbersOf($theirs);
         self::assertNotSame([], $theirNumbers);
 
-        $entries = self::factory()->for($mine)->quotes();
+        $entries = self::factory()->for($mine, '')->quotes();
         $mineNumbers = array_map(static fn(object $e): string => $e->quoteNumber, $entries);
 
         self::assertSame([], array_intersect($mineNumbers, $theirNumbers));
@@ -128,7 +176,7 @@ final class CustomerHistoryTest extends IntegrationTestCase
 
         foreach ($customers as [$customerId]) {
             $expected = $reference->orders($customerId);
-            $history = self::factory()->for($customerId)->orders();
+            $history = self::factory()->for($customerId, '')->orders();
             self::assertSame(\count($expected), $history->stats->count);
             self::assertSame($expected[0]['date'], $history->stats->lastOrderAt?->format('Y-m-d H:i:s'));
             $currencies = array_unique(array_column($expected, 'currency'));
@@ -177,7 +225,7 @@ final class CustomerHistoryTest extends IntegrationTestCase
                 'net' => $purchase->unitPriceNet,
                 'currency' => $purchase->currencyIso,
                 'date' => $purchase->orderedAt?->format('Y-m-d H:i:s'),
-            ], self::factory()->for($mine)->productPurchases($productId));
+            ], self::factory()->for($mine, '')->productPurchases($productId));
             self::assertSame($expected, $actual);
             $foreignOnly = array_filter(
                 $foreign,
@@ -205,7 +253,7 @@ final class CustomerHistoryTest extends IntegrationTestCase
         );
         self::assertNotSame([], $theirNumbers);
 
-        $entries = self::factory()->for($mine)->orders()->recent;
+        $entries = self::factory()->for($mine, '')->orders()->recent;
         $mineNumbers = array_map(static fn(object $e): string => $e->orderNumber, $entries);
 
         self::assertSame([], array_intersect($mineNumbers, $theirNumbers));

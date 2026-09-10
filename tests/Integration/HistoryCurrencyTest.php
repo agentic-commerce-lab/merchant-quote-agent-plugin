@@ -156,6 +156,6 @@ final class HistoryCurrencyTest extends IntegrationTestCase
 
     private static function scope(string $customerId): CustomerScope
     {
-        return new CustomerScope($customerId, new QuoteVersionResolver());
+        return new CustomerScope($customerId, '', new QuoteVersionResolver());
     }
 }

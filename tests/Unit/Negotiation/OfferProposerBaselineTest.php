@@ -71,6 +71,7 @@ final class OfferProposerBaselineTest extends TestCase
                 self::grantDecision(),
                 new NegotiationContext(
                     $snapshot->identity->customerId,
+                    $snapshot->identity->quoteId,
                     SnapshotAdapter::conversation($snapshot),
                     $baseline,
                 ),
@@ -102,6 +103,7 @@ final class OfferProposerBaselineTest extends TestCase
                 self::grantDecision(),
                 new NegotiationContext(
                     $snapshot->identity->customerId,
+                    $snapshot->identity->quoteId,
                     SnapshotAdapter::conversation($snapshot),
                     $baseline,
                 ),

@@ -52,7 +52,11 @@ final readonly class OfferProposer
         }
 
         $prompt = $this->prompts->negotiate($settings);
-        $rounds = new HistoryRounds($this->platform, $this->recorder, $this->historyFactory->for($context->customerId));
+        $rounds = new HistoryRounds(
+            $this->platform,
+            $this->recorder,
+            $this->historyFactory->for($context->customerId, $context->quoteId),
+        );
 
         try {
             $response = $rounds->negotiate(

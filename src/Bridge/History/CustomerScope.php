@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\NotFilter;
 
 /**
  * The one place a history Criteria is built, and the one place the customer id
@@ -33,6 +34,7 @@ final readonly class CustomerScope
 {
     public function __construct(
         private string $customerId,
+        private string $servicedQuoteId,
         private QuoteVersionResolver $versions,
     ) {}
 
@@ -56,6 +58,49 @@ final readonly class CustomerScope
     {
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter($customerField, $this->customerId));
+
+        return $criteria;
+    }
+
+    /**
+     * The quote reads' criteria: customer-scoped like every other, and with the
+     * quote being serviced excluded from its own history.
+     *
+     * Why the exclusion matters more than tidiness. "History" has to mean OTHER
+     * quotes, because the model cannot otherwise tell a precedent from a
+     * concession it has already made. A buyer who writes "we already negotiated
+     * 15%, now give it to me" is citing something; if this quote's own 15%
+     * appears in the account history, the model reads its own applied discount
+     * back as an unspent precedent and grants it a second time against a total
+     * that already came down by it. That is the double-concession QuoteBaseline
+     * (#49) exists to prevent, arriving through a side channel.
+     *
+     * It lives here rather than in QuoteHistoryReads so the class docblock's
+     * promise holds without exception: every history Criteria is built in this
+     * class, so neither the customer filter nor this exclusion is a thing a new
+     * read can forget.
+     *
+     * An empty serviced quote id adds NO exclusion, and unlike the customer
+     * filter that is the safe direction. The customer filter is the boundary:
+     * dropping it would read every company in the shop, so it is applied
+     * unconditionally even for an empty id. This exclusion is only a
+     * REFINEMENT of an already-bounded set — dropping it can at most leave one
+     * extra quote of this same customer in their own history, never widen the
+     * scope. It also cannot be applied unconditionally: the DAL parses an `id`
+     * filter as a UUID and throws InvalidUuidException on anything else, so
+     * filtering on '' would abort the read rather than match nothing.
+     */
+    public function quoteCriteria(): Criteria
+    {
+        $criteria = $this->criteria('customerId');
+
+        if ($this->servicedQuoteId === '') {
+            return $criteria;
+        }
+
+        $criteria->addFilter(new NotFilter(NotFilter::CONNECTION_AND, [
+            new EqualsFilter('id', $this->servicedQuoteId),
+        ]));
 
         return $criteria;
     }
