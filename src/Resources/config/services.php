@@ -105,6 +105,7 @@ use MerchantQuoteAgentPlugin\Protocol\Http\RecordPartiesResolver;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\A2cnSessionStamp;
+use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActConformance;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\SessionQuoteLocator;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
@@ -230,6 +231,11 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
                 service('logger'),
                 service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
             ]);
+            // The act-conformance gate: the only one of the four refusal
+            // gates with a dependency (ActVerifier), so the only one needing
+            // a service registration of its own.
+            $services->set(InboundActConformance::class)->args([service(ActVerifier::class)]);
+
             // Resolves an inbound act's session id back to its quote.
             // ignoreOnInvalid(): an unlicensed shop compiles with a null
             // repository, and the locator's DAL fallback is skipped in that
