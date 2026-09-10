@@ -17,6 +17,7 @@ use MerchantQuoteAgentPlugin\Protocol\Record\TransactionRecord;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\InMemoryActStore;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\TestActSigner;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Routing\Attribute\Route;
 use Ucp\Sdk\Internal\Security\DefaultJsonCanonicalization;
 
 final class A2cnRecordsControllerTest extends TestCase
@@ -129,6 +130,50 @@ final class A2cnRecordsControllerTest extends TestCase
         $response = self::controller($store, null)->record(SessionId::forQuote(self::QUOTE_ID));
 
         self::assertSame(404, $response->getStatusCode());
+    }
+
+    public function testRouteAttributesDeclareBothCanonicalAndLegacyPaths(): void
+    {
+        $class = new \ReflectionClass(A2cnRecordsController::class);
+
+        /** @var list<\ReflectionAttribute<Route>> $actsRoutes */
+        $actsRoutes = $class->getMethod('acts')->getAttributes(Route::class);
+        self::assertCount(2, $actsRoutes);
+        $actsPaths = array_map(static fn(\ReflectionAttribute $a): string => $a->newInstance()->getPath(), $actsRoutes);
+        $actsNames = array_map(
+            static fn(\ReflectionAttribute $a): ?string => $a->newInstance()->getName(),
+            $actsRoutes,
+        );
+        $actsMethods = array_map(
+            static fn(\ReflectionAttribute $a): array => $a->newInstance()->getMethods(),
+            $actsRoutes,
+        );
+        self::assertContains('/a2cn/sessions/{sessionId}/messages', $actsPaths);
+        self::assertContains('/a2cn/sessions/{sessionId}/acts', $actsPaths);
+        self::assertContains('frontend.merchant_quote_agent.a2cn.messages.get', $actsNames);
+        self::assertContains('frontend.merchant_quote_agent.a2cn.acts', $actsNames);
+        self::assertSame([['GET'], ['GET']], $actsMethods);
+
+        /** @var list<\ReflectionAttribute<Route>> $recordRoutes */
+        $recordRoutes = $class->getMethod('record')->getAttributes(Route::class);
+        self::assertCount(2, $recordRoutes);
+        $recordPaths = array_map(
+            static fn(\ReflectionAttribute $a): string => $a->newInstance()->getPath(),
+            $recordRoutes,
+        );
+        $recordNames = array_map(
+            static fn(\ReflectionAttribute $a): ?string => $a->newInstance()->getName(),
+            $recordRoutes,
+        );
+        $recordMethods = array_map(
+            static fn(\ReflectionAttribute $a): array => $a->newInstance()->getMethods(),
+            $recordRoutes,
+        );
+        self::assertContains('/a2cn/sessions/{sessionId}/record', $recordPaths);
+        self::assertContains('/a2cn/records/{sessionId}', $recordPaths);
+        self::assertContains('frontend.merchant_quote_agent.a2cn.record.canonical', $recordNames);
+        self::assertContains('frontend.merchant_quote_agent.a2cn.record', $recordNames);
+        self::assertSame([['GET'], ['GET']], $recordMethods);
     }
 
     private static function controller(

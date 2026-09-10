@@ -28,6 +28,12 @@ use Symfony\Component\Routing\Attribute\Route;
  * RecordResponder — a real seam from this class's job, which is the two
  * routes and the store/gateway orchestration in front of them; splitting on
  * it is what keeps this class under the per-class cyclomatic-complexity gate.
+ *
+ * The canonical paths (`/a2cn/sessions/{sessionId}/messages` and
+ * `/a2cn/sessions/{sessionId}/record`) are A2CN's own default wire layout.
+ * The older `/acts` and `/records/{sessionId}` spellings stay because
+ * counterparties already hold those URLs, and the two names differ only in
+ * spelling.
  */
 #[Route(defaults: [PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => ['storefront']])]
 final readonly class A2cnRecordsController
@@ -38,6 +44,11 @@ final readonly class A2cnRecordsController
         private RecordResponder $responder,
     ) {}
 
+    #[Route(
+        path: '/a2cn/sessions/{sessionId}/messages',
+        name: 'frontend.merchant_quote_agent.a2cn.messages.get',
+        methods: ['GET'],
+    )]
     #[Route(path: '/a2cn/sessions/{sessionId}/acts', name: 'frontend.merchant_quote_agent.a2cn.acts', methods: ['GET'])]
     public function acts(string $sessionId): JsonResponse
     {
@@ -52,6 +63,11 @@ final readonly class A2cnRecordsController
         ]);
     }
 
+    #[Route(
+        path: '/a2cn/sessions/{sessionId}/record',
+        name: 'frontend.merchant_quote_agent.a2cn.record.canonical',
+        methods: ['GET'],
+    )]
     #[Route(path: '/a2cn/records/{sessionId}', name: 'frontend.merchant_quote_agent.a2cn.record', methods: ['GET'])]
     public function record(string $sessionId): JsonResponse
     {

@@ -64,6 +64,14 @@ final class A2cnDiscoveryControllerFixtures
         return $decoded;
     }
 
+    /** @return array<string, mixed> */
+    public static function discoveryDocument(): array
+    {
+        $response = self::controller()->discovery(self::request());
+
+        return self::decode($response->getContent());
+    }
+
     public static function controller(
         ?A2cnIdentityResolver $identities = null,
         ?QuoteAgentSettingsSource $settings = null,
