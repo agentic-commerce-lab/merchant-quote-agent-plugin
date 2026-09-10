@@ -105,6 +105,7 @@ use MerchantQuoteAgentPlugin\Protocol\Http\RecordPartiesResolver;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\A2cnSessionStamp;
+use MerchantQuoteAgentPlugin\Protocol\Ingress\SessionQuoteLocator;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
@@ -228,6 +229,14 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
             $services->set(A2cnSessionStamp::class)->args([
                 service('logger'),
                 service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+            ]);
+            // Resolves an inbound act's session id back to its quote.
+            // ignoreOnInvalid(): an unlicensed shop compiles with a null
+            // repository, and the locator's DAL fallback is skipped in that
+            // case (the mirror still works either way).
+            $services->set(SessionQuoteLocator::class)->args([
+                service(ActStoreInterface::class),
+                service('quote.repository')->ignoreOnInvalid(),
             ]);
             $services->set(UcpQuoteController::class)->arg(
                 '$sessions',
