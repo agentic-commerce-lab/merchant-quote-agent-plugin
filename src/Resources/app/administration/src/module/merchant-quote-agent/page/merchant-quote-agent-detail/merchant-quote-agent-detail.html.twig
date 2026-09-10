@@ -146,8 +146,8 @@
 
                         <template v-else>
                             <div class="mqa-entry__header">
-                                <span class="mqa-run__index">{{ entry.run.index }}</span>
-                                <h4 class="mqa-entry__title">{{ entry.run.title }}</h4>
+                                <span class="mqa-run__index">#{{ entry.run.index }}</span>
+                                <h4 class="mqa-entry__title">{{ $tc('merchant-quote-agent.detail.agentTitle') }}</h4>
                                 <mt-badge :variant="entry.run.outcomeVariant">{{ entry.run.outcomeLabel }}</mt-badge>
                                 <span class="mqa-entry__time">{{ entry.run.timestamp }}</span>
                             </div>

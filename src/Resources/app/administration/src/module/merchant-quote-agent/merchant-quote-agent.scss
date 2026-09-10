@@ -255,8 +255,12 @@
 
 .mqa-run__index {
     color: var(--color-text-secondary-default);
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
+    background: var(--color-elevation-surface-sunken);
+    padding: 1px 6px;
+    border-radius: 4px;
 }
 
 /* The four lines every answering run shares. One grid, one label column, so
