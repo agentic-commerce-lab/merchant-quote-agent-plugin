@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Bridge\Data\History;
 
 /**
- * One of the company's past quotes, joined with what WE granted on it.
+ * One of the company's past quotes, joined with its latest recorded pass reduction.
  *
- * `grantedDiscountPercent` is null for a quote the agent never priced — a
- * merchant-handled quote, or one that predates this plugin. Null means "we
- * don't know", never "we gave nothing".
+ * `grantedDiscountPercent` compares the latest recorded pass’s opening and
+ * closing totals. It is not cumulative across passes or proof of delivery.
+ * Null means no recorded reduction, even if an earlier proposal was authorized.
  */
 final readonly class QuoteHistoryEntry
 {
@@ -26,5 +26,6 @@ final readonly class QuoteHistoryEntry
         public string $state,
         public bool $converted,
         public ?float $grantedDiscountPercent = null,
+        public ?string $currencyIso = null,
     ) {}
 }

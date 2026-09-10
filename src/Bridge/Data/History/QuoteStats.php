@@ -10,8 +10,11 @@ namespace MerchantQuoteAgentPlugin\Bridge\Data\History;
  * `converted` and `lost` come from the QUOTE (its `orderId` and its state), not
  * from our decision table: both are authoritative and both exist for quotes
  * that predate this plugin. `offersMade` / `offersAccepted` come from
- * merchant_quote_agent_decision, which is the only place that knows we made an
- * offer at all.
+ * merchant_quote_agent_decision: authorized proposal PASSES versus distinct
+ * ACCEPTED QUOTES with an authorized proposal. These have different denominators;
+ * authorization precedes writes and verification and does not prove delivery.
+ * `lastGrantedDiscountPercent` is the latest recorded per-pass reduction,
+ * relative to that pass’s opening total, not the original quote baseline.
  */
 final readonly class QuoteStats
 {

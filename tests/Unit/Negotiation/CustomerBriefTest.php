@@ -32,6 +32,7 @@ final class CustomerBriefTest extends TestCase
                 count: 6,
                 lifetimeNet: 128400.0,
                 lastOrderAt: new \DateTimeImmutable('2026-07-14 09:30:00'),
+                currencyIso: 'EUR',
             ),
         );
     }
@@ -40,15 +41,15 @@ final class CustomerBriefTest extends TestCase
     {
         $brief = CustomerBrief::of(self::summary());
 
-        self::assertStringContainsString('12 earlier quotes', $brief);
+        self::assertStringContainsString('12 recent quotes', $brief);
         self::assertStringContainsString('3 became orders', $brief);
         self::assertStringContainsString('5 ended without a deal', $brief);
     }
 
-    public function testWhatWeGrantedLastTimeIsStated(): void
+    public function testTheLatestRecordedPassReductionIsStated(): void
     {
-        // The single most useful number in the block: it is the anchor the buyer
-        // will remember, whether or not the model is told about it.
+        // The number describes a recorded pass, not the cumulative discount
+        // the buyer ultimately received.
         self::assertStringContainsString('4.50%', CustomerBrief::of(self::summary()));
     }
 
@@ -57,7 +58,7 @@ final class CustomerBriefTest extends TestCase
         $brief = CustomerBrief::of(self::summary());
 
         self::assertStringContainsString('6 orders', $brief);
-        self::assertStringContainsString('128400.00', $brief);
+        self::assertStringContainsString('128400.00 EUR net', $brief);
         self::assertStringContainsString('2026-07-14', $brief);
     }
 
@@ -71,11 +72,11 @@ final class CustomerBriefTest extends TestCase
 
     public function testANewAccountSaysSoRatherThanRenderingZeroes(): void
     {
-        // "0 earlier quotes, 0 orders, lifetime 0.00" reads like a data failure.
-        // "First contact" is the actual negotiating signal.
+        // "0 recent quotes, 0 orders, lifetime 0.00" reads like a data failure.
+        // Describe the absent records without inferring whether this is first contact.
         $brief = CustomerBrief::of(new CustomerSummary());
 
-        self::assertStringContainsString('no earlier quotes and no orders', $brief);
+        self::assertStringContainsString('no quotes and no orders recorded', $brief);
         self::assertStringNotContainsString('lifetime', $brief);
     }
 
@@ -97,14 +98,17 @@ final class CustomerBriefTest extends TestCase
 
     public function testAGenuineZeroGrantStillRendersUnlikeAnUnknownOne(): void
     {
-        // null means "we don't know"; 0.0 means "we held firm and granted
-        // nothing" -- a real, reportable data point. The live test shop's
+        // null means no recorded pass reduction; 0.0 means the pass recorded
+        // no reduction. Neither proves delivery. The live test shop's
         // merchant_quote_agent_decision table has both: a `!==null` check is
         // required, a truthy check would silently drop this branch since 0.0 is
         // falsy in PHP.
         $summary = new CustomerSummary(quotes: new QuoteStats(seen: 2, lastGrantedDiscountPercent: 0.0));
 
         self::assertStringContainsString('0.00%', CustomerBrief::of($summary));
-        self::assertStringContainsString('the discount actually granted last time was', CustomerBrief::of($summary));
+        self::assertStringContainsString(
+            'latest recorded pass reduced that pass’s opening total by',
+            CustomerBrief::of($summary),
+        );
     }
 }

@@ -29,6 +29,8 @@ final class HistoryRecord
             'lastGrantedDiscountPercent' => $summary->quotes->lastGrantedDiscountPercent,
             'orderCount' => $summary->orders->count,
             'lifetimeNet' => $summary->orders->lifetimeNet,
+            'currencyIso' => $summary->orders->currencyIso,
+            'lifetimeNetUnavailableReason' => $summary->orders->unavailableReason,
             'lastOrderAt' => $summary->orders->lastOrderAt?->format(\DateTimeInterface::ATOM),
             'rounds' => $draft->historyReads['rounds'] ?? [],
         ];

@@ -8,9 +8,10 @@ namespace MerchantQuoteAgentPlugin\Bridge\Data\History;
  * merchant_quote_agent_decision, rolled up for one company.
  *
  * Aggregated in PHP rather than in SQL because the input is at most a few dozen
- * rows and the rules are commercial, not relational: "what did they end up
- * with" is the LATEST grant on a quote, not the sum or the max, and only an
- * `authorized` pass is an offer at all.
+ * rows and the rules describe recorded passes: each reduction compares that
+ * pass’s opening and closing totals, never the original quote baseline. The
+ * latest recorded reduction is neither cumulative nor proof of delivery.
+ * `offersMade` counts authorized proposal passes, before writes and verification.
  *
  * Sorts by timestamp itself rather than trusting the query's ORDER BY, so a
  * NULL created_at or an index change cannot silently reorder the answer.
@@ -18,8 +19,8 @@ namespace MerchantQuoteAgentPlugin\Bridge\Data\History;
 final readonly class DecisionRollup
 {
     /**
-     * @param list<string>         $quoteIdsWithOffers quotes the agent actually priced
-     * @param array<string, float> $grantedByQuote     quote id => the grant it ended on
+     * @param list<string>         $quoteIdsWithOffers distinct quotes with an authorized proposal pass
+     * @param array<string, float> $grantedByQuote     quote id => latest recorded per-pass reduction
      */
     public function __construct(
         public int $offersMade = 0,

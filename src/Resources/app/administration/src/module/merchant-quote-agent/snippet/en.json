@@ -213,6 +213,8 @@
             "needsAttention": "This pass reported success but did not finish cleanly. Check the quote before relying on it."
         },
         "history": {
+            "currencyUnknown": "Currency unknown",
+            "noRecordedReduction": "No recorded pass reduction",
             "unknown": "Unknown / not recorded",
             "none": "None",
             "unavailable": "Unavailable",
@@ -224,9 +226,9 @@
             "quotesSeen": "Quotes seen",
             "quotesConverted": "Quotes converted",
             "quotesLost": "Quotes lost",
-            "offersMade": "Offers made",
-            "offersAccepted": "Offers accepted",
-            "lastGrantedDiscount": "Last discount granted",
+            "offersMade": "Authorized proposal passes",
+            "offersAccepted": "Accepted quotes with an authorized proposal",
+            "lastGrantedDiscount": "Latest recorded pass reduction (of that pass’s opening total)",
             "orderCount": "Orders placed",
             "lifetimeNet": "Lifetime order value (net)",
             "lastOrderAt": "Last order date"

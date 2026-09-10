@@ -53,6 +53,7 @@ final class HistoryRecordTest extends TestCase
                 count: 4,
                 lifetimeNet: 1234.5,
                 lastOrderAt: new \DateTimeImmutable('2026-09-08T12:34:56+02:00'),
+                currencyIso: 'EUR',
             ),
         ));
         $recorder->finish(null);
@@ -69,6 +70,8 @@ final class HistoryRecordTest extends TestCase
                 'lastGrantedDiscountPercent' => 7.5,
                 'orderCount' => 4,
                 'lifetimeNet' => 1234.5,
+                'currencyIso' => 'EUR',
+                'lifetimeNetUnavailableReason' => null,
                 'lastOrderAt' => '2026-09-08T12:34:56+02:00',
                 'rounds' => [],
             ],
@@ -96,6 +99,8 @@ final class HistoryRecordTest extends TestCase
                 'lastGrantedDiscountPercent' => null,
                 'orderCount' => 0,
                 'lifetimeNet' => 0.0,
+                'currencyIso' => null,
+                'lifetimeNetUnavailableReason' => null,
                 'lastOrderAt' => null,
                 'rounds' => [],
             ],
@@ -191,5 +196,28 @@ final class HistoryRecordTest extends TestCase
         self::assertCount(2, $writer->drafts);
         self::assertNull($writer->drafts[1]->historyReads);
         self::assertSame('cust-2', $writer->drafts[1]->customerId);
+    }
+
+    public function testMixedCurrenciesRemainUnavailableAlongsideTheOrderFacts(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+        $recorder->begin(NegotiationFixture::snapshot(), NegotiationFixture::context());
+        $recorder->recordHistorySummary(
+            new CustomerSummary(orders: new OrderStats(
+                count: 2,
+                lifetimeNet: null,
+                lastOrderAt: new \DateTimeImmutable('2026-09-08'),
+                unavailableReason: 'order currencies are mixed or unknown',
+            )),
+        );
+        $recorder->finish(null);
+        $record = $writer->drafts[0]->historyReads;
+        self::assertTrue($record['available']);
+        self::assertSame(2, $record['orderCount']);
+        self::assertNull($record['lifetimeNet']);
+        self::assertNull($record['currencyIso']);
+        self::assertSame('order currencies are mixed or unknown', $record['lifetimeNetUnavailableReason']);
+        self::assertNotNull($record['lastOrderAt']);
     }
 }

@@ -12,12 +12,10 @@ use Shopware\Core\Framework\Uuid\Uuid;
 /**
  * Our own pass records for a set of quotes.
  *
- * There is NO customer filter here, and adding one is impossible:
- * merchant_quote_agent_decision is keyed by quote_id and has no customer
- * column. The scope comes from the ids instead, and they are the ids a
- * customer-filtered quote read returned — so this query structurally cannot
- * reach a quote that read did not. That indirection is the security property,
- * not a workaround for the missing column.
+ * Scope comes from the quote ids a customer-filtered read returned, so this
+ * query cannot reach a quote outside that read. The newer customer_id audit
+ * attribution is intentionally not required: older records lack it and still
+ * belong to their verified quote.
  *
  * DBAL rather than the DAL because the record is a plain attribute entity with
  * no association to the quote, and this is one indexed IN over `idx.mqad.quote_id`.

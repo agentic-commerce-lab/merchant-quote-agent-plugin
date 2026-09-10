@@ -30,20 +30,23 @@ final readonly class HistoryRequestResolver
     /** @param list<QuoteHistoryEntry> $quotes */
     private function quotes(array $quotes): string
     {
-        return $this->block(array_map($this->quote(...), $quotes), 'this account has no earlier quotes');
+        return $this->block(array_map($this->quote(...), $quotes), 'this account has no quotes recorded');
     }
 
     private function quote(QuoteHistoryEntry $quote): string
     {
         $grant = $quote->grantedDiscountPercent === null
-            ? 'not priced by you'
-            : sprintf('%.2f%%', $quote->grantedDiscountPercent);
+            ? 'no recorded pass reduction'
+            : sprintf(
+                'latest recorded pass reduced that pass’s opening total by %.2f%%',
+                $quote->grantedDiscountPercent,
+            );
 
         return sprintf(
-            '- quote %s, %s, %.2f net, state %s, converted %s, granted discount %s',
+            '- quote %s, %s, %s net, state %s, converted %s, %s',
             $quote->quoteNumber,
             $quote->createdAt?->format('Y-m-d') ?? 'unknown',
-            $quote->amountNet,
+            HistoryMoney::of($quote->amountNet, $quote->currencyIso),
             $quote->state,
             $quote->converted ? 'yes' : 'no',
             $grant,
@@ -60,19 +63,19 @@ final readonly class HistoryRequestResolver
     private function order(OrderHistoryEntry $order): string
     {
         $lines = [sprintf(
-            '- order %s, %s, %.2f net, state %s',
+            '- order %s, %s, %s net, state %s',
             $order->orderNumber,
             $order->orderedAt?->format('Y-m-d') ?? 'unknown',
-            $order->amountNet,
+            HistoryMoney::of($order->amountNet, $order->currencyIso),
             $order->state,
         )];
 
         foreach ($order->lines as $line) {
             $lines[] = sprintf(
-                '  - %s: quantity %d, unit net %.2f',
+                '  - %s: quantity %d, unit net %s',
                 $line->label,
                 $line->quantity,
-                $line->unitPriceNet,
+                HistoryMoney::of($line->unitPriceNet, $order->currencyIso),
             );
         }
 
@@ -108,10 +111,10 @@ final readonly class HistoryRequestResolver
     private function purchase(ProductPurchase $purchase): string
     {
         return sprintf(
-            '- %s, quantity %d, unit net %.2f',
+            '- %s, quantity %d, unit net %s',
             $purchase->orderedAt?->format('Y-m-d') ?? 'unknown',
             $purchase->quantity,
-            $purchase->unitPriceNet,
+            HistoryMoney::of($purchase->unitPriceNet, $purchase->currencyIso),
         );
     }
 

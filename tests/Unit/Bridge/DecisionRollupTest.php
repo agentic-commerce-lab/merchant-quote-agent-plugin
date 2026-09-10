@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Our own decision table is the richest history we have, and the only place
- * that knows we made an offer at all. It is keyed by quote_id only, which is
+ * that records authorized proposal passes. It is scoped by quote_id, which is
  * why it is aggregated from rows a customer-filtered quote read already
  * returned.
  */
@@ -48,8 +48,8 @@ final class DecisionRollupTest extends TestCase
 
     public function testOnlyAuthorizedPassesCountAsOffersMade(): void
     {
-        // An escalated pass is not an offer. Counting it would tell the model we
-        // have been generous with an account we have never actually priced.
+        // Authorization records a proposal pass, even if a later write fails.
+        // A rejected proposal must not increase that count.
         self::assertSame(3, DecisionRollup::of(self::rows())->offersMade);
     }
 
@@ -62,8 +62,8 @@ final class DecisionRollupTest extends TestCase
 
     public function testThePerQuoteGrantIsTheLatestOnThatQuote(): void
     {
-        // Round two improved q1 from 3% to 5%. What the buyer ended up with is
-        // 5%, and that is the number the next negotiation is anchored against.
+        // The second pass recorded a 5% reduction relative to its own opening
+        // total. The rollup retains this observation without composing the passes.
         self::assertSame(['q1' => 5.0, 'q3' => 2.5], DecisionRollup::of(self::rows())->grantedByQuote);
     }
 
@@ -121,5 +121,36 @@ final class DecisionRollupTest extends TestCase
         // collide with, or be dropped alongside, q1's genuine NULL.
         self::assertSame(['q2' => 0.0], $rollup->grantedByQuote);
         self::assertSame(0.0, $rollup->lastGrantedDiscountPercent);
+    }
+
+    public function testLatestRecordedReductionIsPerPassNotCumulativeAcrossRounds(): void
+    {
+        $baseline = 6348.30;
+        $opening = 6221.30;
+        $closing = 6034.70;
+        $latestPass = (($opening - $closing) / $opening) * 100;
+        $rollup = DecisionRollup::of([
+            [
+                'quote_id' => 'q1',
+                'authorized' => 1,
+                'discount_percent_granted' => (($baseline - $opening) / $baseline) * 100,
+                'created_at' => '2026-09-08',
+            ],
+            [
+                'quote_id' => 'q1',
+                'authorized' => 1,
+                'discount_percent_granted' => $latestPass,
+                'created_at' => '2026-09-09',
+            ],
+        ]);
+        self::assertEqualsWithDelta(2.9994, $rollup->grantedByQuote['q1'], 0.0001);
+        self::assertSame($latestPass, $rollup->lastGrantedDiscountPercent);
+        self::assertNotEqualsWithDelta(
+            (($baseline - $closing) / $baseline) * 100,
+            $rollup->lastGrantedDiscountPercent,
+            0.01,
+        );
+        self::assertSame(2, $rollup->offersMade);
+        self::assertSame(['q1'], $rollup->quoteIdsWithOffers);
     }
 }

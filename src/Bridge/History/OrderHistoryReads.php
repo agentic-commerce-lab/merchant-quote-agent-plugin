@@ -10,6 +10,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\History\ProductPurchase;
 use MerchantQuoteAgentPlugin\Bridge\OrderLineNet;
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Bucket\TermsAggregation;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\CountAggregation;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\MaxAggregation;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\SumAggregation;
@@ -75,11 +76,10 @@ final readonly class OrderHistoryReads
         return new OrderHistory(OrderHistoryAggregation::stateOf($result), $recent);
     }
 
-    /** @throws CrossCustomerRead */
+    /** Aggregate isolation comes from customer-scoped criteria, without row verification. */
     public function stats(CustomerScope $scope): OrderStats
     {
-        // Limit 1 rather than 0: the aggregations cover the whole filtered set
-        // either way, and one row is what lets verify() run at all.
+        // The one-row page minimizes hydration; aggregations cover the entire scoped set.
         return OrderHistoryAggregation::stateOf($this->search($scope, withLines: false, limit: 1));
     }
 
@@ -93,6 +93,7 @@ final readonly class OrderHistoryReads
         $criteria = $scope->criteria('order.orderCustomer.customerId');
         $criteria->addFilter(new EqualsFilter('productId', $productId));
         $criteria->addAssociation('order.orderCustomer');
+        $criteria->addAssociation('order.currency');
         $criteria->addSorting(new FieldSorting('order.orderDateTime', FieldSorting::DESCENDING));
         $criteria->setLimit(self::RECENT_PURCHASES);
 
@@ -112,6 +113,7 @@ final readonly class OrderHistoryReads
                     : null,
                 quantity: (int) $line->get('quantity'),
                 unitPriceNet: OrderLineNet::of($line, (string) $order->get('taxStatus')),
+                currencyIso: HistoryCurrency::of($order),
             );
         }
 
@@ -123,6 +125,7 @@ final readonly class OrderHistoryReads
     {
         $criteria = $scope->criteria('orderCustomer.customerId');
         $criteria->addAssociation('orderCustomer');
+        $criteria->addAssociation('currency');
         $criteria->addAssociation('stateMachineState');
         $criteria->addSorting(new FieldSorting('orderDateTime', FieldSorting::DESCENDING));
         $criteria->setLimit($limit);
@@ -133,6 +136,7 @@ final readonly class OrderHistoryReads
 
         // Aggregations cover every order the filter matched, not just the page.
         $criteria->addAggregation(new CountAggregation('orderCount', 'id'));
+        $criteria->addAggregation(new TermsAggregation('currencies', 'currency.isoCode'));
         $criteria->addAggregation(new SumAggregation('lifetimeNet', 'amountNet'));
         $criteria->addAggregation(new MaxAggregation('lastOrderAt', 'orderDateTime'));
 

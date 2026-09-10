@@ -35,19 +35,20 @@ final class HistoryRequestResolverTest extends TestCase
                 state: 'declined',
                 converted: false,
                 grantedDiscountPercent: 6.0,
+                currencyIso: 'EUR',
             )]);
 
         $result = $this->resolve(new HistoryRequest(HistoryRequestKind::QuoteHistory), $history);
 
         self::assertStringContainsString('10007', $result);
         self::assertStringContainsString('2026-06-01', $result);
-        self::assertStringContainsString('4200.00 net', $result);
+        self::assertStringContainsString('4200.00 EUR net', $result);
         self::assertStringContainsString('declined', $result);
         self::assertStringContainsString('converted no', $result);
-        self::assertStringContainsString('6.00%', $result);
+        self::assertStringContainsString('latest recorded pass reduced that pass’s opening total by 6.00%', $result);
     }
 
-    #[TestWith([null, 'not priced by you'], 'unknown grant')]
+    #[TestWith([null, 'no recorded pass reduction'], 'unknown grant')]
     #[TestWith([0.0, '0.00%'], 'zero grant')]
     public function testQuoteHistoryDistinguishesAnUnknownGrantFromZero(?float $grant, string $expected): void
     {
@@ -68,6 +69,7 @@ final class HistoryRequestResolverTest extends TestCase
         self::assertStringContainsString($expected, $result);
         self::assertStringContainsString('unknown', $result);
         self::assertStringContainsString('converted yes', $result);
+        self::assertStringContainsString('120.50 currency unknown net', $result);
     }
 
     public function testOrderHistoryIncludesEachOrderAndItsLineDetail(): void
@@ -77,10 +79,17 @@ final class HistoryRequestResolverTest extends TestCase
             ->expects(self::once())
             ->method('orders')
             ->willReturn(new OrderHistory(recent: [
-                new OrderHistoryEntry('3001', new \DateTimeImmutable('2026-05-02'), 4200.0, 'completed', [
-                    new OrderLineEntry('Widget', 20, 210.0),
-                    new OrderLineEntry('Bracket', 3, 12.5),
-                ]),
+                new OrderHistoryEntry(
+                    '3001',
+                    new \DateTimeImmutable('2026-05-02'),
+                    4200.0,
+                    'completed',
+                    [
+                        new OrderLineEntry('Widget', 20, 210.0),
+                        new OrderLineEntry('Bracket', 3, 12.5),
+                    ],
+                    'USD',
+                ),
                 new OrderHistoryEntry('3000', null, 100.0, 'open'),
             ]));
 
@@ -88,10 +97,10 @@ final class HistoryRequestResolverTest extends TestCase
 
         self::assertStringContainsString('3001', $result);
         self::assertStringContainsString('2026-05-02', $result);
-        self::assertStringContainsString('4200.00 net', $result);
+        self::assertStringContainsString('4200.00 USD net', $result);
         self::assertStringContainsString('completed', $result);
-        self::assertStringContainsString("\n  - Widget: quantity 20, unit net 210.00", $result);
-        self::assertStringContainsString("\n  - Bracket: quantity 3, unit net 12.50", $result);
+        self::assertStringContainsString("\n  - Widget: quantity 20, unit net 210.00 USD", $result);
+        self::assertStringContainsString("\n  - Bracket: quantity 3, unit net 12.50 USD", $result);
         self::assertStringContainsString('3000', $result);
         self::assertStringContainsString('unknown', $result);
     }
@@ -104,16 +113,16 @@ final class HistoryRequestResolverTest extends TestCase
             ->method('productPurchases')
             ->with('prod-1')
             ->willReturn([
-                new ProductPurchase(new \DateTimeImmutable('2026-05-02'), 20, 210.0),
+                new ProductPurchase(new \DateTimeImmutable('2026-05-02'), 20, 210.0, 'GBP'),
                 new ProductPurchase(null, 3, 12.5),
             ]);
 
         $result = $this->resolve(new HistoryRequest(HistoryRequestKind::ProductPurchases, 'prod-1'), $history);
 
         self::assertStringContainsString('2026-05-02', $result);
-        self::assertStringContainsString('quantity 20, unit net 210.00', $result);
+        self::assertStringContainsString('quantity 20, unit net 210.00 GBP', $result);
         self::assertStringContainsString('unknown', $result);
-        self::assertStringContainsString('quantity 3, unit net 12.50', $result);
+        self::assertStringContainsString('quantity 3, unit net 12.50 currency unknown', $result);
     }
 
     #[TestWith(['prod-2'], 'another product')]
@@ -146,7 +155,7 @@ final class HistoryRequestResolverTest extends TestCase
         self::assertStringContainsString('no product', $result);
     }
 
-    #[TestWith([HistoryRequestKind::QuoteHistory, 'this account has no earlier quotes'])]
+    #[TestWith([HistoryRequestKind::QuoteHistory, 'this account has no quotes recorded'])]
     #[TestWith([HistoryRequestKind::Orders, 'this account has no order history'])]
     #[TestWith([HistoryRequestKind::ProductPurchases, 'this account has never bought that product'])]
     public function testEmptyHistoryStillReturnsAnInternalBlock(HistoryRequestKind $kind, string $expected): void

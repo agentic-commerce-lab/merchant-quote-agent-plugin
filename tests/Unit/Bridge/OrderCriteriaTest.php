@@ -11,6 +11,7 @@ use PHPUnit\Framework\TestCase;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Bucket\TermsAggregation;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\CountAggregation;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\MaxAggregation;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\SumAggregation;
@@ -37,6 +38,7 @@ final class OrderCriteriaTest extends TestCase
         $this->assertScopedTo($criteria, 'orderCustomer.customerId');
         self::assertTrue($criteria->hasAssociation('orderCustomer'), 'orderCustomer must be associated for verify().');
         self::assertTrue($criteria->hasAssociation('stateMachineState'));
+        self::assertTrue($criteria->hasAssociation('currency'));
         self::assertTrue($criteria->hasAssociation('lineItems'), 'history() renders line detail.');
     }
 
@@ -48,7 +50,7 @@ final class OrderCriteriaTest extends TestCase
 
         $this->assertScopedTo($criteria, 'orderCustomer.customerId');
         self::assertFalse($criteria->hasAssociation('lineItems'), 'stats() has no use for line detail.');
-        self::assertSame(1, $criteria->getLimit(), 'limit 1 is enough for the aggregations and for verify() to run.');
+        self::assertSame(1, $criteria->getLimit(), 'The page size does not limit customer-scoped aggregations.');
     }
 
     public function testOrderSearchSortsByNewestFirstAndCapsAtTen(): void
@@ -64,7 +66,7 @@ final class OrderCriteriaTest extends TestCase
         self::assertSame(10, $criteria->getLimit());
     }
 
-    public function testOrderSearchCarriesTheThreeAggregations(): void
+    public function testOrderSearchCarriesUnboundedCurrencyAndMoneyAggregations(): void
     {
         $criteria = $this->captureOrderCriteria(
             fn(OrderHistoryReads $reads, CustomerScope $scope) => $reads->history($scope),
@@ -72,7 +74,10 @@ final class OrderCriteriaTest extends TestCase
 
         // Keyed by aggregation name, not a numeric list (Criteria::addAggregation).
         $aggregations = $criteria->getAggregations();
-        self::assertCount(3, $aggregations);
+        self::assertCount(4, $aggregations);
+        self::assertInstanceOf(TermsAggregation::class, $aggregations['currencies']);
+        self::assertSame('currency.isoCode', $aggregations['currencies']->getField());
+        self::assertNull($aggregations['currencies']->getLimit());
 
         self::assertInstanceOf(CountAggregation::class, $aggregations['orderCount']);
         self::assertSame('id', $aggregations['orderCount']->getField());
@@ -124,6 +129,7 @@ final class OrderCriteriaTest extends TestCase
 
         self::assertTrue($criteria->hasAssociation('order'), 'order.orderCustomer must be associated for verify().');
         self::assertTrue($criteria->getAssociation('order')->hasAssociation('orderCustomer'));
+        self::assertTrue($criteria->getAssociation('order')->hasAssociation('currency'));
 
         $filters = $criteria->getFilters();
         $productFilter = null;

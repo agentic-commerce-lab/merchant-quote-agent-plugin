@@ -11,12 +11,17 @@ namespace MerchantQuoteAgentPlugin\Bridge\Data\History;
  */
 final readonly class OrderHistoryEntry
 {
-    /** @param list<OrderLineEntry> $lines */
+    /**
+     * @param list<OrderLineEntry> $lines
+     * @mago-expect lint:excessive-parameter-list
+     * Promoted read-model fields are its interface; named arguments keep callers explicit.
+     */
     public function __construct(
         public string $orderNumber,
         public ?\DateTimeImmutable $orderedAt,
         public float $amountNet,
         public string $state,
         public array $lines = [],
+        public ?string $currencyIso = null,
     ) {}
 }

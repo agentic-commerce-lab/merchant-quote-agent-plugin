@@ -11,5 +11,6 @@ final readonly class ProductPurchase
         public ?\DateTimeImmutable $orderedAt,
         public int $quantity,
         public float $unitPriceNet,
+        public ?string $currencyIso = null,
     ) {}
 }

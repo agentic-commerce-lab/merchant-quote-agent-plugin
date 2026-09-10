@@ -213,6 +213,8 @@
             "needsAttention": "Dieser Durchlauf meldet Erfolg, ist aber nicht sauber zu Ende gelaufen. Prüfen Sie das Angebot, bevor Sie sich darauf verlassen."
         },
         "history": {
+            "currencyUnknown": "Währung unbekannt",
+            "noRecordedReduction": "Keine protokollierte Preisreduzierung eines Durchlaufs",
             "unknown": "Unbekannt / nicht erfasst",
             "none": "Keine",
             "unavailable": "Nicht verfügbar",
@@ -224,9 +226,9 @@
             "quotesSeen": "Erfasste Angebote",
             "quotesConverted": "In Bestellungen umgewandelte Angebote",
             "quotesLost": "Verlorene Angebote",
-            "offersMade": "Unterbreitete Angebote",
-            "offersAccepted": "Angenommene Angebote",
-            "lastGrantedDiscount": "Zuletzt gewährter Rabatt",
+            "offersMade": "Autorisierte Angebotsvorschläge (Durchläufe)",
+            "offersAccepted": "Angenommene Angebote mit autorisiertem Vorschlag",
+            "lastGrantedDiscount": "Zuletzt protokollierte Preisreduzierung eines Durchlaufs (bezogen auf dessen Ausgangswert)",
             "orderCount": "Bestellungen",
             "lifetimeNet": "Bisheriger Bestellwert (netto)",
             "lastOrderAt": "Letztes Bestelldatum"

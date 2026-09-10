@@ -29,6 +29,7 @@ final readonly class OrderHistoryEntryFactory
             amountNet: (float) $order->get('amountNet'),
             state: $state instanceof Entity ? (string) $state->get('technicalName') : '',
             lines: self::lines($order),
+            currencyIso: HistoryCurrency::of($order),
         );
     }
 

@@ -18,7 +18,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
  * `converted` and `lost` are read off the QUOTE — its `orderId` and its state —
  * rather than off our decision table, because both are authoritative and both
  * exist for quotes the agent never touched. Our records supply only what only
- * they know: that we made an offer, and what it was.
+ * they know: authorized proposal passes and recorded per-pass price reductions.
  */
 final readonly class QuoteHistoryReads
 {
@@ -60,6 +60,7 @@ final readonly class QuoteHistoryReads
                 state: self::stateTechnicalName($quote),
                 converted: $quote->get('orderId') !== null,
                 grantedDiscountPercent: $rollup->grantedByQuote[(string) $quote->get('id')] ?? null,
+                currencyIso: HistoryCurrency::of($quote),
             );
         }, $quotes);
     }
@@ -84,8 +85,8 @@ final readonly class QuoteHistoryReads
             $converted += (int) ($quote->get('orderId') !== null);
             $lost += (int) \in_array($name, self::LOST_STATES, strict: true);
 
-            // "Did they take what we offered?" needs BOTH halves: the quote
-            // reached accepted, and the agent is the one that priced it.
+            // Count distinct accepted quotes that had an authorized proposal pass.
+            // Authorization does not prove the proposal was delivered.
             $acceptedWithOffer += (int) (
                 $name === 'accepted'
                 && \in_array((string) $quote->get('id'), $rollup->quoteIdsWithOffers, strict: true)
@@ -111,6 +112,7 @@ final readonly class QuoteHistoryReads
     {
         $criteria = $scope->criteria('customerId');
         $criteria->addAssociation('stateMachineState');
+        $criteria->addAssociation('currency');
         $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::DESCENDING));
         $criteria->setLimit(self::LIMIT);
 

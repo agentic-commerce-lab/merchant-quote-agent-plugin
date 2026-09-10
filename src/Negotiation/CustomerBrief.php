@@ -18,8 +18,8 @@ use MerchantQuoteAgentPlugin\Bridge\Data\History\CustomerSummary;
  * Marked INTERNAL in the text itself, not only in the prompt file, because the
  * negotiate call writes the buyer-facing `message` in the same response — the
  * marker has to travel with the data it governs. The decision-table figures are
- * the part that must never surface: telling a buyer they accept three offers in
- * eight hands them the playbook.
+ * the part that must never surface: recorded proposal activity and accepted
+ * quote counts are private negotiating context, not an offer acceptance rate.
  *
  * An unavailable summary renders NOTHING. An empty section invites the model to
  * speculate about why it is empty; the reason goes to the audit record instead.
@@ -41,7 +41,7 @@ final class CustomerBrief
         $lines = [...self::quoteLines($summary), ...self::orderLines($summary)];
 
         if ($lines === []) {
-            return self::HEADING . "\n- first contact: no earlier quotes and no orders on this account";
+            return self::HEADING . "\n- no quotes and no orders recorded on this account";
         }
 
         return self::HEADING . "\n" . implode("\n", $lines);
@@ -57,7 +57,7 @@ final class CustomerBrief
         }
 
         $lines = [sprintf(
-            '- %d earlier quotes on this account: %d became orders, %d ended without a deal',
+            '- %d recent quotes on this account: %d became orders, %d ended without a deal',
             $quotes->seen,
             $quotes->converted,
             $quotes->lost,
@@ -65,7 +65,7 @@ final class CustomerBrief
 
         if ($quotes->offersMade > 0) {
             $lines[] = sprintf(
-                '- you have made %d offers to this account; %d were on quotes that closed',
+                '- %d authorized proposal passes across this account; %d accepted quotes had an authorized proposal',
                 $quotes->offersMade,
                 $quotes->offersAccepted,
             );
@@ -73,7 +73,7 @@ final class CustomerBrief
 
         if ($quotes->lastGrantedDiscountPercent !== null) {
             $lines[] = sprintf(
-                '- the discount actually granted last time was %.2f%%',
+                '- the latest recorded pass reduced that pass’s opening total by %.2f%%',
                 $quotes->lastGrantedDiscountPercent,
             );
         }
@@ -90,10 +90,14 @@ final class CustomerBrief
             return [];
         }
 
+        $lifetime = $orders->lifetimeNet === null
+            ? 'lifetime net unavailable: ' . ($orders->unavailableReason ?? 'unknown')
+            : 'lifetime ' . HistoryMoney::of($orders->lifetimeNet, $orders->currencyIso) . ' net';
+
         return [sprintf(
-            '- %d orders, lifetime %.2f net, last on %s',
+            '- %d orders, %s, last on %s',
             $orders->count,
-            $orders->lifetimeNet,
+            $lifetime,
             $orders->lastOrderAt?->format('Y-m-d') ?? 'an unknown date',
         )];
     }
