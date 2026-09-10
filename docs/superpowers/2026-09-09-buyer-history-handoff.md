@@ -1,5 +1,7 @@
 # Handoff — buyer/company history for the negotiation engine (issue #100)
 
+Continuation implemented; Task 15's negotiate-message privacy acceptance remains unverified pending its live-model run. See [implementation decisions and verification](2026-09-09-buyer-history-implementation.md). The remaining-task list below records the original handoff state.
+
 **Written 2026-09-09 by the Claude session that ran Tasks 1–8. Hand this to the agent continuing the work.**
 
 You are picking up a 15-task implementation plan mid-flight. Tasks 1–8 are done, committed and reviewed.

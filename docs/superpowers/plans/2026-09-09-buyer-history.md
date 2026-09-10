@@ -53,7 +53,7 @@
 | `src/Negotiation/HistoryRequestResolver.php` | Allow-lists `productId`, renders the block |
 | `src/Negotiation/HistoryBudgetExhausted.php` | Thrown when the loop runs out |
 | `src/Negotiation/NegotiationContext.php` | `customerId` + `conversation` + `baseline` |
-| `src/Migration/Migration1789000000AddCustomerHistoryToDecision.php` | Two columns |
+| `src/Migration/Migration1789000001AddCustomerHistoryToDecision.php` | Two columns |
 | `scripts/seed-order-history.php` | Order history for the test customers |
 
 **Modified:**
@@ -2785,7 +2785,7 @@ injected instruction a second chance to be read as one."
 Comes before the loop, because the loop calls the recorder methods this task adds. Without it, #7 would show a decision whose reasoning cites data no merchant can see, and the trail stops being evidence.
 
 **Files:**
-- Create: `src/Migration/Migration1789000000AddCustomerHistoryToDecision.php`
+- Create: `src/Migration/Migration1789000001AddCustomerHistoryToDecision.php`
 - Modify: `src/Audit/QuoteDecisionRecord.php`, `src/Audit/DecisionDraft.php`, `src/Audit/DecisionRecorder.php`
 - Test: `tests/Unit/Audit/HistoryRecordTest.php` (create)
 
@@ -2934,7 +2934,7 @@ Expected: FAIL — `Call to undefined method ...::recordHistorySummary()`.
 
 - [ ] **Step 3: Write the migration**
 
-`src/Migration/Migration1789000000AddCustomerHistoryToDecision.php`:
+`src/Migration/Migration1789000001AddCustomerHistoryToDecision.php`:
 
 ```php
 <?php
@@ -2963,12 +2963,12 @@ use Shopware\Core\Framework\Migration\MigrationStep;
  * Guarded per column so a partially applied migration completes rather than
  * failing on the column it already added.
  */
-class Migration1789000000AddCustomerHistoryToDecision extends MigrationStep
+class Migration1789000001AddCustomerHistoryToDecision extends MigrationStep
 {
     #[Override]
     public function getCreationTimestamp(): int
     {
-        return 1789000000;
+        return 1789000001;
     }
 
     /** @throws DbalException */
@@ -3143,7 +3143,7 @@ Expected: PASS — these write a real row and are what catch a column the entity
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/Migration/Migration1789000000AddCustomerHistoryToDecision.php src/Audit/QuoteDecisionRecord.php src/Audit/DecisionDraft.php src/Audit/DecisionRecorder.php tests/Unit/Audit/HistoryRecordTest.php tests/Unit/Negotiation/NegotiationFixture.php
+git add src/Migration/Migration1789000001AddCustomerHistoryToDecision.php src/Audit/QuoteDecisionRecord.php src/Audit/DecisionDraft.php src/Audit/DecisionRecorder.php tests/Unit/Audit/HistoryRecordTest.php tests/Unit/Negotiation/NegotiationFixture.php
 git commit -m "feat(audit): record the account history a pass read
 
 customer_id is a scalar column, not a key in the JSON: it is what #7 and

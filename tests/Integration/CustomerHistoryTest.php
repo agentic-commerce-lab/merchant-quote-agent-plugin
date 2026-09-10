@@ -15,18 +15,7 @@ use Shopware\Core\Defaults;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 
-/**
- * The company boundary, against a real shop. Everything here is a claim the
- * unit tests structurally cannot make: that the association paths are right,
- * that version filtering actually deduplicates, and that a second company is
- * genuinely absent rather than merely filtered in a Criteria we built ourselves.
- *
- * Two customer selectors, not one: `customersByQuoteCount()` for the quote-side
- * assertions, `customersWithOrders()` for the order-side ones. On this shop the
- * busiest quote customer (18 live quotes) has zero orders, and the only two live
- * orders both belong to a different customer — a single "busiest" selector used
- * for both would make the order assertions pass vacuously against an empty set.
- */
+/** Real-shop company boundaries and values, checked against independent SQL. */
 final class CustomerHistoryTest extends IntegrationTestCase
 {
     private static function factory(): CustomerHistoryFactory
@@ -61,9 +50,7 @@ final class CustomerHistoryTest extends IntegrationTestCase
 
     /**
      * @return list<array{0: string, 1: int}> customer id => live order count,
-     *     busiest first. Deliberately a SEPARATE query from
-     *     customersByQuoteCount(): a quote-heavy customer need not have ever
-     *     ordered, and on this shop none of the quote-heavy ones have.
+     *     busiest first. A quote-heavy customer need not have ever ordered.
      */
     private static function customersWithOrders(): array
     {
@@ -133,42 +120,89 @@ final class CustomerHistoryTest extends IntegrationTestCase
         self::assertSame([], array_intersect($mineNumbers, $theirNumbers));
     }
 
-    public function testTheOrderReadResolvesItsAssociationPathOnARealShop(): void
+    public function testOrdersMatchIndependentSqlIncludingNetCurrencyAndNewestTen(): void
     {
-        // This is what pins order.orderCustomer.customerId and the price object.
-        // It asserts shape, not values: seeding owns the values (Task 14).
-        //
-        // Uses customersWithOrders(), not customersByQuoteCount(): the busiest
-        // quote customer on this shop has zero orders, and asserting against it
-        // here would pass vacuously.
         $customers = self::customersWithOrders();
-        self::assertNotSame([], $customers, 'The shop has no orders; seed one before running this.');
+        self::assertGreaterThanOrEqual(2, \count($customers), 'Run scripts/seed-order-history.php first.');
+        $reference = new CustomerHistoryReference(self::connection(static::getContainer()));
 
-        $history = self::factory()->for($customers[0][0])->orders();
+        foreach ($customers as [$customerId]) {
+            $expected = $reference->orders($customerId);
+            $history = self::factory()->for($customerId)->orders();
+            self::assertSame(\count($expected), $history->stats->count);
+            self::assertSame($expected[0]['date'], $history->stats->lastOrderAt?->format('Y-m-d H:i:s'));
+            $currencies = array_unique(array_column($expected, 'currency'));
+            if (\count($currencies) === 1 && $currencies[0] !== null) {
+                self::assertEqualsWithDelta(
+                    array_sum(array_column($expected, 'net')),
+                    $history->stats->lifetimeNet,
+                    0.001,
+                );
+                self::assertSame($currencies[0], $history->stats->currencyIso);
+                self::assertNull($history->stats->unavailableReason);
+            } else {
+                self::assertNull($history->stats->lifetimeNet);
+                self::assertNull($history->stats->currencyIso);
+                self::assertNotEmpty($history->stats->unavailableReason);
+            }
+            self::assertSame(
+                array_slice($expected, offset: 0, length: 10),
+                array_map(static fn($order): array => [
+                    'number' => $order->orderNumber,
+                    'net' => $order->amountNet,
+                    'currency' => $order->currencyIso,
+                    'date' => $order->orderedAt?->format('Y-m-d H:i:s'),
+                ], $history->recent),
+            );
+        }
+    }
 
-        self::assertGreaterThan(0, $history->stats->count);
-        self::assertGreaterThanOrEqual(0.0, $history->stats->lifetimeNet);
-        self::assertSame($history->stats->count > 0, $history->stats->lastOrderAt !== null);
-        self::assertLessThanOrEqual(10, \count($history->recent));
+    public function testProductPurchasesMatchSqlAndExcludeAnotherCompanyBuyingTheSameSku(): void
+    {
+        $customers = self::customersWithOrders();
+        self::assertGreaterThanOrEqual(2, \count($customers), 'Run scripts/seed-order-history.php first.');
+        [$mine] = $customers[0];
+        [$theirs] = $customers[1];
+        $reference = new CustomerHistoryReference(self::connection(static::getContainer()));
+        $products = $reference->sharedProducts($mine, $theirs);
+        self::assertNotEmpty($products, 'Two companies must have real orders containing the same SKU.');
+
+        foreach ($products as $productId) {
+            $expected = $reference->purchases($mine, $productId);
+            $foreign = $reference->purchases($theirs, $productId);
+            self::assertNotEmpty($expected);
+            self::assertNotEmpty($foreign);
+            $actual = array_map(static fn($purchase): array => [
+                'quantity' => $purchase->quantity,
+                'net' => $purchase->unitPriceNet,
+                'currency' => $purchase->currencyIso,
+                'date' => $purchase->orderedAt?->format('Y-m-d H:i:s'),
+            ], self::factory()->for($mine)->productPurchases($productId));
+            self::assertSame($expected, $actual);
+            $foreignOnly = array_filter(
+                $foreign,
+                static fn(array $purchase): bool => !\in_array($purchase, $expected, strict: true),
+            );
+            self::assertNotEmpty($foreignOnly, 'The fixture needs a distinguishable foreign same-SKU purchase.');
+            foreach ($foreignOnly as $purchase) {
+                self::assertNotContains($purchase, $actual, 'A foreign same-SKU purchase leaked into this company.');
+            }
+        }
     }
 
     public function testASecondCompanysOrdersAreAbsent(): void
     {
         $customers = self::customersWithOrders();
 
-        if (\count($customers) < 2) {
-            self::markTestSkipped(
-                'Only one customer on this shop has orders (verified: 2 live orders, both owned '
-                . 'by the same customer, Task 6 report). This test proves the boundary once a '
-                . 'second customer has an order; testTheOrderReadResolvesItsAssociationPathOnARealShop '
-                . 'and the quote-side cross-customer test already prove the scoping mechanism.',
-            );
-        }
+        self::assertGreaterThanOrEqual(2, \count($customers), 'Run scripts/seed-order-history.php first.');
 
         [$mine] = $customers[0];
         [$theirs] = $customers[1];
 
-        $theirNumbers = self::orderNumbersOf($theirs);
+        $theirNumbers = array_column(
+            (new CustomerHistoryReference(self::connection(static::getContainer())))->orders($theirs),
+            'number',
+        );
         self::assertNotSame([], $theirNumbers);
 
         $entries = self::factory()->for($mine)->orders()->recent;
@@ -194,19 +228,5 @@ final class CustomerHistoryTest extends IntegrationTestCase
         }
 
         return $numbers;
-    }
-
-    /** @return list<string> that customer's live order numbers, straight off the DB, independent of the reader under test */
-    private static function orderNumbersOf(string $customerId): array
-    {
-        $rows = self::connection(static::getContainer())
-            ->fetchFirstColumn('SELECT o.order_number FROM `order` o'
-            . ' INNER JOIN order_customer oc ON oc.order_id = o.id AND oc.order_version_id = o.version_id'
-            . ' WHERE o.version_id = UNHEX(:live) AND oc.customer_id = UNHEX(:id)', [
-                'live' => Defaults::LIVE_VERSION,
-                'id' => $customerId,
-            ]);
-
-        return array_map(static fn(mixed $n): string => (string) $n, $rows);
     }
 }

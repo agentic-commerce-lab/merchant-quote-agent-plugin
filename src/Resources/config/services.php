@@ -130,7 +130,9 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use Shopware\Core\Framework\DataAbstractionLayer\DefinitionInstanceRegistry;
 use Shopware\Core\Framework\Event\BusinessEventCollector;
 use Shopware\Core\Framework\Notification\NotificationService;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Ucp\Sdk\Internal\Service\UrlSafetyValidator;
@@ -139,7 +141,7 @@ use Ucp\Sdk\Service\SigningKeyManagerInterface;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
-return static function (ContainerConfigurator $configurator): void {
+return static function (ContainerConfigurator $configurator, ContainerBuilder $container): void {
     $services = $configurator->services();
 
     $services->defaults()->autowire()->autoconfigure();
@@ -531,6 +533,23 @@ return static function (ContainerConfigurator $configurator): void {
         ->arg('$quoteOrderRoute', service(CommercialAvailability::QUOTE_ORDER_ROUTE)->nullOnInvalid());
 
     $services->alias(BuyerQuoteGatewayInterface::class, SwagCommercialBuyerQuoteGateway::class);
+
+    // Only the installed dev/test seeder can reach this narrow locator. The
+    // gateway, resolver, transitioner and Commercial route remain private.
+    // Shopware's Bundle creates PhpFileLoader without its environment argument,
+    // so ContainerConfigurator::env() is null even in dev/test kernels.
+    if (\in_array($container->getParameter('kernel.environment'), ['dev', 'test'], strict: true)) {
+        $services
+            ->set('merchant_quote_agent.dev.order_history', ServiceLocator::class)
+            ->args([[
+                BuyerQuoteGatewayInterface::class => service(BuyerQuoteGatewayInterface::class),
+                SalesChannelContextResolver::class => service(SalesChannelContextResolver::class),
+                QuoteStateTransitioner::class => service(QuoteStateTransitioner::class),
+                CommercialAvailability::QUOTE_ORDER_ROUTE => service(CommercialAvailability::QUOTE_ORDER_ROUTE),
+            ]])
+            ->tag('container.service_locator')
+            ->public();
+    }
 
     // Servicing (issue #4): trigger, queue and lock. Inside the guard because
     // a shop without SwagCommercial has no quotes to service.

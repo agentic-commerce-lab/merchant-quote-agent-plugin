@@ -35,6 +35,21 @@ The database is seeded from a dump of the previous shop
 Every integration test runs inside a rolled-back transaction, so the seed
 stays as it was. Design: `docs/superpowers/specs/2026-08-27-dedicated-test-shop-design.md`.
 
+The buyer-history tests require orders for at least two quote customers, with a
+shared product. Populate the local development shop once after syncing the plugin:
+
+    scripts/sync-to-shop.sh
+    docker exec merchant-quote-shop php8.3 /var/www/html/bin/console cache:clear --env=dev --no-debug
+    docker exec -e APP_ENV=dev merchant-quote-shop php8.3 /var/www/html/custom/plugins/MerchantQuoteAgentPlugin/scripts/seed-order-history.php --per-customer=4
+
+This creates fresh quotes and orders through Commercial's real checkout flow,
+with dates spread over 18 months. It prints the target database before writing,
+refuses production environments, skips existing seed slots on rerun, and
+suppresses mail flows and agent servicing. Existing quotes remain unchanged.
+Use `--product-id=<id>` to select an active, stocked simple product; otherwise
+the script selects one visible in every relevant sales channel. Totals are
+reported separately for each original currency.
+
 Touched anything under `src/Resources/app/administration`? Compile it in the
 container — `scripts/sync-to-shop.sh` only pushes sources:
 

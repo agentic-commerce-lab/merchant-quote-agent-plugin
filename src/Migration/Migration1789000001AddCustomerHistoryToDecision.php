@@ -9,12 +9,12 @@ use Doctrine\DBAL\Exception as DbalException;
 use Override;
 use Shopware\Core\Framework\Migration\MigrationStep;
 
-class Migration1789000000AddCustomerHistoryToDecision extends MigrationStep
+class Migration1789000001AddCustomerHistoryToDecision extends MigrationStep
 {
     #[Override]
     public function getCreationTimestamp(): int
     {
-        return 1789000000;
+        return 1789000001;
     }
 
     /** @throws DbalException */
