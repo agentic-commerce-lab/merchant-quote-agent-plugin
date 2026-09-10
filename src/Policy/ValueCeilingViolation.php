@@ -9,7 +9,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 
 /**
  * Ported from the value-ceiling half of `verifyTotals` in
- * src/policy/offer-verification.ts.
+ * the retired TS agent (policy/offer-verification.ts).
  */
 final class ValueCeilingViolation
 {

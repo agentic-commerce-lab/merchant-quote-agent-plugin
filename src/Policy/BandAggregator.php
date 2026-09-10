@@ -8,7 +8,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\Band;
 
 /**
  * Any dimension escalates ⇒ escalate; else any counters ⇒ counter; else
- * grant. Ported from `aggregate` in src/policy/negotiate-dimensions.ts.
+ * grant. Ported from `aggregate` in the retired TS agent (policy/negotiate-dimensions.ts).
  */
 final class BandAggregator
 {

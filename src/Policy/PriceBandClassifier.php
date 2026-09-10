@@ -9,7 +9,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecisionKind;
 
 /**
- * Port of `priceBand` in src/policy/negotiate-decision.ts.
+ * Port of `priceBand` in the retired TS agent (policy/negotiate-decision.ts).
  */
 final class PriceBandClassifier
 {

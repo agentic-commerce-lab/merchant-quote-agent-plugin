@@ -8,7 +8,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
 
 /**
- * Port of `checkPrice` in src/policy/negotiate-authorize.ts.
+ * Port of `checkPrice` in the retired TS agent (policy/negotiate-authorize.ts).
  */
 final class PriceOfferCheck
 {

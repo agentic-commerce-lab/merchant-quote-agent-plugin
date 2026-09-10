@@ -14,7 +14,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  * asks onto a quote snapshot, producing the "effective" snapshot QuoteDecider
  * then checks against the merchant's limits.
  *
- * Ported from `applyExtraDiscount` in src/policy/quote-decision.ts.
+ * Ported from `applyExtraDiscount` in the retired TS agent (policy/quote-decision.ts).
  */
 final class QuoteDiscountApplier
 {

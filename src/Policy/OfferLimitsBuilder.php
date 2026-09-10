@@ -12,7 +12,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\OfferLimits;
  * authorization so a refused agent can re-offer inside it.
  *
  * Ported from `buildLimits`/`offerLimits` in
- * src/policy/negotiate-authorize.ts.
+ * the retired TS agent (policy/negotiate-authorize.ts).
  */
 final class OfferLimitsBuilder
 {

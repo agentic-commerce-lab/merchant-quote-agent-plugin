@@ -19,7 +19,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
  * and cannot be written onto a quote at all, so there was nothing for their
  * checks to authorize.
  *
- * Ported from `authorizeOffer` in src/policy/negotiate-authorize.ts.
+ * Ported from `authorizeOffer` in the retired TS agent (policy/negotiate-authorize.ts).
  */
 final class OfferAuthorizer
 {

@@ -8,7 +8,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 
 /**
- * Ported from `verifyExpiration` in src/policy/offer-verification.ts.
+ * Ported from `verifyExpiration` in the retired TS agent (policy/offer-verification.ts).
  */
 final class ExpirationOfferVerifier
 {

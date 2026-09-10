@@ -34,6 +34,16 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity as EntityStruct;
  * fields — which is why the admin module's ACL grants delete only to an
  * explicit deleter role.
  *
+ * No `maxLength:` on the string fields, deliberately: the argument does not
+ * exist on `Attribute\Field` at the 6.7.1 support floor (checked absent up to
+ * and including 6.7.4.2, present by 6.7.13.1), and a named argument for a
+ * parameter the installed core lacks is an `Error` at attribute instantiation
+ * — which happens during the container build, so it takes the whole shop
+ * down, not just this plugin. The column widths live in
+ * Migration1787998662CreateQuoteAgentDecision, which is the constraint that
+ * actually holds; the attribute argument only added a second, redundant
+ * Length validator on top of it. CoreFloorCompatibilityTest guards the floor.
+ *
  * @mago-expect lint:too-many-properties
  * The gate fires above 10 and these properties ARE the table's columns. The
  * rule's own remedy — group them into an object — is what a DAL entity cannot
@@ -52,7 +62,7 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public string $quoteId = '';
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $quoteNumber = null;
 
@@ -64,11 +74,11 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $customerId = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 3)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $currencyIso = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $triggerReason = null;
 
@@ -77,7 +87,7 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?int $attempt = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $revisionVersionId = null;
 
@@ -85,15 +95,15 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?\DateTimeImmutable $revisionUpdatedAt = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 32)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $band = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 32)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $outcome = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $escalationReason = null;
 
@@ -113,7 +123,7 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?float $totalNetAfter = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 128)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $model = null;
 
@@ -121,15 +131,15 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $modelHost = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $extractPromptHash = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $negotiatePromptHash = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $replyPromptHash = null;
 
@@ -162,7 +172,7 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $errorClass = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $terminalState = null;
 
@@ -184,7 +194,7 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?\DateTimeImmutable $resolvedAt = null;
 
-    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false], maxLength: 64)]
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $resolvedState = null;
 

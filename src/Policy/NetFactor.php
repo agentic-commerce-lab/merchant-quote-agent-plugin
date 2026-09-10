@@ -14,7 +14,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  * via its own total/line-sum ratio so the per-line comparison is
  * price-space-proof.
  *
- * Ported from `netFactor` in src/policy/offer-verification.ts.
+ * Ported from `netFactor` in the retired TS agent (policy/offer-verification.ts).
  */
 final class NetFactor
 {

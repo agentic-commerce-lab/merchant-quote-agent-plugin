@@ -8,7 +8,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 
 /**
- * Ported from `verifyTotals` in src/policy/offer-verification.ts.
+ * Ported from `verifyTotals` in the retired TS agent (policy/offer-verification.ts).
  */
 final class TotalsOfferVerifier
 {

@@ -13,7 +13,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\VerifyOfferInput;
  * reference snapshot and the merchant limits. Any violation keeps the offer
  * unsent and notifies the merchant. Never bypassed, never LLM-influenced.
  *
- * Ported from `verifyOffer` in src/policy/offer-verification.ts.
+ * Ported from `verifyOffer` in the retired TS agent (policy/offer-verification.ts).
  */
 final class OfferVerifier
 {
