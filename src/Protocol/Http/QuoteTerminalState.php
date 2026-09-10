@@ -26,5 +26,6 @@ final readonly class QuoteTerminalState
         public string $salesChannelId,
         public ?Act $acceptance,
         public string $buyerOrganizationName = '',
+        public ?string $orderNumber = null,
     ) {}
 }

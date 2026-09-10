@@ -89,6 +89,7 @@ final readonly class QuoteSnapshotReader
         $customerId = $quote->get('customerId');
         $customer = $quote->get('customer');
         $company = $customer instanceof Entity ? $customer->get('company') : null;
+        $orderId = $quote->get('orderId');
 
         return new QuoteIdentity(
             quoteId: $quoteId,
@@ -97,6 +98,7 @@ final readonly class QuoteSnapshotReader
             salesChannelId: \is_string($salesChannelId) ? $salesChannelId : '',
             customerId: \is_string($customerId) ? $customerId : '',
             companyName: \is_string($company) ? $company : '',
+            orderId: \is_string($orderId) ? $orderId : null,
         );
     }
 

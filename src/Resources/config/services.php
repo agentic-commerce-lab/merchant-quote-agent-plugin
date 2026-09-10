@@ -807,6 +807,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // than scattered up with the block it happens to depend on.
     $services->set(QuoteTerminalStateReader::class)->args([
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+        service('order.repository')->ignoreOnInvalid(),
     ]);
     $services->set(RecordPartiesResolver::class);
     $services->set(RecordResponder::class);

@@ -8,6 +8,10 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use MerchantQuoteAgentPlugin\Protocol\Act\Act;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActChain;
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Entity;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 
 /**
  * The Shopware-side state a records request needs, read fresh every time —
@@ -30,11 +34,19 @@ use MerchantQuoteAgentPlugin\Protocol\Act\ActChain;
  * both mean the state cannot be read, so both answer 502.
  *
  * Not `final`: the tests substitute it.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10); reading the quote snapshot,
+ * handling gateway and lookup failures, locating the terminal acceptance, and
+ * resolving the order number across repository boundaries takes one check per
+ * step across its four methods.
  */
 class QuoteTerminalStateReader
 {
+    /** @param EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection>|null $orders */
     public function __construct(
         private readonly ?QuoteGatewayInterface $gateway = null,
+        private readonly ?EntityRepository $orders = null,
     ) {}
 
     /** @throws QuoteStateUnavailable */
@@ -64,6 +76,7 @@ class QuoteTerminalStateReader
             salesChannelId: $snapshot->identity->salesChannelId,
             acceptance: self::lastAcceptance($chain),
             buyerOrganizationName: $snapshot->identity->companyName,
+            orderNumber: $this->orderNumber($snapshot->identity->orderId),
         );
     }
 
@@ -102,5 +115,34 @@ class QuoteTerminalStateReader
         }
 
         return $acceptance;
+    }
+
+    /**
+     * The human-facing order number for an id.
+     *
+     * A lookup, not an association traversal: `quote.order` carries no
+     * ApiAware flag on either SwagCommercial version this plugin supports,
+     * while `quote.orderId` does. A failed read returns null and the record
+     * is served without the reference — a records request must not depend on
+     * a second read succeeding.
+     */
+    private function orderNumber(?string $orderId): ?string
+    {
+        if ($orderId === null || $this->orders === null) {
+            return null;
+        }
+
+        try {
+            $order = $this->orders
+                ->search(new Criteria([$orderId]), Context::createDefaultContext())
+                ->getEntities()
+                ->first();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $number = $order instanceof Entity ? $order->get('orderNumber') : null;
+
+        return \is_string($number) ? $number : null;
     }
 }

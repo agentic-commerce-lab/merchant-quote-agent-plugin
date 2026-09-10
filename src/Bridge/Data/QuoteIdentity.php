@@ -31,5 +31,6 @@ final readonly class QuoteIdentity
         public string $salesChannelId = '',
         public string $customerId = '',
         public string $companyName = '',
+        public ?string $orderId = null,
     ) {}
 }
