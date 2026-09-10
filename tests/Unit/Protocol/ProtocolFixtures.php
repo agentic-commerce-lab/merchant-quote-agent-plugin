@@ -12,6 +12,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
+use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 
 /**
  * Fixtures shared by the Protocol unit tests. Deliberately plain arrays and
@@ -119,5 +120,37 @@ final class ProtocolFixtures
                 ),
             ]),
         );
+    }
+
+    /** @return array{private: string, public: string} */
+    public static function keyPair(): array
+    {
+        $resource = openssl_pkey_new(['private_key_type' => \OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
+        $private = '';
+        if ($resource === false || !openssl_pkey_export($resource, $private)) {
+            throw new \RuntimeException('failed to generate a test EC key pair');
+        }
+
+        $details = openssl_pkey_get_details($resource);
+        if (!\is_array($details) || !\is_string($details['key'])) {
+            throw new \RuntimeException('failed to read the generated test EC key pair');
+        }
+
+        return ['private' => $private, 'public' => $details['key']];
+    }
+
+    /** A DidWebResolver double that always resolves to the same key, or to none. */
+    public static function resolvingTo(?string $publicKeyPem): DidWebResolver
+    {
+        return new class($publicKeyPem) extends DidWebResolver {
+            public function __construct(
+                private readonly ?string $pem,
+            ) {}
+
+            public function publicKeyPemFor(string $verificationMethod): ?string
+            {
+                return $this->pem;
+            }
+        };
     }
 }

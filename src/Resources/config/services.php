@@ -80,6 +80,7 @@ use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
+use MerchantQuoteAgentPlugin\Protocol\Check\ActVerifier;
 use MerchantQuoteAgentPlugin\Protocol\Check\BuyerSignatureCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\BuyerTermsCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\ChainLengthCheck;
@@ -407,7 +408,8 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         $services->set(TimestampFormatCheck::class);
         $services->set(TimestampMonotonicityCheck::class);
         $services->set(BuyerTermsCheck::class);
-        $services->set(BuyerSignatureCheck::class);
+        $services->set(ActVerifier::class);
+        $services->set(BuyerSignatureCheck::class)->args([service(ActVerifier::class)]);
         $services->set(EvidenceInspector::class)->args([[
             service(SessionIdCheck::class),
             service(DuplicateSequenceCheck::class),
