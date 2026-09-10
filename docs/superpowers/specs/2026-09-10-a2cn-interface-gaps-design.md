@@ -83,8 +83,8 @@ All of it under the existing `QuoteServicingLock` for that quote — two concurr
 | 3 | body `sender_did` = JWT `iss` (§14.1) | 401 `sender_did_mismatch` |
 | 4 | `Act::fromArray()` returns an act (this enforces the 64 KiB cap and every envelope field) | 400 `invalid_act` |
 | 5 | the session resolves to a quote | 404 `not_found` |
-| 6 | the quote is not in a terminal state (accepted, declined, expired) | 409 `session_closed` |
-| 7 | the chain is below `ActChain::MAX_ACTS` | 409 `chain_length_exceeded` |
+| 6 | the quote is not in a terminal state — `accepted`, `declined`, `expired`, `cancelled` or `withdrawn`, and separately: not expired, and carrying no acceptance act | 409 `session_closed` |
+| 7 | the chain is not already full: `count($chain->acts()) < ActChain::MAX_ACTS` | 409 `chain_length_exceeded` |
 | 8 | `sender_did` is not our own seller DID, and equals the DID the chain's first foreign act pinned (an empty chain pins it here) | 403 `sender_did_not_party` |
 | 9 | `timestamp`, and `expires_at` when present, match the strict Zulu pattern — **#113** | 400 `timestamp_format_invalid` |
 | 10 | `timestamp` is not earlier than the chain's last act — **#112** | 409 `timestamp_inversion` |
