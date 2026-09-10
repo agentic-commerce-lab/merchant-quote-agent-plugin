@@ -70,7 +70,12 @@ final class HistoryLoopTest extends TestCase
         self::assertSame([], $h->history->products);
         self::assertCount(2, $h->writer->drafts[0]->historyReads['rounds']);
         self::assertStringContainsString('product_purchases', $h->writer->drafts[0]->rawProposal);
-        self::assertStringContainsString('2', $h->writer->drafts[0]->violations[0]);
+        // The whole phrase, not the digit: '2' alone also matches a regression
+        // reporting 12 or 20 rounds, so it only caught the count vanishing.
+        self::assertStringContainsString(
+            'requested more history after 2 history rounds',
+            $h->writer->drafts[0]->violations[0],
+        );
     }
 
     public function testHistoryRequestAlsoBeatsEscalation(): void

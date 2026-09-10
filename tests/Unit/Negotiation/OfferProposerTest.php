@@ -157,7 +157,14 @@ final class OfferProposerTest extends TestCase
             );
 
         self::assertStringContainsString('concede in 1% steps', $spy->systemPrompts[0]);
-        self::assertStringContainsString('10', $spy->userPrompts[0], 'The cap must be stated to the model.');
+        // The rendered cap line, not the bare digits: '10' is also satisfied by
+        // the fixture's own 100.00 line price and 1000.00 quote total, so it
+        // passed whether or not the cap reached the model at all.
+        self::assertStringContainsString(
+            'maximum discount you may grant: 10.00%',
+            $spy->userPrompts[0],
+            'The cap must be stated to the model.',
+        );
     }
 
     public function testAProposalOutsideAuthorityIsRejected(): void

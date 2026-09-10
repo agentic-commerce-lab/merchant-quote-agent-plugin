@@ -59,13 +59,19 @@ final class HistoryRequestTest extends TestCase
         self::assertStringNotContainsStringIgnoringCase('customer', $schema);
     }
 
-    public function testTheSchemaPermitsOnlyTheThreeKnownKinds(): void
+    public function testTheSchemaPermitsOnlyTheThreeKnownKindsAndNull(): void
     {
-        $schema = (string) json_encode((new ResponseFormatFactory())->create(NegotiateResponse::class));
+        // Asserted on the enum ARRAY, not as substrings of the whole schema.
+        // Substring checks prove only that the three values are present, so a
+        // fourth permitted value would have passed the version of this test that
+        // carried this name -- which claimed to bound what the model may send.
+        // `null` belongs in the list: it is how the model declines to ask, and
+        // AdmitNullInEnum puts it there because JSON Schema treats `enum` as an
+        // absolute whitelist regardless of `type`.
+        $schema = (new ResponseFormatFactory())->create(NegotiateResponse::class);
+        $enum = $schema['json_schema']['schema']['properties']['historyRequest']['properties']['kind']['enum'];
 
-        self::assertStringContainsString('quote_history', $schema);
-        self::assertStringContainsString('orders', $schema);
-        self::assertStringContainsString('product_purchases', $schema);
+        self::assertSame(['quote_history', 'orders', 'product_purchases', null], $enum);
     }
 
     /**
