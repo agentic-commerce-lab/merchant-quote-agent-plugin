@@ -63,7 +63,6 @@
             "errorChain": "Fehlerkette",
             "yes": "Ja",
             "no": "Nein",
-            "rawProposal": "Antwort des Modells",
             "customer": "Kunde (Firma)",
             "accountHistory": "Kundenhistorie, die dem Agenten gezeigt wurde",
             "historyReads": "Vom Agenten angeforderte Historie"
@@ -115,6 +114,7 @@
         },
         "detail": {
             "pageTitle": "Angebot #{quoteNumber}",
+            "agentTitle": "Quote Agent",
             "summaryTitle": "Verhandlung",
             "status": "Status",
             "stillOpen": "Noch offen",

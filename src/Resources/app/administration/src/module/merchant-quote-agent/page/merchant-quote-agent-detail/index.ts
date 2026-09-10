@@ -239,10 +239,6 @@ Shopware.Component.register('merchant-quote-agent-detail', {
 
         /**
          * One servicing pass, ready to render.
-         *
-         * The title comes from why the pass ran, not from its position: a pass
-         * numbered three is not therefore a buyer counter-offer, and labelling
-         * it as one described conversations that never happened.
          */
         formatRun(round, index) {
             const answered = answeredTheBuyer(round.outcome);
@@ -256,7 +252,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 // band and no model. It gets one line instead of the same card
                 // as a round that negotiated.
                 isNoop: !answered && round.outcome === 'nothing_to_do',
-                title: triggerLabel(this, round.triggerReason),
+                title: this.$tc('merchant-quote-agent.detail.agentTitle'),
                 timestamp: formatDate(round.createdAt),
                 outcomeLabel: outcomeLabel(this, round.outcome),
                 outcomeVariant: outcomeVariant(round.outcome),
@@ -323,13 +319,6 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                     mono: true,
                 },
             ];
-
-            // The model's own answer, recorded on every pass since the table
-            // existed and rendered nowhere. Wide because it is JSON: in a
-            // 200px grid cell it reads as a column of punctuation.
-            if (round.rawProposal) {
-                rows.push({ key: 'rawProposal', value: round.rawProposal, mono: true, wide: true });
-            }
 
             if (round.errorClass) {
                 rows.push({ key: 'errorClass', value: round.errorClass, mono: true });
