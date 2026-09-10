@@ -47,12 +47,13 @@ final readonly class A2cnSessionStamp
             return $snapshot;
         }
 
-        $sessionId = SessionId::forQuote($snapshot->id);
-
         try {
+            $sessionId = SessionId::forQuote($snapshot->id);
             $this->gateway->updateQuote($snapshot->id, new QuoteUpdate(customFields: [
                 ActKey::SESSION_KEY => $sessionId,
             ]));
+
+            return $snapshot->withA2cnSession($sessionId);
         } catch (\Throwable $error) {
             $this->logger->warning('A2CN could not stamp a session id onto a new quote.', [
                 'quoteId' => $snapshot->id,
@@ -61,7 +62,5 @@ final readonly class A2cnSessionStamp
 
             return $snapshot;
         }
-
-        return $snapshot->withA2cnSession($sessionId);
     }
 }

@@ -81,7 +81,13 @@ final class QuoteSnapshotTest extends TestCase
 
     public function testA2cnSessionIdIsAbsentUntilStamped(): void
     {
-        self::assertArrayNotHasKey('a2cn_session_id', QuoteCapabilityFixture::snapshot()->toArray());
+        $payload = QuoteCapabilityFixture::snapshot()->toArray();
+
+        self::assertArrayNotHasKey('a2cn_session_id', $payload);
+        self::assertEmpty(
+            array_diff(array_keys($payload), self::quoteSchemaPropertyNames()),
+            'toArray() emits a key the published Quote schema does not declare.',
+        );
     }
 
     public function testWithA2cnSessionAttachesTheSessionWithoutChangingAnyOtherField(): void
@@ -94,6 +100,10 @@ final class QuoteSnapshotTest extends TestCase
         self::assertSame($snapshot->lineItems, $withSession->lineItems);
         self::assertSame('session-id', $withSession->a2cnSessionId);
         self::assertSame('session-id', $withSession->toArray()['a2cn_session_id']);
+        self::assertEmpty(
+            array_diff(array_keys($withSession->toArray()), self::quoteSchemaPropertyNames()),
+            'toArray() emits a key the published Quote schema does not declare.',
+        );
     }
 
     /**

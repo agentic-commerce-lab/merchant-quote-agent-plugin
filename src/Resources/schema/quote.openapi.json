@@ -775,6 +775,10 @@
               }
             }
           },
+          "a2cn_session_id": {
+            "type": "string",
+            "description": "Present only when the quote was created with an A2CN session stamped onto it. The buyer's negotiation session id for POST /a2cn/sessions/{sessionId}/messages; derivable from the quote id, so its absence is not an error."
+          },
           "ucp": {
             "type": "object",
             "description": "Protocol envelope added to every successful response; `capabilities` appears once an agent has negotiated.",
