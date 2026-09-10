@@ -105,6 +105,7 @@ use MerchantQuoteAgentPlugin\Protocol\Http\RecordPartiesResolver;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\A2cnSessionStamp;
+use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActAppender;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActConformance;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\SessionQuoteLocator;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
@@ -235,6 +236,15 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
             // gates with a dependency (ActVerifier), so the only one needing
             // a service registration of its own.
             $services->set(InboundActConformance::class)->args([service(ActVerifier::class)]);
+
+            // Runs the gates, then writes the act to the wire, then
+            // mirrors it — the order is the design; see the class docblock.
+            $services->set(InboundActAppender::class)->args([
+                service(InboundActConformance::class),
+                service(ChainMirror::class),
+                service('logger'),
+                service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+            ]);
 
             // Resolves an inbound act's session id back to its quote.
             // ignoreOnInvalid(): an unlicensed shop compiles with a null
