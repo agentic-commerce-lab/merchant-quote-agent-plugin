@@ -60,17 +60,21 @@ final readonly class A2cnBearerJwt
         // $payload and $signature are all set; the analyzer cannot follow
         // that through the list-destructure, so it sees `string|null`.
         [$header, $payload, $signature] = $segments;
-        $kid = A2cnBearerJwtHeader::kidOf(Base64Url::decode($header));
+        $kid = A2cnBearerJwtHeader::pinnedKidOf(Base64Url::decode($header));
         /** @mago-expect analysis:possibly-null-argument */
-        $claims = A2cnBearerJwtClaims::claimsOf(Base64Url::decode($payload), $audience, $now);
-        if ($kid === null || $claims === null) {
+        $unverifiedIssuer = A2cnBearerJwtClaims::unverifiedIssuerOf(Base64Url::decode($payload), $audience, $now);
+        if ($kid === null || $unverifiedIssuer === null) {
             return null;
         }
 
         $pem = $this->resolver->publicKeyPemFor($kid);
 
+        // Only past this point — signature verified against the key $kid
+        // resolved to — is $unverifiedIssuer safe to hand back as the issuer.
         /** @mago-expect analysis:possibly-null-argument */
-        return $pem !== null && self::signatureIsGood($header . '.' . $payload, $signature, $pem) ? $claims : null;
+        return $pem !== null && self::signatureIsGood($header . '.' . $payload, $signature, $pem)
+            ? $unverifiedIssuer
+            : null;
     }
 
     private static function signatureIsGood(string $signingInput, string $signature, string $pem): bool

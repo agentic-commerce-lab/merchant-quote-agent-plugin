@@ -10,6 +10,7 @@ use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnBearerJwt;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\ProtocolFixtures;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\TestActSigner;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class A2cnBearerJwtTest extends TestCase
@@ -20,40 +21,13 @@ final class A2cnBearerJwtTest extends TestCase
 
     public function testItReturnsTheIssuerOfAValidToken(): void
     {
-        self::assertSame(self::BUYER, $this->verify($this->token()));
-    }
-
-    public function testItRefusesAWrongAudience(): void
-    {
-        self::assertNull($this->verify($this->token(audience: 'did:web:someone.else')));
-    }
-
-    public function testItRefusesAnExpiredToken(): void
-    {
-        self::assertNull($this->verify($this->token(exp: 1_600_000_000)));
-    }
-
-    public function testItRefusesAlgNone(): void
-    {
-        $header = Base64Url::encode('{"alg":"none","kid":"' . self::METHOD . '"}');
-        $claims = Base64Url::encode((string) json_encode([
-            'iss' => self::BUYER,
-            'aud' => self::SELLER,
-            'exp' => 4_000_000_000,
-        ]));
-
-        self::assertNull($this->verify($header . '.' . $claims . '.'));
-    }
-
-    public function testItRefusesATokenWithNoIssuer(): void
-    {
-        self::assertNull($this->verify($this->token(issuer: '')));
+        self::assertSame(self::BUYER, $this->verify(self::token()));
     }
 
     public function testItRefusesAMissingBearerPrefix(): void
     {
         self::assertNull((new A2cnBearerJwt($this->resolver()))->issuerOf(
-            $this->token(),
+            self::token(),
             self::SELLER,
             new \DateTimeImmutable('2026-09-10T10:00:00+00:00'),
         ));
@@ -62,10 +36,55 @@ final class A2cnBearerJwtTest extends TestCase
     public function testItRefusesAnUnresolvableKid(): void
     {
         self::assertNull((new A2cnBearerJwt(ProtocolFixtures::resolvingTo(null)))->issuerOf(
-            'Bearer ' . $this->token(),
+            'Bearer ' . self::token(),
             self::SELLER,
             new \DateTimeImmutable('2026-09-10T10:00:00+00:00'),
         ));
+    }
+
+    /**
+     * Every one of these is a token that must be refused, but for a
+     * different reason — including two (`claims tampered after signing`,
+     * `signed by the wrong key`) that pass every header and claims gate and
+     * are refused ONLY by signatureIsGood(). Those two matter more than they
+     * look: every other case here is refused before signature verification
+     * ever runs, so without them a broken `openssl_verify(...) === 1` check
+     * (e.g. a stray `return true`) would leave this whole test class green.
+     * Confirmed by temporarily mutating signatureIsGood() to `return true`
+     * and watching exactly those two fail, nothing else.
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function malformedTokens(): iterable
+    {
+        yield 'wrong audience' => [self::token(audience: 'did:web:someone.else')];
+        yield 'expired' => [self::token(exp: 1_600_000_000)];
+        yield 'no issuer' => [self::token(issuer: '')];
+        yield 'malformed segment count' => ['not-a-jwt'];
+        yield 'missing expiry' => [self::tokenWithClaims(['iss' => self::BUYER, 'aud' => self::SELLER])];
+        yield 'non-integer expiry' => [self::tokenWithClaims([
+            'iss' => self::BUYER,
+            'aud' => self::SELLER,
+            'exp' => '4000000000',
+        ])];
+        yield 'alg none' => [
+            Base64Url::encode('{"alg":"none","kid":"' . self::METHOD . '"}')
+                . '.'
+                . Base64Url::encode((string) json_encode([
+                    'iss' => self::BUYER,
+                    'aud' => self::SELLER,
+                    'exp' => 4_000_000_000,
+                ]))
+                . '.',
+        ];
+        yield 'signed by the wrong key' => [self::token(privateKeyPem: ProtocolFixtures::keyPair()['private'])];
+        yield 'claims tampered after signing' => [self::tokenWithTamperedClaims()];
+    }
+
+    #[DataProvider('malformedTokens')]
+    public function testItRefusesAMalformedOrUnauthenticatedToken(#[\SensitiveParameter] string $token): void
+    {
+        self::assertNull($this->verify($token));
     }
 
     private function verify(#[\SensitiveParameter] string $token): ?string
@@ -77,23 +96,49 @@ final class A2cnBearerJwtTest extends TestCase
         );
     }
 
-    private function token(
+    private static function token(
         string $issuer = self::BUYER,
         string $audience = self::SELLER,
         int $exp = 4_000_000_000,
+        ?string $privateKeyPem = null,
     ): string {
-        $header = Base64Url::encode('{"alg":"ES256","typ":"JWT","kid":"' . self::METHOD . '"}');
-        $claims = Base64Url::encode((string) json_encode([
+        return self::tokenWithClaims([
             'iss' => $issuer,
             'aud' => $audience,
             'exp' => $exp,
             'jti' => 'token-1',
+        ], $privateKeyPem);
+    }
+
+    /** A valid token whose claims segment was swapped after signing: same shape, different signed bytes. */
+    private static function tokenWithTamperedClaims(): string
+    {
+        [$header, , $signature] = explode('.', self::token());
+        $tamperedClaims = Base64Url::encode((string) json_encode([
+            'iss' => self::BUYER,
+            'aud' => self::SELLER,
+            'exp' => 4_000_000_000,
+            'jti' => 'a-different-message',
         ]));
 
-        $der = '';
-        openssl_sign($header . '.' . $claims, $der, TestActSigner::key()->privateKeyPem, \OPENSSL_ALGO_SHA256);
+        return $header . '.' . $tamperedClaims . '.' . $signature;
+    }
 
-        return $header . '.' . $claims . '.' . Base64Url::encode(Es256Signature::toRaw($der));
+    /** @param array<string, mixed> $claims */
+    private static function tokenWithClaims(array $claims, #[\SensitiveParameter] ?string $privateKeyPem = null): string
+    {
+        $header = Base64Url::encode('{"alg":"ES256","typ":"JWT","kid":"' . self::METHOD . '"}');
+        $encodedClaims = Base64Url::encode((string) json_encode($claims));
+
+        $der = '';
+        openssl_sign(
+            $header . '.' . $encodedClaims,
+            $der,
+            $privateKeyPem ?? TestActSigner::key()->privateKeyPem,
+            \OPENSSL_ALGO_SHA256,
+        );
+
+        return $header . '.' . $encodedClaims . '.' . Base64Url::encode(Es256Signature::toRaw($der));
     }
 
     private function resolver(): DidWebResolver

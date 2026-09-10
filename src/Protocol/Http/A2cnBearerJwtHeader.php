@@ -12,6 +12,11 @@ namespace MerchantQuoteAgentPlugin\Protocol\Http;
  * mago's per-class cyclomatic-complexity budget (10) even though no one
  * method is complex — every fail-closed guard on a security boundary adds
  * one more branch. Three small classes under the budget beat one over it.
+ *
+ * @internal `pinnedKidOf()` enforces the `alg` pin but proves nothing about
+ * the signature — the `kid` it returns has not been checked against any key.
+ * Only A2cnBearerJwt::issuerOf() may combine it with a verified signature
+ * and treat the result as authenticated.
  */
 final class A2cnBearerJwtHeader
 {
@@ -24,7 +29,7 @@ final class A2cnBearerJwtHeader
      * included. `alg` is checked first and always: nothing downstream may
      * run against a header this did not pin to ES256.
      */
-    public static function kidOf(string $decoded): ?string
+    public static function pinnedKidOf(string $decoded): ?string
     {
         $header = json_decode($decoded, associative: true);
         if (!\is_array($header) || ($header['alg'] ?? null) !== self::ALG) {
