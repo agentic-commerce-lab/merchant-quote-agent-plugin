@@ -35,6 +35,14 @@ jobs:
       - name: Setup Mago
         uses: nhedger/setup-mago@v2
 
+      # Pinned rather than inherited from the runner image: the administration
+      # self-checks import the module's .ts sources directly, which needs
+      # Node's type stripping (--experimental-strip-types, 22.6+).
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
       - name: Setup jscpd
         run: npm install -g jscpd@5
 
@@ -63,6 +71,12 @@ jobs:
 
       - name: File length
         run: composer run quality:filesize
+
+      # The administration module has no test runner (no JS toolchain here), so
+      # its pure functions carry assert-based self-checks instead. They passed
+      # locally and nothing ran them until this step existed.
+      - name: Administration self-checks
+        run: composer run quality:admin
 
       - name: Duplication
         run: composer run quality:dupes

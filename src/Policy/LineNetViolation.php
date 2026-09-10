@@ -12,7 +12,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
  * the quality gate.
  *
  * Ported from the per-line body of `verifyLines` in
- * src/policy/offer-verification.ts.
+ * the retired TS agent (policy/offer-verification.ts).
  */
 final class LineNetViolation
 {

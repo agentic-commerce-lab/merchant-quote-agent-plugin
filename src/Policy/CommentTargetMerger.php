@@ -13,7 +13,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  * rescales the buyer's quote-level target off the result. Which targets stand
  * at all is CommentLineTargets::adoptedBy()'s call.
  *
- * Ported from `mergeCommentTargets` in src/policy/quote-decision.ts.
+ * Ported from `mergeCommentTargets` in the retired TS agent (policy/quote-decision.ts).
  */
 final class CommentTargetMerger
 {

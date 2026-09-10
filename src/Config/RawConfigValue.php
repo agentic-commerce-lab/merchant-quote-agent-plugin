@@ -9,7 +9,7 @@ namespace MerchantQuoteAgentPlugin\Config;
  *
  * Two behaviours, by key. Where a wrong-shaped value would silently drop a
  * merchant guard — the numbers, via RawValueGuard — present-but-wrong-shaped
- * throws. Everywhere else (bool, string, stringList) a wrong-shaped value
+ * throws. Everywhere else (bool, string) a wrong-shaped value
  * still coerces to null, because there the worst outcome is a field reading
  * as unset. Absent is always null in both.
  */
@@ -107,23 +107,5 @@ final class RawConfigValue
     public static function float(array $raw, string $key): ?float
     {
         return RawValueGuard::float(RawValue::at($raw, $key), $key);
-    }
-
-    /**
-     * @param array<string, mixed> $raw
-     *
-     * @return list<string>|null
-     */
-    public static function stringList(array $raw, string $key): ?array
-    {
-        $values = RawValue::at($raw, $key);
-
-        if (!\is_array($values)) {
-            return null;
-        }
-
-        $strings = array_values(array_filter($values, static fn(mixed $value): bool => \is_string($value)));
-
-        return $strings === [] ? null : $strings;
     }
 }

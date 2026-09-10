@@ -5,10 +5,15 @@
 *quote data and no shop credentials leave the merchant's infrastructure. Retires the*
 *TypeScript quote path; keeps the sales-agent harness for the interactive/UCP surface.*
 
-Related: [`agent-led-negotiation-gaps.md`](../../agent-led-negotiation-gaps.md) (the gap list this
-design deletes or inherits), [`FINDINGS.md`](../../FINDINGS.md) (platform capability findings),
-[`aws-deployment.md`](../../aws-deployment.md) (the deployment being retired),
-[`2026-08-10-harness-extension-system-design.md`](./2026-08-10-harness-extension-system-design.md).
+*Historical record. What was built is documented in [`end-to-end.md`](end-to-end.md);*
+*this is the reasoning that got there, kept as written.*
+
+Related documents — `agent-led-negotiation-gaps.md` (the gap list this design
+deletes or inherits), `FINDINGS.md` (platform capability findings),
+`aws-deployment.md` (the deployment being retired) and
+`2026-08-10-harness-extension-system-design.md` — all live in the **retired
+TypeScript agent repository**, not here. They are named rather than linked
+because this repository never carried them.
 
 ## Why
 
@@ -130,7 +135,7 @@ public function issueTokenSet(string $salesChannelId, string $clientId, string $
 
 There is no SDK contract for reading `subject` back. On `main` nothing needs one:
 `ShopwareCartAdapter` builds its context with `ContextTokenGenerator`, an anonymous guest context —
-the B2C shape already recorded in [`FINDINGS.md`](../../FINDINGS.md) §2.8. The abstraction we want
+the B2C shape already recorded in `FINDINGS.md` (retired repository) §2.8. The abstraction we want
 (`AccessTokenReaderInterface`, `AgentCustomerCredential`) exists **only on the fork branch**, because
 the quote work is the first thing that needed an authenticated B2B buyer.
 
@@ -138,14 +143,14 @@ the quote work is the first thing that needed an authenticated B2B buyer.
 
 Six modules. Exactly one of them knows what Shopware is.
 
-**Policy** — port of [`src/policy`](../../../src/policy) (1,365 lines): bands, per-dimension
+**Policy** — port of `src/policy` (1,365 lines): bands, per-dimension
 deciders, `authorizeOffer`, `verifyOffer`. Pure functions, no Shopware dependency, unit-tested in
 isolation. The part that must never be wrong, and the part that ports most mechanically.
 
 **Negotiation** — the LLM. One interface, `propose(snapshot, caps): Proposal`, with an HTTP
 implementation and a fallback that escalates. On the async path this is a single
 `POST /chat/completions` with a system prompt read from a markdown file — see
-[`quote-negotiate-agent.ts:66`](../../../src/harness/quote-negotiate-agent.ts). No agent loop, no
+`quote-negotiate-agent.ts:66`. No agent loop, no
 tool calling, no LangGraph: the deployed quote path never touches the deep-agents runtime, which
 appears in `bootstrap.ts` as a type import for the *interactive* surface only. In PHP this is Guzzle
 and roughly eighty lines. The three prompt files under `config/agents/` are copied verbatim.
@@ -165,8 +170,8 @@ contributor), the quote endpoints under `/ucp/…`, the served OpenAPI contract 
 the signed A2CN seller mandate — now published from the merchant's own domain, which is where
 partners should read it from.
 
-What disappears rather than ports: [`src/commerce`](../../../src/commerce) (2,584 lines of HTTP
-client for reaching a shop from outside) and [`src/app/shopware-app`](../../../src/app/shopware-app)
+What disappears rather than ports: `src/commerce` (2,584 lines of HTTP
+client for reaching a shop from outside) and `src/app/shopware-app`
 (482 lines of app registration, HMAC signed-query verification, iframe admin module). Both exist
 only because we are outside the shop.
 

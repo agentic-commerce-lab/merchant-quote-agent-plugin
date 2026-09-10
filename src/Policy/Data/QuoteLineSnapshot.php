@@ -47,17 +47,6 @@ final readonly class QuoteLineSnapshot
         );
     }
 
-    public function withUnitPriceNet(float $unitPriceNet): self
-    {
-        return new self(
-            identity: $this->identity,
-            quantity: $this->quantity,
-            unitPriceNet: $unitPriceNet,
-            totalNet: $this->totalNet,
-            requestedUnitPrice: $this->requestedUnitPrice,
-        );
-    }
-
     public function withRequestedUnitPrice(?float $requestedUnitPrice): self
     {
         return new self(

@@ -10,7 +10,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 
 /**
- * Port of `decideQuote` (src/policy/quote-decision.ts). Pure price-band
+ * Port of `decideQuote` (the retired TS agent (policy/quote-decision.ts)). Pure price-band
  * engine: given the current snapshot and the merchant's limits, decide
  * auto-reply (with per-line prices) or escalate. Orchestrates the checks in
  * TS evaluation order: human review, then the value ceiling / discount band.

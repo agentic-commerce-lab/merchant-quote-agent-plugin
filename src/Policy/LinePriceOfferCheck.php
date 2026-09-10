@@ -19,7 +19,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
  * maxDiscountPercent over a multi-round negotiation; a fixed reference
  * makes each round's floor absolute, not relative to the last counter.
  *
- * Ported from `checkLinePrices` in src/policy/negotiate-authorize.ts.
+ * Ported from `checkLinePrices` in the retired TS agent (policy/negotiate-authorize.ts).
  */
 final class LinePriceOfferCheck
 {

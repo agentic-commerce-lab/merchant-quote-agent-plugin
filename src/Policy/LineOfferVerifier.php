@@ -9,7 +9,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 
 /**
- * Ported from `verifyLines` in src/policy/offer-verification.ts.
+ * Ported from `verifyLines` in the retired TS agent (policy/offer-verification.ts).
  */
 final class LineOfferVerifier
 {

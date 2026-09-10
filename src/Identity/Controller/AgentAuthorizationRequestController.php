@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Identity\Controller;
 use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;
 use MerchantQuoteAgentPlugin\Identity\Authorization\AgentAuthorizationRegistrar;
 use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
+use MerchantQuoteAgentPlugin\Identity\UcpRequestContext;
 use Shopware\Core\PlatformRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -14,7 +15,6 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Ucp\Sdk\Exception\ConfigurationException;
 use Ucp\Sdk\Exception\ValidationException;
-use Ucp\Sdk\Model\RequestContext;
 
 /**
  * Where an agent registers an authorization request before sending a human to
@@ -49,7 +49,7 @@ final class AgentAuthorizationRequestController
     )]
     public function register(Request $request): JsonResponse
     {
-        $context = $this->requestContext($request);
+        $context = UcpRequestContext::of($request);
         $resolution = $this->contextResolver->resolveSalesChannel($context);
 
         // Resolved and checked BEFORE register() writes anything: a
@@ -70,20 +70,6 @@ final class AgentAuthorizationRequestController
             'expires_in' => AgentAuthorizationRegistrar::TTL_SECONDS,
             'authorization_url' => $base . '/quote-agent/authorize?request_uri=' . urlencode($handle),
         ], Response::HTTP_CREATED);
-    }
-
-    private function requestContext(Request $request): RequestContext
-    {
-        $context = $request->attributes->get('ucp_request_context');
-
-        if (!$context instanceof RequestContext) {
-            throw new ConfigurationException(
-                'No UCP request context on the request. The SDK listener only builds one below /ucp/, '
-                . 'so this route is registered outside the prefix it depends on.',
-            );
-        }
-
-        return $context;
     }
 
     /**

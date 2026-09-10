@@ -8,7 +8,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecisionKind;
 
 /**
- * Port of `priceEscalationReasons` in src/policy/negotiate-decision.ts.
+ * Port of `priceEscalationReasons` in the retired TS agent (policy/negotiate-decision.ts).
  */
 final class PriceEscalationReasons
 {

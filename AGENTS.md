@@ -6,12 +6,18 @@ policy, not here.
 
 ## Commands
 
-- Format + lint a change: `composer run format:check && composer run lint`
-- Add type checking for code changes: `composer run typecheck` (Mago analyze)
-- Architecture / import / cleanup changes: `composer run quality:depcheck` (and `composer run quality:boundaries` if layers are configured)
+- Format + lint a change: `composer run format:check && composer run lint` (both cover `src` and `tests`)
+- Add type checking for code changes: `composer run typecheck` (Mago analyze — scoped to `src` only; over `tests` it reports hundreds of test idioms and no real bug)
+- Behaviour: `composer run test` (unit, no kernel). `composer run test:integration` needs the test shop — see the README.
+- Administration module changes: `composer run quality:admin` (assert-based self-checks; there is no JS test runner)
+- Architecture / import / cleanup changes: `composer run quality:depcheck`
 - Broad refactor or gate change: `composer run quality`
 - Advisory (non-blocking) visibility: `composer run quality:maintainability` (cognitive complexity + method length)
 - Run the narrowest useful check for the change; rely on CI as the authority.
+
+`composer run quality:boundaries` (Mago guard) exists but is a no-op: no layers
+are declared in `mago.toml`, and it is deliberately out of the `quality`
+aggregate until they are.
 
 ## PHP
 
@@ -32,21 +38,26 @@ policy, not here.
 
 ## Shared contracts
 
-- Validate boundary data at runtime (e.g. Symfony Validator, webmozart/assert, or cuyz/valinor once one is adopted); define DTOs once and reuse them instead of duplicating request/response shapes.
+- Boundary data is validated at runtime with **Symfony Validator** (constraint attributes on the `Policy\Data` DTOs) and **cuyz/valinor** (`ArrayMapper`, and the model answers in `ModelAnswerSerializer`). Use those two; do not add a third.
+- Define DTOs once and reuse them instead of duplicating request/response shapes. `Policy` deliberately keeps its own snapshot DTOs, converted at the edge by `Negotiation\SnapshotAdapter` — that is a boundary, not duplication.
 - Keep contract classes small and domain-oriented.
 
 ## Database & persistence
 
-- No persistence stack is wired up yet. When one is added (e.g. Doctrine ORM / Shopware's DAL), use it consistently and ship schema, migration, and application changes together in the database-owned module — no raw SQL scattered through app code.
+- Two stacks, both in use, each with its own job. **Shopware's DAL** owns the audit entity (`Audit\QuoteDecisionRecord`, an attribute entity) and every read of a Shopware or SwagCommercial entity. **Doctrine DBAL** owns the tables the DAL cannot express — the A2CN evidence tables and the pending-authorization store.
+- Attribute entities carry no schema generator, so every table is hand-written in `src/Migration` and must stay in step with the class that reads it. Ship schema, migration and application changes together.
+- Do not use a DAL attribute argument, or any core API, newer than the support floor in `CoreFloorCompatibilityTest`. An unknown attribute argument is an `Error` during the container build, which takes the whole shop down rather than just this plugin.
 
 ## Environment config
 
-- Read config through the framework config / a typed accessor once one exists; never scatter raw `getenv()`/`$_ENV` reads through application code.
-- Keep `.env*` at the project root; never commit real secrets.
+- Merchant configuration is read through `Config\QuoteAgentSettingsReader` (`SystemConfigService`) and arrives as a validated `QuoteAgentSettings`; never read `system_config` directly from application code.
+- `LOCK_DSN` is injected as a container parameter rather than read with `getenv()`, because core defines it in its own `framework.yaml`.
+- Keep `.env*` at the project root; never commit real secrets. The test shop's `.env` lives outside the repository, in `~/.cache/merchant-quote-shop/`.
 
 ## Structure & constants
 
-- High cohesion, loose coupling: each module/namespace owns one related responsibility; depend on a module's public entry point, not its internals. (Mago guard enforces declared layer boundaries when configured.)
+- High cohesion, loose coupling: each module/namespace owns one related responsibility; depend on a module's public entry point, not its internals.
+- Two boundaries are enforced by tests rather than by the linter: `src/Negotiation` must not import Shopware beyond `IllegalTransitionException` (`NamespacePurityTest`), and `src/Policy` imports none at all. Everything that touches SwagCommercial goes through `src/Bridge` — see [ADR 0001](docs/adr/0001-runtime-plugin-dependencies.md).
 - Place code at the smallest cohesive boundary that owns it; prefer domain/feature namespaces over `Util`/`Helper`/`Common` dumping grounds.
 - Before adding a repeated literal, URL, limit, timeout, flag key, or identifier, reuse the existing constant or typed config.
 - Reuse before reinventing: for non-trivial functionality, prefer a well-maintained Composer package (stdlib first, then existing deps / internal shared code) over a bespoke implementation — but don't add a dependency for something a few lines already cover.

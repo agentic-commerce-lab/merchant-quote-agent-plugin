@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Ucp\Quote\Controller;
 
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerCredential;
+use MerchantQuoteAgentPlugin\Identity\UcpRequestContext;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use Shopware\Core\PlatformRequest;
@@ -14,7 +15,6 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
-use Ucp\Sdk\Exception\ConfigurationException;
 use Ucp\Sdk\Exception\ValidationException;
 use Ucp\Sdk\Model\RequestContext;
 use Ucp\Sdk\Symfony\Bridge\UcpResponseFactory;
@@ -51,7 +51,7 @@ final class UcpQuoteController
     #[Route(path: '/ucp/quotes', name: 'frontend.merchant_quote_agent.quote.request', methods: ['POST'])]
     public function requestQuote(Request $request): JsonResponse
     {
-        $context = $this->requestContext($request);
+        $context = UcpRequestContext::of($request);
         $payload = $this->payload($request);
 
         $snapshot = $this->quoteCapability->requestQuote(
@@ -72,7 +72,7 @@ final class UcpQuoteController
     #[Route(path: '/ucp/quotes', name: 'frontend.merchant_quote_agent.quote.list', methods: ['GET'])]
     public function listQuotes(Request $request): JsonResponse
     {
-        $context = $this->requestContext($request);
+        $context = UcpRequestContext::of($request);
 
         $list = $this->quoteCapability->listQuotes(
             $this->customerContext($request, $context),
@@ -86,7 +86,7 @@ final class UcpQuoteController
     #[Route(path: '/ucp/quotes/{id}', name: 'frontend.merchant_quote_agent.quote.get', methods: ['GET'])]
     public function getQuote(string $id, Request $request): JsonResponse
     {
-        $context = $this->requestContext($request);
+        $context = UcpRequestContext::of($request);
         $snapshot = $this->quoteCapability->getQuote($this->customerContext($request, $context), $id);
 
         return $this->responseFactory->success($snapshot->toArray(), Response::HTTP_OK, [], $context, 'quote.get');
@@ -95,7 +95,7 @@ final class UcpQuoteController
     #[Route(path: '/ucp/quotes/{id}/counter', name: 'frontend.merchant_quote_agent.quote.counter', methods: ['POST'])]
     public function counterQuote(string $id, Request $request): JsonResponse
     {
-        $context = $this->requestContext($request);
+        $context = UcpRequestContext::of($request);
         $payload = $this->payload($request);
 
         $snapshot = $this->quoteCapability->counterQuote(
@@ -111,7 +111,7 @@ final class UcpQuoteController
     #[Route(path: '/ucp/quotes/{id}/accept', name: 'frontend.merchant_quote_agent.quote.accept', methods: ['POST'])]
     public function acceptQuote(string $id, Request $request): JsonResponse
     {
-        $context = $this->requestContext($request);
+        $context = UcpRequestContext::of($request);
         $snapshot = $this->quoteCapability->acceptQuote($this->customerContext($request, $context), $id);
 
         return $this->responseFactory->success($snapshot->toArray(), Response::HTTP_OK, [], $context, 'quote.accept');
@@ -120,7 +120,7 @@ final class UcpQuoteController
     #[Route(path: '/ucp/quotes/{id}/decline', name: 'frontend.merchant_quote_agent.quote.decline', methods: ['POST'])]
     public function declineQuote(string $id, Request $request): JsonResponse
     {
-        $context = $this->requestContext($request);
+        $context = UcpRequestContext::of($request);
         $payload = $this->payload($request);
 
         $snapshot = $this->quoteCapability->declineQuote(
@@ -130,20 +130,6 @@ final class UcpQuoteController
         );
 
         return $this->responseFactory->success($snapshot->toArray(), Response::HTTP_OK, [], $context, 'quote.decline');
-    }
-
-    private function requestContext(Request $request): RequestContext
-    {
-        $context = $request->attributes->get('ucp_request_context');
-
-        if (!$context instanceof RequestContext) {
-            throw new ConfigurationException(
-                'No UCP request context on the request. The SDK listener only builds one below /ucp/, '
-                . 'so this route is registered outside the prefix it depends on.',
-            );
-        }
-
-        return $context;
     }
 
     private function customerContext(Request $request, RequestContext $context): SalesChannelContext

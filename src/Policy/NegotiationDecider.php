@@ -19,7 +19,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  * worst-wins, which makes aggregating a Grant a no-op. `overall` is therefore
  * the price band, which is what NegotiationPipeline's gate already assumed.
  *
- * Ported from `decideNegotiation` in src/policy/negotiate-decision.ts.
+ * Ported from `decideNegotiation` in the retired TS agent (policy/negotiate-decision.ts).
  */
 final class NegotiationDecider
 {

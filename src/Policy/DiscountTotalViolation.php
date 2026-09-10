@@ -12,7 +12,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  * the price discount against a final total with the waiver added back.
  *
  * Ported from the total-discount half of `verifyTotals` in
- * src/policy/offer-verification.ts.
+ * the retired TS agent (policy/offer-verification.ts).
  */
 final class DiscountTotalViolation
 {
