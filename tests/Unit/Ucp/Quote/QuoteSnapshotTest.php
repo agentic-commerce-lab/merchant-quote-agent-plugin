@@ -79,6 +79,23 @@ final class QuoteSnapshotTest extends TestCase
         self::assertSame('10001', $withOrder->orderNumber);
     }
 
+    public function testA2cnSessionIdIsAbsentUntilStamped(): void
+    {
+        self::assertArrayNotHasKey('a2cn_session_id', QuoteCapabilityFixture::snapshot()->toArray());
+    }
+
+    public function testWithA2cnSessionAttachesTheSessionWithoutChangingAnyOtherField(): void
+    {
+        $snapshot = QuoteCapabilityFixture::snapshot();
+        $withSession = $snapshot->withA2cnSession('session-id');
+
+        self::assertSame($snapshot->id, $withSession->id);
+        self::assertSame($snapshot->state, $withSession->state);
+        self::assertSame($snapshot->lineItems, $withSession->lineItems);
+        self::assertSame('session-id', $withSession->a2cnSessionId);
+        self::assertSame('session-id', $withSession->toArray()['a2cn_session_id']);
+    }
+
     /**
      * The published `Quote` schema's own top-level property names, read from
      * the same file the capability descriptor advertises — not a second

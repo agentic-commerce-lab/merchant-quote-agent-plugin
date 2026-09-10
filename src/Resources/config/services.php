@@ -104,6 +104,7 @@ use MerchantQuoteAgentPlugin\Protocol\Http\QuoteTerminalStateReader;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordPartiesResolver;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
+use MerchantQuoteAgentPlugin\Protocol\Ingress\A2cnSessionStamp;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
@@ -218,7 +219,20 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         ]);
 
         if (CommercialAvailability::isAvailableByClass()) {
-            $services->set(UcpQuoteController::class)->tag('controller.service_arguments');
+            // Stamps the A2CN session id onto a new quote so the inbound act
+            // route can resolve a session back to its quote — SessionId is a
+            // one-way UUIDv5, so the mapping has to be stored somewhere.
+            // ignoreOnInvalid(): an unlicensed shop compiles with a null
+            // gateway, and the stamp's own fail-open handles that (see its
+            // docblock).
+            $services->set(A2cnSessionStamp::class)->args([
+                service('logger'),
+                service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+            ]);
+            $services->set(UcpQuoteController::class)->arg(
+                '$sessions',
+                service(A2cnSessionStamp::class),
+            )->tag('controller.service_arguments');
         }
 
         // Identity: bearer token → customer context. The reader is the only class

@@ -36,6 +36,7 @@ final class QuoteSnapshot
         public readonly array $comments,
         public readonly ?string $orderId = null,
         public readonly ?string $orderNumber = null,
+        public readonly ?string $a2cnSessionId = null,
     ) {}
 
     /**
@@ -58,6 +59,31 @@ final class QuoteSnapshot
             comments: $this->comments,
             orderId: $orderId,
             orderNumber: $orderNumber,
+            a2cnSessionId: $this->a2cnSessionId,
+        );
+    }
+
+    /**
+     * A copy with the derived A2CN session id attached, for A2cnSessionStamp
+     * to report the id it just persisted without rebuilding every field by
+     * hand and risking one dropped in the transposition.
+     */
+    public function withA2cnSession(string $sessionId): self
+    {
+        return new self(
+            id: $this->id,
+            quoteNumber: $this->quoteNumber,
+            state: $this->state,
+            expirationDate: $this->expirationDate,
+            currency: $this->currency,
+            totalGross: $this->totalGross,
+            totalNet: $this->totalNet,
+            taxStatus: $this->taxStatus,
+            lineItems: $this->lineItems,
+            comments: $this->comments,
+            orderId: $this->orderId,
+            orderNumber: $this->orderNumber,
+            a2cnSessionId: $sessionId,
         );
     }
 
@@ -88,6 +114,10 @@ final class QuoteSnapshot
                 'id' => $this->orderId,
                 'order_number' => $this->orderNumber,
             ];
+        }
+
+        if (null !== $this->a2cnSessionId) {
+            $payload['a2cn_session_id'] = $this->a2cnSessionId;
         }
 
         return $payload;
