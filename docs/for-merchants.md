@@ -31,17 +31,34 @@ That is deliberate: a silent agent is far more often "not set up yet" than
 
 ## What you need before you start
 
-Four of these are things you or your team already have. Two need your developer
-or hosting provider, once.
+Three of these are things you or your team already have. Two need your developer
+or hosting provider, once. One is optional and most shops will not want it yet.
 
 | You need | Notes |
 | --- | --- |
 | Shopware 6.7.1 or newer | Any newer 6.7 release is fine. |
 | The B2B quote feature, licensed | This is SwagCommercial with quote management active. The agent works on the quotes that feature creates. |
-| The Agentic Commerce extension | Installed and active. |
 | An AI provider account and key | **Yours, not ours.** See [Costs and data](#costs-and-data) below. |
 | *Your developer:* the plugin installed | It is a normal Shopware extension, but the install has two easy-to-miss steps. |
 | *Your developer or host:* a background worker running | Without it the agent receives requests and never acts on them. Ask for "a `messenger:consume` worker". This is the single most common reason a correctly configured agent stays silent. |
+| *Optional:* the Agentic Commerce extension | Only if you want your customers' own AI assistants to request and negotiate quotes on their behalf. See below. |
+
+### Do you need the Agentic Commerce extension?
+
+Probably not, to start with. Without it, everything in this guide still works:
+your customers request quotes the normal way in the shop, and the agent answers
+them with the same policy, the same replies, the same escalations and the same
+dashboard.
+
+What it adds is the other direction — letting a *customer's* AI assistant talk
+to your shop directly: request a quote, counter it, accept it, without a person
+opening your storefront. If that is not a conversation you are having with
+customers yet, leave it out. You can add it later, and nothing you have
+configured changes.
+
+Turning it on also enables a signed record of each negotiation, for customers
+who need one for their own audit trail. That only does anything if the customer
+negotiates through an assistant, so it comes and goes with the extension.
 
 ---
 
@@ -228,8 +245,11 @@ Two roles, under **Permissions → merchant_quote_agent**:
   quotes and orders, or two of the four tiles cannot be calculated.
 - **deleter** — additionally remove audit rows.
 
-The separate **Agent access** page, under Settings, is gated by the Agentic
-Commerce extension's own permissions, because it edits that extension's data.
+There is also an **Agent access** page under Settings, but only if you run the
+Agentic Commerce extension — it controls which customer assistants may talk to
+your shop, and it edits that extension's own data, so it is gated by that
+extension's permissions rather than the two above. Without the extension the
+page is not in Settings at all.
 
 ---
 
