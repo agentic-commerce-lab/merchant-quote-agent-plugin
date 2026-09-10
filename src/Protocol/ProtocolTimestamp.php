@@ -28,7 +28,20 @@ final class ProtocolTimestamp
 {
     private const FORMAT = 'Y-m-d\TH:i:s\Z';
 
+    /**
+     * The same rule as FORMAT, spelled as the counterparty's act schema
+     * spells it. They live side by side deliberately: a change to one that
+     * is not made to the other is a writer and a reader that disagree about
+     * what a timestamp is.
+     */
+    public const PATTERN = '/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/';
+
     private function __construct() {}
+
+    public static function matches(string $value): bool
+    {
+        return preg_match(self::PATTERN, $value) === 1;
+    }
 
     public static function of(\DateTimeImmutable $at): string
     {

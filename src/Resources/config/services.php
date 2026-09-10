@@ -86,6 +86,7 @@ use MerchantQuoteAgentPlugin\Protocol\Check\ChainLengthCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\DuplicateSequenceCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\EvidenceInspector;
 use MerchantQuoteAgentPlugin\Protocol\Check\SessionIdCheck;
+use MerchantQuoteAgentPlugin\Protocol\Check\TimestampFormatCheck;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ActSigner;
@@ -402,12 +403,14 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         $services->set(SessionIdCheck::class);
         $services->set(DuplicateSequenceCheck::class);
         $services->set(ChainLengthCheck::class);
+        $services->set(TimestampFormatCheck::class);
         $services->set(BuyerTermsCheck::class);
         $services->set(BuyerSignatureCheck::class);
         $services->set(EvidenceInspector::class)->args([[
             service(SessionIdCheck::class),
             service(DuplicateSequenceCheck::class),
             service(ChainLengthCheck::class),
+            service(TimestampFormatCheck::class),
             service(BuyerTermsCheck::class),
             service(BuyerSignatureCheck::class),
         ]]);
