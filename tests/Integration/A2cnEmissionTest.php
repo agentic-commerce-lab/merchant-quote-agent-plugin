@@ -13,6 +13,7 @@ use MerchantQuoteAgentPlugin\Protocol\Act\Act;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActKey;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
 use MerchantQuoteAgentPlugin\Protocol\Act\SignedView;
+use MerchantQuoteAgentPlugin\Protocol\Check\ActVerifier;
 use MerchantQuoteAgentPlugin\Protocol\Check\BuyerSignatureCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\BuyerTermsCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\ChainLengthCheck;
@@ -49,13 +50,14 @@ use Ucp\Sdk\Model\Security\PublicSigningKey;
  * `QuoteGatewayInterface` writes against a real quote — verifies against the
  * DID document this installation actually serves.
  *
- * One substitution, no more: `BuyerSignatureCheck`'s `DidWebResolver` is
- * replaced with a double that returns a locally generated buyer key's public
- * PEM directly, exactly the way `BuyerSignatureCheckTest` already does at the
- * unit level. There is no real, network-reachable `did:web` host for a buyer
- * that exists only inside this test, so this is the one seam that cannot be
- * exercised over a real network fetch without inventing a second live
- * counterparty shop. Every other collaborator is either fetched straight from
+ * One substitution, no more: the `DidWebResolver` behind `BuyerSignatureCheck`'s
+ * `ActVerifier` is replaced with a double that returns a locally generated
+ * buyer key's public PEM directly, exactly the way `BuyerSignatureCheckTest`
+ * already does at the unit level. There is no real, network-reachable
+ * `did:web` host for a buyer that exists only inside this test, so this is
+ * the one seam that cannot be exercised over a real network fetch without
+ * inventing a second live counterparty shop. Every other collaborator is
+ * either fetched straight from
  * the real container (Shopware's test container makes every service
  * resolvable, private or not — see `IntegrationTestCase::commercialService()`)
  * or is one of this suite's own stateless checks constructed fresh.
@@ -250,7 +252,7 @@ final class A2cnEmissionTest extends IntegrationTestCase
             new DuplicateSequenceCheck(),
             new ChainLengthCheck(),
             new BuyerTermsCheck(),
-            new BuyerSignatureCheck($resolver, self::protocolHash()),
+            new BuyerSignatureCheck(new ActVerifier($resolver, self::protocolHash())),
         ]);
 
         $keyStore = $container->get(A2cnKeyStore::class);

@@ -109,4 +109,10 @@ final class InMemoryActStore implements ActStoreInterface
     {
         return $this->quotes[$sessionId] ?? null;
     }
+
+    /** Seeds the mirror directly, without an append(), for tests that only need the session→quote lookup. */
+    public function seedSession(string $sessionId, string $quoteId): void
+    {
+        $this->quotes[$sessionId] = $quoteId;
+    }
 }

@@ -109,6 +109,7 @@ final readonly class RecordResponder
                 subjectReference: 'quote:' . $quote->quoteNumber,
             ),
             ProtocolTimestamp::of($at),
+            $quote->orderNumber === null ? null : 'order:' . $quote->orderNumber,
         ));
     }
 }

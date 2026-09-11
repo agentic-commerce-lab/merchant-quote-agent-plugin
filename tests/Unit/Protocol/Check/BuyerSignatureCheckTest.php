@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Protocol\Act\ActChain;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActKey;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
 use MerchantQuoteAgentPlugin\Protocol\Act\SignedView;
+use MerchantQuoteAgentPlugin\Protocol\Check\ActVerifier;
 use MerchantQuoteAgentPlugin\Protocol\Check\BuyerSignatureCheck;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\CompactJws;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
@@ -24,7 +25,7 @@ final class BuyerSignatureCheckTest extends TestCase
 
     public function testItPassesForAProperlySignedBuyerAct(): void
     {
-        ['private' => $private, 'public' => $public] = self::keyPair();
+        ['private' => $private, 'public' => $public] = ProtocolFixtures::keyPair();
         $chain = self::chainWith(self::signedBuyerAct($private));
 
         self::assertNull(
@@ -40,7 +41,7 @@ final class BuyerSignatureCheckTest extends TestCase
 
     public function testItReportsAnActWhoseKeyDoesNotResolve(): void
     {
-        ['private' => $private] = self::keyPair();
+        ['private' => $private] = ProtocolFixtures::keyPair();
         $chain = self::chainWith(self::signedBuyerAct($private));
 
         $violation = self::check(null)
@@ -57,8 +58,8 @@ final class BuyerSignatureCheckTest extends TestCase
 
     public function testItReportsAnActSignedByADifferentKey(): void
     {
-        ['private' => $private] = self::keyPair();
-        ['public' => $other] = self::keyPair();
+        ['private' => $private] = ProtocolFixtures::keyPair();
+        ['public' => $other] = ProtocolFixtures::keyPair();
         $chain = self::chainWith(self::signedBuyerAct($private));
 
         self::assertNotNull(
@@ -76,7 +77,7 @@ final class BuyerSignatureCheckTest extends TestCase
     {
         // A valid signature over a hash that is not this act's hash: the
         // signature verifies, the binding does not.
-        ['private' => $private, 'public' => $public] = self::keyPair();
+        ['private' => $private, 'public' => $public] = ProtocolFixtures::keyPair();
         $act = self::signedBuyerAct($private);
         $act['timestamp'] = '2026-01-01T00:00:00Z';
 
@@ -102,7 +103,7 @@ final class BuyerSignatureCheckTest extends TestCase
      */
     public function testItRefusesAVerificationMethodUnderAForeignDidBeforeAnyHttpCall(): void
     {
-        ['private' => $private] = self::keyPair();
+        ['private' => $private] = ProtocolFixtures::keyPair();
         $act = self::signedBuyerAct($private, 'did:web:someone-else.example#key-1');
 
         $resolver = new class extends DidWebResolver {
@@ -116,7 +117,9 @@ final class BuyerSignatureCheckTest extends TestCase
             }
         };
 
-        $violation = (new BuyerSignatureCheck($resolver, new ProtocolHash(new DefaultJsonCanonicalization())))->check(
+        $violation = (new BuyerSignatureCheck(
+            new ActVerifier($resolver, new ProtocolHash(new DefaultJsonCanonicalization())),
+        ))->check(
             self::chainWith($act),
             ProtocolFixtures::snapshot(self::QUOTE_ID),
             ProtocolFixtures::SELLER,
@@ -142,6 +145,22 @@ final class BuyerSignatureCheckTest extends TestCase
                     ProtocolFixtures::at(),
                 ),
         );
+    }
+
+    public function testTheVerifierIsUsableOnASingleActWithoutAChain(): void
+    {
+        // The inbound route verifies one act before any chain exists, so the
+        // verification must not be reachable only through a chain walk.
+        ['private' => $private, 'public' => $public] = ProtocolFixtures::keyPair();
+        $verifier = new ActVerifier(
+            ProtocolFixtures::resolvingTo($public),
+            new ProtocolHash(new DefaultJsonCanonicalization()),
+        );
+
+        $act = Act::fromArray(self::signedBuyerAct($private));
+        self::assertNotNull($act);
+
+        self::assertNull($verifier->reasonItDoesNotVerify($act));
     }
 
     /** @param array<string, mixed> $act */
@@ -174,31 +193,11 @@ final class BuyerSignatureCheckTest extends TestCase
 
     private static function check(?string $publicKeyPem): BuyerSignatureCheck
     {
-        $resolver = new class($publicKeyPem) extends DidWebResolver {
-            public function __construct(
-                private readonly ?string $pem,
-            ) {}
+        $verifier = new ActVerifier(
+            ProtocolFixtures::resolvingTo($publicKeyPem),
+            new ProtocolHash(new DefaultJsonCanonicalization()),
+        );
 
-            public function publicKeyPemFor(string $verificationMethod): ?string
-            {
-                return $this->pem;
-            }
-        };
-
-        return new BuyerSignatureCheck($resolver, new ProtocolHash(new DefaultJsonCanonicalization()));
-    }
-
-    /** @return array{private: string, public: string} */
-    private static function keyPair(): array
-    {
-        $resource = openssl_pkey_new(['private_key_type' => \OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
-        self::assertNotFalse($resource);
-        $private = '';
-        self::assertTrue(openssl_pkey_export($resource, $private));
-        $details = openssl_pkey_get_details($resource);
-        self::assertIsArray($details);
-        self::assertIsString($details['key']);
-
-        return ['private' => $private, 'public' => $details['key']];
+        return new BuyerSignatureCheck($verifier);
     }
 }

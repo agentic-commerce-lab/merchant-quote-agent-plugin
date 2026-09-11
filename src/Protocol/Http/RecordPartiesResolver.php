@@ -44,11 +44,11 @@ final readonly class RecordPartiesResolver
             verificationMethod: $identity?->verificationMethod ?? '',
         );
 
-        return new RecordParties(self::initiator($acts, $responderDid), $responder);
+        return new RecordParties(self::initiator($acts, $responderDid, $quote->buyerOrganizationName), $responder);
     }
 
     /** @param list<Act> $acts */
-    private static function initiator(array $acts, string $responderDid): RecordParty
+    private static function initiator(array $acts, string $responderDid, string $buyerOrganizationName): RecordParty
     {
         // The counterparty, taken from the first act we did not sign.
         $theirs = null;
@@ -61,7 +61,10 @@ final readonly class RecordPartiesResolver
         }
 
         return new RecordParty(
-            organizationName: '',
+            // Shopware's own record of who this account is, not the act's
+            // self-declaration: the wire act carries no organization at all, and
+            // the customer row is who they are to us contractually.
+            organizationName: $buyerOrganizationName,
             did: $theirs?->senderDid() ?? '',
             agentId: $theirs?->senderAgentId() ?? '',
             verificationMethod: $theirs?->verificationMethod() ?? '',

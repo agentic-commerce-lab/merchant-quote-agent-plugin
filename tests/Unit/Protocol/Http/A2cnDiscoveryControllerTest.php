@@ -15,21 +15,26 @@ use PHPUnit\Framework\TestCase;
 use Ucp\Sdk\Internal\Security\DefaultJsonCanonicalization;
 use Ucp\Sdk\Model\Security\PublicSigningKey;
 
+/**
+ * All discovery, did:web and mandate routes served by A2cnDiscoveryController.
+ *
+ * @mago-expect lint:too-many-methods
+ * Eleven test cases plus one private helper: seven cover discovery document
+ * fields, endpoint prefixes, root well-known routes, caching, and port conventions,
+ * four cover JWK key publication, mandate signing and failure cases (missing keys
+ * and missing policies). Each guards an independent contract property.
+ */
 final class A2cnDiscoveryControllerTest extends TestCase
 {
     /**
-     * All twelve fields the spec's "Documents" section enumerates.
-     * `verification_method` is the one a buyer agent needs in order to pick a
-     * key without parsing the DID document, and the README lists it too, so
-     * publishing seven of the twelve made both wrong.
+     * All thirteen fields the spec enumerates. `verification_method` is the one
+     * a buyer agent needs in order to pick a key without parsing the DID
+     * document, and the endpoint carries the /a2cn session prefix while
+     * messages_url advertises the canonical session messages path.
      */
-    public function testTheDiscoveryDocumentCarriesAllTwelveFields(): void
+    public function testTheDiscoveryDocumentCarriesAllThirteenFields(): void
     {
-        $response = A2cnDiscoveryControllerFixtures::controller()->discovery(
-            A2cnDiscoveryControllerFixtures::request(),
-        );
-
-        $body = A2cnDiscoveryControllerFixtures::decode($response->getContent());
+        $body = $this->discoveryDocument();
         self::assertSame('0.2', $body['a2cn_version']);
         self::assertSame('merchant-quote-agent', $body['agent_id']);
         self::assertSame('did:web:shop.example', $body['did']);
@@ -38,16 +43,17 @@ final class A2cnDiscoveryControllerTest extends TestCase
         self::assertSame(['goods_procurement'], $body['authorized_deal_types']);
         self::assertSame('acts', $body['conformance_level']);
         self::assertSame(['name' => 'Example Shop'], $body['organization']);
-        self::assertSame('https://shop.example', $body['endpoint']);
+        self::assertSame('https://shop.example/a2cn', $body['endpoint']);
         self::assertSame('https://shop.example/.well-known/a2cn-seller-mandate', $body['mandate_url']);
         self::assertSame('https://shop.example/a2cn/records/{session_id}', $body['records_url']);
+        self::assertSame('https://shop.example/a2cn/sessions/{session_id}/messages', $body['messages_url']);
         self::assertMatchesRegularExpression(
             '/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/',
             (string) $body['updated_at'],
             'updated_at must be the UTC `Z`-suffixed timestamp the rest of the module writes, per ProtocolTimestamp',
         );
 
-        self::assertCount(12, $body, 'the document publishes exactly the enumerated fields');
+        self::assertCount(13, $body, 'the document publishes exactly the enumerated fields');
     }
 
     /**
@@ -204,5 +210,29 @@ final class A2cnDiscoveryControllerTest extends TestCase
         $response = $controller->mandate(A2cnDiscoveryControllerFixtures::request());
 
         self::assertSame(404, $response->getStatusCode());
+    }
+
+    public function testTheEndpointCarriesThePrefixTheSessionRoutesLiveUnder(): void
+    {
+        $document = $this->discoveryDocument();
+
+        self::assertSame('https://shop.example/a2cn', $document['endpoint']);
+        self::assertSame('https://shop.example/a2cn/sessions/{session_id}/messages', $document['messages_url']);
+    }
+
+    public function testTheWellKnownUrlsStayAtTheDomainRoot(): void
+    {
+        // A .well-known URI is domain-root by definition; only the session
+        // routes moved under the prefix.
+        self::assertSame(
+            'https://shop.example/.well-known/a2cn-seller-mandate',
+            $this->discoveryDocument()['mandate_url'],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function discoveryDocument(): array
+    {
+        return A2cnDiscoveryControllerFixtures::discoveryDocument();
     }
 }

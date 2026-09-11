@@ -80,12 +80,15 @@ use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
+use MerchantQuoteAgentPlugin\Protocol\Check\ActVerifier;
 use MerchantQuoteAgentPlugin\Protocol\Check\BuyerSignatureCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\BuyerTermsCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\ChainLengthCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\DuplicateSequenceCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\EvidenceInspector;
 use MerchantQuoteAgentPlugin\Protocol\Check\SessionIdCheck;
+use MerchantQuoteAgentPlugin\Protocol\Check\TimestampFormatCheck;
+use MerchantQuoteAgentPlugin\Protocol\Check\TimestampMonotonicityCheck;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ActSigner;
@@ -94,7 +97,9 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteHandler;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\OfferVisibleStateSubscriber;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
+use MerchantQuoteAgentPlugin\Protocol\Http\A2cnBearerJwt;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnDiscoveryController;
+use MerchantQuoteAgentPlugin\Protocol\Http\A2cnMessagesController;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnRecordsController;
 use MerchantQuoteAgentPlugin\Protocol\Http\MandateDocumentResponder;
 use MerchantQuoteAgentPlugin\Protocol\Http\QuoteTerminalStateReader;
@@ -102,6 +107,10 @@ use MerchantQuoteAgentPlugin\Protocol\Http\RecordPartiesResolver;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
+use MerchantQuoteAgentPlugin\Protocol\Ingress\A2cnSessionStamp;
+use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActAppender;
+use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActConformance;
+use MerchantQuoteAgentPlugin\Protocol\Ingress\SessionQuoteLocator;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
 use MerchantQuoteAgentPlugin\Protocol\Record\AuditLog;
@@ -215,7 +224,41 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         ]);
 
         if (CommercialAvailability::isAvailableByClass()) {
-            $services->set(UcpQuoteController::class)->tag('controller.service_arguments');
+            // Stamps the A2CN session id onto a new quote so the inbound act
+            // route can resolve a session back to its quote — SessionId is a
+            // one-way UUIDv5, so the mapping has to be stored somewhere.
+            // ignoreOnInvalid(): an unlicensed shop compiles with a null
+            // gateway, and the stamp's own fail-open handles that (see its
+            // docblock).
+            $services->set(A2cnSessionStamp::class)->args([
+                service('logger'),
+                service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+            ]);
+            // The act-conformance gate: the only one of the four refusal
+            // gates with a dependency (ActVerifier), so the only one needing
+            // a service registration of its own.
+            $services->set(InboundActConformance::class)->args([service(ActVerifier::class)]);
+
+            // Runs the gates, then writes the act to the wire, then
+            // mirrors it — the order is the design; see the class docblock.
+            $services->set(InboundActAppender::class)->args([
+                service(InboundActConformance::class),
+                service(ChainMirror::class),
+                service('logger'),
+                service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+            ]);
+
+            // Resolves an inbound act's session id back to its quote.
+            // ignoreOnInvalid(): an unlicensed shop compiles with a null
+            // repository, and the locator's DAL fallback is skipped in that
+            // case (the mirror still works either way).
+            $services->set(SessionQuoteLocator::class)->args([
+                service(ActStoreInterface::class),
+                service('quote.repository')->ignoreOnInvalid(),
+            ]);
+            $services->set(UcpQuoteController::class)->arg('$sessions', service(A2cnSessionStamp::class))->tag(
+                'controller.service_arguments',
+            );
         }
 
         // Identity: bearer token → customer context. The reader is the only class
@@ -402,12 +445,17 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         $services->set(SessionIdCheck::class);
         $services->set(DuplicateSequenceCheck::class);
         $services->set(ChainLengthCheck::class);
+        $services->set(TimestampFormatCheck::class);
+        $services->set(TimestampMonotonicityCheck::class);
         $services->set(BuyerTermsCheck::class);
-        $services->set(BuyerSignatureCheck::class);
+        $services->set(ActVerifier::class);
+        $services->set(BuyerSignatureCheck::class)->args([service(ActVerifier::class)]);
         $services->set(EvidenceInspector::class)->args([[
             service(SessionIdCheck::class),
             service(DuplicateSequenceCheck::class),
             service(ChainLengthCheck::class),
+            service(TimestampFormatCheck::class),
+            service(TimestampMonotonicityCheck::class),
             service(BuyerTermsCheck::class),
             service(BuyerSignatureCheck::class),
         ]]);
@@ -758,8 +806,11 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // than scattered up with the block it happens to depend on.
     $services->set(QuoteTerminalStateReader::class)->args([
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+        service('order.repository')->ignoreOnInvalid(),
     ]);
     $services->set(RecordPartiesResolver::class);
     $services->set(RecordResponder::class);
     $services->set(A2cnRecordsController::class)->tag('controller.service_arguments');
+    $services->set(A2cnBearerJwt::class);
+    $services->set(A2cnMessagesController::class)->tag('controller.service_arguments');
 };

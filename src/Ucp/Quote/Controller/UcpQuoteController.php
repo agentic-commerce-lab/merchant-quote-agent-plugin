@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Ucp\Quote\Controller;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerCredential;
 use MerchantQuoteAgentPlugin\Identity\UcpRequestContext;
+use MerchantQuoteAgentPlugin\Protocol\Ingress\A2cnSessionStamp;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use Shopware\Core\PlatformRequest;
@@ -46,6 +47,7 @@ final class UcpQuoteController
         private readonly AgentCustomerAuthenticator $authenticator,
         private readonly UcpResponseFactory $responseFactory,
         private readonly QuoteRequestValidator $requestValidator,
+        private readonly A2cnSessionStamp $sessions,
     ) {}
 
     #[Route(path: '/ucp/quotes', name: 'frontend.merchant_quote_agent.quote.request', methods: ['POST'])]
@@ -54,11 +56,16 @@ final class UcpQuoteController
         $context = UcpRequestContext::of($request);
         $payload = $this->payload($request);
 
-        $snapshot = $this->quoteCapability->requestQuote(
+        // Only requestQuote stamps the A2CN session id. getQuote and
+        // counterQuote are deliberately untouched: a buyer that lost the id
+        // can recompute it via SessionId::forQuote(), and re-reading
+        // customFields on every quote read just to echo a value the buyer
+        // can already derive is not worth it.
+        $snapshot = $this->sessions->stamp($this->quoteCapability->requestQuote(
             $this->customerContext($request, $context),
             $this->requestValidator->lineItems($payload, true),
             $this->requestValidator->comment($payload),
-        );
+        ));
 
         return $this->responseFactory->success(
             $snapshot->toArray(),

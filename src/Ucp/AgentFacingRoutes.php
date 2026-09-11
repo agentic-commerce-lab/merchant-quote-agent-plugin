@@ -46,5 +46,10 @@ final class AgentFacingRoutes
         // services.php.
         $routes->import($pluginPath . '/Ucp/Quote/Controller/UcpQuoteController.php', 'attribute');
         $routes->import($pluginPath . '/Protocol/Http/A2cnRecordsController.php', 'attribute');
+
+        // A2CN's own inbound act route. Same gates as the records routes: it
+        // resolves a session to a quote and reads that quote's state, so it
+        // needs the commercial backend exactly as they do.
+        $routes->import($pluginPath . '/Protocol/Http/A2cnMessagesController.php', 'attribute');
     }
 }

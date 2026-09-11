@@ -59,6 +59,8 @@ final readonly class A2cnDiscoveryController
 
     private const A2CN_VERSION = '0.2';
 
+    private const SESSION_PREFIX = '/a2cn';
+
     public function __construct(
         private A2cnIdentityResolver $identities,
         private A2cnKeyStore $keys,
@@ -81,10 +83,11 @@ final readonly class A2cnDiscoveryController
     }
 
     /**
-     * The twelve fields the spec enumerates. `verification_method` is what
+     * The thirteen fields the spec enumerates. `verification_method` is what
      * lets a buyer agent pick a key without parsing the DID document at all;
-     * `endpoint` is the scheme and authority these documents are being served
-     * on, which is also the base every URL below is built from.
+     * `endpoint` is the session base `{base}/a2cn` every session-scoped URL
+     * below is built from, while `.well-known` discovery documents remain
+     * served at the domain root.
      *
      * The time arrives as a parameter, as everywhere else in this module —
      * `mandate()` is the other clock boundary, and both live in this
@@ -94,6 +97,8 @@ final readonly class A2cnDiscoveryController
      */
     private static function discoveryDocument(A2cnIdentity $identity, string $base, \DateTimeImmutable $at): array
     {
+        $sessions = $base . self::SESSION_PREFIX;
+
         return [
             'a2cn_version' => self::A2CN_VERSION,
             'agent_id' => $identity->agentId,
@@ -107,10 +112,17 @@ final readonly class A2cnDiscoveryController
             // the spec), so the two documents cannot disagree about who this
             // installation says it is.
             'organization' => ['name' => $identity->organizationName],
-            'endpoint' => $base,
+            // The base every SESSION url is built from, which is not the
+            // host the well-known documents are served on: A2CN's client
+            // reads discovery at the domain root and then builds
+            // `{endpoint}/sessions/...`, so the prefix belongs here and
+            // nowhere else. Serving those routes at the domain root instead
+            // would claim `/sessions` on the merchant's storefront.
+            'endpoint' => $sessions,
             'updated_at' => ProtocolTimestamp::of($at),
             'mandate_url' => $base . self::MANDATE_PATH,
-            'records_url' => $base . '/a2cn/records/{session_id}',
+            'records_url' => $sessions . '/records/{session_id}',
+            'messages_url' => $sessions . '/sessions/{session_id}/messages',
         ];
     }
 

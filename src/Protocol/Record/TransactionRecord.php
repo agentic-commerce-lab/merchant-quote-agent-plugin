@@ -20,6 +20,16 @@ use MerchantQuoteAgentPlugin\Protocol\Crypto\SessionId;
  * id is) live in OfferSelection, and the "read a field off an act that might
  * not exist" pattern lives in OptionalAct — both real seams shared with
  * AuditLog, not a suppression of this class's own complexity.
+ *
+ * `order_reference` names the Shopware order an accepted quote became, because
+ * every downstream system — ERP, accounting, dispute resolution — works with
+ * orders and not with quotes, and correlating them by hand through the shop's
+ * database is not an audit trail. It is **absent** when the quote never
+ * converted, following the module's absent-never-null rule, and it is inside
+ * `record_hash` like every other field. Not folded into `subject_reference`,
+ * which would make a compound string two parties have to agree how to parse;
+ * and never into `agreed_terms`, which must stay byte-identical to the terms
+ * the final offer was signed over.
  */
 final readonly class TransactionRecord
 {
@@ -34,6 +44,11 @@ final readonly class TransactionRecord
      * @param list<Act> $acts
      *
      * @return array<string, mixed>
+     *
+     * @mago-expect lint:excessive-parameter-list
+     * End-of-session record assembly gathers inputs from across the bridge and protocol:
+     * parties, chain acts, acceptance act, subject reference, generation timestamp, and
+     * the resulting order reference when converted.
      */
     public function build(
         RecordParties $parties,
@@ -41,6 +56,7 @@ final readonly class TransactionRecord
         Act $acceptance,
         RecordSubject $subject,
         string $generatedAt,
+        ?string $orderReference = null,
     ): array {
         $selection = new OfferSelection($acts);
 
@@ -108,6 +124,7 @@ final readonly class TransactionRecord
                 ),
                 'acceptance_signature' => $acceptance->signature(),
             ],
+            ...($orderReference === null ? [] : ['order_reference' => $orderReference]),
             'offer_chain_hash' => $this->chainHash->of($acts),
             // Hashed with this field blank, so a third party can recompute it
             // by blanking it again.

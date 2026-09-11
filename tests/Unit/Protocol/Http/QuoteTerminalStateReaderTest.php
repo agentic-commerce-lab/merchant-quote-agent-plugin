@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Http;
 
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteIdentity;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLifecycle;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteVersion;
@@ -18,6 +22,12 @@ use MerchantQuoteAgentPlugin\Protocol\Http\QuoteStateUnavailable;
 use MerchantQuoteAgentPlugin\Protocol\Http\QuoteTerminalStateReader;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\ProtocolFixtures;
 use PHPUnit\Framework\TestCase;
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Entity;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
 
 /**
  * The real reader, not the controller-test double: what proves the null-vs-
@@ -73,6 +83,7 @@ final class QuoteTerminalStateReaderTest extends TestCase
         self::assertSame('Q-1001', $state->quoteNumber);
         self::assertSame(ProtocolFixtures::SALES_CHANNEL_ID, $state->salesChannelId);
         self::assertNull($state->acceptance);
+        self::assertSame('', $state->buyerOrganizationName);
     }
 
     public function testItComputesExpiredAgainstTheGivenNow(): void
@@ -108,6 +119,68 @@ final class QuoteTerminalStateReaderTest extends TestCase
         self::assertNotNull($state->acceptance);
         self::assertSame('acceptance', $state->acceptance->messageType());
         self::assertSame(3, $state->acceptance->sequenceNumber());
+        // The same read also carries the raw custom fields forward, so a
+        // caller (A2cnMessagesController) can build the chain off this one
+        // object instead of fetching the snapshot a second time.
+        self::assertSame($customFields, $state->customFields);
+    }
+
+    public function testItResolvesOrderNumberWhenQuoteConvertedToOrderAndDegradesGracefully(): void
+    {
+        $order = new class extends Entity {
+            public ?string $orderNumber = null;
+        };
+        $order->setUniqueIdentifier('order-1');
+        $order->orderNumber = '10014';
+
+        $searchResult = new EntitySearchResult(
+            'order',
+            1,
+            new EntityCollection([$order]),
+            null,
+            new Criteria(['order-1']),
+            Context::createDefaultContext(),
+        );
+
+        $orders = $this->createMock(EntityRepository::class);
+        $orders->method('search')->willReturn($searchResult);
+
+        $convertedSnapshot = new QuoteSnapshot(
+            identity: new QuoteIdentity(
+                quoteId: self::QUOTE_ID,
+                quoteNumber: 'Q-1001',
+                currencyIso: 'EUR',
+                salesChannelId: ProtocolFixtures::SALES_CHANNEL_ID,
+                orderId: 'order-1',
+            ),
+            revision: new QuoteRevision('rev-1', new \DateTimeImmutable('2026-09-04T09:00:00+00:00')),
+            totals: new QuoteTotals(totalNet: 7600.0),
+            lifecycle: new QuoteLifecycle(stateTechnicalName: 'replied'),
+            content: new QuoteContent(),
+        );
+
+        $reader = new QuoteTerminalStateReader(self::gateway(snapshot: $convertedSnapshot), $orders);
+        $state = $reader->for(self::QUOTE_ID, ProtocolFixtures::at());
+
+        self::assertNotNull($state);
+        self::assertSame('10014', $state->orderNumber);
+
+        // Degrades gracefully when search throws
+        $failingOrders = $this->createMock(EntityRepository::class);
+        $failingOrders->method('search')->willThrowException(new \RuntimeException('order db failure'));
+        $failingReader = new QuoteTerminalStateReader(self::gateway(snapshot: $convertedSnapshot), $failingOrders);
+        $failingState = $failingReader->for(self::QUOTE_ID, ProtocolFixtures::at());
+
+        self::assertNotNull($failingState);
+        self::assertNull($failingState->orderNumber);
+
+        // Degrades gracefully when quote has no orderId or orders repo is null
+        $unconvertedReader =
+            new QuoteTerminalStateReader(self::gateway(snapshot: ProtocolFixtures::snapshot(self::QUOTE_ID)));
+        $unconvertedState = $unconvertedReader->for(self::QUOTE_ID, ProtocolFixtures::at());
+
+        self::assertNotNull($unconvertedState);
+        self::assertNull($unconvertedState->orderNumber);
     }
 
     private static function gateway(?QuoteSnapshot $snapshot = null, ?\Throwable $throw = null): QuoteGatewayInterface

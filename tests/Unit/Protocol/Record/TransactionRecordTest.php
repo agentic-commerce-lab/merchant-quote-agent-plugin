@@ -54,8 +54,41 @@ final class TransactionRecordTest extends TestCase
         self::assertSame($hash->of($blanked), $record['record_hash']);
     }
 
+    public function testItNamesTheOrderTheQuoteBecame(): void
+    {
+        $record = $this->record(orderReference: 'order:10014');
+
+        self::assertSame('order:10014', $record['order_reference']);
+    }
+
+    public function testAnUnconvertedSessionCarriesNoOrderKeyAtAll(): void
+    {
+        // Absent, never null: an empty string is a claim, and there is
+        // nothing to claim.
+        self::assertArrayNotHasKey('order_reference', $this->record());
+    }
+
+    public function testTheRecordHashCoversTheOrderReference(): void
+    {
+        $with = $this->record(orderReference: 'order:10014');
+        $without = $this->record();
+
+        self::assertNotSame($with['record_hash'], $without['record_hash']);
+    }
+
+    public function testTheSubjectReferenceStillNamesOnlyTheQuote(): void
+    {
+        self::assertSame('quote:Q-1001', $this->record(orderReference: 'order:10014')['subject_reference']);
+    }
+
     /** @return array<string, mixed> */
     private static function build(): array
+    {
+        return self::record();
+    }
+
+    /** @return array<string, mixed> */
+    private static function record(?string $orderReference = null): array
     {
         $hash = new ProtocolHash(new DefaultJsonCanonicalization());
         $acts = [
@@ -78,6 +111,7 @@ final class TransactionRecordTest extends TestCase
             $acts[2],
             new RecordSubject('goods_procurement', 'EUR', 'Q-1001', 'quote:Q-1001'),
             '2026-09-04T10:00:00+00:00',
+            orderReference: $orderReference,
         );
     }
 
