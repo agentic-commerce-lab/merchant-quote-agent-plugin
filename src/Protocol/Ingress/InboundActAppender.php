@@ -13,13 +13,25 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\ChainMirror;
 use Psr\Log\LoggerInterface;
 
 /**
- * Runs the three gates, then writes.
+ * Checks replay first, then runs the three gates, then writes.
  *
- * Order is the whole design: gates first, then the WIRE, then our mirror.
- * ChainMirror is our independent copy of what the chain carries, so a mirror
- * row for an act the quote never received would be our own evidence claiming
- * something the counterparty can disprove. The wire write is therefore what
- * makes an act real; the mirror follows it and never precedes it.
+ * Order is the whole design: replay, then gates, then the WIRE, then our
+ * mirror. ChainMirror is our independent copy of what the chain carries, so
+ * a mirror row for an act the quote never received would be our own evidence
+ * claiming something the counterparty can disprove. The wire write is
+ * therefore what makes an act real; the mirror follows it and never
+ * precedes it.
+ *
+ * `alreadyOnChain()` runs BEFORE both InboundActEnvelope and
+ * InboundActEligibility, not between them and conformance: an act already on
+ * the chain has, by definition, already passed every gate — it is on the
+ * chain. Checking eligibility again for a replay means checking it against
+ * whatever the quote's state has become SINCE that act was accepted, which
+ * for the one act that matters most — the one that just closed the session —
+ * is exactly wrong: it answers the buyer's replay of their own acceptance
+ * with 409 session_closed instead of the 200 the spec's no-jti-replay-store
+ * argument promises. The buyer cannot then tell "my act landed" from
+ * "someone else closed this session".
  *
  * A replayed act — same `message_id`, already on the chain — is accepted
  * without a write. That is what makes the missing JWT replay store safe, and
@@ -42,6 +54,11 @@ final readonly class InboundActAppender
 
     public function append(InboundActRequest $request): InboundActRefusal|Act
     {
+        $existing = self::alreadyOnChain($request);
+        if ($existing !== null) {
+            return $existing;
+        }
+
         $refusal = InboundActEnvelope::refusal(
             $request->act,
             $request->sessionId,
@@ -49,11 +66,6 @@ final readonly class InboundActAppender
         ) ?? InboundActEligibility::refusal($request->act, $request->chain, $request->quote, $request->sellerDid);
         if ($refusal !== null) {
             return $refusal;
-        }
-
-        $existing = self::alreadyOnChain($request);
-        if ($existing !== null) {
-            return $existing;
         }
 
         $refusal = $this->conformance->refusal($request->act, $request->chain);

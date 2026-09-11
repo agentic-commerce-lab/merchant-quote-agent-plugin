@@ -62,6 +62,33 @@ final class InboundActAppenderTest extends TestCase
         self::assertSame([], $gateway->updates);
     }
 
+    /**
+     * The one replay that matters most: the act that closed the session.
+     * `alreadyOnChain()` must run before InboundActEligibility, not after —
+     * otherwise the buyer's own retry of the acceptance that just closed
+     * their session reads the quote's NEW state and gets 409 session_closed
+     * instead of the 200 an idempotent append promises, with no way to tell
+     * "my act landed" from "someone else closed this session".
+     */
+    public function testAReplayOfTheActThatClosedTheSessionIsAcceptedNotRefused(): void
+    {
+        $gateway = new RecordingQuoteGateway();
+        $closedQuote = new QuoteTerminalState(
+            state: 'accepted',
+            expired: false,
+            quoteNumber: 'Q-1001',
+            salesChannelId: ProtocolFixtures::SALES_CHANNEL_ID,
+            acceptance: null,
+        );
+        $request = $this->request(sequence: 1, chainActs: [1], quote: $closedQuote);
+
+        $result = $this->appender($gateway)->append($request);
+
+        self::assertInstanceOf(Act::class, $result);
+        self::assertSame($request->act->messageId(), $result->messageId());
+        self::assertSame([], $gateway->updates);
+    }
+
     public function testARefusalFromAnyGateStopsTheWrite(): void
     {
         $gateway = new RecordingQuoteGateway();
