@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Protocol\Http\A2cnBearerJwt;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\ProtocolFixtures;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\TestActSigner;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 
 final class A2cnBearerJwtTest extends TestCase
@@ -23,9 +24,24 @@ final class A2cnBearerJwtTest extends TestCase
     /** @var ?array{private: string, public: string} */
     private static ?array $malloryKeyPair = null;
 
-    public function testItReturnsTheIssuerOfAValidToken(): void
-    {
-        self::assertSame(self::BUYER, $this->verify(self::token()));
+    /**
+     * RFC 7519 §4.1.3 defines `aud` as a StringOrURI OR an array of them, and
+     * §4.1.4 defines `exp` as a NumericDate, which MAY be fractional. The
+     * counterparty's own server (PyJWT) accepts both shapes for each claim,
+     * so refusing them made us the stricter side of the exchange for no
+     * security gain — the audience still has to be present and the expiry
+     * still has to be in the future either way.
+     */
+    #[TestWith([self::SELLER, 4_000_000_000])]
+    #[TestWith([[self::SELLER, 'did:web:other.example'], 4_000_000_000])]
+    #[TestWith([self::SELLER, 4_000_000_000.5])]
+    public function testItReturnsTheIssuerOfAValidTokenAcrossConformantAudAndExpShapes(
+        array|string $audienceClaim,
+        int|float $expiryClaim,
+    ): void {
+        $token = self::tokenWithClaims(['iss' => self::BUYER, 'aud' => $audienceClaim, 'exp' => $expiryClaim]);
+
+        self::assertSame(self::BUYER, $this->verify($token));
     }
 
     public function testItRefusesAMissingBearerPrefix(): void
@@ -93,6 +109,21 @@ final class A2cnBearerJwtTest extends TestCase
                 privateKeyPem: (self::$malloryKeyPair ??= ProtocolFixtures::keyPair())['private'],
                 kid: self::MALLORY_METHOD,
             ),
+        ];
+
+        // aud MAY be an array (RFC 7519 §4.1.3), but the audience still has
+        // to be IN it — an array naming other parties and not us is refused.
+        yield 'aud is an array that does not contain us' => [
+            self::tokenWithClaims([
+                'iss' => self::BUYER,
+                'aud' => ['did:web:someone.else', 'did:web:another.example'],
+                'exp' => 4_000_000_000,
+            ]),
+        ];
+        // exp MAY be fractional (RFC 7519 §4.1.4), but it still has to be in
+        // the future.
+        yield 'exp is a float in the past' => [
+            self::tokenWithClaims(['iss' => self::BUYER, 'aud' => self::SELLER, 'exp' => 1_600_000_000.5]),
         ];
     }
 

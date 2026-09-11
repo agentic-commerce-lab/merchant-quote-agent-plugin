@@ -25,9 +25,22 @@ final class A2cnBearerJwtClaims
      * to us — unverified, see the class docblock.
      *
      * An expiry is REQUIRED, not optional: a token with none never stops
-     * being usable by whoever picks it out of a log. `aud` must match
-     * exactly, and an empty `iss` is refused rather than treated as "no
-     * claim to make".
+     * being usable by whoever picks it out of a log. An empty `iss` is
+     * refused rather than treated as "no claim to make".
+     *
+     * `aud` is read as an array either way: `(array) $aud` turns a bare
+     * StringOrURI into a one-element array and leaves an array as-is —
+     * RFC 7519 §4.1.3 allows either shape, the counterparty's own server
+     * issues both, and casting instead of branching on `is_string()`/
+     * `is_array()` is what keeps this one added rule from pushing the class
+     * over its complexity budget. Either shape still has to contain the
+     * audience, exactly, not merely resemble it.
+     *
+     * `exp` accepts a PHP int or float: RFC 7519 §4.1.4 defines NumericDate,
+     * which MAY be fractional, and the counterparty's own server issues both
+     * shapes too. A numeric STRING is refused regardless — JSON has a number
+     * type, and a client sending `"exp": "4000000000"` is not conformant, so
+     * accepting it would be leniency with no interop payoff.
      */
     public static function unverifiedIssuerOf(string $decoded, string $audience, \DateTimeImmutable $now): ?string
     {
@@ -37,11 +50,13 @@ final class A2cnBearerJwtClaims
         }
 
         $issuer = $claims['iss'] ?? null;
-        $expires = $claims['exp'] ?? null;
-        if (!\is_string($issuer) || $issuer === '' || ($claims['aud'] ?? null) !== $audience) {
+        $audiences = (array) ($claims['aud'] ?? null);
+        if (!\is_string($issuer) || $issuer === '' || !\in_array($audience, $audiences, strict: true)) {
             return null;
         }
 
-        return \is_int($expires) && $expires > $now->getTimestamp() ? $issuer : null;
+        $expires = $claims['exp'] ?? null;
+
+        return (\is_int($expires) || \is_float($expires)) && $expires > $now->getTimestamp() ? $issuer : null;
     }
 }
