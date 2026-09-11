@@ -166,6 +166,16 @@ final class InboundActGatesTest extends TestCase
             $failingVerifier,
             new InboundActRefusal(400, 'timestamp_format_invalid'),
         ];
+        // Shape-valid (matches PATTERN's digit counts) but not a real
+        // instant. Before ProtocolTimestamp::matches() round-tripped through
+        // strtotime()/gmdate(), this rolled silently to March 2nd and both
+        // ordering checks skipped the act instead of refusing it (#113).
+        yield 'a shape-valid but unreal timestamp is refused' => [
+            self::buyerAct(2, overrides: ['timestamp' => '2026-02-30T00:00:00Z']),
+            $priorActChain,
+            $failingVerifier,
+            new InboundActRefusal(400, 'timestamp_format_invalid'),
+        ];
         yield 'a timestamp before the previous act is refused' => [
             self::buyerAct(2, overrides: ['timestamp' => '2026-09-04T08:00:00Z']),
             $priorActChain,

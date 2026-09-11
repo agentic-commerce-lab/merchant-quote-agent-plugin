@@ -38,9 +38,36 @@ final class ProtocolTimestamp
 
     private function __construct() {}
 
+    /**
+     * Shape AND reality: `strtotime()` alone accepts more than PATTERN's
+     * digits promise, because it rolls an out-of-range field into the next
+     * one instead of refusing it — `2026-02-30T00:00:00Z` silently becomes
+     * March 2nd, and `23:59:60Z` silently becomes the next minute. Both
+     * checks TimestampFormatCheck and TimestampMonotonicityCheck exist to
+     * order acts by parsing this string with `strtotime()`; a value that
+     * rolls is exactly the input that would otherwise slip past PATTERN,
+     * parse to *some* instant, and let a counterparty opt out of ordering
+     * entirely by writing a date that does not exist.
+     *
+     * The round-trip is the guard: render the parsed instant back through
+     * FORMAT and require it to reproduce $value byte-for-byte. A rolled
+     * value never survives that, because it parses to a DIFFERENT instant
+     * than the one its own digits named.
+     *
+     * A leap second (`23:59:60Z`) is refused by the same round-trip,
+     * deliberately: it is not an instant `strtotime()`/`gmdate()` can
+     * represent, so there is no format string it could round-trip through,
+     * and no A2CN implementation emits one.
+     */
     public static function matches(string $value): bool
     {
-        return preg_match(self::PATTERN, $value) === 1;
+        if (preg_match(self::PATTERN, $value) !== 1) {
+            return false;
+        }
+
+        $instant = strtotime($value);
+
+        return $instant !== false && gmdate(self::FORMAT, $instant) === $value;
     }
 
     public static function of(\DateTimeImmutable $at): string
