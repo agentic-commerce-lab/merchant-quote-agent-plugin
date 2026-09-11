@@ -35,17 +35,22 @@ final class BuyerQuoteNoA2cnTest extends IntegrationTestCase
             [['product_id' => $productId, 'quantity' => 1]],
             null,
         );
+        self::assertSame('open', $snapshot->state);
+        self::assertNotNull($snapshot->totalNet);
         $merchantGateway->updateQuote($snapshot->id, new QuoteUpdate(expiresAt: new \DateTimeImmutable('+14 days')));
         $merchantGateway->transition($snapshot->id, QuoteTransition::Sent);
+        self::assertSame('replied', $this->buyerGateway()->getQuote($context, $snapshot->id)->state);
 
         $countered = $this->buyerGateway()->counterQuote($context, $snapshot->id, [], 'Can we do 5% off?');
         self::assertSame('change_requested', $countered->state);
+        self::assertSame($snapshot->totalNet, $countered->totalNet);
 
         $merchantGateway->transition($snapshot->id, QuoteTransition::Process);
         $merchantGateway->transition($snapshot->id, QuoteTransition::Sent);
 
         $accepted = $this->buyerGateway()->acceptQuote($context, $snapshot->id);
         self::assertSame('accepted', $accepted->state);
+        self::assertSame($snapshot->totalNet, $accepted->totalNet);
 
         $quote = $merchantGateway->fetchSnapshot($snapshot->id);
         foreach (array_keys($quote->lifecycle->customFields) as $key) {
