@@ -185,7 +185,7 @@ step_core() {
 
 # dockware's root composer.json already lists custom/plugins/* as path
 # repositories, so requiring the three packages resolves them from the files
-# above and pulls ucp-php-sdk (>=0.0.5) and cuyz/valinor from Packagist. This
+# above and pulls ucp-php-sdk (>=0.0.6) and cuyz/valinor from Packagist. This
 # is the step that proves this plugin's composer.json is installable.
 step_composer() {
   if in_shop composer show shopware/merchant-quote-agent-plugin >/dev/null 2>&1; then log "composer packages present"; return; fi

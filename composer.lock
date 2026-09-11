@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "2cd504b3461932f0a1292a2e1f076e14",
+    "content-hash": "e7da71ba070d805492bf6dccf1baa089",
     "packages": [
         {
             "name": "brick/math",
@@ -11944,16 +11944,16 @@
         },
         {
             "name": "ucp-php-sdk/core",
-            "version": "0.0.5",
+            "version": "0.0.6",
             "source": {
                 "type": "git",
                 "url": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-core.git",
-                "reference": "53218071406fd5566d9e051fefed910576f8d5c4"
+                "reference": "3a7bd45a6c3c4f2bf41f2a1262385979a0022d89"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/agentic-commerce-alliance/ucp-php-sdk-core/zipball/53218071406fd5566d9e051fefed910576f8d5c4",
-                "reference": "53218071406fd5566d9e051fefed910576f8d5c4",
+                "url": "https://api.github.com/repos/agentic-commerce-alliance/ucp-php-sdk-core/zipball/3a7bd45a6c3c4f2bf41f2a1262385979a0022d89",
+                "reference": "3a7bd45a6c3c4f2bf41f2a1262385979a0022d89",
                 "shasum": ""
             },
             "require": {
@@ -11961,8 +11961,8 @@
                 "ext-iconv": "*",
                 "ext-mbstring": "*",
                 "ext-openssl": "*",
-                "php": "^8.1",
-                "phpseclib/phpseclib": "^3.0"
+                "ext-sodium": "*",
+                "php": "^8.1"
             },
             "type": "library",
             "autoload": {
@@ -11977,22 +11977,22 @@
             "description": "Core library for the UCP PHP SDK",
             "support": {
                 "issues": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-core/issues",
-                "source": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-core/tree/0.0.5"
+                "source": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-core/tree/0.0.6"
             },
-            "time": "2026-08-06T12:35:02+00:00"
+            "time": "2026-09-11T09:05:14+00:00"
         },
         {
             "name": "ucp-php-sdk/symfony-bundle",
-            "version": "0.0.5",
+            "version": "0.0.6",
             "source": {
                 "type": "git",
                 "url": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-symfony-bundle.git",
-                "reference": "3922ef5efb0eb917e6dc90843d13d3aedcab28d3"
+                "reference": "4403e0716f8ee61d0e991ff58eb0f804822730c0"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/agentic-commerce-alliance/ucp-php-sdk-symfony-bundle/zipball/3922ef5efb0eb917e6dc90843d13d3aedcab28d3",
-                "reference": "3922ef5efb0eb917e6dc90843d13d3aedcab28d3",
+                "url": "https://api.github.com/repos/agentic-commerce-alliance/ucp-php-sdk-symfony-bundle/zipball/4403e0716f8ee61d0e991ff58eb0f804822730c0",
+                "reference": "4403e0716f8ee61d0e991ff58eb0f804822730c0",
                 "shasum": ""
             },
             "require": {
@@ -12010,7 +12010,7 @@
                 "symfony/http-foundation": "^6.4 || ^7.0",
                 "symfony/http-kernel": "^6.4 || ^7.0",
                 "symfony/routing": "^6.4 || ^7.0",
-                "ucp-php-sdk/core": ">=0.0.5 <0.1.0"
+                "ucp-php-sdk/core": ">=0.0.6 <0.1.0"
             },
             "type": "library",
             "autoload": {
@@ -12025,9 +12025,9 @@
             "description": "Symfony bundle for the UCP PHP SDK",
             "support": {
                 "issues": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-symfony-bundle/issues",
-                "source": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-symfony-bundle/tree/0.0.5"
+                "source": "https://github.com/agentic-commerce-alliance/ucp-php-sdk-symfony-bundle/tree/0.0.6"
             },
-            "time": "2026-08-06T14:36:41+00:00"
+            "time": "2026-09-11T09:05:12+00:00"
         },
         {
             "name": "webmozart/assert",

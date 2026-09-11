@@ -17,3 +17,6 @@ scripts/__pycache__/
 # output, never source: the plugin's own storefront files live in
 # src/Resources/views/storefront/.
 /src/Storefront/
+
+# Unreleased AC QA build, shared for local testing only - never commit.
+SwagAgenticCommerce-*.zip
