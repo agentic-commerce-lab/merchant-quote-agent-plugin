@@ -670,6 +670,46 @@ build metadata: Composer keeps the full string in the shop's lock file while
 Shopware records `1.0.<run>` and orders builds by run number. Map a run number
 back to a commit with `gh run list --workflow "Plugin Zip"`.
 
+### Agentic Commerce 1.2 and 1.3
+
+Both AC versions require `ucp-php-sdk/symfony-bundle` from the same `<0.1.0`
+range, but 1.2 floors it at 0.0.5 and 1.3 at 0.0.6. This plugin floors it at
+0.0.6, the one version that satisfies both, so a shop that resolves this
+plugin's requirements can install either.
+
+A shop still holding 0.0.5 refuses the AC 1.3 upload with *Required
+plugin/package "ucp-php-sdk/symfony-bundle >=0.0.6 <0.1.0" does not match
+installed version == 0.0.5.0* — Shopware validates an uploaded plugin's
+requirements against the **root** `vendor/`, not against the `vendor/` the
+upload carries, so AC bundling 0.0.6 itself does not satisfy the check. Lift
+the root instead:
+
+```bash
+composer update ucp-php-sdk/core ucp-php-sdk/symfony-bundle
+bin/console plugin:refresh && bin/console plugin:install --activate SwagAgenticCommerce
+```
+
+0.0.6 is additive over 0.0.5 across everything this plugin touches: every
+changed constructor gained its new parameter last and with a default.
+
+**Shops that once ran the pre-release AC fork need one more step.** That build
+stored an `allowAnyAgent` key in `swag_agentic_commerce_ucp_config.config_json`,
+and upstream AC rejects unknown keys — every read *and* every write of that
+sales channel's UCP config throws, which 500s `/.well-known/ucp/profile` and
+400s every `/ucp/*` route with *Invalid UCP config at $.allowAnyAgent*. No admin
+or console path can repair it, because `saveConfig()` merges over the stored row
+it cannot read. Drop the key directly:
+
+```sql
+UPDATE swag_agentic_commerce_ucp_config
+   SET config_json = JSON_REMOVE(config_json, '$.allowAnyAgent')
+ WHERE JSON_CONTAINS_PATH(config_json, 'one', '$.allowAnyAgent');
+```
+
+This plugin's own allow-any-agent switch is unrelated and lives in
+`system_config`; set it with `bin/console merchant-quote-agent:allow-any-agent`
+(§6), never by editing AC's row.
+
 ### Uninstalling
 
 With *keep user data* off, uninstall drops the three A2CN evidence tables and
