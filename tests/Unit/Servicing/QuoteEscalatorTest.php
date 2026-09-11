@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 
 final class QuoteEscalatorTest extends TestCase
 {
-    public function testItWritesOneCommentAndMarksTheQuote(): void
+    public function testItWritesOneCommentAndMarksTheQuoteWhenNotificationIsEnabled(): void
     {
         $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
 
@@ -18,6 +18,7 @@ final class QuoteEscalatorTest extends TestCase
             $gateway,
             QuoteSnapshotFixture::snapshot(),
             QuoteEscalationReason::NotConfigured,
+            notifyBuyer: true,
         );
 
         self::assertSame(['addComment', 'updateQuote'], $gateway->calls);
@@ -25,6 +26,89 @@ final class QuoteEscalatorTest extends TestCase
             [QuoteEscalator::MARKER_KEY => QuoteEscalationReason::NotConfigured->value],
             ServicingHandlerFixture::lastCustomFieldWrite($gateway),
         );
+    }
+
+    public function testItDoesNotWriteCommentWhenBuyerNotificationIsDisabled(): void
+    {
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+
+        (new QuoteEscalator())->escalate(
+            $gateway,
+            QuoteSnapshotFixture::snapshot(),
+            QuoteEscalationReason::NeedsHumanReview,
+            notifyBuyer: false,
+        );
+
+        self::assertSame(['updateQuote'], $gateway->calls);
+        self::assertEmpty($gateway->comments);
+        self::assertSame(
+            [QuoteEscalator::MARKER_KEY => QuoteEscalationReason::NeedsHumanReview->value],
+            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
+        );
+    }
+
+    public function testItDefaultsToSilentWhenNoSettingsSourceProvided(): void
+    {
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+
+        (new QuoteEscalator())->escalate(
+            $gateway,
+            QuoteSnapshotFixture::snapshot(),
+            QuoteEscalationReason::NeedsHumanReview,
+        );
+
+        self::assertSame(['updateQuote'], $gateway->calls);
+        self::assertEmpty($gateway->comments);
+    }
+
+    public function testItResolvesBuyerNotificationFromSettingsSource(): void
+    {
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+        $settingsSource = new class implements \MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource {
+            public bool $enabled = false;
+
+            #[\Override]
+            public function forSalesChannel(?string $salesChannelId): ?\MerchantQuoteAgentPlugin\Config\QuoteAgentSettings
+            {
+                return new \MerchantQuoteAgentPlugin\Config\QuoteAgentSettings(
+                    new \MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy(
+                        new \MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits(maxDiscountPercent: 5.0),
+                    ),
+                    new \MerchantQuoteAgentPlugin\Config\ModelAccess('key', 'https://example.com', 'model'),
+                    null,
+                    notifyBuyerOnEscalation: $this->enabled,
+                );
+            }
+        };
+
+        $escalator = new QuoteEscalator(settingsSource: $settingsSource);
+
+        $settingsSource->enabled = false;
+        $escalator->escalate($gateway, QuoteSnapshotFixture::snapshot(), QuoteEscalationReason::NeedsHumanReview);
+        self::assertSame(['updateQuote'], $gateway->calls);
+
+        $gateway2 = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+        $settingsSource->enabled = true;
+        $escalator->escalate($gateway2, QuoteSnapshotFixture::snapshot(), QuoteEscalationReason::NeedsHumanReview);
+        self::assertSame(['addComment', 'updateQuote'], $gateway2->calls);
+    }
+
+    public function testItFallsBackToSilentWhenSettingsSourceThrows(): void
+    {
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+        $settingsSource = new class implements \MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource {
+            #[\Override]
+            public function forSalesChannel(?string $salesChannelId): ?\MerchantQuoteAgentPlugin\Config\QuoteAgentSettings
+            {
+                throw new \MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration(['Invalid config']);
+            }
+        };
+
+        $escalator = new QuoteEscalator(settingsSource: $settingsSource);
+        $escalator->escalate($gateway, QuoteSnapshotFixture::snapshot(), QuoteEscalationReason::NeedsHumanReview);
+
+        self::assertSame(['updateQuote'], $gateway->calls);
+        self::assertEmpty($gateway->comments);
     }
 
     public function testTheCommentLeaksNoDiagnosticToTheBuyer(): void
@@ -35,6 +119,7 @@ final class QuoteEscalatorTest extends TestCase
             $gateway,
             QuoteSnapshotFixture::snapshot(),
             QuoteEscalationReason::NotConfigured,
+            notifyBuyer: true,
         );
 
         // The storefront shows quote comments to the CUSTOMER, unfiltered.
@@ -65,7 +150,7 @@ final class QuoteEscalatorTest extends TestCase
             QuoteEscalator::MARKER_KEY => QuoteEscalationReason::NeedsHumanReview->value,
         ]);
 
-        (new QuoteEscalator())->escalate($gateway, $marked, QuoteEscalationReason::NotConfigured);
+        (new QuoteEscalator())->escalate($gateway, $marked, QuoteEscalationReason::NotConfigured, notifyBuyer: true);
 
         self::assertContains('addComment', $gateway->calls);
     }

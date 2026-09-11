@@ -48,6 +48,9 @@ final class ClarificationRoundTest extends TestCase
     public function testItEscalatesWhenTheQuoteWasAlreadyAsked(): void
     {
         $harness = PipelineHarness::with([]);
+        if ($harness->settingsSource !== null) {
+            $harness->settingsSource->settings = NegotiationFixture::settings(notifyBuyerOnEscalation: true);
+        }
         $snapshot = NegotiationFixture::withCustomFields(NegotiationFixture::snapshot(), [
             ClarificationMarker::MARKER_KEY => true,
         ]);
@@ -68,6 +71,26 @@ final class ClarificationRoundTest extends TestCase
         // The buyer gets the escalation constant, never the question again.
         self::assertCount(1, $harness->gateway->comments);
         self::assertStringNotContainsString('Which line', $harness->gateway->comments[0]);
+    }
+
+    public function testItEscalatesSilentlyByDefaultWhenAlreadyAsked(): void
+    {
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::withCustomFields(NegotiationFixture::snapshot(), [
+            ClarificationMarker::MARKER_KEY => true,
+        ]);
+
+        $pass = ClarificationRound::handle(
+            $harness->gateway,
+            $snapshot,
+            $this->ask(['Which line did you mean?']),
+            $harness->round,
+            $harness->logger,
+        );
+
+        self::assertSame(NegotiationOutcome::Escalated, $pass->outcome);
+        self::assertCount(0, $harness->gateway->comments);
+        self::assertSame(['updateQuote'], $harness->gateway->calls);
     }
 
     /** @param list<string> $questions */

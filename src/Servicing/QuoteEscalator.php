@@ -7,6 +7,8 @@ namespace MerchantQuoteAgentPlugin\Servicing;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 
@@ -55,13 +57,12 @@ final class QuoteEscalator
     private const BUYER_MESSAGE = 'A member of our team will review this quote personally and get back to you.';
 
     /**
-     * The notifier is optional so every existing construction site — and the
-     * tests that predate it — keeps working: a shop with no notifier still
-     * escalates, it just tells nobody but the log, which is where this stood
-     * before.
+     * The notifier and settings source are optional so existing construction
+     * sites and tests keep working.
      */
     public function __construct(
         private readonly ?EscalationNotifierInterface $notifier = null,
+        private readonly ?QuoteAgentSettingsSource $settingsSource = null,
     ) {}
 
     /**
@@ -86,6 +87,7 @@ final class QuoteEscalator
         QuoteGatewayInterface $gateway,
         QuoteSnapshot $snapshot,
         QuoteEscalationReason $reason,
+        ?bool $notifyBuyer = null,
     ): void {
         $quoteId = $snapshot->identity->quoteId;
 
@@ -93,11 +95,15 @@ final class QuoteEscalator
             return;
         }
 
-        $gateway->addComment($quoteId, self::BUYER_MESSAGE);
+        $shouldNotify = $notifyBuyer ?? $this->shouldNotifyBuyer($snapshot->identity->salesChannelId);
+
+        if ($shouldNotify) {
+            $gateway->addComment($quoteId, self::BUYER_MESSAGE);
+        }
 
         $gateway->updateQuote($quoteId, new QuoteUpdate(customFields: [self::MARKER_KEY => $reason->value]));
 
-        // After the buyer is told and the marker is stamped, never before: the
+        // After the buyer is told (if enabled) and the marker is stamped, never before: the
         // marker's early return above is what makes this once per quote per
         // reason, and a notifier that throws must not cost the buyer their
         // comment. Guarded even though the contract forbids throwing — an
@@ -108,6 +114,19 @@ final class QuoteEscalator
             // @mago-expect lint:no-empty-catch-clause
             // Deliberately empty: the notifier owns its own logging, and there
             // is nothing useful left to say from here that it has not said.
+        }
+    }
+
+    private function shouldNotifyBuyer(?string $salesChannelId): bool
+    {
+        if ($this->settingsSource === null) {
+            return false;
+        }
+
+        try {
+            return $this->settingsSource->forSalesChannel($salesChannelId)?->notifyBuyerOnEscalation ?? false;
+        } catch (InvalidQuoteAgentConfiguration) {
+            return false;
         }
     }
 }

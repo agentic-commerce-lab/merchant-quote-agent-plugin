@@ -7,6 +7,8 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -26,6 +28,8 @@ use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 final class PipelineHarness
 {
     public OfferRound $round;
+
+    public ?QuoteAgentSettingsSource $settingsSource = null;
 
     private function __construct(
         public NegotiationPipeline $pipeline,
@@ -101,7 +105,16 @@ final class PipelineHarness
         [$client, $spy] = ScriptedClient::spy($replies, $recorder);
         $prompts = new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
         $logger = new RecordingLogger();
-        $escalator = new QuoteEscalator();
+        $settingsSource = new class implements QuoteAgentSettingsSource {
+            public ?QuoteAgentSettings $settings = null;
+
+            #[\Override]
+            public function forSalesChannel(?string $salesChannelId): ?QuoteAgentSettings
+            {
+                return $this->settings;
+            }
+        };
+        $escalator = new QuoteEscalator(settingsSource: $settingsSource);
 
         // Two snapshots: the pre-apply read, which still carries the quote as
         // the buyer asked about it, and the post-apply re-read the verifier
@@ -136,6 +149,7 @@ final class PipelineHarness
 
         $harness = new self($pipeline, $gateway, $spy, $logger, $writer);
         $harness->round = $round;
+        $harness->settingsSource = $settingsSource;
         $harness->before = NegotiationFixture::snapshot();
 
         return $harness;

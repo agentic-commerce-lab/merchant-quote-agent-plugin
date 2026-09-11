@@ -49,6 +49,7 @@ final class EscalationNotificationTest extends TestCase
             $gateway,
             QuoteSnapshotFixture::snapshot(),
             QuoteEscalationReason::ProposalRejected,
+            notifyBuyer: true,
         );
 
         self::assertCount(1, $notifier->notices);
@@ -61,6 +62,23 @@ final class EscalationNotificationTest extends TestCase
         // The buyer's own comment still carries nothing internal.
         self::assertCount(1, $gateway->comments);
         self::assertStringNotContainsString('proposal', strtolower($gateway->comments[0]));
+    }
+
+    public function testTheMerchantIsNotifiedEvenWhenBuyerNotificationIsDisabled(): void
+    {
+        $notifier = self::notifier();
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+
+        (new QuoteEscalator($notifier))->escalate(
+            $gateway,
+            QuoteSnapshotFixture::snapshot(),
+            QuoteEscalationReason::ProposalRejected,
+            notifyBuyer: false,
+        );
+
+        self::assertCount(1, $notifier->notices);
+        self::assertCount(0, $gateway->comments);
+        self::assertSame(['updateQuote'], $gateway->calls);
     }
 
     /**
@@ -111,6 +129,7 @@ final class EscalationNotificationTest extends TestCase
             $gateway,
             QuoteSnapshotFixture::snapshot(),
             QuoteEscalationReason::NeedsHumanReview,
+            notifyBuyer: true,
         );
 
         self::assertSame(['addComment', 'updateQuote'], $gateway->calls);
@@ -130,6 +149,7 @@ final class EscalationNotificationTest extends TestCase
             $gateway,
             QuoteSnapshotFixture::snapshot(),
             QuoteEscalationReason::NeedsHumanReview,
+            notifyBuyer: true,
         );
 
         self::assertCount(1, $gateway->comments);

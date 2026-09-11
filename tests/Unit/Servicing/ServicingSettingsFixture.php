@@ -38,7 +38,7 @@ final class ServicingSettingsFixture
     }
 
     /** @param \Closure(): ?QuoteAgentSettings $outcome what the config source does when asked */
-    public static function preflight(\Closure $outcome): ServicingPreflight
+    public static function preflight(\Closure $outcome, ?QuoteEscalator $escalator = null): ServicingPreflight
     {
         $source = new class($outcome) implements QuoteAgentSettingsSource {
             /** @param \Closure(): ?QuoteAgentSettings $outcome */
@@ -53,6 +53,10 @@ final class ServicingSettingsFixture
             }
         };
 
-        return new ServicingPreflight($source, new QuoteEscalator(), new NullLogger());
+        return new ServicingPreflight(
+            $source,
+            $escalator ?? new QuoteEscalator(settingsSource: $source),
+            new NullLogger(),
+        );
     }
 }
