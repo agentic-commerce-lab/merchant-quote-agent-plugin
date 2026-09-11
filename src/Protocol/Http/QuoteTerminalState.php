@@ -15,10 +15,9 @@ use MerchantQuoteAgentPlugin\Protocol\Act\Act;
  * `customFields` carries the same snapshot's raw custom fields alongside the
  * derived fields above — so a caller that also needs the act chain (the
  * inbound message route) can build it via `ActChain::read($this->customFields)`
- * without a second `fetchSnapshot()`. That is what makes state and chain one
- * read: `for()` already parses the chain internally to find `acceptance`, and
- * this is the field that lets the caller reuse that same read instead of
- * asking `QuoteTerminalStateReader::customFieldsFor()` to fetch it again.
+ * off this one object. `for()` already parses the chain internally to find
+ * `acceptance`, so this field is what lets a caller reuse that same read
+ * instead of fetching the snapshot a second time.
  */
 final readonly class QuoteTerminalState
 {

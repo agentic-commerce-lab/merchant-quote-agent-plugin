@@ -119,37 +119,10 @@ final class QuoteTerminalStateReaderTest extends TestCase
         self::assertNotNull($state->acceptance);
         self::assertSame('acceptance', $state->acceptance->messageType());
         self::assertSame(3, $state->acceptance->sequenceNumber());
-    }
-
-    public function testCustomFieldsForFailsClosedOnMissingOrFailedQuote(): void
-    {
-        $missing = new QuoteTerminalStateReader(self::gateway(throw: QuoteNotFoundException::forId(self::QUOTE_ID)));
-        self::assertNull($missing->customFieldsFor(self::QUOTE_ID));
-
-        $noGateway = new QuoteTerminalStateReader();
-        try {
-            $noGateway->customFieldsFor(self::QUOTE_ID);
-            self::fail('Expected QuoteStateUnavailable for no gateway.');
-        } catch (QuoteStateUnavailable) {
-        }
-
-        $cause = new \RuntimeException('connection refused');
-        $failedLookup = new QuoteTerminalStateReader(self::gateway(throw: $cause));
-        try {
-            $failedLookup->customFieldsFor(self::QUOTE_ID);
-            self::fail('Expected QuoteStateUnavailable for failed lookup.');
-        } catch (QuoteStateUnavailable $error) {
-            self::assertSame($cause, $error->getPrevious());
-        }
-    }
-
-    public function testCustomFieldsForReturnsCustomFieldsFromSnapshot(): void
-    {
-        $customFields = ['test_key' => 'test_value'];
-        $snapshot = ProtocolFixtures::snapshot(self::QUOTE_ID, customFields: $customFields);
-        $reader = new QuoteTerminalStateReader(self::gateway(snapshot: $snapshot));
-
-        self::assertSame($customFields, $reader->customFieldsFor(self::QUOTE_ID));
+        // The same read also carries the raw custom fields forward, so a
+        // caller (A2cnMessagesController) can build the chain off this one
+        // object instead of fetching the snapshot a second time.
+        self::assertSame($customFields, $state->customFields);
     }
 
     public function testItResolvesOrderNumberWhenQuoteConvertedToOrderAndDegradesGracefully(): void

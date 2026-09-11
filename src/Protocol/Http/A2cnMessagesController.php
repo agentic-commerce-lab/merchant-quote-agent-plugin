@@ -148,7 +148,7 @@ final readonly class A2cnMessagesController
         string $issuerDid,
     ): JsonResponse {
         // The chain comes from the SAME read as $quote's state — see the
-        // class docblock — not from a second customFieldsFor() fetch.
+        // class docblock — never a second fetchSnapshot().
         $result = $this->appender->append(new InboundActRequest(
             act: $act,
             chain: ActChain::read($quote->customFields),
