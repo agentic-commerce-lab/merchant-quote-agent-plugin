@@ -44,9 +44,10 @@
 
     <h2>Discovery</h2>
     <p>
-        The capability appears in <code>/.well-known/ucp</code> only when the shop has the
-        commercial B2B Quote Management feature installed and licensed, and the merchant has
-        enabled the capability for that sales channel. Its descriptor carries the endpoint and
+        The capability appears in <code>/.well-known/ucp</code> when the shop runs a UCP
+        surface and the merchant has enabled <code>dev.ucp.common.identity_linking</code> for
+        that sales channel — without it no token can be issued for quoting, so the descriptor is
+        suppressed rather than advertised as a dead end. Its descriptor carries the endpoint and
         the schema URL:
     </p>
 <pre>"com.shopware.quote": [{
@@ -62,6 +63,12 @@
         If the entry is absent, the shop cannot quote: fall back to ordinary checkout, or tell
         the user that quoting is unavailable. Do not hard-code the endpoint; read it from the
         descriptor.
+    </p>
+    <p class="note">
+        Present in discovery is not the same as usable. Discovery does not probe the commercial
+        B2B Quote Management backend, so a shop without a licensed installation still advertises
+        the capability and answers every call with 501. Treat the first 501 as the real
+        availability answer and fall back exactly as you would for a missing entry.
     </p>
 
     <h2>Authorization</h2>
@@ -85,7 +92,10 @@
     </p>
     <p>
         Requests also carry the usual <code>UCP-Agent</code> header, and an
-        <code>Idempotency-Key</code> on writes. A Shopware
+        <code>Idempotency-Key</code> on writes — required where the shop is configured to demand
+        it, and in every case a replay guard: the same key with the same request replays the
+        stored response (<code>Idempotency-Replay: 1</code>), a key reused for a different one
+        is a 409. A Shopware
         <code>sw-context-token</code> is deliberately not accepted: it carries no OAuth
         scopes and could reuse the customer's existing storefront cart.
     </p>
@@ -109,15 +119,21 @@
     <h2>State machine</h2>
     <table>
         <tr><th>State</th><th>Whose turn</th><th>What the buyer can do</th></tr>
+        <tr><td><code>draft</code></td><td>none</td><td>nothing — a request that never reached the merchant</td></tr>
         <tr><td><code>open</code></td><td>merchant</td><td>poll</td></tr>
         <tr><td><code>in_review</code></td><td>merchant</td><td>poll</td></tr>
         <tr><td><code>replied</code></td><td><strong>buyer</strong></td><td>accept, counter, decline</td></tr>
         <tr><td><code>change_requested</code></td><td>merchant</td><td>poll</td></tr>
+        <tr><td><code>reopen</code></td><td>merchant</td><td>poll — the merchant reopened a declined quote; it returns to <code>replied</code></td></tr>
         <tr><td><code>accepted</code> / <code>declined</code> / <code>expired</code> / <code>withdrawn</code> / <code>cancelled</code></td><td>none</td><td>terminal for the buyer</td></tr>
     </table>
     <p>
         Only <code>replied</code> is buyer-actionable. Acting from any other state fails, so
         drive the flow from the state you read rather than from what you expect.
+        <code>declined</code> is terminal for the buyer but not for the merchant: a reopened
+        quote reappears as <code>reopen</code> and becomes actionable again once it is back in
+        <code>replied</code>. The full transition table, both actors, is
+        <code>x-state-machine</code> in the schema.
     </p>
 
     <h2>Expiration</h2>
@@ -138,6 +154,16 @@
         requested price is an ask; the merchant's offer appears in <code>unit_price</code> and
         the totals once the quote reaches <code>replied</code>.
     </p>
+    <p class="note">
+        Not every shop can record a per-line ask: the field and the route behind
+        <code>requested_unit_price</code> are missing on released commercial builds. There,
+        sending <code>line_items</code> with a requested price is a 422 naming the limitation,
+        and <code>requested_unit_price</code> reads back as <code>null</code> on every line.
+        Because a counter line item requires a requested price, a counter-offer on such a shop
+        is <code>comment</code> alone with no <code>line_items</code> — the merchant reads the
+        ask from the comment. Nothing in discovery reports this: send the counter you intended,
+        and on the 422 resend it as a comment.
+    </p>
 
     <h2>Asynchronous negotiation</h2>
     <p>
@@ -150,14 +176,22 @@
     <h2>Errors</h2>
     <table>
         <tr><th>Situation</th><th>Result</th><th>Status</th></tr>
-        <tr><td>Capability disabled, not licensed, or the commercial Quote Management backend is unavailable</td><td>unsupported capability (and the capability is absent from discovery)</td><td>501</td></tr>
+        <tr><td>Capability disabled, not licensed, or the commercial Quote Management backend is unavailable</td><td>unsupported capability — note the descriptor may still be in discovery</td><td>501</td></tr>
         <tr><td>Access token missing, invalid, expired, or revoked</td><td>invalid token</td><td>401</td></tr>
         <tr><td>Credential resolves to no customer</td><td>validation error naming the header</td><td>422</td></tr>
         <tr><td>Quote Management not enabled for the customer (<code>customer_specific_features</code>)</td><td>validation error naming the feature</td><td>422</td></tr>
         <tr><td>Malformed request body or line items</td><td>validation error</td><td>422</td></tr>
+        <tr><td>Per-line price ask sent to a shop that cannot record one</td><td>validation error telling you to send the ask as a comment</td><td>422</td></tr>
+        <tr><td><code>Idempotency-Key</code> missing where required, or reused for a different request</td><td>validation error / <code>idempotency_conflict</code></td><td>422 / 409</td></tr>
         <tr><td>Quote id unknown <em>or owned by another customer</em></td><td>not found, without confirming existence</td><td>404</td></tr>
         <tr><td>Accepting from a non-actionable or expired state</td><td>error from the commercial quote-to-order flow</td><td>400</td></tr>
     </table>
+    <p>
+        Every failure is the SDK's error envelope:
+        <code>{"ucp": {"version", "status": "error"}, "messages": [{"code", "content", …}]}</code>.
+        The status lives in <code>ucp</code>; there is no top-level <code>status</code> field.
+        Successful responses carry the same <code>ucp</code> envelope alongside the quote.
+    </p>
     <p class="note">
         <code>com.shopware.quote:manage</code> is not in this table: it is requested but not
         enforced (see Authorization above), so a missing scope never causes a failure on its own.
