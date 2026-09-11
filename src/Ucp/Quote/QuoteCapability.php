@@ -23,8 +23,10 @@ use Ucp\Sdk\Model\Profile\CapabilityDescriptor;
  * Guard-then-delegate: the backend is optional, so without SwagCommercial the
  * gateway is absent and every operation fails as unsupported (501) rather than
  * as a container error. The descriptor is still published — the profile
- * contributor does that unconditionally — because the contract documents are
- * served either way.
+ * contributor asks only whether identity linking is enabled, never whether the
+ * commercial backend is there — because the contract documents are served
+ * either way, and the published schema says so: a 501, not a missing
+ * descriptor, is what tells an agent this shop cannot quote.
  */
 final class QuoteCapability implements CapabilityInterface
 {
