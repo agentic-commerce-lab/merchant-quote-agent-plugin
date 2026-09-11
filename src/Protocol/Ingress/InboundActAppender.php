@@ -70,10 +70,12 @@ final readonly class InboundActAppender
 
     private function write(InboundActRequest $request): InboundActRefusal|Act
     {
+        \assert($this->gateway !== null);
+
         $key = ActKey::for($request->act->sequenceNumber(), ActRole::Buyer);
 
         try {
-            $this->gateway?->updateQuote($request->quoteId, new QuoteUpdate(customFields: [
+            $this->gateway->updateQuote($request->quoteId, new QuoteUpdate(customFields: [
                 ActKey::SESSION_KEY => $request->sessionId,
                 $key => $request->act->raw(),
             ]));

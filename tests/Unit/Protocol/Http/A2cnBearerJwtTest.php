@@ -100,6 +100,7 @@ final class A2cnBearerJwtTest extends TestCase
         string $issuer = self::BUYER,
         string $audience = self::SELLER,
         int $exp = 4_000_000_000,
+        #[\SensitiveParameter]
         ?string $privateKeyPem = null,
     ): string {
         return self::tokenWithClaims([

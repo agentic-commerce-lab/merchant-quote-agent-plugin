@@ -83,6 +83,7 @@ final class QuoteTerminalStateReaderTest extends TestCase
         self::assertSame('Q-1001', $state->quoteNumber);
         self::assertSame(ProtocolFixtures::SALES_CHANNEL_ID, $state->salesChannelId);
         self::assertNull($state->acceptance);
+        self::assertSame('', $state->buyerOrganizationName);
     }
 
     public function testItComputesExpiredAgainstTheGivenNow(): void

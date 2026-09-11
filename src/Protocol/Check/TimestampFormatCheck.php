@@ -42,33 +42,34 @@ final readonly class TimestampFormatCheck implements EvidenceCheckInterface
         \DateTimeImmutable $at,
     ): ?ProtocolViolation {
         foreach ($chain->buyerActs($sellerDid) as $act) {
-            $field = self::malformedField($act);
-            if ($field !== null) {
+            if (!ProtocolTimestamp::matches($act->timestamp())) {
                 return new ProtocolViolation(
                     timestamp: ProtocolTimestamp::of($at),
                     violationType: 'timestamp_format_invalid',
                     messageId: $act->messageId(),
                     description: \sprintf(
-                        'act %s states %s as "%s", which is not ISO-8601 UTC at second resolution',
+                        'act %s states timestamp as "%s", which is not ISO-8601 UTC at second resolution',
                         $act->messageId(),
-                        $field,
-                        $field === 'timestamp' ? $act->timestamp() : (string) $act->expiresAt(),
+                        $act->timestamp(),
+                    ),
+                );
+            }
+
+            $expires = $act->expiresAt();
+            if ($expires !== null && !ProtocolTimestamp::matches($expires)) {
+                return new ProtocolViolation(
+                    timestamp: ProtocolTimestamp::of($at),
+                    violationType: 'timestamp_format_invalid',
+                    messageId: $act->messageId(),
+                    description: \sprintf(
+                        'act %s states expires_at as "%s", which is not ISO-8601 UTC at second resolution',
+                        $act->messageId(),
+                        $expires,
                     ),
                 );
             }
         }
 
         return null;
-    }
-
-    private static function malformedField(Act $act): ?string
-    {
-        if (!ProtocolTimestamp::matches($act->timestamp())) {
-            return 'timestamp';
-        }
-
-        $expires = $act->expiresAt();
-
-        return $expires !== null && !ProtocolTimestamp::matches($expires) ? 'expires_at' : null;
     }
 }

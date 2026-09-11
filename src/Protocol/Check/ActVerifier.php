@@ -71,7 +71,7 @@ class ActVerifier
      * A conformant `sender_verification_method` is the sender's own DID, or
      * that DID plus a `#fragment` — never a method under a different DID.
      * Without this, an act naming a foreign verification method would still
-     * reach DidWebResolver, which resolves whatever DID a verification method
+     * reach `DidWebResolver`, which resolves whatever DID a verification method
      * NAMES, not whatever DID the act CLAIMS as its sender.
      */
     private static function verificationMethodMismatch(Act $act): ?string

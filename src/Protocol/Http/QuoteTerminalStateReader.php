@@ -143,6 +143,6 @@ class QuoteTerminalStateReader
 
         $number = $order instanceof Entity ? $order->get('orderNumber') : null;
 
-        return \is_string($number) ? $number : null;
+        return \is_string($number) && $number !== '' ? $number : null;
     }
 }

@@ -17,7 +17,7 @@ use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 /**
  * Fixtures shared by the Protocol unit tests. Deliberately plain arrays and
  * real DTOs — an act is its raw array, and a builder would hide the shape the
- * tests are about.
+ * tests are about. It also hosts keypair generation and a resolver double.
  */
 final class ProtocolFixtures
 {

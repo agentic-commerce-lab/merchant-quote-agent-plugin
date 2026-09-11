@@ -53,10 +53,12 @@ final class InboundActAppenderTest extends TestCase
     public function testAReplayedActWritesNothingAndIsStillAccepted(): void
     {
         $gateway = new RecordingQuoteGateway();
+        $request = $this->request(sequence: 1, chainActs: [1]);
         // The act is already on the chain under the same message_id.
-        $result = $this->appender($gateway)->append($this->request(sequence: 1, chainActs: [1]));
+        $result = $this->appender($gateway)->append($request);
 
         self::assertInstanceOf(Act::class, $result);
+        self::assertSame($request->act->messageId(), $result->messageId());
         self::assertSame([], $gateway->updates);
     }
 

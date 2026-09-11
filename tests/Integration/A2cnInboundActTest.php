@@ -186,6 +186,7 @@ final class A2cnInboundActTest extends IntegrationTestCase
         $sellerAct = $afterReplied->lifecycle->customFields[ActKey::for(2, ActRole::Seller)] ?? null;
         self::assertIsArray($sellerAct);
         self::assertSame(2, $sellerAct['sequence_number']);
+        // ISO-8601 UTC timestamp strings sort lexicographically
         self::assertGreaterThanOrEqual($act1['timestamp'], $sellerAct['timestamp']);
     }
 
