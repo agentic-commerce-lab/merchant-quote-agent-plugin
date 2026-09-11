@@ -8,7 +8,14 @@ use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
+use MerchantQuoteAgentPlugin\Protocol\Act\Act;
+use MerchantQuoteAgentPlugin\Protocol\Act\ActKey;
+use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
+use MerchantQuoteAgentPlugin\Protocol\Crypto\SessionId;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\ChainMirror;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
+use Shopware\Core\Framework\Test\TestCaseBase\KernelLifecycleManager;
+use Symfony\Component\HttpFoundation\Request;
 use Ucp\Sdk\Exception\ValidationException;
 
 /**
@@ -249,7 +256,53 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
             [['product_id' => $productId, 'quantity' => 1]],
             null,
         );
-        $merchantGateway->updateQuote($snapshot->id, new QuoteUpdate(expiresAt: new \DateTimeImmutable('+14 days')));
+
+        $sessionId = SessionId::forQuote($snapshot->id);
+        $offerAct = [
+            'session_id' => $sessionId,
+            'sequence_number' => 1,
+            'sender_did' => 'did:web:buyer.example',
+            'sender_agent_id' => 'buyer-agent',
+            'sender_verification_method' => 'did:web:buyer.example#key-1',
+            'message_type' => 'offer',
+            'message_id' => 'msg-1',
+            'timestamp' => '2026-09-10T12:00:00Z',
+            'terms' => ['currency' => 'EUR'],
+            'protocol_act_hash' => 'hash1',
+            'protocol_act_signature' => 'sig1',
+        ];
+        $acceptanceAct = [
+            'session_id' => $sessionId,
+            'sequence_number' => 2,
+            'sender_did' => 'did:web:buyer.example',
+            'sender_agent_id' => 'buyer-agent',
+            'sender_verification_method' => 'did:web:buyer.example#key-1',
+            'message_type' => 'acceptance',
+            'message_id' => 'msg-2',
+            'timestamp' => '2026-09-10T12:01:00Z',
+            'terms' => ['currency' => 'EUR'],
+            'protocol_act_hash' => 'hash2',
+            'protocol_act_signature' => 'sig2',
+        ];
+
+        $merchantGateway->updateQuote($snapshot->id, new QuoteUpdate(
+            expiresAt: new \DateTimeImmutable('+14 days'),
+            customFields: [
+                ActKey::SESSION_KEY => $sessionId,
+                ActKey::for(1, ActRole::Buyer) => $offerAct,
+                ActKey::for(2, ActRole::Buyer) => $acceptanceAct,
+            ],
+        ));
+
+        $mirror = static::getContainer()->get(ChainMirror::class);
+        self::assertInstanceOf(ChainMirror::class, $mirror);
+        $act1 = Act::fromArray($offerAct);
+        self::assertNotNull($act1);
+        $act2 = Act::fromArray($acceptanceAct);
+        self::assertNotNull($act2);
+        $mirror->mirrorOne($snapshot->id, $act1, ActRole::Buyer);
+        $mirror->mirrorOne($snapshot->id, $act2, ActRole::Buyer);
+
         $merchantGateway->transition($snapshot->id, QuoteTransition::Sent);
 
         $accepted = $this->buyerGateway()->acceptQuote($context, $snapshot->id);
@@ -257,5 +310,14 @@ final class BuyerQuoteFlowTest extends IntegrationTestCase
         self::assertSame('accepted', $accepted->state);
         self::assertNotNull($accepted->orderId);
         self::assertNotNull($accepted->orderNumber);
+
+        $baseUri = BuyerQuoteFixture::storefrontBaseUri(static::getContainer());
+        $response = KernelLifecycleManager::getKernel()->handle(Request::create(
+            $baseUri . '/a2cn/records/' . $sessionId,
+        ));
+        self::assertSame(200, $response->getStatusCode());
+        $record = json_decode((string) $response->getContent(), associative: true);
+        self::assertIsArray($record);
+        self::assertSame('order:' . $accepted->orderNumber, $record['order_reference'] ?? null);
     }
 }
