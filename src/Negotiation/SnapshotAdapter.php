@@ -38,6 +38,18 @@ final class SnapshotAdapter
         );
     }
 
+    /**
+     * toPolicy(), anchored on the stored baseline when there is one — see
+     * QuoteBaselineLines::anchor(). Before the first offer there is none, and
+     * the live prices ARE the originals.
+     */
+    public static function anchored(BridgeSnapshot $snapshot): PolicySnapshot
+    {
+        $live = self::toPolicy($snapshot);
+
+        return QuoteBaseline::read($snapshot)?->anchor($live) ?? $live;
+    }
+
     public static function conversation(BridgeSnapshot $snapshot): BuyerConversation
     {
         $buyer = [];

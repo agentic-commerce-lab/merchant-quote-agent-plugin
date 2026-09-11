@@ -191,7 +191,10 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         // aggregate rather than re-running PriceBandClassifier over `->price`
         // keeps one classification, and means the day a non-price ask does
         // reach the decider the gate already accounts for it.
-        $policySnapshot = SnapshotAdapter::toPolicy($snapshot);
+        // Quote 1101: the ask is measured against the ORIGINAL prices, the
+        // same anchor the offer checks use — never against the previous
+        // round's already-reduced ones. See QuoteBaselineLines::anchor().
+        $policySnapshot = SnapshotAdapter::anchored($snapshot);
         $decision = $this->decider->decide(
             $policySnapshot,
             $settings->policy,
