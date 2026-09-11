@@ -15,6 +15,7 @@ use MerchantQuoteAgentPlugin\Protocol\Crypto\SessionId;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\ProtocolFixtures;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\TestActSigner;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Ucp\Sdk\Internal\Security\DefaultJsonCanonicalization;
 
@@ -96,6 +97,62 @@ final class SellerActFactoryTest extends TestCase
 
         self::assertTrue($factory->termsUnchanged($terms, $terms));
         self::assertFalse($factory->termsUnchanged(ProtocolFixtures::terms(quantity: 5), $terms));
+    }
+
+    /**
+     * `ProtocolFixtures::at()` is `2026-09-04T10:00:00Z`. Every case here
+     * answers the one question #112 turns on: does our own timestamp ever
+     * land BEFORE the act it answers.
+     *
+     * @return iterable<string, array{0: ?string, 1: string}>
+     */
+    public static function clampCases(): iterable
+    {
+        yield 'an empty chain leaves our timestamp untouched' => [null, '2026-09-04T10:00:00Z'];
+        yield 'a last act older than us leaves our timestamp untouched' => [
+            '2026-09-04T09:00:00Z',
+            '2026-09-04T10:00:00Z',
+        ];
+        yield 'a last act ahead of us (buyer clock skew) clamps forward to it, not before it' => [
+            '2026-09-04T10:00:05Z',
+            '2026-09-04T10:00:05Z',
+        ];
+        yield 'a last act with an unparseable timestamp leaves our timestamp untouched' => [
+            'not-a-timestamp',
+            '2026-09-04T10:00:00Z',
+        ];
+    }
+
+    #[DataProvider('clampCases')]
+    public function testItClampsItsTimestampForwardToTheChainsLastActNeverEarlier(
+        ?string $lastActTimestamp,
+        string $expectedTimestamp,
+    ): void {
+        $act = self::factory()
+            ->build(
+                ProtocolFixtures::snapshot(self::QUOTE_ID),
+                self::chainWithLastActTimestamp($lastActTimestamp),
+                self::identity(),
+                ProtocolFixtures::at(),
+            );
+
+        self::assertSame($expectedTimestamp, $act->timestamp());
+    }
+
+    private static function chainWithLastActTimestamp(?string $timestamp): ActChain
+    {
+        $session = SessionId::forQuote(self::QUOTE_ID);
+        if ($timestamp === null) {
+            return ActChain::read([ActKey::SESSION_KEY => $session]);
+        }
+
+        $lastAct = ProtocolFixtures::buyerAct(1, $session);
+        $lastAct['timestamp'] = $timestamp;
+
+        return ActChain::read([
+            ActKey::SESSION_KEY => $session,
+            ActKey::for(1, ActRole::Buyer) => $lastAct,
+        ]);
     }
 
     private static function factory(): \MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory
