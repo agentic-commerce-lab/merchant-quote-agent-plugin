@@ -672,10 +672,10 @@ back to a commit with `gh run list --workflow "Plugin Zip"`.
 
 ### Agentic Commerce 1.2 and 1.3
 
-Both AC versions require `ucp-php-sdk/symfony-bundle` from the same `<0.1.0`
+Both AC versions declare `ucp-php-sdk/symfony-bundle` from the same `<0.1.0`
 range, but 1.2 floors it at 0.0.5 and 1.3 at 0.0.6. This plugin floors it at
-0.0.6, the one version that satisfies both, so a shop that resolves this
-plugin's requirements can install either.
+0.0.6 — a version both declarations accept, so Composer resolves either pairing
+without complaint. Only one of them runs.
 
 **Composer-satisfiable is not the same as bootable, and AC 1.2 is the case
 where they differ.** AC 1.2 ships

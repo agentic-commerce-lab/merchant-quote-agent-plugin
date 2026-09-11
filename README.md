@@ -87,9 +87,12 @@ composer run test:integration                             # from any worktree
 ```
 
 `shop-setup.sh` is idempotent — rerun it after any failure. It downloads
-SwagCommercial 7.13.1 and Agentic Commerce 1.2.0 from their GitHub releases
+SwagCommercial 7.13.1 and Agentic Commerce 1.3.0 from their GitHub releases
 (`gh auth login` first; SwagCommercial's repo is private). Without access, put
-the two zips into `~/.cache/merchant-quote-shop/plugins/` by hand and rerun.
+the two zips into `~/.cache/merchant-quote-shop/plugins/` by hand and rerun —
+which is the only route while Agentic Commerce 1.3.0 is unreleased. Anything
+older than 1.3.0 fails the container build against this plugin's SDK floor; see
+docs/end-to-end.md §9.
 The database is seeded from a dump of the previous shop; ask a colleague for
 `~/.cache/merchant-quote-shop/seed/shopware.sql.gz` if it is gone.
 
