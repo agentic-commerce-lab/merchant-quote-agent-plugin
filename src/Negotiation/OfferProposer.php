@@ -40,7 +40,10 @@ final readonly class OfferProposer
         QuoteDecision $decision,
         NegotiationContext $context,
     ): ProposedAnswer {
-        $referenceLines = $context->baseline?->linesMergedWith($snapshot->lines) ?? $snapshot->lines;
+        // Quote 1101: one anchor for the brief, the mirror and the checks —
+        // the original prices, carrying the live asks. Round one has no
+        // baseline yet, and there the live snapshot IS the original.
+        $snapshot = $context->baseline?->anchor($snapshot) ?? $snapshot;
         $details = $decision->autoReply;
 
         if ($details === null) {
@@ -96,7 +99,7 @@ final readonly class OfferProposer
 
         return $this->recorded($raw, $this->authorize(
             $settings,
-            $referenceLines,
+            $snapshot->lines,
             $offer,
             $response->message,
             $prompt->hash,

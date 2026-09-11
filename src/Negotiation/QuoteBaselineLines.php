@@ -46,6 +46,27 @@ final readonly class QuoteBaselineLines
     }
 
     /**
+     * The round's snapshot re-anchored on the original prices: the baseline
+     * total and lines, carrying the LIVE asks and identities, everything else
+     * from now.
+     *
+     * Live quote 1101: the ask was measured against the previous round's
+     * reduced price (7.10 of 7.19 = 1.25%) while the checks bound the offer
+     * against the original (7.10 of 7.99 = 11.14%), so the model was capped
+     * at 1.25%, obeyed, and was refused for it. The ceiling, the brief, the
+     * mirror and the checks all read this one snapshot now.
+     */
+    public function anchor(PolicySnapshot $live): PolicySnapshot
+    {
+        return new PolicySnapshot(
+            currencyIso: $live->currencyIso,
+            totalNet: $this->totalNet,
+            lines: $this->linesMergedWith($live->lines),
+            lifecycle: $live->lifecycle,
+        );
+    }
+
+    /**
      * The baseline's lines, plus any current line it does not know about.
      *
      * A line added mid-negotiation has had no agent concession yet, so there
@@ -54,10 +75,10 @@ final readonly class QuoteBaselineLines
      * quote" and escalate for no reason. A line REMOVED mid-negotiation
      * leaves a stale baseline entry that is simply never looked up.
      *
-     * A baseline row matched by id also picks up the CURRENT line's label
-     * here (#49 fix 4): the stored row never carries one — see
-     * QuoteBaseline::stamp() — so without this, LineReferenceViolation's
-     * messages fall back to a raw UUID from round two on.
+     * A baseline row matched by id takes the CURRENT line's identity and
+     * requested price (#49 fix 4, quote 1101): the stored row is only a price
+     * and a quantity — see QuoteBaseline::stamp() — so without this the
+     * checks would name a raw UUID and the ceiling would see no ask at all.
      *
      * @param list<PolicyLine> $current
      *
@@ -77,7 +98,7 @@ final readonly class QuoteBaselineLines
         foreach ($this->lines as $line) {
             $known[$line->lineItemId()] = true;
             $match = $currentById[$line->lineItemId()] ?? null;
-            $merged[] = $match === null ? $line : $line->withLabel($match->label());
+            $merged[] = $match === null ? $line : $line->asOriginalOf($match);
         }
 
         foreach ($current as $line) {

@@ -58,20 +58,19 @@ final readonly class QuoteLineSnapshot
         );
     }
 
-    /** #49: carries a live line's label onto a stored baseline row, which never has one. */
-    public function withLabel(?string $label): self
+    /**
+     * This stored baseline row as the original of `$live` (#49, quote 1101):
+     * the row is only a price and a quantity, so the identity the buyer sees
+     * and the price they are asking for both come from the live line.
+     */
+    public function asOriginalOf(self $live): self
     {
         return new self(
-            identity: new QuoteLineIdentity(
-                lineItemId: $this->identity->lineItemId,
-                label: $label,
-                productId: $this->identity->productId,
-                unit: $this->identity->unit,
-            ),
+            identity: $live->identity,
             quantity: $this->quantity,
             unitPriceNet: $this->unitPriceNet,
             totalNet: $this->totalNet,
-            requestedUnitPrice: $this->requestedUnitPrice,
+            requestedUnitPrice: $live->requestedUnitPrice,
         );
     }
 }
