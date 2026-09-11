@@ -18,6 +18,10 @@ final class A2cnBearerJwtTest extends TestCase
     private const BUYER = 'did:web:buyer.example';
     private const METHOD = self::BUYER . '#key-1';
     private const SELLER = 'did:web:shop.example';
+    private const MALLORY_METHOD = 'did:web:mallory.example#key-1';
+
+    /** @var ?array{private: string, public: string} */
+    private static ?array $malloryKeyPair = null;
 
     public function testItReturnsTheIssuerOfAValidToken(): void
     {
@@ -79,6 +83,17 @@ final class A2cnBearerJwtTest extends TestCase
         ];
         yield 'signed by the wrong key' => [self::token(privateKeyPem: ProtocolFixtures::keyPair()['private'])];
         yield 'claims tampered after signing' => [self::tokenWithTamperedClaims()];
+
+        // Otherwise perfect: correct aud, live exp, a kid that resolves and
+        // was genuinely signed with the key it names — Mallory's own. It can
+        // only be refused by the kid-controlled-by-iss check, because
+        // everything else about it verifies.
+        yield 'kid names a verification method under a DIFFERENT DID than iss claims' => [
+            self::token(
+                privateKeyPem: (self::$malloryKeyPair ??= ProtocolFixtures::keyPair())['private'],
+                kid: self::MALLORY_METHOD,
+            ),
+        ];
     }
 
     #[DataProvider('malformedTokens')]
@@ -102,13 +117,18 @@ final class A2cnBearerJwtTest extends TestCase
         int $exp = 4_000_000_000,
         #[\SensitiveParameter]
         ?string $privateKeyPem = null,
+        string $kid = self::METHOD,
     ): string {
-        return self::tokenWithClaims([
-            'iss' => $issuer,
-            'aud' => $audience,
-            'exp' => $exp,
-            'jti' => 'token-1',
-        ], $privateKeyPem);
+        return self::tokenWithClaims(
+            [
+                'iss' => $issuer,
+                'aud' => $audience,
+                'exp' => $exp,
+                'jti' => 'token-1',
+            ],
+            $privateKeyPem,
+            $kid,
+        );
     }
 
     /** A valid token whose claims segment was swapped after signing: same shape, different signed bytes. */
@@ -126,9 +146,13 @@ final class A2cnBearerJwtTest extends TestCase
     }
 
     /** @param array<string, mixed> $claims */
-    private static function tokenWithClaims(array $claims, #[\SensitiveParameter] ?string $privateKeyPem = null): string
-    {
-        $header = Base64Url::encode('{"alg":"ES256","typ":"JWT","kid":"' . self::METHOD . '"}');
+    private static function tokenWithClaims(
+        array $claims,
+        #[\SensitiveParameter]
+        ?string $privateKeyPem = null,
+        string $kid = self::METHOD,
+    ): string {
+        $header = Base64Url::encode('{"alg":"ES256","typ":"JWT","kid":"' . $kid . '"}');
         $encodedClaims = Base64Url::encode((string) json_encode($claims));
 
         $der = '';
@@ -146,15 +170,27 @@ final class A2cnBearerJwtTest extends TestCase
     {
         // A private const of this test class is not visible from an
         // anonymous class body, even one declared right here — so the
-        // expected method name is passed in rather than read via self::.
-        return new class(self::METHOD) extends DidWebResolver {
+        // expected method names are passed in rather than read via self::.
+        // Resolving Mallory's kid to a real key she controls is what makes
+        // the kid-under-a-different-DID case discriminating: the token must
+        // be genuinely, verifiably signed by the key its own kid names, so
+        // only the new iss/kid binding check can refuse it.
+        $malloryPem = (self::$malloryKeyPair ??= ProtocolFixtures::keyPair())['public'];
+
+        return new class(self::METHOD, self::MALLORY_METHOD, $malloryPem) extends DidWebResolver {
             public function __construct(
                 private readonly string $expectedMethod,
+                private readonly string $malloryMethod,
+                private readonly string $malloryPem,
             ) {}
 
             public function publicKeyPemFor(string $verificationMethod): ?string
             {
-                return $verificationMethod === $this->expectedMethod ? TestActSigner::publicKeyPem() : null;
+                return match ($verificationMethod) {
+                    $this->expectedMethod => TestActSigner::publicKeyPem(),
+                    $this->malloryMethod => $this->malloryPem,
+                    default => null,
+                };
             }
         };
     }

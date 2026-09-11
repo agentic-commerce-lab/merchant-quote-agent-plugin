@@ -32,6 +32,23 @@ use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
  * Returns the issuer or null. Null, not an exception: an unauthenticated
  * request is a 401, not an error in our own control flow.
  *
+ * `kid` must be controlled by `iss` — the same relationship
+ * `ActVerifier::verificationMethodMismatch()` enforces for acts, and for the
+ * same reason: without it, anyone holding a did:web key for ANY DID can mint
+ * a token that authenticates as ANY OTHER DID. Header `kid:
+ * did:web:mallory.example#key-1`, claims `iss: did:web:buyer.example`,
+ * signed with Mallory's own key — `publicKeyPemFor($kid)` resolves exactly
+ * the key the signature was made with, so the signature verifies, and
+ * without this check `issuerOf()` would hand back the buyer's DID anyway.
+ * That would nullify `InboundActEnvelope`'s §14.1 `sender_did_mismatch`
+ * binding, which trusts this method's return value to BE the authenticated
+ * sender.
+ *
+ * Checked before `publicKeyPemFor()`, not after, for the reason
+ * `ActVerifier`'s own step 0 gives: it is a free local comparison, and
+ * running it before the network hop means a token that could never pass
+ * never causes one.
+ *
  * ponytail: no (iss, jti) replay store, unlike the reference server. The act
  * append behind this token is idempotent on `message_id`, so a replayed
  * request writes nothing and answers the same 200. Add a store if a token
@@ -66,6 +83,10 @@ class A2cnBearerJwt
         /** @mago-expect analysis:possibly-null-argument */
         $unverifiedIssuer = A2cnBearerJwtClaims::unverifiedIssuerOf(Base64Url::decode($payload), $audience, $now);
         if ($kid === null || $unverifiedIssuer === null) {
+            return null;
+        }
+
+        if ($kid !== $unverifiedIssuer && !str_starts_with($kid, $unverifiedIssuer . '#')) {
             return null;
         }
 
