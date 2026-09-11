@@ -51,6 +51,7 @@ final class A2cnMessagesControllerTest extends TestCase
     public ?QuoteServicingLock $locks = null;
     public ?LockInterface $heldLock = null;
     public ?RecordingQuoteGateway $gateway = null;
+    public ?\Closure $onTerminalStateRead = null;
 
     protected function setUp(): void
     {
@@ -141,6 +142,35 @@ final class A2cnMessagesControllerTest extends TestCase
 
         \assert($this->locks !== null);
         self::assertTrue($this->locks->for(self::QUOTE_ID)->acquire());
+    }
+
+    /**
+     * The race Finding 5 closes: reading state before the lock and the chain
+     * after it let two overlapping requests each judge eligibility against a
+     * snapshot the other had already invalidated. A reader double that
+     * probes the lock non-blockingly at the moment it is called is the
+     * straightforward way to prove the read now happens after acquisition —
+     * a probe on the SAME quote id conflicts (returns false) only while the
+     * controller's own lock is held.
+     */
+    public function testTheTerminalStateIsReadAfterTheLockIsAcquired(): void
+    {
+        \assert($this->locks !== null);
+        $locks = $this->locks;
+        $lockWasHeldDuringRead = null;
+        $this->onTerminalStateRead = function () use ($locks, &$lockWasHeldDuringRead): void {
+            $lockWasHeldDuringRead = !$locks->for(self::QUOTE_ID)->acquire(false);
+        };
+
+        $response = $this->controller()->messages($this->session(), Request::create(
+            '/a2cn/sessions/' . $this->session() . '/messages',
+            'POST',
+            server: ['HTTP_AUTHORIZATION' => 'Bearer ' . self::TOKEN],
+            content: (string) json_encode(ProtocolFixtures::buyerAct(1, $this->session())),
+        ));
+
+        self::assertSame(201, $response->getStatusCode());
+        self::assertTrue($lockWasHeldDuringRead, 'the terminal state must be read while the servicing lock is held');
     }
 
     /** @param \Closure(self): Request $requestFactory */
@@ -340,6 +370,7 @@ final class A2cnMessagesControllerTest extends TestCase
         $customFields = $this->customFields;
         $throwOnState = $this->throwOnQuoteState;
         $throwOnCustomFields = $this->throwOnCustomFields;
+        $onTerminalStateRead = $this->onTerminalStateRead;
 
         $quotes = new class extends QuoteTerminalStateReader {
             public ?QuoteTerminalState $state = null;
@@ -347,31 +378,45 @@ final class A2cnMessagesControllerTest extends TestCase
             public ?array $customFields = [];
             public bool $throwOnState = false;
             public bool $throwOnCustomFields = false;
+            public ?\Closure $onRead = null;
 
             public function __construct() {}
 
+            /**
+             * State and chain now come from one read, so both throw-toggles
+             * — one used to belong to a separate customFieldsFor() call —
+             * fail the same single call. $onRead lets a test observe
+             * whether the servicing lock is held at the moment this runs.
+             */
             public function for(string $quoteId, \DateTimeImmutable $now): ?QuoteTerminalState
             {
-                if ($this->throwOnState) {
+                $this->onRead?->__invoke();
+
+                if ($this->throwOnState || $this->throwOnCustomFields) {
                     throw new QuoteStateUnavailable('boom');
                 }
 
-                return $this->state;
-            }
-
-            public function customFieldsFor(string $quoteId): ?array
-            {
-                if ($this->throwOnCustomFields) {
-                    throw new QuoteStateUnavailable('boom');
+                if ($this->state === null) {
+                    return null;
                 }
 
-                return $this->customFields;
+                return new QuoteTerminalState(
+                    state: $this->state->state,
+                    expired: $this->state->expired,
+                    quoteNumber: $this->state->quoteNumber,
+                    salesChannelId: $this->state->salesChannelId,
+                    acceptance: $this->state->acceptance,
+                    buyerOrganizationName: $this->state->buyerOrganizationName,
+                    orderNumber: $this->state->orderNumber,
+                    customFields: $this->customFields ?? [],
+                );
             }
         };
         $quotes->state = $state;
         $quotes->customFields = $customFields;
         $quotes->throwOnState = $throwOnState;
         $quotes->throwOnCustomFields = $throwOnCustomFields;
+        $quotes->onRead = $onTerminalStateRead;
 
         $identities = new class($this->hasIdentity) extends A2cnIdentityResolver {
             public function __construct(

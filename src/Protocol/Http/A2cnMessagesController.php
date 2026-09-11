@@ -36,6 +36,19 @@ use Symfony\Component\Routing\Attribute\Route;
  * CHANNEL signs under (the same identity the emitter uses, so the buyer's
  * `aud` matches the DID they discovered), and the whole append runs inside
  * the per-quote servicing lock.
+ *
+ * The quote's state and the chain it carries are read TOGETHER, inside the
+ * lock, from one `QuoteTerminalStateReader::for()` call — not one before the
+ * lock and another after. Reading state before the lock let two overlapping
+ * requests each judge eligibility against a snapshot the other had already
+ * invalidated: request A reads "live, no acceptance" and starts servicing,
+ * request B acquires the lock and appends the buyer's acceptance, A then
+ * acquires the lock, reads the now-closed chain, but still holds its stale
+ * "live" state and appends to a session that already closed. Reading both
+ * together, after the lock, means a request either sees the FULL post-close
+ * picture or none of it. This also happens to remove one of the two full
+ * `fetchSnapshot()` reads this route used to make per request — a real
+ * saving, but the read ordering is what the restructuring is actually for.
  */
 #[Route(defaults: [PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => ['storefront']])]
 final readonly class A2cnMessagesController
@@ -68,14 +81,35 @@ final readonly class A2cnMessagesController
             return self::refuse(new InboundActRefusal(404, 'not_found'));
         }
 
-        $now = new \DateTimeImmutable();
-
-        try {
-            $quote = $this->quotes->for($quoteId, $now);
-        } catch (QuoteStateUnavailable) {
-            return self::refuse(new InboundActRefusal(502, 'quote_state_unavailable'));
+        $lock = $this->locks->for($quoteId);
+        if (!$lock->acquire()) {
+            return self::refuse(new InboundActRefusal(409, 'session_busy'));
         }
 
+        try {
+            return $this->resolveAndAppend($quoteId, $sessionId, $request);
+        } catch (QuoteStateUnavailable) {
+            return self::refuse(new InboundActRefusal(502, 'quote_state_unavailable'));
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Everything that needs the quote's state — read once, inside the lock,
+     * per the class docblock. `identities->forSalesChannel()` and
+     * `tokens->issuerOf()` used to run before the lock existed at all,
+     * against a `$quote` read before the lock; they still run in the same
+     * order, just against the read that now happens where it can't go
+     * stale mid-request.
+     *
+     * @throws QuoteStateUnavailable
+     * @throws \Doctrine\DBAL\Exception
+     */
+    private function resolveAndAppend(string $quoteId, string $sessionId, Request $request): JsonResponse
+    {
+        $now = new \DateTimeImmutable();
+        $quote = $this->quotes->for($quoteId, $now);
         if ($quote === null) {
             return self::refuse(new InboundActRefusal(404, 'not_found'));
         }
@@ -98,14 +132,14 @@ final readonly class A2cnMessagesController
             return self::refuse(new InboundActRefusal(400, 'invalid_act'));
         }
 
-        return $this->appendUnderLock($act, $quoteId, $sessionId, $quote, $identity->did, $issuer);
+        return $this->respondToAppend($act, $quoteId, $sessionId, $quote, $identity->did, $issuer);
     }
 
     /**
      * @mago-expect lint:excessive-parameter-list
-     * All six fields are required to construct InboundActRequest inside the servicing lock.
+     * All six fields are required to construct InboundActRequest.
      */
-    private function appendUnderLock(
+    private function respondToAppend(
         Act $act,
         string $quoteId,
         string $sessionId,
@@ -113,28 +147,17 @@ final readonly class A2cnMessagesController
         string $sellerDid,
         string $issuerDid,
     ): JsonResponse {
-        $lock = $this->locks->for($quoteId);
-        if (!$lock->acquire()) {
-            return self::refuse(new InboundActRefusal(409, 'session_busy'));
-        }
-
-        try {
-            $chainSource = $this->quotes->customFieldsFor($quoteId);
-            $chain = ActChain::read($chainSource);
-            $result = $this->appender->append(new InboundActRequest(
-                act: $act,
-                chain: $chain,
-                quoteId: $quoteId,
-                sessionId: $sessionId,
-                quote: $quote,
-                sellerDid: $sellerDid,
-                issuerDid: $issuerDid,
-            ));
-        } catch (QuoteStateUnavailable) {
-            return self::refuse(new InboundActRefusal(502, 'quote_state_unavailable'));
-        } finally {
-            $lock->release();
-        }
+        // The chain comes from the SAME read as $quote's state — see the
+        // class docblock — not from a second customFieldsFor() fetch.
+        $result = $this->appender->append(new InboundActRequest(
+            act: $act,
+            chain: ActChain::read($quote->customFields),
+            quoteId: $quoteId,
+            sessionId: $sessionId,
+            quote: $quote,
+            sellerDid: $sellerDid,
+            issuerDid: $issuerDid,
+        ));
 
         if ($result instanceof InboundActRefusal) {
             return self::refuse($result);

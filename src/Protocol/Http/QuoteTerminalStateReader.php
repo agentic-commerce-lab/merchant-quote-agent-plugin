@@ -77,6 +77,7 @@ class QuoteTerminalStateReader
             acceptance: self::lastAcceptance($chain),
             buyerOrganizationName: $snapshot->identity->companyName,
             orderNumber: $this->orderNumber($snapshot->identity->orderId),
+            customFields: $snapshot->lifecycle->customFields,
         );
     }
 
