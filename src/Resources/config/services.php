@@ -106,11 +106,11 @@ use MerchantQuoteAgentPlugin\Protocol\Http\QuoteTerminalStateReader;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordPartiesResolver;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
+use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\A2cnSessionStamp;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActAppender;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActConformance;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\SessionQuoteLocator;
-use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
 use MerchantQuoteAgentPlugin\Protocol\Record\AuditLog;
@@ -256,10 +256,9 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
                 service(ActStoreInterface::class),
                 service('quote.repository')->ignoreOnInvalid(),
             ]);
-            $services->set(UcpQuoteController::class)->arg(
-                '$sessions',
-                service(A2cnSessionStamp::class),
-            )->tag('controller.service_arguments');
+            $services->set(UcpQuoteController::class)->arg('$sessions', service(A2cnSessionStamp::class))->tag(
+                'controller.service_arguments',
+            );
         }
 
         // Identity: bearer token → customer context. The reader is the only class
