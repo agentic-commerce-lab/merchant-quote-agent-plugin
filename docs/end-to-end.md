@@ -677,6 +677,29 @@ range, but 1.2 floors it at 0.0.5 and 1.3 at 0.0.6. This plugin floors it at
 0.0.6, the one version that satisfies both, so a shop that resolves this
 plugin's requirements can install either.
 
+**Composer-satisfiable is not the same as bootable, and AC 1.2 is the case
+where they differ.** AC 1.2 ships
+`src/Resources/config/packages/ucp_sdk.yaml` with `version: '2026-04-08'`, and
+SDK 0.0.6 turned that node into a validated one accepting only `2026-08-25`.
+So on a shop running the **public 1.2 release**, 0.0.6 resolves and then the
+container build dies:
+
+```
+Invalid configuration for path "ucp_sdk.version": Unsupported UCP protocol
+version "2026-04-08". This SDK release serves 2026-08-25.
+```
+
+That is a compile-time failure, so it takes down every console command and the
+storefront, not just a plugin. Reproduced on `merchant-quote-shop`: with SDK
+0.0.6 resolved, `plugin:install --activate SwagAgenticCommerce` (AC 1.2.0 from
+the GitHub release) failed in `MergeExtensionConfigurationPass`. AC 1.3 does
+not ship that file at all and sets `2026-08-25` in its `services.php`, which is
+why the same SDK is fine there.
+
+The practical consequence: **this plugin's 0.0.6 floor pairs it with AC 1.3.**
+A shop on the public 1.2 release has to move to 1.3, or hold the whole stack at
+SDK 0.0.5 and not install this plugin's current version.
+
 A shop still holding 0.0.5 refuses the AC 1.3 upload with *Required
 plugin/package "ucp-php-sdk/symfony-bundle >=0.0.6 <0.1.0" does not match
 installed version == 0.0.5.0* — Shopware validates an uploaded plugin's
@@ -688,6 +711,13 @@ the root instead:
 composer update ucp-php-sdk/core ucp-php-sdk/symfony-bundle
 bin/console plugin:refresh && bin/console plugin:install --activate SwagAgenticCommerce
 ```
+
+Name the packages, and do not reach for `-W` when Composer suggests it. On a
+shop tracking `shopware/core: dev-trunk` — `merchant-quote-shop` is one — `-W`
+also moves core, and a core that has drifted past the installed SwagCommercial
+fails the container build on an unrelated service (`subscription.cart.restorer`
+wanting a `$cartRuleLoader` argument core no longer has). Recovering means
+restoring `composer.lock` and running `composer install`.
 
 0.0.6 is additive over 0.0.5 across everything this plugin touches: every
 changed constructor gained its new parameter last and with a default.
@@ -709,6 +739,25 @@ UPDATE swag_agentic_commerce_ucp_config
 This plugin's own allow-any-agent switch is unrelated and lives in
 `system_config`; set it with `bin/console merchant-quote-agent:allow-any-agent`
 (§6), never by editing AC's row.
+
+**That fork build left a second value, and the validator reports one at a
+time**, so the 400 comes back naming a different path once `allowAnyAgent` is
+gone: `"quote"` inside `enabledCapabilities`, refused as *unsupported
+capability "quote"*. Upstream AC has no such capability name and needs none —
+this plugin publishes `com.shopware.quote` from its own profile contributor,
+independently of that list. Drop just that element and leave
+`identity_linking`, which upstream does support and the buyer-token flow needs:
+
+```sql
+UPDATE swag_agentic_commerce_ucp_config
+   SET config_json = JSON_REMOVE(
+         config_json,
+         JSON_UNQUOTE(JSON_SEARCH(config_json, 'one', 'quote', NULL, '$.enabledCapabilities[*]')))
+ WHERE JSON_SEARCH(config_json, 'one', 'quote', NULL, '$.enabledCapabilities[*]') IS NOT NULL;
+```
+
+Clear the cache after each statement, and check with `bin/console ucp:channels`
+— it reads the same config, so it fails until the row is clean.
 
 ### Uninstalling
 
