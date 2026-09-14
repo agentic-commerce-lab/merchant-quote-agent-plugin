@@ -10,6 +10,7 @@ use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnSigningKey;
 use MerchantQuoteAgentPlugin\Protocol\Identity\MissingSigningKey;
+use MerchantQuoteAgentPlugin\Protocol\Identity\SalesChannelCurrencyReader;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
 use PHPUnit\Framework\TestCase;
@@ -42,6 +43,15 @@ final class MandateDocumentResponderTest extends TestCase
             A2cnDiscoveryControllerFixtures::settingsWithAPolicy(),
             new SellerMandateFactory(),
             new MandateSigner(new ProtocolHash(new DefaultJsonCanonicalization()), $keys),
+            new class extends SalesChannelCurrencyReader {
+                public function __construct() {}
+
+                #[\Override]
+                public function isoFor(?string $salesChannelId): ?string
+                {
+                    return 'EUR';
+                }
+            },
         );
 
         $identity = A2cnIdentity::forHost('shop.example', 'key-1', 'Example Shop');

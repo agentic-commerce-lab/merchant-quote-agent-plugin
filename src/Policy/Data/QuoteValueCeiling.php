@@ -43,16 +43,31 @@ final readonly class QuoteValueCeiling
     }
 
     /**
-     * The single net/ISO pair to publish in the A2CN mandate, or null when
-     * there is no unambiguous one. `max_commitment_value` and
-     * `max_commitment_currency` are scalars in the spec, so a shop with two
-     * different per-currency ceilings has no honest answer and publishes
-     * neither.
+     * The net/ISO pair to publish in the A2CN mandate, or null when there is
+     * no honest one. `max_commitment_value` and `max_commitment_currency` are
+     * scalars in the spec, so this has to resolve to exactly one pair.
+     *
+     * Given the currency the reader trades in — the storefront's own, since
+     * the mandate is served per storefront — that currency answers it:
+     * `netFor()` covers both a ceiling written for it and the bare
+     * ANY_CURRENCY number the admin field produces. A currency with no
+     * ceiling of its own still yields null, because `netFor()` returning null
+     * is exactly the case both enforcement sites escalate rather than allow.
+     *
+     * Without a currency to anchor to, only an unambiguous single ISO-keyed
+     * entry can speak: a bare ANY_CURRENCY number names no currency, and two
+     * per-currency ceilings offer no way to choose.
      *
      * @return array{0: float, 1: string}|null
      */
-    public function soleCommitment(): ?array
+    public function commitmentFor(?string $currencyIso): ?array
     {
+        if ($currencyIso !== null) {
+            $net = $this->netFor($currencyIso);
+
+            return $net === null ? null : [$net, $currencyIso];
+        }
+
         if (\count($this->netByCurrencyIso) !== 1) {
             return null;
         }

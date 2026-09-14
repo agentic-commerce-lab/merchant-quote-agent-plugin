@@ -28,12 +28,29 @@ final readonly class SellerMandateFactory
     public const MANDATE_TYPE = 'declared';
 
     /**
+     * The tax basis every ceiling this plugin holds is denominated in. The
+     * merchant configures a NET total, so the mandate says so rather than
+     * leaving a European buyer to guess at a number that differs from the
+     * gross one by the VAT rate.
+     */
+    private const COMMITMENT_BASIS = 'net';
+
+    /**
+     * `$currencyIso` is the currency the storefront this mandate is being
+     * served for trades in, or null when it cannot be read. It is what turns
+     * the merchant's usual currency-agnostic ceiling into the scalar
+     * value/currency pair the spec asks for.
+     *
      * @return array<string, mixed>
      *
      * @throws NonFiniteAmount
      */
-    public function build(NegotiationPolicy $policy, A2cnIdentity $identity, \DateTimeImmutable $validFrom): array
-    {
+    public function build(
+        NegotiationPolicy $policy,
+        A2cnIdentity $identity,
+        \DateTimeImmutable $validFrom,
+        ?string $currencyIso = null,
+    ): array {
         $mandate = [
             'mandate_type' => self::MANDATE_TYPE,
             'agent_id' => $identity->agentId,
@@ -45,11 +62,12 @@ final readonly class SellerMandateFactory
             'negotiation_bands' => NegotiationBands::fromPolicy($policy),
         ];
 
-        $commitment = $policy->price->valueCeiling?->soleCommitment();
+        $commitment = $policy->price->valueCeiling?->commitmentFor($currencyIso);
         if ($commitment !== null) {
-            [$net, $currencyIso] = $commitment;
+            [$net, $iso] = $commitment;
             $mandate['max_commitment_value'] = MinorUnits::from($net);
-            $mandate['max_commitment_currency'] = $currencyIso;
+            $mandate['max_commitment_currency'] = $iso;
+            $mandate['max_commitment_basis'] = self::COMMITMENT_BASIS;
         }
 
         return $mandate;

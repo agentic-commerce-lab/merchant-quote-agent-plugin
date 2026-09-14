@@ -107,6 +107,7 @@ use MerchantQuoteAgentPlugin\Protocol\Http\RecordPartiesResolver;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
+use MerchantQuoteAgentPlugin\Protocol\Identity\SalesChannelCurrencyReader;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\A2cnSessionStamp;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActAppender;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActConformance;
@@ -481,6 +482,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         // identity, no SwagCommercial dependency, so imported outside the
         // CommercialAvailability gate in configureRoutes() — but inside this one.
         $services->set(SellerMandateFactory::class);
+        $services->set(SalesChannelCurrencyReader::class);
         $services->set(MandateSigner::class);
         $services->set(MandateDocumentResponder::class);
         $services->set(A2cnDiscoveryController::class)->tag('controller.service_arguments');
