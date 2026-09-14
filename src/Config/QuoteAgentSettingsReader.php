@@ -34,6 +34,7 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
         'counterOfferMaxPercent',
         'maxQuoteValueNet',
         'validityDays',
+        'notifyBuyerOnEscalation',
     ];
 
     public function __construct(

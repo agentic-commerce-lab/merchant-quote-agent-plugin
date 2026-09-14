@@ -52,7 +52,8 @@ final class NegotiationPipelineTest extends TestCase
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertSame(1, $harness->spy->calls, 'An out-of-authority ask must not reach the model twice.');
-        self::assertContains('addComment', $harness->gateway->calls, 'The escalation must still reach a human.');
+        self::assertContains('updateQuote', $harness->gateway->calls, 'The escalation must still mark the quote.');
+        self::assertNotContains('addComment', $harness->gateway->calls, 'Escalation is silent by default.');
         // What the gate actually buys. Without it the proposer's own
         // "no priced band decision" guard still keeps the call count at one,
         // but the reason degrades to needs_human_review — and QuoteEscalator
@@ -63,6 +64,24 @@ final class NegotiationPipelineTest extends TestCase
             $harness->gateway->customFieldWrites,
             'The band gate must escalate with the price reason, not a generic one.',
         );
+    }
+
+    public function testAnOutOfAuthorityAskNotifiesBuyerWhenConfigured(): void
+    {
+        $harness = PipelineHarness::with(['{"price":{"additionalDiscountPercent":40}}']);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('40% off or no deal', '2026-08-28 09:00:00'),
+        ]);
+
+        $settings = NegotiationFixture::settings(notifyBuyerOnEscalation: true);
+        if ($harness->settingsSource !== null) {
+            $harness->settingsSource->settings = $settings;
+        }
+
+        $outcome = $harness->pipeline->service($snapshot, $harness->gateway, $settings, NegotiationFixture::context());
+
+        self::assertSame(NegotiationOutcome::Escalated, $outcome);
+        self::assertContains('addComment', $harness->gateway->calls);
         // The band gate escalates through OfferRound::escalated(), which
         // holds no recorder of its own — the deterministic gate's own verdict
         // must still reach the audit trail, not just the buyer-facing marker.
@@ -204,7 +223,8 @@ final class NegotiationPipelineTest extends TestCase
         );
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
-        self::assertContains('addComment', $harness->gateway->calls);
+        self::assertContains('updateQuote', $harness->gateway->calls);
+        self::assertNotContains('addComment', $harness->gateway->calls, 'Escalation is silent by default.');
         // ModelUnavailable is caught inside run(), so $error never reaches
         // record() and errorClass/errorChain stay null — without this reason
         // reaching the draft, a provider outage is indistinguishable from any

@@ -119,6 +119,7 @@ final class NegotiationFixture
         float $maxDiscountPercent = 10.0,
         ?float $counterOfferMaxPercent = 20.0,
         ?string $strategy = null,
+        bool $notifyBuyerOnEscalation = false,
     ): QuoteAgentSettings {
         return new QuoteAgentSettings(
             new NegotiationPolicy(price: new QuoteLimits(
@@ -128,6 +129,7 @@ final class NegotiationFixture
             )),
             llm: self::modelAccess(),
             strategyPrompt: $strategy,
+            notifyBuyerOnEscalation: $notifyBuyerOnEscalation,
         );
     }
 

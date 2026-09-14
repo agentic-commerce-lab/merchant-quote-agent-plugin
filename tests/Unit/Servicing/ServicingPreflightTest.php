@@ -38,7 +38,7 @@ final class ServicingPreflightTest extends TestCase
         self::assertSame([], $gateway->calls, 'A paused agent must not touch the quote.');
     }
 
-    public function testAMisconfiguredChannelEscalatesTheQuoteAndReturnsNull(): void
+    public function testAMisconfiguredChannelEscalatesTheQuoteQuietlyByDefaultAndReturnsNull(): void
     {
         $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
 
@@ -47,13 +47,43 @@ final class ServicingPreflightTest extends TestCase
         })->check($gateway, QuoteSnapshotFixture::snapshot());
 
         self::assertNull($result);
+        self::assertSame(['updateQuote'], $gateway->calls, 'Misconfigured channel escalates quietly by default.');
+        self::assertSame(
+            [QuoteEscalator::MARKER_KEY => 'not_configured'],
+            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
+        );
+        self::assertEmpty($gateway->comments);
+    }
+
+    public function testAMisconfiguredChannelWithBuyerNotificationEnabledWritesCommentAndMarksQuote(): void
+    {
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+        $settingsSource = new class implements \MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource {
+            #[\Override]
+            public function forSalesChannel(?string $salesChannelId): ?\MerchantQuoteAgentPlugin\Config\QuoteAgentSettings
+            {
+                return new \MerchantQuoteAgentPlugin\Config\QuoteAgentSettings(
+                    new \MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy(
+                        new \MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits(maxDiscountPercent: 5.0),
+                    ),
+                    new \MerchantQuoteAgentPlugin\Config\ModelAccess('key', 'https://example.com', 'model'),
+                    null,
+                    notifyBuyerOnEscalation: true,
+                );
+            }
+        };
+        $escalator = new QuoteEscalator(settingsSource: $settingsSource);
+
+        $result = ServicingSettingsFixture::preflight(static function (): ?QuoteAgentSettings {
+            throw new InvalidQuoteAgentConfiguration(['No LLM API key is set.']);
+        }, $escalator)->check($gateway, QuoteSnapshotFixture::snapshot());
+
+        self::assertNull($result);
         self::assertSame(['addComment', 'updateQuote'], $gateway->calls);
         self::assertSame(
             [QuoteEscalator::MARKER_KEY => 'not_configured'],
             ServicingHandlerFixture::lastCustomFieldWrite($gateway),
         );
-        // The other end of the leak: the escalator refuses to print $detail,
-        // and the preflight must not hand it the problems in the first place.
         self::assertStringNotContainsString('API key', implode("\n", $gateway->comments));
     }
 }

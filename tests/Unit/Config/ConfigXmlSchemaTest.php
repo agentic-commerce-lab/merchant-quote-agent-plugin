@@ -64,4 +64,23 @@ final class ConfigXmlSchemaTest extends TestCase
 
         self::assertTrue($valid);
     }
+
+    public function testConfigXmlDeclaresNotifyBuyerOnEscalation(): void
+    {
+        $configPath = __DIR__ . '/../../../src/Resources/config/config.xml';
+        $document = new DOMDocument();
+        self::assertTrue($document->load($configPath));
+
+        $xpath = new \DOMXPath($document);
+        $nodes = $xpath->query('//input-field[name="notifyBuyerOnEscalation"]');
+        self::assertNotNull($nodes);
+        self::assertSame(1, $nodes->count());
+
+        $field = $nodes->item(0);
+        self::assertInstanceOf(\DOMElement::class, $field);
+        self::assertSame('bool', $field->getAttribute('type'));
+
+        $default = $xpath->query('defaultValue', $field)?->item(0)?->textContent;
+        self::assertSame('false', $default);
+    }
 }

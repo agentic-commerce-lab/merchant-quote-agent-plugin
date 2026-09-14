@@ -26,10 +26,11 @@ final readonly class QuoteAgentSettings
         public NegotiationPolicy $policy,
         public ModelAccess $llm,
         public ?string $strategyPrompt,
+        public bool $notifyBuyerOnEscalation = false,
     ) {}
 
     public function withPolicy(NegotiationPolicy $policy): self
     {
-        return new self($policy, $this->llm, $this->strategyPrompt);
+        return new self($policy, $this->llm, $this->strategyPrompt, $this->notifyBuyerOnEscalation);
     }
 }

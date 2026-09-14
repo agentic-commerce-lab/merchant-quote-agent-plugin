@@ -688,7 +688,10 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     }
 
     // Whether a quote may be serviced at all, and with which settings (#5).
-    $services->set(QuoteEscalator::class)->args([service(EscalationNotifierInterface::class)]);
+    $services->set(QuoteEscalator::class)->args([
+        service(EscalationNotifierInterface::class),
+        service(QuoteAgentSettingsSource::class),
+    ]);
     $services->set(ServicingPreflight::class)->args([
         service(QuoteAgentSettingsSource::class),
         service(QuoteEscalator::class),

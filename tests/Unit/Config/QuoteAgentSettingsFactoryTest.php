@@ -137,4 +137,15 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         self::assertNotNull($settings);
         self::assertSame('gpt-4o-mini', $settings->llm->model);
     }
+
+    public function testFactoryParsesNotifyBuyerOnEscalation(): void
+    {
+        $settingsDefault = self::build();
+        self::assertNotNull($settingsDefault);
+        self::assertFalse($settingsDefault->notifyBuyerOnEscalation);
+
+        $settingsEnabled = self::build(['notifyBuyerOnEscalation' => true]);
+        self::assertNotNull($settingsEnabled);
+        self::assertTrue($settingsEnabled->notifyBuyerOnEscalation);
+    }
 }
