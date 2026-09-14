@@ -79,8 +79,7 @@ and class ship together (AGENTS.md).
 | --- | --- | --- |
 | `id` | `BINARY(16)` | PK |
 | `name` | `VARCHAR(255)` | not null |
-| `description` | `LONGTEXT` | the brief's "Purpose" line; blank for merchant strategies unless set |
-| `builtin_key` | `VARCHAR(64)` | `margin_defender` / `fast_close` / `relationship_builder`; null for merchant-owned; unique |
+| `description` | `LONGTEXT` | the brief's "Purpose" line; merchant-authored and optional for custom strategies. For the three built-ins this holds the English text, and the admin prefers the snippet keyed on the row's id — see below |
 | `archived_at` | `DATETIME(3)` | null while live |
 | `created_at` / `updated_at` | `DATETIME(3)` | |
 
@@ -111,8 +110,12 @@ A `PreWriteValidationEvent` subscriber, `Strategy\StrategyWriteGuard`:
 1. `merchant_quote_agent_strategy_version` rejects `UPDATE` and `DELETE`
    unconditionally. Every audit guarantee in this design rests on version rows
    being immutable.
-2. `merchant_quote_agent_strategy` rows with a non-null `builtin_key` reject
-   `DELETE` and any change to `name` or `builtin_key`.
+2. `merchant_quote_agent_strategy` rows whose id is in
+   `BuiltInStrategies::IDS` reject `DELETE` and every field update. Stating it
+   as total immutability rather than enumerating protected fields keeps the
+   guard one line and cannot drift as columns are added. Revising a built-in
+   later appends to the *version* table, so nothing legitimate needs to write
+   these rows after seeding.
 
 UI-only guards would not hold. A token with entity write privileges can PATCH
 the entity directly, and the admin UI is not in that path.
@@ -128,6 +131,34 @@ and old audit rows keep resolving to the text that was actually sent.
 
 The three prompts come from the brief verbatim. `Strategy\BuiltInStrategies`
 holds them as constants; the seeding migration reads that class.
+
+### Identified by fixed ids, not by a column
+
+The three rows are seeded with hardcoded UUIDs, declared in
+`BuiltInStrategies` alongside their prompts:
+
+```php
+public const MARGIN_DEFENDER = '...';
+public const IDS = [self::MARGIN_DEFENDER, self::FAST_CLOSE, self::RELATIONSHIP_BUILDER];
+```
+
+There is deliberately **no `builtin_key` column**. `in_array($id,
+BuiltInStrategies::IDS, true)` answers "is this built-in" for the write guard,
+and the administration holds the same three constants for the badge, the
+read-only editor and the snippet lookup. The id is also what makes the seeding
+migration re-runnable and gives a future built-in revision a stable row to
+append a version to.
+
+This is core's own idiom for seeded rows — `Defaults::LANGUAGE_SYSTEM`,
+`Defaults::LIVE_VERSION`, `Defaults::CURRENCY` and
+`Defaults::SALES_CHANNEL_TYPE_STOREFRONT` are all hardcoded UUIDs
+(`vendor/shopware/core/Defaults.php:18-29`).
+
+Two things fall out of it. A column that would be null for every row but three
+does not exist. And identity never derives from a display string: `name` is not
+unique-constrained — the migration below deliberately produces "Custom strategy
+2" — so a merchant who names their own strategy "Fast close" gets a strategy
+called Fast close, not one that is silently read-only and un-renameable.
 
 **Byte-exactness is load-bearing and easy to lose.** The brief's text contains
 typographic apostrophes — `buyer’s` in Margin defender, `merchant’s` and
@@ -176,7 +207,12 @@ Keep the response warm, specific, and professional. Do not mention internal poli
 
 The prompts are English only and are not translated. The brief requires the
 built-ins to load these exact texts, and a translated prompt is a different
-prompt. Names and descriptions are snippets and are translated.
+prompt.
+
+The three built-ins' names and descriptions *are* translated, via snippets
+keyed on their fixed ids. Merchant-created strategies need none of this: their
+name and description are merchant-authored text, shown as stored. Translation
+was only ever a concern for the three seeded rows.
 
 ## Configuration
 
@@ -325,8 +361,8 @@ prompt expandable.
 
 The brief asks to persist source type, template or strategy id, display name
 and prompt snapshot per negotiation. One column satisfies all four: the version
-row carries the prompt and its `version`, and its strategy carries the name and
-the `builtin_key` that distinguishes built-in from custom. Normalising rather
+row carries the prompt and its `version`, and its strategy carries the name —
+with its id saying whether it is one of the three built-ins. Normalising rather
 than copying is the point of versioning — a name corrected for a typo then
 reads correctly on every past decision, while the prompt that was actually sent
 stays frozen.
