@@ -46,10 +46,60 @@ final readonly class Act
      */
     public const MAX_ENCODED_BYTES = 65536;
 
+    private const ACCEPTANCE = 'acceptance';
+
+    /** Every act says at least this much about itself, whatever its type. */
+    private const REQUIRED_STRINGS = [
+        'message_type',
+        'message_id',
+        'session_id',
+        'sender_did',
+        'sender_verification_method',
+        'timestamp',
+    ];
+
+    /** How an offer, a counteroffer — and our own acceptance — prove themselves. */
+    private const ACT_PROOF = ['protocol_act_hash', 'protocol_act_signature'];
+
+    /** How A2CN's acceptance envelope proves itself instead. See AcceptanceView. */
+    private const ACCEPTANCE_PROOF = ['accepted_protocol_act_hash', 'acceptance_signature'];
+
     /** @param array<string, mixed> $raw */
     private function __construct(
         private array $raw,
     ) {}
+
+    /**
+     * An act must carry one of the two proof shapes, and only an `acceptance`
+     * may carry the second. Without the type guard, any message could drop its
+     * protocol act signature and claim the acceptance envelope's fields
+     * instead, which would let an unsignable offer through the door.
+     *
+     * @param array<array-key, mixed> $raw
+     */
+    private static function carriesProof(array $raw): bool
+    {
+        if (self::allStrings($raw, self::ACT_PROOF)) {
+            return true;
+        }
+
+        return ($raw['message_type'] ?? null) === self::ACCEPTANCE && self::allStrings($raw, self::ACCEPTANCE_PROOF);
+    }
+
+    /**
+     * @param array<array-key, mixed> $raw
+     * @param list<string>            $fields
+     */
+    private static function allStrings(array $raw, array $fields): bool
+    {
+        foreach ($fields as $field) {
+            if (!\is_string($raw[$field] ?? null)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     /**
      * @param array<array-key, mixed> $raw
@@ -61,19 +111,14 @@ final readonly class Act
             return null;
         }
 
-        foreach ([
-            'message_type',
-            'message_id',
-            'session_id',
-            'sender_did',
-            'sender_verification_method',
-            'timestamp',
-            'protocol_act_hash',
-            'protocol_act_signature',
-        ] as $field) {
+        foreach (self::REQUIRED_STRINGS as $field) {
             if (!\is_string($raw[$field] ?? null)) {
                 return null;
             }
+        }
+
+        if (!self::carriesProof($raw)) {
+            return null;
         }
 
         $sequence = $raw['sequence_number'] ?? null;
@@ -125,6 +170,12 @@ final readonly class Act
         return $this->string('timestamp');
     }
 
+    /**
+     * The digest of THIS act. Empty for A2CN's acceptance envelope, which
+     * carries no hash of itself — only `accepted_protocol_act_hash`, the
+     * digest of the OFFER it accepts, which is a different claim and must
+     * never be substituted here.
+     */
     public function hash(): string
     {
         return $this->string('protocol_act_hash');
@@ -132,7 +183,9 @@ final readonly class Act
 
     public function signature(): string
     {
-        return $this->string('protocol_act_signature');
+        return $this->isAcceptanceEnvelope()
+            ? $this->string(self::ACCEPTANCE_PROOF[1])
+            : $this->string('protocol_act_signature');
     }
 
     public function sequenceNumber(): int
@@ -161,6 +214,48 @@ final readonly class Act
         $value = $this->raw['expires_at'] ?? null;
 
         return \is_string($value) ? $value : null;
+    }
+
+    /**
+     * The two fields of A2CN's acceptance envelope, read literally.
+     *
+     * Literally, because AcceptanceView hashes them: a fallback to
+     * `in_reply_to` here would change the bytes we verify against and refuse a
+     * signature the counterparty made correctly. Callers that merely want to
+     * report which offer was accepted do their own widening — see
+     * TransactionRecord.
+     */
+    public function acceptedOfferId(): ?string
+    {
+        return $this->optionalString('accepted_offer_id');
+    }
+
+    public function acceptedProtocolActHash(): ?string
+    {
+        return $this->optionalString('accepted_protocol_act_hash');
+    }
+
+    /** The message id this act answers, on every act that is not an acceptance. */
+    public function inReplyTo(): ?string
+    {
+        return $this->optionalString('in_reply_to');
+    }
+
+    /**
+     * True for A2CN's own acceptance envelope, which proves itself with
+     * `acceptance_signature` over AcceptanceView rather than with
+     * `protocol_act_signature` over SignedView.
+     */
+    public function isAcceptanceEnvelope(): bool
+    {
+        return $this->messageType() === self::ACCEPTANCE && \is_string($this->raw[self::ACCEPTANCE_PROOF[1]] ?? null);
+    }
+
+    private function optionalString(string $field): ?string
+    {
+        $value = $this->raw[$field] ?? null;
+
+        return \is_string($value) && $value !== '' ? $value : null;
     }
 
     /** @return array<string, mixed>|null */
