@@ -90,6 +90,7 @@ use MerchantQuoteAgentPlugin\Protocol\Check\SessionIdCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\TimestampFormatCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\TimestampMonotonicityCheck;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
+use MerchantQuoteAgentPlugin\Protocol\Did\DidWebKeyCache;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ActSigner;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ChainMirror;
@@ -433,10 +434,16 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
             HttpClient::class,
             'create',
         ]);
+        // `cache.object` is Shopware's shared application pool, so the entry
+        // outlives the request that made it — which is the whole point: see
+        // DidWebKeyCache.
+        $services->set(DidWebKeyCache::class)->args([service('cache.object')]);
         $services->set(DidWebResolver::class)->args([
             service('merchant_quote_agent.a2cn.http_client'),
             service(SigningKeyManagerInterface::class),
             service('logger'),
+            null,
+            service(DidWebKeyCache::class),
         ]);
 
         // The evidence checks and the inspector that runs them. Order is
