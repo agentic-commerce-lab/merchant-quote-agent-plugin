@@ -17,7 +17,7 @@
         <input-field type="password">
             <name>llmApiKey</name>
             <label>LLM API key</label>
-            <helpText>Your own key. Stored in system_config, obscured here but NOT encrypted at rest.</helpText>
+            <helpText>Your own key. Stored in system_config, obscured here but NOT encrypted at rest. Set MQA_LLM_API_KEY in the environment instead to keep it out of the database entirely — when that is set, this field is ignored.</helpText>
         </input-field>
         <input-field type="text">
             <name>llmBaseUrl</name>

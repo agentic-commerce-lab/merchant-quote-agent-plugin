@@ -284,6 +284,11 @@ API key all live in your own Shopware installation. Nothing goes to us.
 The field hides it on screen, but it is not encrypted at rest — the same as every
 other secret a Shopware extension holds. Treat database access accordingly.
 
+If you can set environment variables on your shop, set `MQA_LLM_API_KEY`
+instead. The agent prefers it over this field, and the key then never reaches
+the database at all — neither a database dump nor an admin API token with
+`system_config:read` can reveal it.
+
 ---
 
 ## Day to day

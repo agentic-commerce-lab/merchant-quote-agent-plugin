@@ -19,6 +19,11 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
  * configure once and override for a pilot channel.
  *
  * Every value is read and passed on untouched; the meaning is the factory's.
+ *
+ * The LLM API key is the one value that may not come from the configuration
+ * store at all: `MQA_LLM_API_KEY` overrides it when set. That is injected as a
+ * container parameter rather than read with `getenv()`, the same reason
+ * `LOCK_DSN` is.
  */
 final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSource
 {
@@ -40,6 +45,8 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
     public function __construct(
         private SystemConfigService $config,
         private QuoteAgentSettingsFactory $factory,
+        #[\SensitiveParameter]
+        private ?string $envApiKey = null,
     ) {}
 
     /** @throws InvalidQuoteAgentConfiguration */
@@ -50,6 +57,15 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
 
         foreach (self::KEYS as $key) {
             $raw[$key] = $this->config->get(self::DOMAIN . $key, $salesChannelId);
+        }
+
+        // The environment wins when it is set, so a merchant who can set it
+        // keeps the key out of the database entirely -- out of reach of a
+        // `system_config:read` token and of a database dump alike. A blank or
+        // whitespace-only value is treated as unset rather than as an
+        // instruction to blank the configured key.
+        if ($this->envApiKey !== null && trim($this->envApiKey) !== '') {
+            $raw['llmApiKey'] = $this->envApiKey;
         }
 
         return $this->factory->fromValues($raw);

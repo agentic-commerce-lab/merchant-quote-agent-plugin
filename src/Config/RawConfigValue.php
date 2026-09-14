@@ -52,7 +52,9 @@ final class RawConfigValue
         $problems = [];
 
         if ($apiKey === '') {
-            $problems[] = 'No LLM API key is set. The agent cannot interpret a buyer\'s ask without one.';
+            $problems[] =
+                'No LLM API key is set. Set one in the plugin configuration, or set '
+                . 'MQA_LLM_API_KEY in the environment. The agent cannot interpret a buyer\'s ask without one.';
         }
 
         if (self::string($raw, 'llmModel') === null) {

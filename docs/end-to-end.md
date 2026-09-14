@@ -443,7 +443,7 @@ first.
 | Field | Default | Notes |
 | --- | --- | --- |
 | `enabled` | `false` | While off the agent queues nothing and writes nothing. |
-| `llmApiKey` | — | Yours. Stored in `system_config`, obscured in the form but **not encrypted at rest**. |
+| `llmApiKey` | — | Yours. Stored in `system_config`, obscured in the form but **not encrypted at rest**. Overridden by `MQA_LLM_API_KEY` in the environment, which keeps it out of the database. |
 | `llmBaseUrl` | `https://api.openai.com/v1` | Point at Azure, your own gateway, or a self-hosted model. |
 | `llmModel` | — | Required. No default, because guessing one picks a price and quality point for you. |
 | `negotiationStrategy` | — | Tone and posture. Can never move a cap. |
