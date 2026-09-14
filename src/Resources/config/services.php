@@ -131,6 +131,8 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
+use MerchantQuoteAgentPlugin\Strategy\Strategy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyVersion;
 use MerchantQuoteAgentPlugin\Ucp\Profile\A2cnMandateProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\Controller\UcpQuoteController;
@@ -350,6 +352,13 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // and adds the `shopware.entity` tag; this set() call only has to make
     // the class a service for that to fire.
     $services->set(QuoteDecisionRecord::class);
+
+    // The strategy library (Task 2). Registered unconditionally like
+    // QuoteDecisionRecord — they are written by the administration through the
+    // admin API regardless of whether SwagCommercial is licensed. Autoconfiguration
+    // reads the #[Entity] attributes and adds the `shopware.entity` tag.
+    $services->set(Strategy::class);
+    $services->set(StrategyVersion::class);
 
     // The repository is created by the DAL from the #[Entity] attribute; it
     // is not autowirable by type, so name it.
