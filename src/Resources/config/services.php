@@ -133,6 +133,7 @@ use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
 use MerchantQuoteAgentPlugin\Strategy\Strategy;
 use MerchantQuoteAgentPlugin\Strategy\StrategyVersion;
+use MerchantQuoteAgentPlugin\Strategy\StrategyWriteGuard;
 use MerchantQuoteAgentPlugin\Ucp\Profile\A2cnMandateProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\Controller\UcpQuoteController;
@@ -359,6 +360,15 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // reads the #[Entity] attributes and adds the `shopware.entity` tag.
     $services->set(Strategy::class);
     $services->set(StrategyVersion::class);
+
+    // Enforces the two invariants #[Protection] was deliberately left off of:
+    // a version row is never updated or deleted, and a built-in strategy row
+    // is never updated or deleted. Registered unconditionally and outside the
+    // SwagCommercial guard below, like the entities themselves -- an admin API
+    // token bypasses the administration, so the rule has to hold server-side
+    // on any shop where these tables exist. autoconfigure() picks up
+    // EventSubscriberInterface, so no explicit tag.
+    $services->set(StrategyWriteGuard::class);
 
     // The repository is created by the DAL from the #[Entity] attribute; it
     // is not autowirable by type, so name it.
