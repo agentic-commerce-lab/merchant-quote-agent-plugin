@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Protocol\Check;
 
+use MerchantQuoteAgentPlugin\Protocol\Act\AcceptanceView;
 use MerchantQuoteAgentPlugin\Protocol\Act\Act;
 use MerchantQuoteAgentPlugin\Protocol\Act\SignedView;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\CompactJws;
@@ -50,9 +51,22 @@ class ActVerifier
             return $mismatch;
         }
 
-        $expected = $this->hash->of(SignedView::of($act));
-        if ($expected !== $act->hash()) {
-            return \sprintf('carries a protocol_act_hash that does not cover it (expected %s)', $expected);
+        // Which object this act signed, and therefore which digest its
+        // signature must carry. An A2CN acceptance signs AcceptanceView's five
+        // fields into `acceptance_signature`; everything else signs
+        // SignedView's nine into `protocol_act_signature`.
+        if ($act->isAcceptanceEnvelope()) {
+            $expected = $this->hash->of(AcceptanceView::of($act));
+        } else {
+            $expected = $this->hash->of(SignedView::of($act));
+
+            // Only the protocol act object is bound to a hash ON the act. An
+            // acceptance envelope carries no digest of itself, so there is
+            // nothing here to cross-check — the signature below is the whole
+            // binding.
+            if ($expected !== $act->hash()) {
+                return \sprintf('carries a protocol_act_hash that does not cover it (expected %s)', $expected);
+            }
         }
 
         $pem = $this->resolver->publicKeyPemFor($act->verificationMethod());

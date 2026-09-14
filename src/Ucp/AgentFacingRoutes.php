@@ -37,6 +37,14 @@ final class AgentFacingRoutes
         // buyer agents, and a shop with no UCP surface has none to answer.
         $routes->import($pluginPath . '/Protocol/Http/A2cnDiscoveryController.php', 'attribute');
 
+        // Unconditional, like the discovery document above and for its sake:
+        // discovery advertises `{base}/a2cn` as this agent's endpoint whether
+        // or not the quote backend is licensed, so every path beneath it owes
+        // a protocol answer rather than a storefront page. Its route sorts
+        // last by priority, so importing it early costs the real routes
+        // nothing.
+        $routes->import($pluginPath . '/Protocol/Http/A2cnNotFoundController.php', 'attribute');
+
         if (!CommercialAvailability::isAvailableByClass()) {
             return;
         }

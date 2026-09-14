@@ -44,22 +44,39 @@ class DidWebResolver
 
     private readonly DidWebDocumentFetcher $fetcher;
 
+    private readonly DidWebKeyCache $cache;
+
+    /**
+     * `$cache` last and nullable so the unit tests, which count fetches, can
+     * leave it out and get the un-cached resolver they are measuring.
+     */
     public function __construct(
         HttpClientInterface $client,
         private readonly SigningKeyManagerInterface $keys,
         private readonly LoggerInterface $logger,
         ?\Closure $dnsResolver = null,
+        ?DidWebKeyCache $cache = null,
     ) {
         $this->fetcher = new DidWebDocumentFetcher($client, $logger, $dnsResolver);
+        $this->cache = $cache ?? new DidWebKeyCache();
     }
 
+    /**
+     * Two layers, and both earn their place: `$memo` keeps one request from
+     * resolving the same method twice, and DidWebKeyCache keeps the NEXT
+     * request from going to the network at all. Without the second, a fresh
+     * container per request meant every act verification was a fresh HTTPS
+     * round trip to the counterparty.
+     */
     public function publicKeyPemFor(string $verificationMethod): ?string
     {
         if (\array_key_exists($verificationMethod, $this->memo)) {
             return $this->memo[$verificationMethod];
         }
 
-        return $this->memo[$verificationMethod] = $this->resolve($verificationMethod);
+        return $this->memo[$verificationMethod] = $this->cache->through($verificationMethod, fn(): ?string => $this->resolve(
+            $verificationMethod,
+        ));
     }
 
     private function resolve(string $verificationMethod): ?string

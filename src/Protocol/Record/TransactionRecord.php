@@ -44,21 +44,22 @@ final readonly class TransactionRecord
      * @param list<Act> $acts
      *
      * @return array<string, mixed>
-     *
-     * @mago-expect lint:excessive-parameter-list
-     * End-of-session record assembly gathers inputs from across the bridge and protocol:
-     * parties, chain acts, acceptance act, subject reference, generation timestamp, and
-     * the resulting order reference when converted.
      */
     public function build(
         RecordParties $parties,
         array $acts,
         Act $acceptance,
         RecordSubject $subject,
-        string $generatedAt,
         ?string $orderReference = null,
     ): array {
         $selection = new OfferSelection($acts);
+
+        // Read off the acceptance, never off a clock. Both parties derive this
+        // record from the same acts and must reach the same `record_hash`; a
+        // wall-clock reading here would differ between them, and would differ
+        // between two requests to us seconds apart. The reference
+        // implementation takes the same field for the same reason.
+        $generatedAt = $acceptance->timestamp();
 
         $record = [
             'record_type' => 'a2cn_transaction_record',
@@ -117,6 +118,19 @@ final readonly class TransactionRecord
             'final_acceptance' => [
                 'message_id' => $acceptance->messageId(),
                 'sender_did' => $acceptance->senderDid(),
+                'round_number' => $acceptance->roundNumber(),
+                'sequence_number' => $acceptance->sequenceNumber(),
+                // What the buyer said it was accepting, in either of the two
+                // ways an acceptance can say it: A2CN's envelope names
+                // `accepted_offer_id`, one carried on the offer envelope names
+                // `in_reply_to`. Only when it names no offer at all do we
+                // substitute the one the chain makes final.
+                'accepted_offer_id' =>
+                    $acceptance->acceptedOfferId() ?? $acceptance->inReplyTo() ?? OptionalAct::stringOr(
+                        $selection->finalOffer,
+                        static fn(Act $act): string => $act->messageId(),
+                        '',
+                    ),
                 'accepted_protocol_act_hash' => OptionalAct::stringOr(
                     $selection->finalOffer,
                     static fn(Act $act): string => $act->hash(),
@@ -125,7 +139,11 @@ final readonly class TransactionRecord
                 'acceptance_signature' => $acceptance->signature(),
             ],
             ...($orderReference === null ? [] : ['order_reference' => $orderReference]),
-            'offer_chain_hash' => $this->chainHash->of($acts),
+            // The OFFERS, not every act. An acceptance names the offer it
+            // accepts (`accepted_protocol_act_hash` above) rather than adding
+            // a position of its own, so folding it in here would leave the two
+            // parties hashing different lists.
+            'offer_chain_hash' => $this->chainHash->of($selection->offers),
             // Hashed with this field blank, so a third party can recompute it
             // by blanking it again.
             'record_hash' => '',

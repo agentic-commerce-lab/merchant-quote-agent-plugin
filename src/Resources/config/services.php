@@ -90,6 +90,7 @@ use MerchantQuoteAgentPlugin\Protocol\Check\SessionIdCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\TimestampFormatCheck;
 use MerchantQuoteAgentPlugin\Protocol\Check\TimestampMonotonicityCheck;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
+use MerchantQuoteAgentPlugin\Protocol\Did\DidWebKeyCache;
 use MerchantQuoteAgentPlugin\Protocol\Did\DidWebResolver;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ActSigner;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ChainMirror;
@@ -100,6 +101,7 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnBearerJwt;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnDiscoveryController;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnMessagesController;
+use MerchantQuoteAgentPlugin\Protocol\Http\A2cnNotFoundController;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnRecordsController;
 use MerchantQuoteAgentPlugin\Protocol\Http\MandateDocumentResponder;
 use MerchantQuoteAgentPlugin\Protocol\Http\QuoteTerminalStateReader;
@@ -107,6 +109,7 @@ use MerchantQuoteAgentPlugin\Protocol\Http\RecordPartiesResolver;
 use MerchantQuoteAgentPlugin\Protocol\Http\RecordResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
+use MerchantQuoteAgentPlugin\Protocol\Identity\SalesChannelCurrencyReader;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\A2cnSessionStamp;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActAppender;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActConformance;
@@ -431,10 +434,16 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
             HttpClient::class,
             'create',
         ]);
+        // `cache.object` is Shopware's shared application pool, so the entry
+        // outlives the request that made it — which is the whole point: see
+        // DidWebKeyCache.
+        $services->set(DidWebKeyCache::class)->args([service('cache.object')]);
         $services->set(DidWebResolver::class)->args([
             service('merchant_quote_agent.a2cn.http_client'),
             service(SigningKeyManagerInterface::class),
             service('logger'),
+            null,
+            service(DidWebKeyCache::class),
         ]);
 
         // The evidence checks and the inspector that runs them. Order is
@@ -481,9 +490,11 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         // identity, no SwagCommercial dependency, so imported outside the
         // CommercialAvailability gate in configureRoutes() — but inside this one.
         $services->set(SellerMandateFactory::class);
+        $services->set(SalesChannelCurrencyReader::class);
         $services->set(MandateSigner::class);
         $services->set(MandateDocumentResponder::class);
         $services->set(A2cnDiscoveryController::class)->tag('controller.service_arguments');
+        $services->set(A2cnNotFoundController::class)->tag('controller.service_arguments');
 
         // Advertises the mandate capability in the UCP discovery document. Must run
         // AFTER the Agentic Commerce plugin's capability filter, exactly like

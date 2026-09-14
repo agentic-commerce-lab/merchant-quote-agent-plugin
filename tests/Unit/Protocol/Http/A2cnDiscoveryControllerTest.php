@@ -32,7 +32,7 @@ final class A2cnDiscoveryControllerTest extends TestCase
      * document, and the endpoint carries the /a2cn session prefix while
      * messages_url advertises the canonical session messages path.
      */
-    public function testTheDiscoveryDocumentCarriesAllThirteenFields(): void
+    public function testTheDiscoveryDocumentCarriesAllFourteenFields(): void
     {
         $body = $this->discoveryDocument();
         self::assertSame('0.2', $body['a2cn_version']);
@@ -53,7 +53,7 @@ final class A2cnDiscoveryControllerTest extends TestCase
             'updated_at must be the UTC `Z`-suffixed timestamp the rest of the module writes, per ProtocolTimestamp',
         );
 
-        self::assertCount(13, $body, 'the document publishes exactly the enumerated fields');
+        self::assertCount(14, $body, 'the document publishes exactly the enumerated fields');
     }
 
     /**
@@ -65,6 +65,16 @@ final class A2cnDiscoveryControllerTest extends TestCase
      * than the one this installation's acts are actually signed under, and
      * a conformant counterparty rejects the document on fetch.
      */
+    public function testTheDocumentSaysHowThisAgentDelivers(): void
+    {
+        // A2CN's reference client POSTs its counterparty's acts to the
+        // endpoint that counterparty advertises. This agent never pushes: the
+        // buyer reads our acts back from the session. A client that expected
+        // delivery would otherwise wait forever with nothing in the document
+        // to tell it not to.
+        self::assertSame('pull', A2cnDiscoveryControllerFixtures::discoveryDocument()['delivery']);
+    }
+
     public function testTheIdentityHostMatchesSalesChannelHostReadersPortConvention(): void
     {
         $controller = A2cnDiscoveryControllerFixtures::controller();

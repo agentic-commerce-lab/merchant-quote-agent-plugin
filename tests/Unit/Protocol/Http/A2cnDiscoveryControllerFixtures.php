@@ -13,6 +13,7 @@ use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnDiscoveryController;
 use MerchantQuoteAgentPlugin\Protocol\Http\MandateDocumentResponder;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
+use MerchantQuoteAgentPlugin\Protocol\Identity\SalesChannelCurrencyReader;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\TestActSigner;
@@ -83,8 +84,23 @@ final class A2cnDiscoveryControllerFixtures
             $settings ?? self::settingsWithAPolicy(),
             new SellerMandateFactory(),
             new MandateSigner($hash, $keys),
+            self::currencies(),
         );
 
         return new A2cnDiscoveryController($identities ?? TestActSigner::identities(), $keys, $mandateDocument);
+    }
+
+    /** A storefront that trades in euro, which is what anchors the mandate's commitment ceiling. */
+    public static function currencies(): SalesChannelCurrencyReader
+    {
+        return new class extends SalesChannelCurrencyReader {
+            public function __construct() {}
+
+            #[\Override]
+            public function isoFor(?string $salesChannelId): ?string
+            {
+                return 'EUR';
+            }
+        };
     }
 }

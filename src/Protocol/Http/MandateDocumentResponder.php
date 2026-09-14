@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
 use MerchantQuoteAgentPlugin\Protocol\Identity\MissingSigningKey;
+use MerchantQuoteAgentPlugin\Protocol\Identity\SalesChannelCurrencyReader;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -39,6 +40,7 @@ final readonly class MandateDocumentResponder
         private QuoteAgentSettingsSource $settings,
         private SellerMandateFactory $mandateFactory,
         private MandateSigner $signer,
+        private SalesChannelCurrencyReader $currencies,
     ) {}
 
     public function respond(A2cnIdentity $identity, ?string $salesChannelId, \DateTimeImmutable $now): JsonResponse
@@ -53,7 +55,14 @@ final readonly class MandateDocumentResponder
             return JsonEnvelope::noStore(['status' => 'not_found'], 404);
         }
 
-        $mandate = $this->mandateFactory->build($settings->policy, $identity, $now);
+        // The storefront's own currency: what turns a bare "50000, whatever
+        // the currency" ceiling into the scalar pair A2CN's mandate needs.
+        $mandate = $this->mandateFactory->build(
+            $settings->policy,
+            $identity,
+            $now,
+            $this->currencies->isoFor($salesChannelId),
+        );
 
         try {
             $signed = $this->signer->sign($mandate, $identity, $now);

@@ -61,6 +61,9 @@ final readonly class A2cnDiscoveryController
 
     private const SESSION_PREFIX = '/a2cn';
 
+    /** Acts are read from the session, never posted to the counterparty's endpoint. */
+    private const DELIVERY = 'pull';
+
     public function __construct(
         private A2cnIdentityResolver $identities,
         private A2cnKeyStore $keys,
@@ -83,7 +86,7 @@ final readonly class A2cnDiscoveryController
     }
 
     /**
-     * The thirteen fields the spec enumerates. `verification_method` is what
+     * The thirteen fields the spec enumerates, plus `delivery`. `verification_method` is what
      * lets a buyer agent pick a key without parsing the DID document at all;
      * `endpoint` is the session base `{base}/a2cn` every session-scoped URL
      * below is built from, while `.well-known` discovery documents remain
@@ -123,6 +126,15 @@ final readonly class A2cnDiscoveryController
             'mandate_url' => $base . self::MANDATE_PATH,
             'records_url' => $sessions . '/records/{session_id}',
             'messages_url' => $sessions . '/sessions/{session_id}/messages',
+            // NOT a spec field, and named as plainly as possible so it reads
+            // as the proposal it is. A2CN's reference client POSTs the acts it
+            // receives to the endpoint its counterparty advertises; this agent
+            // never pushes, and a buyer that expected delivery would wait
+            // forever with nothing in this document to tell it otherwise. An
+            // unknown member costs a conformant client nothing, and we will
+            // rename or drop it the moment the working group settles on a
+            // spelling.
+            'delivery' => self::DELIVERY,
         ];
     }
 
