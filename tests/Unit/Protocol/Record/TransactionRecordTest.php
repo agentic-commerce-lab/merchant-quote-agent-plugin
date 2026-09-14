@@ -15,6 +15,14 @@ use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\ProtocolFixtures;
 use PHPUnit\Framework\TestCase;
 use Ucp\Sdk\Internal\Security\DefaultJsonCanonicalization;
 
+/**
+ * @mago-expect lint:too-many-methods
+ * Eleven cases plus four private helpers, one per property of a record two
+ * parties must be able to derive identically: the agreed terms, the summary,
+ * the record hash, the order reference and its absence, the subject, the
+ * generation timestamp, determinism, what the offer chain covers, and the two
+ * ways an acceptance can name the offer it accepted.
+ */
 final class TransactionRecordTest extends TestCase
 {
     private const SESSION = '57d88e14-5e38-5b75-a94e-1b46206f6215';
@@ -81,36 +89,97 @@ final class TransactionRecordTest extends TestCase
         self::assertSame('quote:Q-1001', $this->record(orderReference: 'order:10014')['subject_reference']);
     }
 
+    public function testGeneratedAtIsTheAcceptanceTimestampAndNotAClockReading(): void
+    {
+        // The record is a pure derivation over the chain, so the counterparty
+        // must be able to build the same bytes from the same acts. A wall
+        // clock read here would make record_hash differ on every request and
+        // between the two parties, which is the one thing it may not do.
+        self::assertSame('2026-09-04T09:00:00Z', self::build()['generated_at']);
+    }
+
+    public function testTheSameChainAlwaysHashesToTheSameRecord(): void
+    {
+        self::assertSame(self::build()['record_hash'], self::build()['record_hash']);
+    }
+
+    public function testTheOfferChainHashCoversTheOffersAndNotTheAcceptance(): void
+    {
+        // "Offer chain" is what it says: the acceptance names the offer it
+        // accepts rather than joining the chain of positions.
+        $hash = new ProtocolHash(new DefaultJsonCanonicalization());
+        $acts = self::acts();
+
+        self::assertSame((new OfferChainHash($hash))->of([$acts[0], $acts[1]]), self::build()['offer_chain_hash']);
+    }
+
+    public function testTheFinalAcceptanceNamesItsRoundSequenceAndTheOfferItAccepts(): void
+    {
+        $acceptance = self::build()['final_acceptance'];
+
+        self::assertSame(1, $acceptance['round_number']);
+        self::assertSame(3, $acceptance['sequence_number']);
+        self::assertSame(self::SESSION . ':2', $acceptance['accepted_offer_id']);
+    }
+
+    public function testAnAcceptanceThatNamesItsOwnOfferIsBelieved(): void
+    {
+        // A2CN's acceptance envelope carries accepted_offer_id itself; when it
+        // does, the record repeats what the buyer signed rather than what we
+        // inferred from the chain.
+        $acts = self::acts();
+        $raw = ProtocolFixtures::buyerAct(3, self::SESSION, 'acceptance');
+        $raw['accepted_offer_id'] = 'their-own-offer-id';
+        $acts[2] = self::act($raw);
+
+        self::assertSame('their-own-offer-id', self::recordFor($acts)['final_acceptance']['accepted_offer_id']);
+    }
+
     /** @return array<string, mixed> */
     private static function build(): array
     {
         return self::record();
     }
 
-    /** @return array<string, mixed> */
-    private static function record(?string $orderReference = null): array
+    /** @return list<Act> */
+    private static function acts(): array
     {
-        $hash = new ProtocolHash(new DefaultJsonCanonicalization());
-        $acts = [
+        return [
             self::act(ProtocolFixtures::buyerAct(1, self::SESSION)),
             self::act(ProtocolFixtures::sellerAct(2, self::SESSION)),
             self::act(ProtocolFixtures::buyerAct(3, self::SESSION, 'acceptance')),
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private static function record(?string $orderReference = null): array
+    {
+        return self::recordFor(self::acts(), $orderReference);
+    }
+
+    /**
+     * @param list<Act> $acts
+     *
+     * @return array<string, mixed>
+     */
+    private static function recordFor(array $acts, ?string $orderReference = null): array
+    {
+        $hash = new ProtocolHash(new DefaultJsonCanonicalization());
 
         return (new TransactionRecord($hash, new OfferChainHash($hash)))->build(
             new RecordParties(
-                new RecordParty('', ProtocolFixtures::BUYER, 'buyer-agent', ProtocolFixtures::BUYER . '#key-1'),
+                new RecordParty('', ProtocolFixtures::BUYER, 'buyer-agent', ProtocolFixtures::BUYER . '#key-1', ''),
                 new RecordParty(
                     'Example Shop',
                     ProtocolFixtures::SELLER,
                     'merchant-quote-agent',
                     ProtocolFixtures::SELLER . '#key-1',
+                    'declared',
                 ),
             ),
             $acts,
             $acts[2],
             new RecordSubject('goods_procurement', 'EUR', 'Q-1001', 'quote:Q-1001'),
-            '2026-09-04T10:00:00+00:00',
             orderReference: $orderReference,
         );
     }

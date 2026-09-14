@@ -104,12 +104,13 @@ final class AuditLogTest extends TestCase
 
         return (new AuditLog(new OfferChainHash($hash)))->build(
             new RecordParties(
-                new RecordParty('', ProtocolFixtures::BUYER, 'buyer-agent', ProtocolFixtures::BUYER . '#key-1'),
+                new RecordParty('', ProtocolFixtures::BUYER, 'buyer-agent', ProtocolFixtures::BUYER . '#key-1', ''),
                 new RecordParty(
                     'Example Shop',
                     ProtocolFixtures::SELLER,
                     'merchant-quote-agent',
                     ProtocolFixtures::SELLER . '#key-1',
+                    'declared',
                 ),
             ),
             $acts,

@@ -31,6 +31,23 @@ final class RecordPartiesResolverTest extends TestCase
         self::assertSame('', $parties->initiator->organizationName);
     }
 
+    public function testTheInitiatorClaimsNoMandateWeWereNeverShown(): void
+    {
+        // A2CN has no inbound slot for a buyer mandate, so we have seen none.
+        // Naming a method here would be an assertion about the counterparty
+        // that nothing in the record backs.
+        $parties = $this->resolver()->resolve([$this->buyerAct()], $this->quoteState());
+
+        self::assertSame('', $parties->initiator->mandateType);
+    }
+
+    public function testTheResponderNamesTheMandateItPublishes(): void
+    {
+        $parties = $this->resolver()->resolve([$this->buyerAct()], $this->quoteState());
+
+        self::assertSame('declared', $parties->responder->mandateType);
+    }
+
     private function resolver(): RecordPartiesResolver
     {
         return new RecordPartiesResolver(TestActSigner::identities());

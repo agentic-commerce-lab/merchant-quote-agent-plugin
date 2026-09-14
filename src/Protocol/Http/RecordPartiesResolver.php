@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Protocol\Http;
 
 use MerchantQuoteAgentPlugin\Protocol\Act\Act;
+use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentity;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnIdentityResolver;
 use MerchantQuoteAgentPlugin\Protocol\Identity\MissingSigningKey;
+use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
 use MerchantQuoteAgentPlugin\Protocol\Record\RecordParties;
 use MerchantQuoteAgentPlugin\Protocol\Record\RecordParty;
 
@@ -36,15 +38,31 @@ final readonly class RecordPartiesResolver
             $identity = null;
         }
 
-        $responderDid = $identity?->did ?? '';
-        $responder = new RecordParty(
-            organizationName: $identity?->organizationName ?? '',
-            did: $responderDid,
-            agentId: $identity?->agentId ?? '',
-            verificationMethod: $identity?->verificationMethod ?? '',
-        );
+        $responder = self::responder($identity);
 
-        return new RecordParties(self::initiator($acts, $responderDid, $quote->buyerOrganizationName), $responder);
+        return new RecordParties(self::initiator($acts, $responder->did, $quote->buyerOrganizationName), $responder);
+    }
+
+    /**
+     * One null check rather than one per field: an installation either knows
+     * who it is or it does not, and a record that named three of our four
+     * identity fields would be describing nobody.
+     */
+    private static function responder(?A2cnIdentity $identity): RecordParty
+    {
+        if ($identity === null) {
+            return new RecordParty('', '', '', '', '');
+        }
+
+        return new RecordParty(
+            organizationName: $identity->organizationName,
+            did: $identity->did,
+            agentId: $identity->agentId,
+            verificationMethod: $identity->verificationMethod,
+            // Ours is real and published, signed, at the well-known mandate
+            // URL — so this one we may name.
+            mandateType: SellerMandateFactory::MANDATE_TYPE,
+        );
     }
 
     /** @param list<Act> $acts */
@@ -53,11 +71,13 @@ final readonly class RecordPartiesResolver
         // The counterparty, taken from the first act we did not sign.
         $theirs = null;
         foreach ($acts as $act) {
-            if ($act->senderDid() !== $responderDid) {
-                $theirs = $act;
-
-                break;
+            if ($act->senderDid() === $responderDid) {
+                continue;
             }
+
+            $theirs = $act;
+
+            break;
         }
 
         return new RecordParty(
@@ -68,6 +88,11 @@ final readonly class RecordPartiesResolver
             did: $theirs?->senderDid() ?? '',
             agentId: $theirs?->senderAgentId() ?? '',
             verificationMethod: $theirs?->verificationMethod() ?? '',
+            // Empty on purpose. A2CN v0.2 gives a counterparty no way to hand
+            // us a mandate — the act envelope carries none and the message
+            // route asks for none — so we have never seen one and must not
+            // imply otherwise. See RecordParty::$mandateType.
+            mandateType: '',
         );
     }
 }

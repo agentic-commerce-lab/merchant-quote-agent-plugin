@@ -61,7 +61,7 @@ final readonly class RecordResponder
                 ], 409);
             }
 
-            return $this->accepted($acts, $acceptance, $parties, $quote, $at);
+            return $this->accepted($acts, $acceptance, $parties, $quote);
         }
 
         $outcome = SessionOutcome::for($quote->state, $quote->expired);
@@ -78,13 +78,19 @@ final readonly class RecordResponder
         ));
     }
 
-    /** @param list<Act> $acts */
+    /**
+     * No clock reaches this method, deliberately: a transaction record is a
+     * pure derivation over the chain, and its `generated_at` comes off the
+     * acceptance act. The audit-log path above still takes `$at`, because an
+     * audit log IS an operational artifact of the moment it was produced.
+     *
+     * @param list<Act> $acts
+     */
     private function accepted(
         array $acts,
         Act $acceptance,
         RecordParties $parties,
         QuoteTerminalState $quote,
-        \DateTimeImmutable $at,
     ): JsonResponse {
         // $acts is non-empty here (the caller only reaches this method after
         // confirming an offer is present), but list<Act> carries no such
@@ -108,7 +114,6 @@ final readonly class RecordResponder
                 subject: $quote->quoteNumber,
                 subjectReference: 'quote:' . $quote->quoteNumber,
             ),
-            ProtocolTimestamp::of($at),
             $quote->orderNumber === null ? null : 'order:' . $quote->orderNumber,
         ));
     }
