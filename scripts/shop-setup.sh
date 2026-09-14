@@ -13,7 +13,9 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 HOME_DIR="${MQ_SHOP_HOME:-$HOME/.cache/merchant-quote-shop}"
 CONTAINER="merchant-quote-shop"
 SWAG_COMMERCIAL_VERSION="7.13.1"
-AGENTIC_COMMERCE_VERSION="1.2.0"
+# Must be >=1.3.0: 1.2.0 pins ucp_sdk.version to 2026-04-08, which SDK 0.0.6 --
+# this plugin's floor -- rejects at container build. See docs/end-to-end.md §9.
+AGENTIC_COMMERCE_VERSION="1.3.0"
 
 log() { printf '\n==> %s\n' "$*"; }
 die() { printf 'shop-setup: %s\n' "$*" >&2; exit 1; }
@@ -65,7 +67,7 @@ step_fetch() {
     file="$HOME_DIR/plugins/$local_name"
     if [ -f "$file" ]; then log "have $local_name"; continue; fi
     log "downloading $repo $tag -> $local_name"
-    # Tag names: commercial tags are "7.13.1", agentic-commerce tags are "v1.2.0".
+    # Tag names: commercial tags are "7.13.1", agentic-commerce tags are "v1.3.0".
     gh release download "$tag" --repo "$repo" --pattern "$release_asset" --output "$file" \
       || gh release download "v$tag" --repo "$repo" --pattern "$release_asset" --output "$file" \
       || die "cannot download $repo $tag — put $local_name into $HOME_DIR/plugins/ by hand and rerun"
@@ -197,7 +199,7 @@ step_composer() {
 }
 
 # The seed says SwagCommercial 7.13.0 and SwagAgenticCommerce 1.1.1 are
-# installed and active; the files are 7.13.1 and 1.2.0. plugin:update runs the
+# installed and active; the files are 7.13.1 and 1.3.0. plugin:update runs the
 # migrations in between. Ours was never installed in the old shop.
 step_plugins() {
   log "refreshing, updating and installing plugins"
