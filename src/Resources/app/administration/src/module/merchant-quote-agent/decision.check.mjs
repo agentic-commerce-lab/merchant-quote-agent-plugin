@@ -28,6 +28,8 @@ import {
     mergeStream,
     outcomeVariant,
     passNotes,
+    quoteDiscountPercent,
+    roundChange,
     terminalExplanation,
     writeLabels,
 } from './decision.ts';
@@ -514,3 +516,54 @@ for (const invalid of [Infinity, -Infinity, NaN, '2', {}, undefined]) {
 for (const field of ['quotesSeen', 'quotesConverted', 'quotesLost', 'offersMade', 'offersAccepted', 'orderCount', 'lifetimeNet']) {
     assert.ok(historySummary(vm, { ...history, [field]: -2 }).includes(`${field}: unknown`));
 }
+
+// Quote 1012 on the parity shop: round one granted 15%, rounds two and three
+// held that same offer. The per-pass reduction is 0 for those, which is what
+// the page used to show under a label reading like the quote's discount —
+// beside an already-reduced total and a reply quoting 15%. The quote-level
+// figure is measured off the earliest pass's opening total, which is the same
+// snapshot QuoteBaseline stamps and so the same number the reply text uses.
+const held = [
+    { discountPercentGranted: 14.9966, totalNetBefore: 2499.9, totalNetAfter: 2125.0, currencyIso: 'EUR' },
+    { discountPercentGranted: 0, totalNetBefore: 2125.0, totalNetAfter: 2125.0, currencyIso: 'EUR' },
+    { discountPercentGranted: 0, totalNetBefore: 2125.0, totalNetAfter: 2125.0, currencyIso: 'EUR' },
+];
+const baseline1012 = held[0].totalNetBefore;
+
+assert.deepEqual(
+    held.map((round) => formatPercent(quoteDiscountPercent(baseline1012, round.totalNetAfter))),
+    ['15.0%', '15.0%', '15.0%'],
+);
+assert.deepEqual(
+    held.map((round) => roundChange(vm, round)),
+    [
+        '+15.0 roundChange · 2499.90 EUR → 2125.00 EUR',
+        'roundUnchanged · 2125.00 EUR → 2125.00 EUR',
+        'roundUnchanged · 2125.00 EUR → 2125.00 EUR',
+    ],
+);
+
+// A pass that moved the total by less than the one decimal the figure shows is
+// "unchanged", not "+0.0" — printing a rounded-away delta is the confusion
+// this replaced.
+assert.match(roundChange(vm, { ...held[1], discountPercentGranted: 0.02 }), /^roundUnchanged/);
+assert.match(roundChange(vm, { ...held[1], discountPercentGranted: 0.06 }), /^\+0\.1 roundChange/);
+
+// A pass that raised the price is a real recorded outcome; it reads as a
+// negative change rather than as no change.
+assert.match(roundChange(vm, { ...held[1], discountPercentGranted: -2.5 }), /^-2\.5 roundChange/);
+
+// Nothing to measure stays absent rather than becoming a confident zero.
+assert.equal(quoteDiscountPercent(null, 2125.0), null);
+assert.equal(quoteDiscountPercent(0, 2125.0), null);
+assert.equal(quoteDiscountPercent(2499.9, null), null);
+assert.equal(formatPercent(quoteDiscountPercent(null, 2125.0)), '–');
+for (const invalid of [Infinity, NaN, '2499.90', {}, undefined]) {
+    assert.equal(quoteDiscountPercent(invalid, 2125.0), null);
+}
+for (const round of [{ totalNetBefore: null, totalNetAfter: 2125.0 }, { totalNetBefore: 2125.0, totalNetAfter: null }]) {
+    assert.equal(roundChange(vm, { ...round, discountPercentGranted: 0 }), 'roundUnchanged');
+}
+assert.match(snippets[0].detail.roundChange, /this pass/);
+assert.ok(snippets[1].detail.roundUnchanged.length > 0);
+console.log('decision.ts quote-level discount: ok');
