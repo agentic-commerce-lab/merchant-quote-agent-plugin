@@ -16,6 +16,8 @@ import {
     outcomeLabel,
     outcomeVariant,
     passNotes,
+    quoteDiscountPercent,
+    roundChange,
     terminalExplanation,
     terminalLabel,
     triggerLabel,
@@ -92,8 +94,14 @@ Shopware.Component.register('merchant-quote-agent-detail', {
 
         runs() {
             const list = this.rounds.length > 0 ? this.rounds : (this.record ? [this.record] : []);
+            // The quote as the agent first found it: the earliest pass's own
+            // opening total, which is the snapshot QuoteBaseline stamps and so
+            // the total every reply's percentage is quoted against. Read off
+            // the rounds rather than fetched, because they are already here
+            // and already sorted createdAt ASC.
+            const baselineNet = list.find((round) => Number.isFinite(round.totalNetBefore))?.totalNetBefore ?? null;
 
-            return list.map((round, index) => this.formatRun(round, index));
+            return list.map((round, index) => this.formatRun(round, index, baselineNet));
         },
 
         /**
@@ -240,7 +248,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
         /**
          * One servicing pass, ready to render.
          */
-        formatRun(round, index) {
+        formatRun(round, index, baselineNet = null) {
             const answered = answeredTheBuyer(round.outcome);
 
             return {
@@ -260,10 +268,12 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 band: round.band,
                 bandVariant: bandVariant(round.band),
                 cap: formatPercent(round.maxDiscountPercent),
-                granted: answered ? formatPercent(round.discountPercentGranted) : null,
-                totals: answered && round.totalNetBefore !== null && round.totalNetAfter !== null
-                    ? `${formatCurrency(round.totalNetBefore, round.currencyIso)} → ${formatCurrency(round.totalNetAfter, round.currencyIso)}`
-                    : null,
+                // The quote's discount, not this pass's. A pass that holds the
+                // previous round's offer records a 0 reduction of its own, and
+                // showing that here read as "no discount" next to a reduced
+                // total and a reply quoting 15% — live quote 1012.
+                granted: answered ? formatPercent(quoteDiscountPercent(baselineNet, round.totalNetAfter)) : null,
+                totals: answered ? roundChange(this, round) : null,
                 // What the pass actually did to the quote, and what a person
                 // still has to look at. Both were recorded from the start and
                 // both sat in the collapsed technical fold.

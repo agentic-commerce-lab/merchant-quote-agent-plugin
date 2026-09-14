@@ -314,6 +314,48 @@ export function formatCurrency(value: number | null, currencyIso = 'EUR'): strin
     return filter ? filter(value, currencyIso) : `${Number(value).toFixed(2)} ${currencyIso}`;
 }
 
+/**
+ * What the whole quote is off by, measured against the earliest pass's opening
+ * total — the same snapshot `QuoteBaseline` stamps, and so the same number
+ * `ReplyTemplate::reduction()` quotes at the buyer.
+ *
+ * Not `discountPercentGranted`: that is the reduction THIS pass made, and a
+ * pass that holds the previous round's offer records 0 while the quote is
+ * genuinely reduced. Live quote 1012 showed "0.0%" for rounds two and three
+ * beside an already-reduced total and a reply saying 15%.
+ */
+export function quoteDiscountPercent(baselineNet: number | null, totalNetAfter: number | null): number | null {
+    if (!Number.isFinite(baselineNet) || !Number.isFinite(totalNetAfter) || Number(baselineNet) <= 0) {
+        return null;
+    }
+
+    return ((Number(baselineNet) - Number(totalNetAfter)) / Number(baselineNet)) * 100;
+}
+
+/**
+ * How much of that the pass itself moved, as the aside under the quote-level
+ * figure: the recorded per-pass reduction, then the two totals it is measured
+ * on. A pass holding the previous offer says so in words rather than printing
+ * a zero that reads as "no discount".
+ *
+ * Below 0.05pp is "unchanged" because the figure shows one decimal: a delta
+ * that rounds away would render as "+0.0", which is exactly the ambiguity
+ * this replaced. A negative delta is a pass that raised the price and stays
+ * visible as one.
+ */
+export function roundChange(vm: any, round: any): string {
+    const delta = round.discountPercentGranted;
+    const change = typeof delta !== 'number' || !Number.isFinite(delta) || Math.abs(delta) < 0.05
+        ? vm.$tc('merchant-quote-agent.detail.roundUnchanged')
+        : vm.$t('merchant-quote-agent.detail.roundChange', { pp: `${delta > 0 ? '+' : ''}${delta.toFixed(1)}` });
+
+    if (!Number.isFinite(round.totalNetBefore) || !Number.isFinite(round.totalNetAfter)) {
+        return change;
+    }
+
+    return `${change} · ${formatCurrency(round.totalNetBefore, round.currencyIso)} → ${formatCurrency(round.totalNetAfter, round.currencyIso)}`;
+}
+
 /** One decimal: the model returns discounts to four and they read as noise. */
 export function formatPercent(value: number | null): string {
     if (value === null || value === undefined) {
