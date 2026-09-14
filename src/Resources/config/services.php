@@ -100,6 +100,7 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnBearerJwt;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnDiscoveryController;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnMessagesController;
+use MerchantQuoteAgentPlugin\Protocol\Http\A2cnNotFoundController;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnRecordsController;
 use MerchantQuoteAgentPlugin\Protocol\Http\MandateDocumentResponder;
 use MerchantQuoteAgentPlugin\Protocol\Http\QuoteTerminalStateReader;
@@ -486,6 +487,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         $services->set(MandateSigner::class);
         $services->set(MandateDocumentResponder::class);
         $services->set(A2cnDiscoveryController::class)->tag('controller.service_arguments');
+        $services->set(A2cnNotFoundController::class)->tag('controller.service_arguments');
 
         // Advertises the mandate capability in the UCP discovery document. Must run
         // AFTER the Agentic Commerce plugin's capability filter, exactly like
