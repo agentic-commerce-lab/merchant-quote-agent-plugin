@@ -301,17 +301,31 @@ that channel's negotiating behaviour, which is the worst available outcome.
 The reader throws it rather than the factory: a dangling row reference is the
 one refusal only the layer touching the database can see.
 
-Resolution costs one indexed read per quote serviced, uncached. It sits
-alongside the quote snapshot, customer history and order history reads already
-happening on that path.
+Resolution costs two indexed reads per quote serviced, uncached: the strategy
+row, then its highest version. It sits alongside the quote snapshot, customer
+history and order history reads already happening on that path.
+
+**No DAL association between the two entities.** One read with a
+`strategy.archivedAt` filter would have been possible, but it needs
+`#[ManyToOne]` and `#[ForeignKey]`, and `CoreFloorCompatibilityTest` checks
+argument compatibility for `#[Field]` and `#[Entity]` only — and is skipped
+entirely without a local core clone, so CI would not catch a floor breakage in
+a new attribute. Two plain reads need no attribute this plugin does not
+already use. They also let the resolver say *which* of "missing" and "archived"
+happened, which one merged query could not.
 
 ## Admin surfaces
 
 ### Settings → Negotiation strategies
 
 Route and `settingsItem` in the module, shaped after
-`merchant-quote-agent-access`. Lists name, type, current version and last
-edited.
+`merchant-quote-agent-access`. Lists name, type and description.
+
+Deliberately no "current version" or "last edited" column. Both would need
+either a per-row version query — an N+1 across the list — or a denormalised
+counter on the strategy row, and a counter cannot work: built-in rows reject
+every field update, so appending a version to a built-in could never bump it.
+The version number is shown in the edit view, which loads that version anyway.
 
 - Built-in rows: view, and "Duplicate & edit".
 - Custom rows: edit, rename, archive.
