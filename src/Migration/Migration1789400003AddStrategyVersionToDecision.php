@@ -28,9 +28,9 @@ class Migration1789400003AddStrategyVersionToDecision extends MigrationStep
     #[Override]
     public function update(Connection $connection): void
     {
-        $columns = $connection->fetchFirstColumn(
-            'SHOW COLUMNS FROM `merchant_quote_agent_decision` LIKE "strategy_version_id"',
-        );
+        $columns = $connection->fetchFirstColumn('SHOW COLUMNS FROM `merchant_quote_agent_decision` LIKE :column', [
+            'column' => 'strategy_version_id',
+        ]);
 
         if ($columns !== []) {
             return;

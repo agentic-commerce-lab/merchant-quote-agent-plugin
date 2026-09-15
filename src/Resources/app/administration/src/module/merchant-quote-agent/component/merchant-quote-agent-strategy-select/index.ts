@@ -88,7 +88,7 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
 
     watch: {
         value() {
-            this.loadPrompt();
+            this.loadPromptSafely();
         },
     },
 
@@ -146,6 +146,18 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
             const result = await this.versionRepository.search(criteria, Shopware.Context.api);
 
             this.prompt = result.first()?.prompt ?? '';
+        },
+
+        // The watcher below fires loadPrompt() unawaited on selection change,
+        // outside load()'s own try/catch. Without this wrapper a failing
+        // version read would be an unhandled rejection: a silently blank
+        // prompt and no banner, instead of the error surfaced here.
+        async loadPromptSafely() {
+            try {
+                await this.loadPrompt();
+            } catch (error) {
+                this.error = error?.response?.data?.errors?.[0]?.detail ?? this.$tc('merchant-quote-agent.strategy.loadFailed');
+            }
         },
     },
 });

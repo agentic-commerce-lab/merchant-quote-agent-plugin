@@ -52,9 +52,9 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
     public function __construct(
         private SystemConfigService $config,
         private QuoteAgentSettingsFactory $factory,
+        private StrategyResolver $strategies,
         #[\SensitiveParameter]
         private ?string $envApiKey = null,
-        private ?StrategyResolver $strategies = null,
     ) {}
 
     /** @throws InvalidQuoteAgentConfiguration */
@@ -102,7 +102,7 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
 
         $strategyId = $raw['negotiationStrategyId'] ?? null;
 
-        if (!\is_string($strategyId) || trim($strategyId) === '' || $this->strategies === null) {
+        if (!\is_string($strategyId) || trim($strategyId) === '') {
             return;
         }
 

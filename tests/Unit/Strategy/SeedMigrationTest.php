@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Strategy;
 
+use MerchantQuoteAgentPlugin\Migration\Migration1789400000CreateQuoteAgentStrategy;
 use MerchantQuoteAgentPlugin\Migration\Migration1789400001SeedBuiltInStrategies;
 use MerchantQuoteAgentPlugin\Strategy\BuiltInStrategies;
 use PHPUnit\Framework\TestCase;
@@ -50,6 +51,11 @@ final class SeedMigrationTest extends TestCase
 
     public function testTheTimestampIsAfterTheTableCreation(): void
     {
-        self::assertGreaterThan(1789400000, (new Migration1789400001SeedBuiltInStrategies())->getCreationTimestamp());
+        self::assertSame(1789400001, (new Migration1789400001SeedBuiltInStrategies())->getCreationTimestamp());
+    }
+
+    public function testTheTableCreationTimestampIsPinned(): void
+    {
+        self::assertSame(1789400000, (new Migration1789400000CreateQuoteAgentStrategy())->getCreationTimestamp());
     }
 }

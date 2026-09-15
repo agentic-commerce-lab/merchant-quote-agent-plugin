@@ -121,13 +121,20 @@ can rename and edit freely. The library also lets you create a strategy from
 scratch, rename or archive your own, and see which version of a strategy's
 wording was actually sent on any past quote — editing never overwrites a past
 version, so that history stays intact. The three built-in strategies
-themselves cannot be edited or archived, only duplicated.
+themselves cannot be edited or archived from this screen, only duplicated —
+we reserve the ability to append a new version to a built-in's own lineage
+for a future release.
 
 A strategy shapes *how* the agent negotiates and how the reply is worded —
 its tone and posture. **It can never move a cap.** Whatever a strategy's
 wording asks for, the policies you set above it are the guardrail: if a
 strategy's prompt asked for more than your policy allows, the policy wins and
 the quote goes to a person.
+
+**After you upgrade:** if you had already typed your own negotiating tone into
+the old free-text field, it has not been lost. It is now a saved strategy
+called "Custom strategy", and it is already selected for the sales channel you
+had set it on. Nothing changes about how your agent negotiates.
 
 ### 4. Turn it on
 

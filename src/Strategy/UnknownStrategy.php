@@ -35,7 +35,8 @@ final class UnknownStrategy extends \RuntimeException
     public static function withoutVersion(string $id): self
     {
         return new self(sprintf(
-            'The configured negotiation strategy (%s) has no prompt version, so there is nothing to send.',
+            'The configured negotiation strategy (%s) has no prompt version, so there is nothing to send. Open it '
+            . 'in Settings → Negotiation strategies and save a prompt.',
             $id,
         ));
     }

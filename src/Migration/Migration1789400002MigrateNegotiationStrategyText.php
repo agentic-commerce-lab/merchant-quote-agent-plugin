@@ -27,6 +27,15 @@ use Shopware\Core\Framework\Uuid\Uuid;
  * not here: mago scores cyclomatic complexity per class, and this migration's
  * own orchestration plus that raw SQL together push a single class over the
  * project's threshold of 10.
+ *
+ * `plan()` skips a blank per-channel text rather than turning it into an empty
+ * strategy. That is not an approximation: core's own
+ * `SystemConfigLoader::getSubArray()` treats a blank per-channel override as
+ * absent -- `$inheritedValuePresent && $valueConsideredEmpty` short-circuits
+ * to the inherited value instead of storing the empty one -- so Shopware was
+ * already resolving that channel to the *global* text before this migration
+ * ever ran. Skipping the blank row here reproduces that pre-migration
+ * resolution exactly; it does not merely approximate it.
  */
 class Migration1789400002MigrateNegotiationStrategyText extends MigrationStep
 {

@@ -54,8 +54,8 @@ final class QuoteAgentSettingsReaderTest extends TestCase
         return new QuoteAgentSettingsReader(
             $config,
             $factory,
-            $envApiKey,
             $strategies ?? $this->createMock(StrategyResolver::class),
+            $envApiKey,
         );
     }
 
