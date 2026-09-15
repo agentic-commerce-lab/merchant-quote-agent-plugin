@@ -102,5 +102,8 @@ final class DecisionDraft
     /** The agent's message TO the buyer — see DecisionRecorder::recordReply(). */
     public ?string $replyToBuyer = null;
 
+    /** The prompt version this pass actually sent — see StrategyVersion. */
+    public ?string $strategyVersionId = null;
+
     public float $startedAt = 0.0;
 }

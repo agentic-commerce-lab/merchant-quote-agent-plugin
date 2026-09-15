@@ -87,14 +87,18 @@ final class DecisionRecorder
         $this->draft->interpretedAsks = InterpretationPayload::of($ask->interpretation);
     }
 
-    public function recordDecision(NegotiationDecision $decision, float $maxDiscountPercent): void
-    {
+    public function recordDecision(
+        NegotiationDecision $decision,
+        float $maxDiscountPercent,
+        ?string $strategyVersionId = null,
+    ): void {
         if ($this->draft === null) {
             return;
         }
 
         $this->draft->band = $decision->overall->value;
         $this->draft->maxDiscountPercent = $maxDiscountPercent;
+        $this->draft->strategyVersionId = $strategyVersionId;
     }
 
     public function recordProposal(?string $rawResponse, ProposedAnswer $answer): void
