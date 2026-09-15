@@ -183,6 +183,31 @@
             "organizationNameLabel": "Organisationsname im A2CN-Verkäufermandat",
             "organizationNameHelp": "Wird im signierten A2CN-Verkäufermandat dieses Verkaufskanals veröffentlicht, das Käufer-Agenten abrufen, um zu sehen, mit wem sie es zu tun haben. Leer lassen, um den Shopnamen aus Einstellungen → Shop → Grundlagen zu veröffentlichen."
         },
+        "strategy": {
+            "selectLabel": "Verhandlungsstrategie",
+            "selectHelp": "Mit welcher Strategie der Agent auf diesem Verkaufskanal verhandelt. Wird der Prompt einer Strategie bearbeitet, gilt das für jeden Kanal, der sie verwendet.",
+            "promptLabel": "Aktueller Prompt",
+            "promptHelp": "Die neueste Prompt-Version der ausgewählten Strategie, nur lesbar. Strategien werden unter Einstellungen → Verhandlungsstrategien angelegt und bearbeitet.",
+            "manage": "Verhandlungsstrategien verwalten",
+            "custom": "Eigene",
+            "builtInBadge": "Integriert",
+            "noPrivilege": "Um eine Verhandlungsstrategie zu sehen und auszuwählen, wird das Leserecht „strategy“ des Quote Agent benötigt. Bitten Sie eine Administratorin oder einen Administrator, es zu vergeben.",
+            "loadFailed": "Die Verhandlungsstrategien konnten nicht geladen werden.",
+            "builtIn": {
+                "marginDefender": {
+                    "name": "Margen verteidigen",
+                    "description": "Marge schützen und nur kleine, gezielte Zugeständnisse machen, wenn der Käufer ausdrücklich danach fragt."
+                },
+                "fastClose": {
+                    "name": "Schneller Abschluss",
+                    "description": "Routinemäßige Verhandlungsreibung vermeiden und innerhalb der Händlergrenzen schnell zu einer Einigung kommen."
+                },
+                "relationshipBuilder": {
+                    "name": "Beziehung aufbauen",
+                    "description": "Verhältnismäßige Zugeständnisse machen, die eine dauerhafte B2B-Beziehung fördern, ohne automatisch den Höchstrabatt zu gewähren."
+                }
+            }
+        },
         "disposition": {
             "needsReview": "Prüfung nötig",
             "answered": "Beantwortet",

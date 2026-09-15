@@ -3,6 +3,7 @@ import './merchant-quote-agent.scss';
 import './page/merchant-quote-agent-list';
 import './page/merchant-quote-agent-detail';
 import './page/merchant-quote-agent-access';
+import './component/merchant-quote-agent-strategy-select';
 
 import deDE from './snippet/de.json';
 import enGB from './snippet/en.json';
