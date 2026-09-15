@@ -103,14 +103,31 @@ Under **Negotiation policies** — this is the important screen:
 
 ### 3. Optionally, set the tone
 
-Under **Negotiation strategy** you can write how you want it to negotiate, in
-your own words. For example:
+Under **Negotiation strategy** you pick a strategy from a list instead of
+writing one. Three come with the plugin:
 
-> Open at 2%, concede in 1% steps, never lead with the maximum. Warm but brief.
+- **Margin defender** — preserves margin and makes small, deliberate
+  concessions only when a customer explicitly asks.
+- **Fast close** — removes routine negotiating friction and reaches an
+  agreement quickly, within your limits.
+- **Relationship builder** — makes proportional concessions that support a
+  durable B2B relationship, without jumping straight to the maximum discount.
 
-This shapes *how* it negotiates and how the reply is worded. **It cannot move a
-cap.** If your strategy text asks for more than your policy allows, the policy
-wins and the quote goes to a person.
+Selecting one takes effect on every sales channel using it, and the field
+shows its current wording read-only. To adapt one to your own words, use
+**Duplicate & edit** on the library page (Settings → Negotiation strategies,
+linked below the selector): it copies the chosen strategy into a new one you
+can rename and edit freely. The library also lets you create a strategy from
+scratch, rename or archive your own, and see which version of a strategy's
+wording was actually sent on any past quote — editing never overwrites a past
+version, so that history stays intact. The three built-in strategies
+themselves cannot be edited or archived, only duplicated.
+
+A strategy shapes *how* the agent negotiates and how the reply is worded —
+its tone and posture. **It can never move a cap.** Whatever a strategy's
+wording asks for, the policies you set above it are the guardrail: if a
+strategy's prompt asked for more than your policy allows, the policy wins and
+the quote goes to a person.
 
 ### 4. Turn it on
 

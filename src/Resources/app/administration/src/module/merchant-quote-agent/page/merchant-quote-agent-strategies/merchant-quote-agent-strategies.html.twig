@@ -1,0 +1,175 @@
+{% block merchant_quote_agent_strategies %}
+<sw-page class="merchant-quote-agent-strategies">
+    {% block merchant_quote_agent_strategies_smart_bar_header %}
+    <template #smart-bar-header>
+        <h2>{{ $tc('merchant-quote-agent.strategy.title') }}</h2>
+    </template>
+    {% endblock %}
+
+    {% block merchant_quote_agent_strategies_smart_bar_actions %}
+    <template #smart-bar-actions>
+        <mt-button v-if="canEdit" variant="primary" @click="openNameModal('create')">
+            {{ $tc('merchant-quote-agent.strategy.add') }}
+        </mt-button>
+    </template>
+    {% endblock %}
+
+    {% block merchant_quote_agent_strategies_content %}
+    <template #content>
+        <sw-card-view>
+            {% block merchant_quote_agent_strategies_list_card %}
+            <sw-card :title="$tc('merchant-quote-agent.strategy.title')" :is-loading="isLoading">
+                <mt-banner v-if="error" variant="critical">
+                    {{ error }}
+                </mt-banner>
+
+                {# Viewing and duplicating need only merchant_quote_agent.viewer;
+                   renaming, editing and archiving need .editor. Rather than hide
+                   those rows entirely, the hint explains why they are missing --
+                   an admin who lacks .editor should not conclude the library is
+                   broken. #}
+                <mt-banner v-if="!canEdit" variant="attention">
+                    {{ $tc('merchant-quote-agent.strategy.readOnlyHint') }}
+                </mt-banner>
+
+                <sw-data-grid
+                    v-if="strategies.length"
+                    :data-source="strategies"
+                    :columns="columns"
+                    :is-loading="isLoading"
+                    :plain-appearance="true"
+                    :show-selection="false"
+                    :show-settings="false"
+                    :show-actions="true"
+                    :allow-column-edit="false"
+                >
+                    <template #column-name="{ item }">
+                        <strong>{{ displayName(item) }}</strong>
+                    </template>
+
+                    <template #column-type="{ item }">
+                        <mt-badge :variant="rowIsBuiltIn(item) ? 'info' : 'neutral'">
+                            {{ rowIsBuiltIn(item) ? $tc('merchant-quote-agent.strategy.builtInBadge') : $tc('merchant-quote-agent.strategy.custom') }}
+                        </mt-badge>
+                    </template>
+
+                    <template #column-description="{ item }">
+                        {{ displayDescription(item) }}
+                    </template>
+
+                    <template #actions="{ item }">
+                        <template v-if="rowIsBuiltIn(item)">
+                            <sw-context-menu-item @click="select(item)">
+                                {{ $tc('merchant-quote-agent.strategy.view') }}
+                            </sw-context-menu-item>
+                            <sw-context-menu-item v-if="canEdit" @click="duplicate(item)">
+                                {{ $tc('merchant-quote-agent.strategy.duplicate') }}
+                            </sw-context-menu-item>
+                        </template>
+                        <template v-else>
+                            <sw-context-menu-item @click="select(item)">
+                                {{ $tc('merchant-quote-agent.strategy.edit') }}
+                            </sw-context-menu-item>
+                            <sw-context-menu-item v-if="canEdit" @click="startRename(item)">
+                                {{ $tc('merchant-quote-agent.strategy.rename') }}
+                            </sw-context-menu-item>
+                            <sw-context-menu-item v-if="canEdit" variant="danger" @click="confirmArchive(item)">
+                                {{ $tc('merchant-quote-agent.strategy.archive') }}
+                            </sw-context-menu-item>
+                        </template>
+                    </template>
+                </sw-data-grid>
+
+                <sw-empty-state
+                    v-else-if="!isLoading"
+                    :absolute="false"
+                    :title="$tc('merchant-quote-agent.strategy.title')"
+                />
+            </sw-card>
+            {% endblock %}
+
+            {# Shown once a row is picked, whether that was View, Edit or a fresh
+               Duplicate & edit. A built-in's textarea is disabled -- it refuses
+               every field update server-side -- and it has no Save button, since
+               there is nothing here it could ever persist. #}
+            {% block merchant_quote_agent_strategies_editor_card %}
+            <sw-card v-if="selected" :title="displayName(selected)">
+                <p v-if="currentVersion !== null" class="mqa-strategy__version">
+                    {{ $t('merchant-quote-agent.strategy.currentVersion', { version: currentVersion }) }}
+                </p>
+
+                <mt-textarea
+                    :label="$tc('merchant-quote-agent.strategy.promptLabel')"
+                    :model-value="prompt"
+                    :disabled="selectedIsBuiltIn || !canEdit"
+                    @update:model-value="(value) => { prompt = value; }"
+                />
+
+                <mt-button
+                    v-if="!selectedIsBuiltIn"
+                    variant="primary"
+                    :disabled="!canEdit || isSaving"
+                    @click="save"
+                >
+                    {{ $tc('merchant-quote-agent.strategy.saveNewVersion') }}
+                </mt-button>
+            </sw-card>
+            {% endblock %}
+
+            {# Create, duplicate and rename all resolve to one name, taken once
+               and confirmed the same way -- see confirmName(). #}
+            {% block merchant_quote_agent_strategies_name_modal %}
+            <sw-modal
+                v-if="nameModalOpen"
+                variant="small"
+                :title="nameModalLabel"
+                @modal-close="nameModalOpen = false"
+            >
+                <mt-text-field
+                    :label="$tc('merchant-quote-agent.strategy.namePrompt')"
+                    :model-value="nameDraft"
+                    @update:model-value="(value) => { nameDraft = value; }"
+                />
+
+                <template #modal-footer>
+                    <mt-button size="small" variant="secondary" @click="nameModalOpen = false">
+                        {{ $tc('global.default.cancel') }}
+                    </mt-button>
+                    <mt-button
+                        size="small"
+                        variant="primary"
+                        :disabled="!canEdit || nameDraft.trim() === '' || isSaving"
+                        @click="confirmName"
+                    >
+                        {{ nameModalLabel }}
+                    </mt-button>
+                </template>
+            </sw-modal>
+            {% endblock %}
+
+            {# A sales channel can still point at the strategy being archived, so
+               it confirms first and says what happens to that channel's quotes. #}
+            {% block merchant_quote_agent_strategies_archive_modal %}
+            <sw-modal
+                v-if="pendingArchive"
+                variant="small"
+                :title="$tc('merchant-quote-agent.strategy.archive')"
+                @modal-close="pendingArchive = null"
+            >
+                <p>{{ $t('merchant-quote-agent.strategy.archiveWarning', { name: displayName(pendingArchive) }) }}</p>
+
+                <template #modal-footer>
+                    <mt-button size="small" variant="secondary" @click="pendingArchive = null">
+                        {{ $tc('global.default.cancel') }}
+                    </mt-button>
+                    <mt-button size="small" variant="critical" :disabled="!canEdit || isSaving" @click="archive(pendingArchive)">
+                        {{ $tc('merchant-quote-agent.strategy.archive') }}
+                    </mt-button>
+                </template>
+            </sw-modal>
+            {% endblock %}
+        </sw-card-view>
+    </template>
+    {% endblock %}
+</sw-page>
+{% endblock %}

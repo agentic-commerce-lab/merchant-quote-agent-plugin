@@ -3,6 +3,7 @@ import './merchant-quote-agent.scss';
 import './page/merchant-quote-agent-list';
 import './page/merchant-quote-agent-detail';
 import './page/merchant-quote-agent-access';
+import './page/merchant-quote-agent-strategies';
 import './component/merchant-quote-agent-strategy-select';
 
 import deDE from './snippet/de.json';
@@ -56,6 +57,17 @@ Shopware.Module.register('merchant-quote-agent', {
                 privilege: 'merchant_quote_agent.viewer',
             },
         },
+        // Not gated on hasAgenticCommerce: the strategy library reads and
+        // writes only this plugin's own entities, so it works on any shop,
+        // unlike Agent access below which drives Agentic Commerce's API.
+        strategies: {
+            component: 'merchant-quote-agent-strategies',
+            path: 'strategies',
+            meta: {
+                parentPath: 'sw.settings.index',
+                privilege: 'merchant_quote_agent.viewer',
+            },
+        },
         ...(hasAgenticCommerce
             ? {
                 access: {
@@ -75,19 +87,31 @@ Shopware.Module.register('merchant-quote-agent', {
     },
 
     /**
-     * Agent access is configuration, not a daily order task, so it belongs in
+     * Both are configuration, not a daily order task, so they belong in
      * Settings rather than under Orders next to the decision log. `plugins` is
      * the group an admin looks in for an extension's own configuration.
      *
-     * sw-settings-index filters items by `privilege`, so it stays hidden from
-     * anyone who cannot read the config it edits. That filter is not enough on
-     * its own to hide it on a shop without the Agentic Commerce plugin, though:
-     * an administrator's role grants every privilege, `ucp.viewer` included,
-     * whether or not anything defines it. Hence the bundle check.
+     * The strategy library entry is unconditional: it reads and writes only
+     * this plugin's own entities, so it belongs on every shop. Agent access
+     * stays behind the bundle check below it.
+     *
+     * sw-settings-index filters items by `privilege`, so Agent access stays
+     * hidden from anyone who cannot read the config it edits. That filter is
+     * not enough on its own to hide it on a shop without the Agentic Commerce
+     * plugin, though: an administrator's role grants every privilege,
+     * `ucp.viewer` included, whether or not anything defines it. Hence the
+     * bundle check.
      */
-    ...(hasAgenticCommerce
-        ? {
-            settingsItem: [
+    settingsItem: [
+        {
+            group: 'plugins',
+            to: 'merchant.quote.agent.strategies',
+            icon: 'regular-comments',
+            label: 'merchant-quote-agent.strategy.mainMenuItem',
+            privilege: 'merchant_quote_agent.viewer',
+        },
+        ...(hasAgenticCommerce
+            ? [
                 {
                     group: 'plugins',
                     to: 'merchant.quote.agent.access',
@@ -95,9 +119,9 @@ Shopware.Module.register('merchant-quote-agent', {
                     label: 'merchant-quote-agent.access.mainMenuItem',
                     privilege: 'ucp.viewer',
                 },
-            ],
-        }
-        : {}),
+            ]
+            : []),
+    ],
 
     navigation: [
         {

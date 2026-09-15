@@ -41,7 +41,9 @@
         />
     </template>
 
-    <router-link class="mqa-strategy-select__manage" :to="{ name: 'merchant.quote.agent.strategies' }">
+    {# Without merchant_quote_agent.viewer the route above 403s on open --
+       this link is worth nothing without the privilege it manages. #}
+    <router-link v-if="canRead" class="mqa-strategy-select__manage" :to="{ name: 'merchant.quote.agent.strategies' }">
         {{ $tc('merchant-quote-agent.strategy.manage') }}
     </router-link>
 </div>

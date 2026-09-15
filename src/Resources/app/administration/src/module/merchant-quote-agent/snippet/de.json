@@ -184,6 +184,8 @@
             "organizationNameHelp": "Wird im signierten A2CN-Verkäufermandat dieses Verkaufskanals veröffentlicht, das Käufer-Agenten abrufen, um zu sehen, mit wem sie es zu tun haben. Leer lassen, um den Shopnamen aus Einstellungen → Shop → Grundlagen zu veröffentlichen."
         },
         "strategy": {
+            "mainMenuItem": "Verhandlungsstrategien",
+            "title": "Verhandlungsstrategien",
             "selectLabel": "Verhandlungsstrategie",
             "selectHelp": "Mit welcher Strategie der Agent auf diesem Verkaufskanal verhandelt. Wird der Prompt einer Strategie bearbeitet, gilt das für jeden Kanal, der sie verwendet.",
             "promptLabel": "Aktueller Prompt",
@@ -193,6 +195,21 @@
             "builtInBadge": "Integriert",
             "noPrivilege": "Um eine Verhandlungsstrategie zu sehen und auszuwählen, wird das Leserecht „strategy“ des Quote Agent benötigt. Bitten Sie eine Administratorin oder einen Administrator, es zu vergeben.",
             "loadFailed": "Die Verhandlungsstrategien konnten nicht geladen werden.",
+            "requestFailed": "Die Anfrage ist fehlgeschlagen.",
+            "columnName": "Name",
+            "columnType": "Typ",
+            "columnDescription": "Beschreibung",
+            "add": "Strategie hinzufügen",
+            "view": "Ansehen",
+            "edit": "Bearbeiten",
+            "duplicate": "Duplizieren & bearbeiten",
+            "rename": "Umbenennen",
+            "archive": "Archivieren",
+            "archiveWarning": "Beim Archivieren von „{name}“ entfällt die Strategie aus der Auswahl auf der Plugin-Konfigurationsseite. Jeder Verkaufskanal, der ihr noch zugeordnet ist, eskaliert danach jedes Angebot an eine Person, bis Sie eine andere, aktive Strategie auswählen.",
+            "namePrompt": "Name der Strategie",
+            "saveNewVersion": "Als neue Version speichern",
+            "currentVersion": "Version {version}",
+            "readOnlyHint": "Um eine Verhandlungsstrategie anzulegen, zu duplizieren, umzubenennen oder zu archivieren, wird das Bearbeitungsrecht des Quote Agent benötigt. Bitten Sie eine Administratorin oder einen Administrator, es zu vergeben.",
             "builtIn": {
                 "marginDefender": {
                     "name": "Margen verteidigen",

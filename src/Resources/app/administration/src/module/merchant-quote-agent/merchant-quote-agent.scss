@@ -509,3 +509,45 @@
     color: var(--color-text-primary-default);
     text-wrap: pretty;
 }
+
+/* --------------------------------------------------------- strategy select */
+
+/* Unlike the fields on the access and strategies pages, these sit inside
+   sw-system-config's own field slot, not inside an mt-card — so there is no
+   surrounding component supplying the usual vertical rhythm between fields.
+   Task 11 added this class and the three below it with no rules at all,
+   which is why the select, badge, prompt preview and "manage" link used to
+   read as one unbroken block. */
+.mqa-strategy-select {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mqa-strategy-select__meta {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.mqa-strategy-select__description {
+    margin: 0;
+    color: var(--color-text-secondary-default);
+    font-size: 13px;
+    text-wrap: pretty;
+}
+
+.mqa-strategy-select__manage {
+    align-self: flex-start;
+    font-size: 13px;
+}
+
+/* ---------------------------------------------------------- strategy page */
+
+.mqa-strategy__version {
+    margin: 0 0 8px;
+    color: var(--color-text-secondary-default);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
