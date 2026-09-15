@@ -95,6 +95,13 @@ Shopware.Module.register('merchant-quote-agent', {
      * this plugin's own entities, so it belongs on every shop. Agent access
      * stays behind the bundle check below it.
      *
+     * Both carry an explicit `name`. A settings item without one inherits the
+     * MODULE's name, and the settings store drops an item whose name is already
+     * taken (`settingsItems.addItem`), so two unnamed items from one module
+     * collapse into whichever registers first — silently, and the page it points
+     * at stays routable, which is what made this look like a missing page rather
+     * than a missing link. `name` is also the list's render key.
+     *
      * sw-settings-index filters items by `privilege`, so Agent access stays
      * hidden from anyone who cannot read the config it edits. That filter is
      * not enough on its own to hide it on a shop without the Agentic Commerce
@@ -104,6 +111,7 @@ Shopware.Module.register('merchant-quote-agent', {
      */
     settingsItem: [
         {
+            name: 'merchant-quote-agent-strategies',
             group: 'plugins',
             to: 'merchant.quote.agent.strategies',
             icon: 'regular-comments',
@@ -113,6 +121,7 @@ Shopware.Module.register('merchant-quote-agent', {
         ...(hasAgenticCommerce
             ? [
                 {
+                    name: 'merchant-quote-agent-access',
                     group: 'plugins',
                     to: 'merchant.quote.agent.access',
                     icon: 'regular-shield',
