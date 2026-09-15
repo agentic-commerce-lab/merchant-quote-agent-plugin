@@ -43,8 +43,14 @@
                     :show-actions="true"
                     :allow-column-edit="false"
                 >
+                    {# The name opens the same editor the row's View/Edit action does,
+                       so the common case does not need the context menu. A button,
+                       not a link: there is no route per strategy, the editor is a
+                       card on this page. #}
                     <template #column-name="{ item }">
-                        <strong>{{ displayName(item) }}</strong>
+                        <button type="button" class="mqa-strategy__name" @click="select(item)">
+                            {{ displayName(item) }}
+                        </button>
                     </template>
 
                     <template #column-type="{ item }">
@@ -98,12 +104,14 @@
                     {{ $t('merchant-quote-agent.strategy.currentVersion', { version: currentVersion }) }}
                 </p>
 
-                <mt-textarea
-                    :label="$tc('merchant-quote-agent.strategy.promptLabel')"
-                    :model-value="prompt"
-                    :disabled="selectedIsBuiltIn || !canEdit"
-                    @update:model-value="(value) => { prompt = value; }"
-                />
+                <div class="mqa-strategy__prompt">
+                    <mt-textarea
+                        :label="$tc('merchant-quote-agent.strategy.promptLabel')"
+                        :model-value="prompt"
+                        :disabled="selectedIsBuiltIn || !canEdit"
+                        @update:model-value="(value) => { prompt = value; }"
+                    />
+                </div>
 
                 <mt-button
                     v-if="!selectedIsBuiltIn"
