@@ -161,25 +161,50 @@ class MerchantQuoteAgentPlugin extends Plugin
         // service failed to resolve. A merchant who asked to wipe data must
         // not keep a live private key in system_config just because the
         // table drop below could not fetch a Connection, or vice versa.
-        $this->dropEvidenceTables();
+        $this->dropPluginTables();
         $this->deleteSigningKey();
     }
 
-    /** @throws \Doctrine\DBAL\Exception */
-    private function dropEvidenceTables(): void
+    /**
+     * Every table this plugin creates, dropped when the merchant asked to
+     * remove the data.
+     *
+     * Core expects exactly this: PluginLifecycleService's own comment reads
+     * "plugin->uninstall() will remove the tables etc of the plugin". Nothing
+     * else drops them, so a table missing from this list survives a wipe.
+     *
+     * #59: only the three A2CN tables were dropped, leaving the decision table
+     * behind. That table is the reason the issue is filed as a data-protection
+     * problem rather than untidiness -- it holds `buyer_comment`,
+     * `reply_to_buyer`, `interpreted_asks` and `customer_id`, all tied to an
+     * identifiable buyer. A merchant who ticks "remove all data permanently"
+     * and silently keeps a negotiation history has been told something untrue,
+     * and stops treating it as data they hold. Partial deletion is worse than
+     * none, because it is invisible.
+     *
+     * A merchant who wants the audit log kept across a reinstall has the
+     * "keep data" option for exactly that.
+     *
+     * The list is the create side of `src/Migration` -- keep the two in step
+     * when a migration adds a table. `IF EXISTS` keeps this safe on a shop
+     * whose migrations never ran, and on one where a table arrived in a later
+     * release than the plugin version being removed.
+     *
+     * @throws \Doctrine\DBAL\Exception
+     */
+    private function dropPluginTables(): void
     {
         $connection = $this->container?->get(Connection::class);
         if (!$connection instanceof Connection) {
             return;
         }
 
-        // #59 records that uninstall used to leave the decision table
-        // behind. All three A2CN evidence tables are dropped here so this
-        // does not become a fourth instance of that bug.
         foreach ([
             'merchant_quote_agent_a2cn_receipt',
             'merchant_quote_agent_a2cn_violation',
             'merchant_quote_agent_a2cn_act',
+            'merchant_quote_agent_decision',
+            'merchant_quote_agent_pending_authorization',
         ] as $table) {
             $connection->executeStatement(\sprintf('DROP TABLE IF EXISTS `%s`', $table));
         }

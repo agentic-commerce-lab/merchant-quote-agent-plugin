@@ -25,18 +25,29 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
  */
 final class MerchantQuoteAgentPluginTest extends TestCase
 {
+    /**
+     * Every table the plugin creates, not only the A2CN ones. #59: the
+     * decision table used to survive a merchant's "remove all data", taking
+     * its buyer comments and customer ids with it.
+     *
+     * UninstallDropsEveryTableTest is what keeps this list honest against
+     * `src/Migration`; this test is what proves uninstall actually issues the
+     * statements.
+     */
     private const TABLES = [
         'merchant_quote_agent_a2cn_receipt',
         'merchant_quote_agent_a2cn_violation',
         'merchant_quote_agent_a2cn_act',
+        'merchant_quote_agent_decision',
+        'merchant_quote_agent_pending_authorization',
     ];
 
-    public function testUninstallDropsTheEvidenceTablesAndDeletesTheSigningKeyWhenDataIsRemoved(): void
+    public function testUninstallDropsEveryPluginTableAndDeletesTheSigningKeyWhenDataIsRemoved(): void
     {
         $connection = $this->createMock(Connection::class);
         $dropped = [];
         $connection
-            ->expects(self::exactly(3))
+            ->expects(self::exactly(\count(self::TABLES)))
             ->method('executeStatement')
             ->willReturnCallback(static function (string $sql) use (&$dropped): int {
                 $dropped[] = $sql;
