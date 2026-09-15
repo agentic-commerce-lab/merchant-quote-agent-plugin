@@ -61,6 +61,7 @@ final readonly class QuoteAgentSettingsFactory
             llm: RawConfigValue::llm($raw, $apiKey),
             strategyPrompt: RawConfigValue::string($raw, 'negotiationStrategy'),
             notifyBuyerOnEscalation: RawConfigValue::bool($raw, 'notifyBuyerOnEscalation') === true,
+            strategyVersionId: RawConfigValue::string($raw, 'negotiationStrategyVersionId'),
         );
     }
 }

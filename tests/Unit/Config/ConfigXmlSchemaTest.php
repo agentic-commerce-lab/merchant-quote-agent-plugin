@@ -83,4 +83,33 @@ final class ConfigXmlSchemaTest extends TestCase
         $default = $xpath->query('defaultValue', $field)?->item(0)?->textContent;
         self::assertSame('false', $default);
     }
+
+    public function testTheNegotiationStrategyCardUsesTheSelectorComponent(): void
+    {
+        $document = new DOMDocument();
+        self::assertTrue($document->load(__DIR__ . '/../../../src/Resources/config/config.xml'));
+
+        $xpath = new \DOMXPath($document);
+        $nodes = $xpath->query('//component[name="negotiationStrategyId"]');
+        self::assertNotNull($nodes);
+        self::assertSame(1, $nodes->count());
+
+        $component = $nodes->item(0);
+        self::assertInstanceOf(\DOMElement::class, $component);
+        self::assertSame('merchant-quote-agent-strategy-select', $component->getAttribute('name'));
+
+        // `cache-relevant` exists in vendor's config.xsd but NOT in the
+        // 6.7.1.0 floor schema this file is validated against.
+        self::assertFalse($component->hasAttribute('cache-relevant'));
+    }
+
+    public function testTheFreeTextStrategyFieldIsGone(): void
+    {
+        $document = new DOMDocument();
+        self::assertTrue($document->load(__DIR__ . '/../../../src/Resources/config/config.xml'));
+
+        $nodes = (new \DOMXPath($document))->query('//input-field[name="negotiationStrategy"]');
+        self::assertNotNull($nodes);
+        self::assertSame(0, $nodes->count());
+    }
 }

@@ -412,7 +412,10 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // MQA_LLM_API_KEY is read as an injected parameter rather than through
     // getenv(), the same reason LOCK_DSN is. `default::` resolves to null when
     // the variable is not set, so a shop that never heard of it is unaffected.
-    $services->set(QuoteAgentSettingsReader::class)->arg('$envApiKey', '%env(default::MQA_LLM_API_KEY)%');
+    $services->set(QuoteAgentSettingsReader::class)->arg('$envApiKey', '%env(default::MQA_LLM_API_KEY)%')->arg(
+        '$strategies',
+        service(StrategyResolver::class),
+    );
     $services->alias(QuoteAgentSettingsSource::class, QuoteAgentSettingsReader::class);
 
     // --- A2CN / Protocol -----------------------------------------------

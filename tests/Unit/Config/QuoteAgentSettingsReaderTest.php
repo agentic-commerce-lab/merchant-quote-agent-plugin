@@ -7,6 +7,9 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Config;
 use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
+use MerchantQuoteAgentPlugin\Strategy\ResolvedStrategy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
+use MerchantQuoteAgentPlugin\Strategy\UnknownStrategy;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Component\Validator\Validation;
@@ -24,6 +27,7 @@ final class QuoteAgentSettingsReaderTest extends TestCase
         array $overrides = [],
         #[\SensitiveParameter]
         ?string $envApiKey = null,
+        ?StrategyResolver $strategies = null,
     ): QuoteAgentSettingsReader {
         $values = [
             'enabled' => true,
@@ -47,7 +51,20 @@ final class QuoteAgentSettingsReaderTest extends TestCase
             Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator(),
         );
 
-        return new QuoteAgentSettingsReader($config, $factory, $envApiKey);
+        return new QuoteAgentSettingsReader(
+            $config,
+            $factory,
+            $envApiKey,
+            $strategies ?? $this->createMock(StrategyResolver::class),
+        );
+    }
+
+    private function resolverReturning(ResolvedStrategy $resolved): StrategyResolver
+    {
+        $resolver = $this->createMock(StrategyResolver::class);
+        $resolver->method('resolve')->willReturn($resolved);
+
+        return $resolver;
     }
 
     public function testTheConfiguredKeyIsUsedWhenNoEnvironmentKeyIsSet(): void
@@ -89,6 +106,43 @@ final class QuoteAgentSettingsReaderTest extends TestCase
             self::fail('Expected InvalidQuoteAgentConfiguration.');
         } catch (InvalidQuoteAgentConfiguration $e) {
             self::assertStringContainsString('MQA_LLM_API_KEY', implode(' ', $e->problems));
+        }
+    }
+
+    public function testNoStrategyIdMeansNoStrategyPrompt(): void
+    {
+        $settings = $this->reader()->forSalesChannel(null);
+
+        self::assertNotNull($settings);
+        self::assertNull($settings->strategyPrompt);
+        self::assertNull($settings->strategyVersionId);
+    }
+
+    public function testTheSelectedStrategyBecomesThePromptAndTheVersionId(): void
+    {
+        $settings = $this->reader([
+            'negotiationStrategyId' => '0123456789abcdef0123456789abcdef',
+        ], strategies: $this->resolverReturning(new ResolvedStrategy('feedfacefeedfacefeedfacefeedface', 'hold firm')))->forSalesChannel(
+            null,
+        );
+
+        self::assertNotNull($settings);
+        self::assertSame('hold firm', $settings->strategyPrompt);
+        self::assertSame('feedfacefeedfacefeedfacefeedface', $settings->strategyVersionId);
+    }
+
+    public function testAnUnusableStrategyIsRefusedAsAConfigurationProblem(): void
+    {
+        $resolver = $this->createMock(StrategyResolver::class);
+        $resolver->method('resolve')->willThrowException(UnknownStrategy::archived('0123456789abcdef0123456789abcdef'));
+
+        try {
+            $this->reader([
+                'negotiationStrategyId' => '0123456789abcdef0123456789abcdef',
+            ], strategies: $resolver)->forSalesChannel(null);
+            self::fail('Expected InvalidQuoteAgentConfiguration.');
+        } catch (InvalidQuoteAgentConfiguration $e) {
+            self::assertStringContainsString('archived', implode(' ', $e->problems));
         }
     }
 }

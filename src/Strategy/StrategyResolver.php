@@ -25,8 +25,12 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
  *
  * Concrete, with no interface: there is one implementation, and a class is
  * just as good a seam for the day assignment stops being per-sales-channel.
+ *
+ * Deliberately not `final`, unlike almost everything else in this codebase:
+ * QuoteAgentSettingsReaderTest mocks it, and PHPUnit cannot double a final
+ * class. An interface is not the alternative here -- see above.
  */
-final readonly class StrategyResolver
+readonly class StrategyResolver
 {
     public function __construct(
         private EntityRepository $strategies,

@@ -12,6 +12,12 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * @mago-expect lint:too-many-methods
+ * One test per guardrail PromptComposer enforces (the merchant section, the
+ * cap, the shipped-prompt integration, and now the strategy-library path) --
+ * splitting the class would hide which guardrail broke behind a file boundary.
+ */
 final class PromptComposerTest extends TestCase
 {
     private static function composer(): PromptComposer
@@ -114,5 +120,26 @@ final class PromptComposerTest extends TestCase
         self::assertStringStartsWith('You are a merchant\'s B2B sales agent', $composed);
         self::assertStringEndsWith("## Merchant strategy\n\nconcede in 1% steps", $composed);
         self::assertStringNotContainsString('{{tone}}', $composer->reply(self::settings(strategy: 'warm'))->text);
+    }
+
+    public function testAStrategyResolvedFromAVersionComposesLikeTypedTextDid(): void
+    {
+        // What QuoteAgentSettingsReader now builds: the prompt came from a
+        // StrategyVersion rather than from a textarea, and PromptComposer
+        // cannot tell the difference -- it reads $settings->strategyPrompt
+        // either way. That indifference is what keeps every guardrail test
+        // above meaningful after the library lands.
+        $settings = new QuoteAgentSettings(
+            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0)),
+            llm: new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini'),
+            strategyPrompt: 'open at 2%',
+            strategyVersionId: 'feedfacefeedfacefeedfacefeedface',
+        );
+
+        self::assertSame(
+            "NEGOTIATE BASE\n\n## Merchant strategy\n\nopen at 2%",
+            self::composer()->negotiate($settings)->text,
+        );
+        self::assertSame('REPLY BASE open at 2% END', self::composer()->reply($settings)->text);
     }
 }
