@@ -551,3 +551,33 @@
     font-size: 13px;
     font-variant-numeric: tabular-nums;
 }
+
+/* The grid's name cell, which selects the row. A button for the keyboard and
+   for screen readers, stripped back to read as the bold name it replaced. */
+.mqa-strategy__name {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-weight: 600;
+    color: var(--color-text-primary-default);
+    text-align: left;
+    cursor: pointer;
+}
+
+.mqa-strategy__name:hover {
+    color: var(--color-text-brand-default);
+    text-decoration: underline;
+}
+
+/* A strategy prompt is prose, like the one in the plugin configuration, so it
+   gets the same treatment: taller than mt-textarea's 125px/300px default.
+   Three classes deep for the same reason as that rule -- mt-textarea's own
+   `.mt-textarea__textarea[data-v-hash]` outranks a two-class selector. The
+   class sits on a wrapping div, like .mqa-access__lists, rather than on
+   mt-textarea itself, so it does not depend on where the component forwards
+   a fallthrough class. */
+.merchant-quote-agent-strategies .mqa-strategy__prompt .mt-textarea__textarea {
+    min-height: 320px;
+    max-height: none;
+}
