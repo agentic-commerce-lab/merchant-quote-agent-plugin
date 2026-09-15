@@ -130,6 +130,10 @@
             "escalationReason": "Escalation reason",
             "replyLabel": "Reply sent to the customer",
             "technicalDetails": "Technical details",
+            "strategyUsed": "Strategy used",
+            "strategyVersion": "Version",
+            "strategyPrompt": "Prompt sent",
+            "strategyUnavailable": "No longer available",
             "missingTitle": "Decision not found",
             "missingSubline": "This record could not be loaded. It may have been deleted.",
             "terminal": {

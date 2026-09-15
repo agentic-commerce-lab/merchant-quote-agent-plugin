@@ -130,6 +130,10 @@
             "escalationReason": "Eskalationsgrund",
             "replyLabel": "An den Kunden gesendete Antwort",
             "technicalDetails": "Technische Details",
+            "strategyUsed": "Verwendete Strategie",
+            "strategyVersion": "Version",
+            "strategyPrompt": "Gesendeter Prompt",
+            "strategyUnavailable": "Nicht mehr verfügbar",
             "missingTitle": "Entscheidung nicht gefunden",
             "missingSubline": "Dieser Datensatz konnte nicht geladen werden. Möglicherweise wurde er gelöscht.",
             "terminal": {

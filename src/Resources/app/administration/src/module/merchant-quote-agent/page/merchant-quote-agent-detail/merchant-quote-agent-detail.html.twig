@@ -249,6 +249,39 @@
                                         >{{ row.value }}</span>
                                     </div>
                                 </div>
+
+                                {# Which strategy sent this pass, resolved from the
+                                   recorded version id rather than the sales
+                                   channel's current assignment -- so an edited or
+                                   renamed strategy does not change what a past
+                                   decision reports having sent. Null means the
+                                   pass ran with no strategy configured, a valid
+                                   state, and renders nothing at all. #}
+                                <template v-if="entry.run.strategy">
+                                    <div class="mqa-tech__grid">
+                                        <div v-if="entry.run.strategy.unavailable">
+                                            <span class="mqa-tech__label">{{ $tc('merchant-quote-agent.detail.strategyUsed') }}</span>
+                                            <span class="mqa-tech__value">{{ $tc('merchant-quote-agent.detail.strategyUnavailable') }}</span>
+                                        </div>
+                                        <template v-else>
+                                            <div>
+                                                <span class="mqa-tech__label">{{ $tc('merchant-quote-agent.detail.strategyUsed') }}</span>
+                                                <span class="mqa-tech__value">{{ entry.run.strategy.name }}</span>
+                                            </div>
+                                            <div>
+                                                <span class="mqa-tech__label">{{ $tc('merchant-quote-agent.detail.strategyVersion') }}</span>
+                                                <span class="mqa-tech__value">{{ entry.run.strategy.version }}</span>
+                                            </div>
+                                        </template>
+                                    </div>
+
+                                    <details v-if="!entry.run.strategy.unavailable" class="mqa-tech">
+                                        <summary>{{ $tc('merchant-quote-agent.detail.strategyPrompt') }}</summary>
+                                        <div class="mqa-tech__row--wide">
+                                            <span class="mqa-tech__value">{{ entry.run.strategy.prompt }}</span>
+                                        </div>
+                                    </details>
+                                </template>
                             </details>
                         </template>
                     </li>
