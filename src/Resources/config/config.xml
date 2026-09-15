@@ -17,7 +17,7 @@
         <input-field type="password">
             <name>llmApiKey</name>
             <label>LLM API key</label>
-            <helpText>Your own key. Stored in system_config, obscured here but NOT encrypted at rest.</helpText>
+            <helpText>Your own key. Stored in system_config, obscured here but NOT encrypted at rest. Set MQA_LLM_API_KEY in the environment instead to keep it out of the database entirely — when that is set, this field is ignored.</helpText>
         </input-field>
         <input-field type="text">
             <name>llmBaseUrl</name>
@@ -34,11 +34,9 @@
 
     <card>
         <title>Negotiation strategy</title>
-        <input-field type="textarea">
-            <name>negotiationStrategy</name>
-            <label>Negotiation strategy</label>
-            <helpText>Tone and commercial posture, e.g. "open at 2%, concede in 1% steps, never lead with the maximum". Appended to the negotiation prompt and used as the reply's tone instruction. It can never move a cap — the policies below are the guardrail.</helpText>
-        </input-field>
+        <component name="merchant-quote-agent-strategy-select">
+            <name>negotiationStrategyId</name>
+        </component>
     </card>
 
     <card>

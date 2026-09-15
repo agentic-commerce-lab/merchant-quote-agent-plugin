@@ -1,5 +1,6 @@
 import template from './merchant-quote-agent-detail.html.twig';
 import { historySummary, historyReads } from '../../history';
+import { builtInSnippetKey } from '../../strategy.ts';
 import {
     ORDER_PLACED_TERMINAL_STATE,
     answeredTheBuyer,
@@ -37,6 +38,10 @@ Shopware.Component.register('merchant-quote-agent-detail', {
             rounds: [],
             quote: null,
             isLoading: false,
+            // Keyed by strategyVersionId. Resolved once per load(), not per
+            // pass: several rounds of the same quote can share a version, and
+            // a version can outlive the strategy row that named it.
+            strategyByVersion: {},
         };
     },
 
@@ -47,6 +52,19 @@ Shopware.Component.register('merchant-quote-agent-detail', {
 
         quoteRepository() {
             return this.repositoryFactory.create('quote');
+        },
+
+        strategyRepository() {
+            return this.repositoryFactory.create('merchant_quote_agent_strategy');
+        },
+
+        strategyVersionRepository() {
+            return this.repositoryFactory.create('merchant_quote_agent_strategy_version');
+        },
+
+        /** The rounds this page renders, record itself included as a fallback of one. */
+        recordRounds() {
+            return this.rounds.length > 0 ? this.rounds : (this.record ? [this.record] : []);
         },
 
         /**
@@ -93,15 +111,16 @@ Shopware.Component.register('merchant-quote-agent-detail', {
         },
 
         runs() {
-            const list = this.rounds.length > 0 ? this.rounds : (this.record ? [this.record] : []);
             // The quote as the agent first found it: the earliest pass's own
             // opening total, which is the snapshot QuoteBaseline stamps and so
             // the total every reply's percentage is quoted against. Read off
             // the rounds rather than fetched, because they are already here
             // and already sorted createdAt ASC.
-            const baselineNet = list.find((round) => Number.isFinite(round.totalNetBefore))?.totalNetBefore ?? null;
+            const baselineNet = this.recordRounds.find(
+                (round) => Number.isFinite(round.totalNetBefore),
+            )?.totalNetBefore ?? null;
 
-            return list.map((round, index) => this.formatRun(round, index, baselineNet));
+            return this.recordRounds.map((round, index) => this.formatRun(round, index, baselineNet));
         },
 
         /**
@@ -194,10 +213,12 @@ Shopware.Component.register('merchant-quote-agent-detail', {
         },
 
         async load() {
+            const requested = this.$route.params.id;
+
             this.isLoading = true;
 
             try {
-                this.record = await this.decisionRepository.get(this.$route.params.id, Shopware.Context.api);
+                this.record = await this.decisionRepository.get(requested, Shopware.Context.api);
 
                 // Grouped on quoteId, the actual key. quoteNumber is nullable,
                 // and a record without one used to show as a lone round even
@@ -210,15 +231,103 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                     this.rounds = Array.from(await this.decisionRepository.search(criteria, Shopware.Context.api));
                     this.quote = await this.loadQuote(this.record.quoteId);
                 }
+
+                // Never allowed to throw: see loadStrategies(). A decision's
+                // own data must still render even when this fails.
+                await this.loadStrategies(requested);
             } catch (error) {
                 this.record = null;
                 this.rounds = [];
                 this.quote = null;
+                this.strategyByVersion = {};
                 // eslint-disable-next-line no-console
                 console.error('merchant-quote-agent: failed to load decision flow', error);
             } finally {
                 this.isLoading = false;
             }
+        },
+
+        /**
+         * Resolves every pass's `strategyVersionId` to a version and its
+         * strategy: two straight reads each, no association -- the entities
+         * deliberately declare none. `requested` is the route id captured
+         * before the round trip; a response for a decision the page has since
+         * moved on from is dropped, the same shape as loadConfig() in the
+         * access page (page/merchant-quote-agent-access/index.ts).
+         *
+         * Never throws. A version or strategy that cannot be read resolves to
+         * "unavailable" per id (see loadStrategyForVersion) rather than
+         * bubbling -- this is an audit trail, and a lookup failing here must
+         * not take the rest of an already-loaded decision down with it.
+         */
+        async loadStrategies(requested) {
+            const versionIds = [...new Set(
+                this.recordRounds
+                    .map((round) => round.strategyVersionId)
+                    .filter((id) => typeof id === 'string' && id.length > 0),
+            )];
+
+            if (versionIds.length === 0) {
+                if (this.$route.params.id === requested) {
+                    this.strategyByVersion = {};
+                }
+
+                return;
+            }
+
+            const entries = await Promise.all(
+                versionIds.map(async (versionId) => [versionId, await this.loadStrategyForVersion(versionId)]),
+            );
+
+            if (this.$route.params.id !== requested) {
+                return;
+            }
+
+            this.strategyByVersion = Object.fromEntries(entries);
+        },
+
+        /**
+         * One version, then its strategy by `strategyId` -- no association to
+         * follow. Any failure (the version gone, its strategy gone, a
+         * transient error) reports as unavailable rather than throwing: a
+         * decision can reference a version whose strategy was archived and
+         * pruned, or a row restored from a partial backup, and that is a
+         * valid thing for an audit record to show, not an error.
+         */
+        async loadStrategyForVersion(versionId) {
+            try {
+                const version = await this.strategyVersionRepository.get(versionId, Shopware.Context.api);
+
+                if (!version) {
+                    return { unavailable: true };
+                }
+
+                const strategy = await this.strategyRepository.get(version.strategyId, Shopware.Context.api);
+
+                if (!strategy) {
+                    return { unavailable: true };
+                }
+
+                const key = builtInSnippetKey(strategy.id);
+
+                return {
+                    unavailable: false,
+                    version: version.version,
+                    prompt: version.prompt,
+                    name: key === null ? strategy.name : this.$tc(`merchant-quote-agent.strategy.builtIn.${key}.name`),
+                };
+            } catch (error) {
+                return { unavailable: true };
+            }
+        },
+
+        /** The resolved strategy for one pass, or null when it ran with none configured. */
+        strategyFor(round) {
+            if (typeof round.strategyVersionId !== 'string' || round.strategyVersionId.length === 0) {
+                return null;
+            }
+
+            return this.strategyByVersion[round.strategyVersionId] ?? null;
         },
 
         /**
@@ -293,6 +402,9 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 // conversation card reads them off the quote instead.
                 reply: round.replyToBuyer || null,
                 technical: this.technical(round),
+                // null when the pass ran with no strategy configured -- a
+                // valid state, not an error, and rendered as nothing at all.
+                strategy: this.strategyFor(round),
             };
         },
 

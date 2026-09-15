@@ -8,6 +8,10 @@ use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Negotiation\AppliedOffer;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
+use MerchantQuoteAgentPlugin\Policy\Data\Band;
+use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteAutoReplyDetails;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
@@ -109,8 +113,50 @@ final class DecisionRecorderTest extends TestCase
         self::assertSame(5.0, $writer->drafts[0]->discountPercentGranted);
     }
 
+    /**
+     * The strategy version is the prompt actually sent, stamped alongside
+     * maxDiscountPercent -- the same "record what the configuration was"
+     * step, at its call site in NegotiationPipeline.
+     */
+    public function testRecordDecisionCarriesTheStrategyVersionOntoTheDraft(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->begin(NegotiationFixture::snapshot(), self::context());
+        $recorder->recordDecision(self::grantDecision(), 10.0, 'feedfacefeedfacefeedfacefeedface');
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        self::assertSame('feedfacefeedfacefeedfacefeedface', $writer->drafts[0]->strategyVersionId);
+    }
+
+    public function testRecordDecisionWithoutAStrategySelectedLeavesTheColumnNull(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->begin(NegotiationFixture::snapshot(), self::context());
+        $recorder->recordDecision(self::grantDecision(), 10.0);
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        self::assertNull($writer->drafts[0]->strategyVersionId);
+    }
+
     private static function context(): PassContext
     {
         return new PassContext(ServicingTriggerReason::CommentWritten, 0);
+    }
+
+    private static function grantDecision(): NegotiationDecision
+    {
+        return new NegotiationDecision(
+            Band::Grant,
+            QuoteDecision::autoReply(new QuoteAutoReplyDetails(
+                discountPercent: 5.0,
+                perLineAsks: false,
+                lineUnitPricesNet: [],
+                validityDays: 14,
+            )),
+        );
     }
 }

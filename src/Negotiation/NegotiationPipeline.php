@@ -200,7 +200,11 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             $settings->policy,
             new NegotiationProposal(price: $ask?->interpretation),
         );
-        $this->recorder->recordDecision($decision, $settings->policy->price->maxDiscountPercent);
+        $this->recorder->recordDecision(
+            $decision,
+            $settings->policy->price->maxDiscountPercent,
+            $settings->strategyVersionId,
+        );
 
         if ($decision->overall === Band::Escalate) {
             $reason = $decision->price->escalation->reason ?? QuoteEscalationReason::NeedsHumanReview;

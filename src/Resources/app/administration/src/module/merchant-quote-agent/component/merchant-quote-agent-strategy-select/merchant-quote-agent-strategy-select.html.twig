@@ -1,0 +1,50 @@
+{% block merchant_quote_agent_strategy_select %}
+<div class="mqa-strategy-select">
+    {# The plugin config page only needs system_config:read to open. Without
+       this module's own viewer privilege the select would otherwise be
+       silently empty, which reads as a broken feature rather than a missing
+       permission. #}
+    <mt-banner v-if="!canRead" variant="attention">
+        {{ $tc('merchant-quote-agent.strategy.noPrivilege') }}
+    </mt-banner>
+
+    <mt-banner v-if="error" variant="critical">
+        {{ error }}
+    </mt-banner>
+
+    <template v-if="canRead">
+        <mt-select
+            :label="$tc('merchant-quote-agent.strategy.selectLabel')"
+            :help-text="$tc('merchant-quote-agent.strategy.selectHelp')"
+            :options="options"
+            :model-value="value"
+            :disabled="isLoading"
+            @update:model-value="onUpdateValue"
+        />
+
+        {# Archived strategies are excluded above. A value already selected
+           that no longer appears here (archived, or unknown) is left as-is --
+           it still resolves and is enforced server-side, and papering over
+           that here would hide a state the merchant needs to act on. #}
+        <div v-if="selected" class="mqa-strategy-select__meta">
+            <mt-badge :variant="selectedIsBuiltIn ? 'info' : 'neutral'">
+                {{ selectedIsBuiltIn ? $tc('merchant-quote-agent.strategy.builtInBadge') : $tc('merchant-quote-agent.strategy.custom') }}
+            </mt-badge>
+            <p class="mqa-strategy-select__description">{{ description }}</p>
+        </div>
+
+        <mt-textarea
+            :label="$tc('merchant-quote-agent.strategy.promptLabel')"
+            :help-text="$tc('merchant-quote-agent.strategy.promptHelp')"
+            :model-value="prompt"
+            :disabled="true"
+        />
+    </template>
+
+    {# Without merchant_quote_agent.viewer the route above 403s on open --
+       this link is worth nothing without the privilege it manages. #}
+    <router-link v-if="canRead" class="mqa-strategy-select__manage" :to="{ name: 'merchant.quote.agent.strategies' }">
+        {{ $tc('merchant-quote-agent.strategy.manage') }}
+    </router-link>
+</div>
+{% endblock %}

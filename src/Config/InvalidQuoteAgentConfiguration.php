@@ -14,7 +14,8 @@ final class InvalidQuoteAgentConfiguration extends \RuntimeException
     /** @param list<string> $problems */
     public function __construct(
         public readonly array $problems,
+        ?\Throwable $previous = null,
     ) {
-        parent::__construct('Quote agent configuration is invalid: ' . implode('; ', $problems));
+        parent::__construct('Quote agent configuration is invalid: ' . implode('; ', $problems), 0, $previous);
     }
 }

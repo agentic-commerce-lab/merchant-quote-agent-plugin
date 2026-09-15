@@ -131,6 +131,10 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
+use MerchantQuoteAgentPlugin\Strategy\Strategy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
+use MerchantQuoteAgentPlugin\Strategy\StrategyVersion;
+use MerchantQuoteAgentPlugin\Strategy\StrategyWriteGuard;
 use MerchantQuoteAgentPlugin\Ucp\Profile\A2cnMandateProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Profile\QuoteCapabilityProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\Controller\UcpQuoteController;
@@ -351,6 +355,30 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // the class a service for that to fire.
     $services->set(QuoteDecisionRecord::class);
 
+    // The strategy library (Task 2). Registered unconditionally like
+    // QuoteDecisionRecord — they are written by the administration through the
+    // admin API regardless of whether SwagCommercial is licensed. Autoconfiguration
+    // reads the #[Entity] attributes and adds the `shopware.entity` tag.
+    $services->set(Strategy::class);
+    $services->set(StrategyVersion::class);
+
+    // Resolves a strategy id to its newest version's prompt (Task 6). The
+    // repositories are DAL-generated from the #[Entity] attributes above, so
+    // they are not autowirable by type and have to be named explicitly.
+    $services->set(StrategyResolver::class)->args([
+        service('merchant_quote_agent_strategy.repository'),
+        service('merchant_quote_agent_strategy_version.repository'),
+    ]);
+
+    // Enforces the two invariants #[Protection] was deliberately left off of:
+    // a version row is never updated or deleted, and a built-in strategy row
+    // is never updated or deleted. Registered unconditionally and outside the
+    // SwagCommercial guard below, like the entities themselves -- an admin API
+    // token bypasses the administration, so the rule has to hold server-side
+    // on any shop where these tables exist. autoconfigure() picks up
+    // EventSubscriberInterface, so no explicit tag.
+    $services->set(StrategyWriteGuard::class);
+
     // The repository is created by the DAL from the #[Entity] attribute; it
     // is not autowirable by type, so name it.
     $services->set(DecisionRecordWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
@@ -381,7 +409,13 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // The reader stays private: the alias below is what references it, so
     // RemoveUnusedDefinitionsPass no longer prunes it as dead.
     $services->set(QuoteAgentSettingsFactory::class);
-    $services->set(QuoteAgentSettingsReader::class);
+    // MQA_LLM_API_KEY is read as an injected parameter rather than through
+    // getenv(), the same reason LOCK_DSN is. `default::` resolves to null when
+    // the variable is not set, so a shop that never heard of it is unaffected.
+    $services->set(QuoteAgentSettingsReader::class)->arg('$envApiKey', '%env(default::MQA_LLM_API_KEY)%')->arg(
+        '$strategies',
+        service(StrategyResolver::class),
+    );
     $services->alias(QuoteAgentSettingsSource::class, QuoteAgentSettingsReader::class);
 
     // --- A2CN / Protocol -----------------------------------------------

@@ -130,6 +130,10 @@
             "escalationReason": "Escalation reason",
             "replyLabel": "Reply sent to the customer",
             "technicalDetails": "Technical details",
+            "strategyUsed": "Strategy used",
+            "strategyVersion": "Version",
+            "strategyPrompt": "Prompt sent",
+            "strategyUnavailable": "No longer available",
             "missingTitle": "Decision not found",
             "missingSubline": "This record could not be loaded. It may have been deleted.",
             "terminal": {
@@ -182,6 +186,48 @@
             },
             "organizationNameLabel": "Organization name in the A2CN seller mandate",
             "organizationNameHelp": "Published in this sales channel’s signed A2CN seller mandate, which buyer agents fetch to see who they are dealing with. Leave empty to publish the shop name from Settings → Shop → Basic information."
+        },
+        "strategy": {
+            "mainMenuItem": "Negotiation strategies",
+            "title": "Negotiation strategies",
+            "selectLabel": "Negotiation strategy",
+            "selectHelp": "Which strategy the agent negotiates with on this sales channel. Editing a strategy's prompt takes effect for every channel using it.",
+            "promptLabel": "Current prompt",
+            "promptHelp": "The latest prompt version of the selected strategy, read-only. Create and edit strategies on Settings → Negotiation strategies.",
+            "manage": "Manage negotiation strategies",
+            "custom": "Custom",
+            "builtInBadge": "Built-in",
+            "noPrivilege": "You need the quote agent's \"strategy\" viewing privilege to see and choose a negotiation strategy. Ask an administrator to grant it.",
+            "loadFailed": "Could not load the negotiation strategies.",
+            "requestFailed": "The request failed.",
+            "columnName": "Name",
+            "columnType": "Type",
+            "columnDescription": "Description",
+            "add": "Add a strategy",
+            "view": "View",
+            "edit": "Edit",
+            "duplicate": "Duplicate & edit",
+            "rename": "Rename",
+            "archive": "Archive",
+            "archiveWarning": "Archiving “{name}” removes it from the selector on the plugin configuration page. Any sales channel still assigned to it will escalate every quote to a human until you choose a different, active strategy.",
+            "namePrompt": "Strategy name",
+            "saveNewVersion": "Save as a new version",
+            "currentVersion": "Version {version}",
+            "readOnlyHint": "You need the quote agent's editor privilege to create, duplicate, rename or archive a negotiation strategy. Ask an administrator to grant it.",
+            "builtIn": {
+                "marginDefender": {
+                    "name": "Margin defender",
+                    "description": "Preserve margin and make small, deliberate concessions only when a buyer explicitly asks."
+                },
+                "fastClose": {
+                    "name": "Fast close",
+                    "description": "Remove routine negotiating friction and reach an agreement quickly within merchant limits."
+                },
+                "relationshipBuilder": {
+                    "name": "Relationship builder",
+                    "description": "Make proportional concessions that support a durable B2B relationship without automatic maximum discounts."
+                }
+            }
         },
         "disposition": {
             "needsReview": "Needs review",
