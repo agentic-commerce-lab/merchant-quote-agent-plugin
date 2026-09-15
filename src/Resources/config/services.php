@@ -132,6 +132,7 @@ use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
 use MerchantQuoteAgentPlugin\Strategy\Strategy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
 use MerchantQuoteAgentPlugin\Strategy\StrategyVersion;
 use MerchantQuoteAgentPlugin\Strategy\StrategyWriteGuard;
 use MerchantQuoteAgentPlugin\Ucp\Profile\A2cnMandateProfileContributor;
@@ -360,6 +361,14 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // reads the #[Entity] attributes and adds the `shopware.entity` tag.
     $services->set(Strategy::class);
     $services->set(StrategyVersion::class);
+
+    // Resolves a strategy id to its newest version's prompt (Task 6). The
+    // repositories are DAL-generated from the #[Entity] attributes above, so
+    // they are not autowirable by type and have to be named explicitly.
+    $services->set(StrategyResolver::class)->args([
+        service('merchant_quote_agent_strategy.repository'),
+        service('merchant_quote_agent_strategy_version.repository'),
+    ]);
 
     // Enforces the two invariants #[Protection] was deliberately left off of:
     // a version row is never updated or deleted, and a built-in strategy row
