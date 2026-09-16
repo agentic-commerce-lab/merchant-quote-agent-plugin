@@ -25,5 +25,12 @@ scripts/__pycache__/
 # sync-to-shop.sh wipes it with the rest of the plugin directory anyway.
 /src/Resources/app/administration/.shopware/
 
+# Generated beside it, for the same reason and by the same script. It
+# `extends` the .shopware/ bridge above, so it is only meaningful where
+# that bridge exists. Committing it broke `shopware-cli extension package`:
+# the zip build compiles the admin sources with vite, vite reads any
+# tsconfig.json it finds, and the file it extends is not in the zip.
+/src/Resources/app/administration/tsconfig.json
+
 # Unreleased AC QA build, shared for local testing only - never commit.
 SwagAgenticCommerce-*.zip

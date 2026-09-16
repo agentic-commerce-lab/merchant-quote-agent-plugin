@@ -31,6 +31,7 @@ cd "$(dirname "$0")/.."
 
 CONTAINER="${SHOP_CONTAINER:-merchant-quote-shop}"
 ADMIN=/var/www/html/vendor/shopware/administration/Resources/app/administration
+PLUGIN_ADMIN=/var/www/html/custom/plugins/MerchantQuoteAgentPlugin/src/Resources/app/administration
 
 console() {
   docker exec -w /var/www/html "$CONTAINER" php8.3 bin/console "$@"
@@ -66,6 +67,19 @@ console administration:generate-entity-schema-types -n
 # .shopware/ bridge with it, so this has to run after every sync rather than
 # once per shop.
 console administration:setup-extension-tooling -n
+
+# Written here rather than committed. It `extends` the generated bridge above,
+# so it is only valid where that bridge exists -- and committing it broke the
+# plugin zip: `shopware-cli extension package` compiles the admin sources with
+# vite, vite reads any tsconfig.json beside them, and .shopware/ is not in the
+# zip. Generating it keeps the two files' lifetimes identical.
+docker exec -i "$CONTAINER" tee "$PLUGIN_ADMIN/tsconfig.json" >/dev/null <<'TSCONFIG'
+{
+    "extends": "./.shopware/tsconfig.json",
+    "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "src/**/*.js"],
+    "exclude": ["**/*.spec.ts", "**/*.spec.tsx", "**/*.spec.js"]
+}
+TSCONFIG
 
 # --fail-on-skipped: without it a tool that could not run at all still exits 0,
 # so a green result could mean "checked nothing".
