@@ -30,5 +30,15 @@ final readonly class QuoteLineSnapshot
          * it without a second read of the line.
          */
         public float $netRatio = 1.0,
+        /**
+         * When this line was last written, by anyone.
+         *
+         * The one ask that arrives without a comment is a per-line
+         * `requested_price`, so this is the only date a comment-less ask has.
+         * It is NOT a buyer signal on its own: our own price writes move it
+         * too, which is why MerchantHandover dates only the line whose
+         * requested price differs from the stamped fingerprint.
+         */
+        public ?\DateTimeImmutable $updatedAt = null,
     ) {}
 }
