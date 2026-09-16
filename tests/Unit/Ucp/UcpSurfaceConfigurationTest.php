@@ -30,6 +30,12 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
  * Definitions, not a compiled container: without the real bundle the UCP branch
  * references ids nothing here provides, so compiling would fail for reasons
  * that say nothing about the gate.
+ *
+ * The SwagCommercial half of the same file is
+ * tests/Unit/Bridge/Commercial/CommercialSurfaceConfigurationTest.php, which
+ * also checks that nothing either gate leaves standing depends on something
+ * the other removed — the check that stands in for the compile neither test
+ * can run.
  */
 final class UcpSurfaceConfigurationTest extends TestCase
 {
