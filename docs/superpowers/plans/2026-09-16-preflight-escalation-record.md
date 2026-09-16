@@ -509,22 +509,49 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 Depends on Task 3.
 
 **Files:**
-- Modify: `tests/Integration/ServicingConfigGateTest.php`
+- Create: `tests/Integration/PreflightEscalationRecordTest.php`
 
 **Interfaces:**
 - Consumes: the whole chain, wired by the real container.
 - Produces: nothing.
 
+**A new file rather than an extension of `ServicingConfigGateTest`, on purpose.**
+That class's `testAMissingApiKeyEscalatesOnceRatherThanDecidingQuietly` is issue
+#140 — it fails on a correctly-configured shop today, and a parallel agent may
+be rewriting it. Editing the method this work would otherwise build on
+entangles two changes that have nothing to do with each other, and #140's own
+resolution may delete the two-invocation setup entirely. So: a separate file,
+and **no assertion anywhere in it about how many comments the buyer received.**
+The row count is this work's claim; the comment count is #140's.
+
 - [ ] **Step 1: Write the tests**
 
-`ServicingConfigGateTest` already drives the container-resolved preflight through
-the real handler, twice, against a channel with an empty API key. Extend it —
-do not add a second fixture.
+Model the file on `ServicingConfigGateTest` — same `IntegrationTestCase` base,
+same `self::config()` / `static::gateway()` / `QuoteFixture::anyQuoteId()` /
+`static::preflight()` helpers, and its own copies of the small
+`countingPipeline()` and `handler()` doubles. Three tests:
 
-Add a helper:
+1. `testAMisconfiguredChannelWritesAnEscalatedRowNamingTheFieldsAtFault` — set
+   `enabled` true and `llmApiKey` empty, invoke the handler once, then read the
+   quote's rows back through `merchant_quote_agent_decision.repository` filtered
+   on `quoteId`. Assert exactly one row, and on it: `outcome === 'escalated'`,
+   `escalationReason === 'not_configured'`, `triggerReason === 'comment_written'`,
+   the `quoteId` matches, `violations` non-empty. Also assert `durationMs`,
+   `band` and `model` are all null — nothing ran, so nothing is claimed. Comment
+   that `violations` is what #7's `not_configured` sentence means by "The
+   technical details below name the fields".
+2. `testEachRefusedPassIsItsOwnRow` — same setup, invoke the handler **twice**
+   with the same message, assert **two** rows. Comment that the asymmetry is
+   deliberate: the marker makes the buyer hear it once, the table logs passes,
+   and two buyer asks went unanswered. Say in the comment that the comment count
+   is #140's business and is deliberately not asserted here.
+3. `testADisabledSalesChannelWritesNoDecisionRow` — `enabled` false, invoke
+   once, assert zero rows. A paused agent is not an audit event.
+
+Shared private helper:
 
 ```php
-    /** @return list<string> the decision-row ids this quote has, newest last */
+    /** @return list<string> the decision-row ids this quote has, oldest first */
     private static function decisionIds(string $quoteId): array
     {
         $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
@@ -538,75 +565,18 @@ Add a helper:
     }
 ```
 
-Extend `testAMissingApiKeyEscalatesOnceRatherThanDecidingQuietly` with, after the
-existing assertions:
-
-```php
-        // One comment, two rows, and that asymmetry is the design's. The marker
-        // makes the BUYER hear it once; the table logs passes, and two buyer
-        // asks went unanswered. Replacing the old zero with a one would have
-        // hidden the second.
-        self::assertCount(2, self::decisionIds($quoteId), 'Each refused pass is a row.');
-```
-
-Add a new test reading the row back:
-
-```php
-    public function testTheEscalatedRowCarriesTheReasonAndTheFieldsAtFault(): void
-    {
-        $gateway = static::gateway();
-        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
-        $config = self::config();
-        $config->set(QuoteAgentSettingsReader::DOMAIN . 'enabled', true);
-        $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmApiKey', '');
-
-        self::handler($gateway, self::countingPipeline())(
-            ServiceQuoteMessage::because($quoteId, ServicingTriggerReason::CommentWritten),
-        );
-
-        $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
-        self::assertInstanceOf(EntityRepository::class, $repository);
-        $ids = self::decisionIds($quoteId);
-        self::assertCount(1, $ids);
-
-        $row = $repository->search(new Criteria($ids), Context::createDefaultContext())->first();
-        self::assertNotNull($row);
-        self::assertSame('escalated', $row->outcome);
-        self::assertSame('not_configured', $row->escalationReason);
-        self::assertSame('comment_written', $row->triggerReason);
-        self::assertSame($quoteId, $row->quoteId);
-        // The `not_configured` sentence on #7's detail page ends "The technical
-        // details below name the fields." These are those details.
-        self::assertNotEmpty($row->violations);
-        // Nothing ran, so nothing is claimed.
-        self::assertNull($row->durationMs);
-        self::assertNull($row->band);
-        self::assertNull($row->model);
-    }
-
-    public function testADisabledSalesChannelWritesNoDecisionRow(): void
-    {
-        $gateway = static::gateway();
-        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
-        self::config()->set(QuoteAgentSettingsReader::DOMAIN . 'enabled', false);
-
-        self::handler($gateway, self::countingPipeline())(
-            ServiceQuoteMessage::because($quoteId, ServicingTriggerReason::CommentWritten),
-        );
-
-        self::assertSame([], self::decisionIds($quoteId), 'A paused agent is not an audit event.');
-    }
-```
-
-Add the imports the helper needs (`EntityRepository`, `Criteria`, `EqualsFilter`,
-`FieldSorting`).
+Watch the class's method count against mago's `too-many-methods` ceiling of 11:
+three tests plus three or four helpers is fine; do not grow it further.
 
 - [ ] **Step 2: Verify**
 
-`composer run test:integration -- --filter ServicingConfigGate`. If a failure
-appears elsewhere in the suite, re-run once before treating it as real, and
-check it against the base commit (detached checkout — **never** `git stash`,
-the stack is shared across worktrees).
+`composer run test:integration -- --filter PreflightEscalationRecord`, then the
+whole integration suite. #139
+(`DecisionRecordTest::testAStringLongerThanItsColumnIsRejectedAtWriteTime`) and
+#140 (`ServicingConfigGateTest::testAMissingApiKeyEscalatesOnceRatherThanDecidingQuietly`)
+are known pre-existing failures this work does not touch. Anything else red is
+checked against the base commit by a **detached checkout** — never `git stash`,
+the stack is shared across worktrees — and re-run once before being called real.
 
 - [ ] **Step 3: Commit**
 
