@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
+use MerchantQuoteAgentPlugin\Negotiation\RewordingGuard;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -18,7 +19,7 @@ use PHPUnit\Framework\TestCase;
  * green, which is how a guard turns a feature off without anyone noticing.
  * So the accepting table below is as load-bearing as the rejecting one.
  */
-final class ReplyTemplateTest extends TestCase
+final class RewordingGuardTest extends TestCase
 {
     private const PERCENT = 5.0;
 
@@ -116,7 +117,7 @@ final class ReplyTemplateTest extends TestCase
     public function testAFaithfulRewordingReachesTheBuyer(string $reworded): void
     {
         self::assertNull(
-            ReplyTemplate::unsafeBecause($reworded, self::PERCENT, self::TOTAL, self::validUntil()),
+            RewordingGuard::unsafeBecause($reworded, self::PERCENT, self::TOTAL, self::validUntil()),
             'This rewording adds nothing, so rejecting it silently disables rewording for this tone.',
         );
     }
@@ -125,7 +126,7 @@ final class ReplyTemplateTest extends TestCase
     public function testARewordingThatAddsOrDropsAFactIsRejected(string $reworded): void
     {
         self::assertNotNull(
-            ReplyTemplate::unsafeBecause($reworded, self::PERCENT, self::TOTAL, self::validUntil()),
+            RewordingGuard::unsafeBecause($reworded, self::PERCENT, self::TOTAL, self::validUntil()),
             'This rewording would put something in front of a buyer that nothing downstream can honour.',
         );
     }
@@ -133,7 +134,7 @@ final class ReplyTemplateTest extends TestCase
     /** The reason is what makes an over-firing guard greppable rather than invisible. */
     public function testTheReasonNamesTheRuleThatFired(): void
     {
-        $reason = ReplyTemplate::unsafeBecause(
+        $reason = RewordingGuard::unsafeBecause(
             'We can bring this quote down by 5% to 950.00 EUR with free shipping. '
             . 'The offer is valid until 2026-09-11.',
             self::PERCENT,
@@ -154,6 +155,6 @@ final class ReplyTemplateTest extends TestCase
     {
         $template = ReplyTemplate::compose(0.0, 950.0, 'EUR', self::validUntil());
 
-        self::assertNull(ReplyTemplate::unsafeBecause($template, 0.0, 950.0, self::validUntil()));
+        self::assertNull(RewordingGuard::unsafeBecause($template, 0.0, 950.0, self::validUntil()));
     }
 }

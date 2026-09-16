@@ -93,7 +93,7 @@ final readonly class ReplyComposer
             return [$template, null];
         }
 
-        $unsafe = ReplyTemplate::unsafeBecause($reworded, $reductionPercent, $total, $validUntil);
+        $unsafe = RewordingGuard::unsafeBecause($reworded, $reductionPercent, $total, $validUntil);
 
         if ($unsafe !== null) {
             // Logged with the reason, not just the text: the fallback is a
