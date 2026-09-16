@@ -94,11 +94,15 @@ An integration acting through the admin API sets `integration_id` and leaves
 reading: the rule is about a person having looked.
 
 **Where it lands.** A new `Bridge\MerchantActionReader` (one method,
-`lastActionAt(string $quoteId, Context $context): ?\DateTimeImmutable`), injected
-into `QuoteSnapshotReader` as a fourth argument, filling a new nullable
-`lastMerchantActionAt` on `QuoteLifecycle` as the later of that row and the
-newest merchant-authored comment. Everything downstream reads a plain DTO field
-and learns no new Shopware type.
+`lastTransitionAt(string $quoteId, Context $context): ?\DateTimeImmutable`),
+injected into `QuoteSnapshotReader` as a fourth argument, filling a new nullable
+`lastAdminTransitionAt` on `QuoteLifecycle`. Everything downstream reads a plain
+DTO field and learns no new Shopware type.
+
+The field carries the transition alone, not the later of transition and comment.
+Combining the two is a decision, and decisions belong where they can be unit
+tested: the comments are already in the snapshot, so `MerchantHandover` takes the
+maximum itself, in pure code, and the bridge stays transport.
 
 Accepted cost: one indexed query per `fetchSnapshot()`, and that method is called
 more than once per pass (pass start, `OfferApplier`'s verification read, the
