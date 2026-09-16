@@ -37,14 +37,22 @@ use Shopware\Core\Framework\Migration\MigrationStep;
  *
  * This writes `system_config` directly, the same way
  * NegotiationStrategyTextConfigRows does, so no `SystemConfigChangedEvent` is
- * dispatched and `CachedSystemConfigLoader`'s pool is not invalidated. A
- * deploy that runs `bin/console database:migrate` without also clearing the
- * cache keeps serving the stale `0` from cache — which `Assert\Positive` now
- * rejects — until the cache expires or is cleared, taking the sales channel
- * out of service in the meantime. `bin/console plugin:update` already clears
- * the cache as part of its own run, so this is a `database:migrate`-only
- * hazard; an operator running migrations bare should clear the cache
- * afterwards.
+ * dispatched, and the write itself does not invalidate
+ * `CachedSystemConfigLoader`'s cache tag. Both supported ways of running this
+ * migration cover that gap anyway: `bin/console database:migrate` clears the
+ * whole `cache.object` pool once any migration ran
+ * (`MigrationCommand.php:92-94`), and `bin/console plugin:update` — like the
+ * administration's plugin-update button, both routing through
+ * `PluginLifecycleService::updatePlugin()` — dispatches `PluginPostUpdateEvent`
+ * right after `runMigrations()` (`PluginLifecycleService.php:323,344`), which
+ * `cache.xml:151` wires to `CacheInvalidationSubscriber::invalidateConfig()`
+ * to force-invalidate the `system-config` tag
+ * (`CacheInvalidationSubscriber.php:102-106`), regardless of whether
+ * `-c`/`--clearCache` was passed — that option only gates a separate, broader
+ * `CacheClearer::clear()` (`AbstractPluginLifecycleCommand.php:121-139`). No
+ * cache-staleness hazard has been found on either command or on the admin
+ * update path; an operator running this migration through any other
+ * mechanism should still clear the cache afterwards as a precaution.
  */
 class Migration1789500000DefaultOfferValidityDays extends MigrationStep
 {
