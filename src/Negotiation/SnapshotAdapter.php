@@ -50,19 +50,35 @@ final class SnapshotAdapter
         return QuoteBaseline::read($snapshot)?->anchor($live) ?? $live;
     }
 
+    /**
+     * The comments split by who wrote them — and a merchant's own note belongs
+     * to neither side.
+     *
+     * It is not an ask: answering it writes a reply to an internal note in the
+     * one thread the customer reads (#55). And it is not something the agent
+     * said, so it must not appear as the agent's prior words in the negotiate
+     * prompt either — a merchant's aside is not a promise the agent made, and
+     * the model must not repeat it back to the buyer.
+     *
+     * Dropping it is deliberate rather than incidental: the merchant's channel
+     * for steering a pass is the strategy library and the policy settings, not
+     * a sentence the buyer can also read.
+     */
     public static function conversation(BridgeSnapshot $snapshot): BuyerConversation
     {
         $buyer = [];
         $agent = [];
 
         foreach ($snapshot->content->comments as $comment) {
-            if ($comment->isAuthored()) {
+            if ($comment->isBuyerAuthored()) {
                 $buyer[] = $comment;
 
                 continue;
             }
 
-            $agent[] = $comment;
+            if (!$comment->isAuthored()) {
+                $agent[] = $comment;
+            }
         }
 
         return new BuyerConversation($buyer, $agent);
