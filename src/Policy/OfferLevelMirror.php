@@ -35,8 +35,8 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
  * Safe against telling the buyer one thing and writing another — the hazard
  * `OfferTerms::contradictory()` exists for — because the buyer's comment is
  * not the model's prose: ReplyComposer builds it from the POST-WRITE snapshot
- * through ReplyTemplate::compose(), and keepsTheFacts() rejects a rewording
- * that drops a number.
+ * through ReplyTemplate::compose(), and RewordingGuard::unsafeBecause() rejects
+ * a rewording that drops a number.
  */
 final class OfferLevelMirror
 {
