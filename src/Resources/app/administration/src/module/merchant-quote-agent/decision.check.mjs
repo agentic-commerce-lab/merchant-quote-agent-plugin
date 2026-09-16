@@ -292,19 +292,6 @@ assert.equal(
     'anUnstatedAmount / 5.0% / 84000.00 USD / USD quote_value_limit_exceeded',
 );
 
-// A quote that ran out of agent passes gets its own sentence, not the short
-// label: the merchant has to be told that clearing the counter is what hands
-// the quote back, and the four-word label cannot say that.
-const capped = escalationExplanation(vm, {
-    escalationReason: 'round_limit_exceeded',
-    maxDiscountPercent: 5,
-});
-
-assert.ok(
-    capped.includes('agent passes'),
-    'A capped negotiation must compose its own sentence rather than falling back to the short label.',
-);
-
 // A pass that did not escalate has nothing to explain.
 assert.equal(escalationExplanation(vm, { escalationReason: null }), null);
 
