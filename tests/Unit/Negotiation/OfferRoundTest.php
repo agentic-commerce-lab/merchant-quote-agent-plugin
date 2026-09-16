@@ -213,7 +213,7 @@ final class OfferRoundTest extends TestCase
             totals: new QuoteTotals(totalNet: 1200.0, totalGross: 1200.0),
             lifecycle: new QuoteLifecycle(
                 stateTechnicalName: 'open',
-                expiresAt: new \DateTimeImmutable(NegotiationFixture::EXPIRES),
+                expiresAt: new \DateTimeImmutable(NegotiationFixture::expires()),
                 customFields: NegotiationFixture::baselineOf(1000.0, 100.0),
             ),
             content: new QuoteContent(lines: [$lineOne, $lineTwo], comments: $comments),

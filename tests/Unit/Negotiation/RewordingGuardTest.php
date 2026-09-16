@@ -25,9 +25,25 @@ final class RewordingGuardTest extends TestCase
 
     private const TOTAL = 950.0;
 
+    /**
+     * A date of this test's own, not NegotiationFixture's.
+     *
+     * This borrowed `NegotiationFixture::EXPIRES` when that was a constant.
+     * #57 made the fixture's expiry clock-relative, because a quote built by
+     * `NegotiationFixture::snapshot()` is run through a verifier that now
+     * rejects an expiry in the past — but nothing here builds a quote or
+     * reaches that verifier. The guard only compares the figures in a
+     * rewording against the figures in the template built from this same
+     * value, so any date does, and a fixed one keeps the ~37 hand-written
+     * reasonings below readable as the literal sentences a model would
+     * produce. Sharing the fixture's value only ever coupled two tests that
+     * have no reason to move together.
+     */
+    private const VALID_UNTIL = '2026-09-11';
+
     private static function validUntil(): \DateTimeImmutable
     {
-        return new \DateTimeImmutable(NegotiationFixture::EXPIRES);
+        return new \DateTimeImmutable(self::VALID_UNTIL);
     }
 
     /** @return iterable<string, array{string}> */
