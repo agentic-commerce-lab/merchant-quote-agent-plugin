@@ -71,26 +71,22 @@ trait HistoryInjectionAssertions
         ScriptedClient $spy,
         array $privateValues,
     ): void {
-        self::assertNotNull($after->lifecycle->expiresAt);
-        $template = ReplyTemplate::compose(
-            ReplyTemplate::reduction($before->totals->totalNet, $after->totals->totalNet),
-            $after->totals->buyerFacingTotal(),
-            $after->identity->currencyIso,
-            $after->lifecycle->expiresAt,
-        );
+        $template = self::replyTemplateFor($before, $after);
+        $reply = self::reworded($template);
         $replyPrompt = $spy->userPrompts[$spy->calls - 1];
         self::assertSame($template, $replyPrompt, 'Only verified offer facts may reach the reply model.');
         self::assertSame(
-            $template,
+            $reply,
             $record->replyToBuyer,
-            'The short scripted reply must fall back to verified facts.',
+            'The audit trail must record the reworded reply that reached the buyer, not the template.',
         );
-        $agentReplies = array_values(array_filter(
-            $after->content->comments,
-            static fn($comment): bool => !$comment->isAuthored(),
-        ));
+        $agentReplies = self::agentComments($after);
         self::assertCount(1, $agentReplies);
-        self::assertSame($template, $agentReplies[0]->comment);
+        self::assertSame(
+            $reply,
+            $agentReplies[0],
+            'The buyer must have received the reworded reply, not the template.',
+        );
         $exclusive = array_values(array_filter(
             $privateValues,
             static fn(string $value): bool => (
@@ -107,7 +103,7 @@ trait HistoryInjectionAssertions
             'proposal passes',
         ] as $secret) {
             self::assertStringNotContainsString($secret, $replyPrompt);
-            self::assertStringNotContainsString($secret, $agentReplies[0]->comment);
+            self::assertStringNotContainsString($secret, $agentReplies[0]);
         }
         self::assertStringContainsString(self::PRIVATE_MARKER, $record->rawProposal ?? '');
         foreach ($exclusive as $value) {

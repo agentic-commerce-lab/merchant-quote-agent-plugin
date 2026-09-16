@@ -225,16 +225,15 @@ final class DecisionRecordTest extends IntegrationTestCase
         $criteria = (new Criteria())->addFilter(new EqualsFilter('quoteId', $quoteId));
         $existingIds = $repository->searchIds($criteria, Context::createDefaultContext())->getIds();
 
+        $before = $gateway->fetchSnapshot($quoteId);
+
         self::pipelineWith([
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
-            'We can offer 5% off.',
-        ])->service(
-            $gateway->fetchSnapshot($quoteId),
-            $gateway,
-            self::enabledSettings(),
-            NegotiationFixture::context(),
-        );
+            self::reworded(...),
+        ])->service($before, $gateway, self::enabledSettings(), NegotiationFixture::context());
+
+        $after = $gateway->fetchSnapshot($quoteId);
 
         $allIds = $repository->searchIds($criteria, Context::createDefaultContext())->getIds();
         $newIds = array_values(array_diff($allIds, $existingIds));
@@ -245,7 +244,11 @@ final class DecisionRecordTest extends IntegrationTestCase
         self::assertSame('offered', $record->outcome);
         self::assertSame('grant', $record->band);
         self::assertSame('comment_written', $record->triggerReason);
-        self::assertNotNull($record->replyToBuyer);
+        self::assertSame(
+            self::reworded(self::replyTemplateFor($before, $after)),
+            $record->replyToBuyer,
+            'The audit trail must record the reworded reply that reached the buyer, not the template.',
+        );
         self::assertNotNull($record->interpretedAsks);
         self::assertIsInt($record->durationMs);
         // #21's average-granted-discount readout has no numerator unless a

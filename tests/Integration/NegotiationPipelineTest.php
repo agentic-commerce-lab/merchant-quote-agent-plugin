@@ -30,7 +30,7 @@ final class NegotiationPipelineTest extends IntegrationTestCase
         $pipeline = self::pipelineWith([
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
-            'We can offer 5% off.',
+            self::reworded(...),
         ]);
 
         $outcome = $pipeline->service(
@@ -45,6 +45,16 @@ final class NegotiationPipelineTest extends IntegrationTestCase
         $after = $gateway->fetchSnapshot($quoteId);
         self::assertGreaterThan($commentsBefore, \count($after->content->comments), 'The buyer was never answered.');
         self::assertFalse($after->revision->matches($before->revision), 'Nothing was written to the quote.');
+
+        // Measured against what the quote already said, not against zero:
+        // QuoteFixture hands out a real shop quote, and the one this suite
+        // settles on has carried an agent comment from an earlier life since
+        // before any of this. The pass's own reply is the difference.
+        self::assertSame(
+            [self::reworded(self::replyTemplateFor($before, $after))],
+            self::agentCommentsAdded($before, $after),
+            'The buyer got the deterministic template; the reworded reply never reached them.',
+        );
     }
 
     public function testAnOutOfAuthorityAskEscalatesWithoutTouchingPrices(): void
@@ -80,30 +90,32 @@ final class NegotiationPipelineTest extends IntegrationTestCase
         $replies = [
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
-            'We can offer 5% off.',
+            self::reworded(...),
         ];
 
-        self::pipelineWith($replies)
-            ->service(
-                $gateway->fetchSnapshot($quoteId),
-                $gateway,
-                self::enabledSettings(),
-                NegotiationFixture::context(),
-            );
-        $afterFirst = \count($gateway->fetchSnapshot($quoteId)->content->comments);
+        $before = $gateway->fetchSnapshot($quoteId);
 
         self::pipelineWith($replies)
-            ->service(
-                $gateway->fetchSnapshot($quoteId),
-                $gateway,
-                self::enabledSettings(),
-                NegotiationFixture::context(),
-            );
+            ->service($before, $gateway, self::enabledSettings(), NegotiationFixture::context());
+        $after = $gateway->fetchSnapshot($quoteId);
+        $afterFirst = \count($after->content->comments);
+
+        self::pipelineWith($replies)->service($after, $gateway, self::enabledSettings(), NegotiationFixture::context());
 
         self::assertSame(
             $afterFirst,
             \count($gateway->fetchSnapshot($quoteId)->content->comments),
             'A re-run posted a second message to the buyer.',
+        );
+
+        // The subject of this test is that the SECOND pass says nothing; this
+        // is the other half of it, that the first pass said the right thing.
+        // Without it a rewording silently replaced by the template still
+        // counts as "answered once".
+        self::assertSame(
+            [self::reworded(self::replyTemplateFor($before, $after))],
+            self::agentCommentsAdded($before, $after),
+            'The buyer got the deterministic template; the reworded reply never reached them.',
         );
     }
 
