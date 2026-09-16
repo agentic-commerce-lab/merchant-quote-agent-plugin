@@ -15,15 +15,22 @@ final class PriceOfferCheck
     /** @return list<string> */
     public function check(OfferedPrice $offer, NegotiationPolicy $policy): array
     {
-        if (
-            $offer->discountPercent !== null
-            && $offer->discountPercent > ($policy->price->maxDiscountPercent + Epsilon::RATE)
-        ) {
-            return [sprintf(
-                'discount %s%% exceeds the %s%% limit',
-                $offer->discountPercent,
-                $policy->price->maxDiscountPercent,
-            )];
+        $discount = $offer->discountPercent;
+
+        if ($discount === null) {
+            return [];
+        }
+
+        if ($discount > ($policy->price->maxDiscountPercent + Epsilon::RATE)) {
+            return [sprintf('discount %s%% exceeds the %s%% limit', $discount, $policy->price->maxDiscountPercent)];
+        }
+
+        // #56: the cap bounded the offer from above only. A negative discount
+        // is written as a SwagCommercial percentage discount and arrives as a
+        // surcharge, and ReplyTemplate::reduction() floors its figure at 0, so
+        // the buyer is told the quote came down by 0% while the total rose.
+        if ($discount < -Epsilon::RATE) {
+            return [sprintf('discount %s%% is negative; an offer may not raise the quote', $discount)];
         }
 
         return [];

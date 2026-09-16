@@ -238,6 +238,7 @@
       "now": "2026-07-22T12:00:00.000Z"
     },
     "expected": [
+      "total discount -10.0% raises the quote above its reference total",
       "line \"l1\" priced 110.00 net above its reference price 100.00"
     ]
   },

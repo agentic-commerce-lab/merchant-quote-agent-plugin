@@ -37,7 +37,7 @@ import urllib.parse
 import urllib.request
 import webbrowser
 
-UCP_VERSION = "2026-04-08"
+UCP_VERSION = "2026-08-25"
 KID = "quote-test-agent"
 DEFAULT_SHOP = "https://agenticquote-shoelscher.eu-core-1.shopdev.de"
 QUOTE_CAPABILITY = "com.shopware.quote"

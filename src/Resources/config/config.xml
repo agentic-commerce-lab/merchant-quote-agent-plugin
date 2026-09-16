@@ -75,7 +75,7 @@
         <input-field type="bool">
             <name>notifyBuyerOnEscalation</name>
             <label>Notify buyer when escalated to a human</label>
-            <defaultValue>false</defaultValue>
+            <defaultValue>true</defaultValue>
             <helpText>When enabled, posts a storefront comment informing the buyer that their quote has been passed to a team member for manual review. When disabled, escalates silently without sending an automated comment to the buyer.</helpText>
         </input-field>
     </card>

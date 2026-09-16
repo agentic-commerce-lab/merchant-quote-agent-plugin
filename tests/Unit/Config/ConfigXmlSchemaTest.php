@@ -81,7 +81,7 @@ final class ConfigXmlSchemaTest extends TestCase
         self::assertSame('bool', $field->getAttribute('type'));
 
         $default = $xpath->query('defaultValue', $field)?->item(0)?->textContent;
-        self::assertSame('false', $default);
+        self::assertSame('true', $default, 'An escalation the buyer is never told about reads as a dead shop.');
     }
 
     public function testTheNegotiationStrategyCardUsesTheSelectorComponent(): void

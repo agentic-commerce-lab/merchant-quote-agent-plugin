@@ -38,7 +38,7 @@ aggregate until they are.
 
 ## Shared contracts
 
-- Boundary data is validated at runtime with **Symfony Validator** (constraint attributes on the `Policy\Data` DTOs) and **cuyz/valinor** (`ArrayMapper`, and the model answers in `ModelAnswerSerializer`). Use those two; do not add a third.
+- Boundary data is validated at runtime with **Symfony Validator** and **cuyz/valinor**. `ValidatorInterface::validate()` runs in exactly one place, `Config\QuoteAgentSettingsFactory`, over the merchant's `NegotiationPolicy` → `QuoteLimits` → `QuoteValueCeiling`. A second, distinct consumer reads the same constraint attributes: `Negotiation\Response\ResponseFormatFactory` (Symfony AI's structured-output schema generator) reflects on `PriceAsk`, `DeliveryAsk`, `PaymentAsk`, `InterpretedLineChange` and `InterpretedProductAddition` — reached through `CommentInterpretation` — to build the JSON schema the extract call's answer is bound by. Every other boundary is checked by the explicit policy checks (`Policy\*Check`, `Policy\*Violation`) or mapped by valinor (`ArrayMapper`, and the model answers in `ModelAnswerSerializer`). `ValidatedConstraintsTest` pins that no `Policy\Data` DTO outside those two reaches carries a constraint nothing evaluates. Use those two; do not add a third.
 - Define DTOs once and reuse them instead of duplicating request/response shapes. `Policy` deliberately keeps its own snapshot DTOs, converted at the edge by `Negotiation\SnapshotAdapter` — that is a boundary, not duplication.
 - Keep contract classes small and domain-oriented.
 

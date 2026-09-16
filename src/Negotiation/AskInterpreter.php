@@ -49,7 +49,9 @@ final readonly class AskInterpreter
             CommentInterpretation::class,
         );
 
-        $ask = new InterpretedAsk($interpretation, $prompt->hash);
+        // The model read a sentence the buyer typed, against a line table in
+        // the buyer's own tax space; everything past this line is net.
+        $ask = new InterpretedAsk(BuyerPriceSpace::toNet($interpretation, $snapshot), $prompt->hash);
         $this->recorder->recordAsk($ask);
 
         return $ask;
@@ -73,17 +75,28 @@ final readonly class AskInterpreter
      * Echoing a requested price back as a `lineChanges` target is harmless:
      * CommentTargetMerger lets the structured field win over a comment target
      * outside a renegotiation round, so the number cannot be double-counted.
+     * Inside one the comment wins, which is why both columns are shown in the
+     * BUYER's tax space rather than the net one the read model carries: the
+     * number the buyer typed, the number they were shown and the number the
+     * model echoes are then all the same money, and BuyerPriceSpace::toNet()
+     * converts whatever comes back exactly once.
      */
     private static function userPrompt(QuoteSnapshot $snapshot, BuyerConversation $conversation): string
     {
-        $lines = array_map(static fn(QuoteLineSnapshot $l): string => sprintf(
-            '%s | %s | %d | %.2f | %s',
-            $l->identity->lineItemId,
-            $l->identity->label ?? '',
-            $l->quantity,
-            $l->unitPriceNet,
-            $l->requestedUnitPrice === null ? 'none' : sprintf('%.2f', $l->requestedUnitPrice),
-        ), $snapshot->content->lines);
+        $lines = array_map(static function (QuoteLineSnapshot $l): string {
+            $requested = $l->requestedUnitPrice === null
+                ? null
+                : BuyerPriceSpace::fromNet($l->requestedUnitPrice, $l->netRatio);
+
+            return sprintf(
+                '%s | %s | %d | %.2f | %s',
+                $l->identity->lineItemId,
+                $l->identity->label ?? '',
+                $l->quantity,
+                BuyerPriceSpace::fromNet($l->unitPriceNet, $l->netRatio),
+                $requested === null ? 'none' : sprintf('%.2f', $requested),
+            );
+        }, $snapshot->content->lines);
 
         return (
             "Line items:\n" . implode("\n", $lines) . "\n\nBuyer's latest comment:\n" . $conversation->newestBuyerText()

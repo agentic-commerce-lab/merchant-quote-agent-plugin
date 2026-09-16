@@ -77,6 +77,31 @@ final class NegotiationFixture
         );
     }
 
+    /**
+     * A quote whose stored prices are GROSS, at a round 25% tax so the spaces
+     * stay readable: 100.00 on the line the buyer reads, 80.00 net behind it.
+     *
+     * @param list<QuoteComment> $comments
+     */
+    public static function grossSnapshot(array $comments = [], string $state = 'change_requested'): QuoteSnapshot
+    {
+        $snapshot = self::snapshot(comments: $comments, state: $state, totalNet: 800.0);
+
+        return new QuoteSnapshot(
+            identity: $snapshot->identity,
+            revision: $snapshot->revision,
+            totals: new QuoteTotals(totalNet: 800.0, totalGross: 1000.0),
+            lifecycle: $snapshot->lifecycle,
+            content: new QuoteContent(lines: [new QuoteLineSnapshot(
+                identity: new QuoteLineIdentity('line-1', 'Widget', 'prod-1'),
+                quantity: 10,
+                unitPriceNet: 80.0,
+                totalNet: 800.0,
+                netRatio: 0.8,
+            )], comments: $comments),
+        );
+    }
+
     public static function context(): PassContext
     {
         return new PassContext(ServicingTriggerReason::CommentWritten, 0);

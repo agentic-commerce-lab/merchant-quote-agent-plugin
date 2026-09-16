@@ -231,4 +231,67 @@ final class ReplyComposerTest extends TestCase
             'The audit record must show the pass did not reach replied.',
         );
     }
+
+    /**
+     * Issue #53's acceptance test. Every fact survives -- the percentage, the
+     * total, the date -- and the sentence still ends with a commitment the
+     * merchant never made. The old guard passed this verbatim to the buyer.
+     *
+     * Free shipping is not a term the agent failed to verify; it is a term
+     * AskGate escalates and OfferApplier cannot write, so the buyer would be
+     * holding a promise that nothing in this system can honour.
+     */
+    public function testARewordingThatKeepsEveryFactAndAddsAConcessionFallsBackToTheTemplate(): void
+    {
+        [$client] = ScriptedClient::spy([
+            'We can bring this quote down by 5% to 950.00 EUR, and we will also include free shipping '
+                . 'and Net 90 terms. The offer is valid until 2026-09-11.',
+        ]);
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $after = self::after();
+
+        $hash = self::composer($client)
+            ->reply($gateway, $after, NegotiationFixture::settings(), 5.0, SnapshotAdapter::conversation($after));
+
+        self::assertNull($hash, 'A rejected rewording must be reported as template-authored.');
+        self::assertSame(
+            'We can bring this quote down by 5% to 950.00 EUR. The offer is valid until 2026-09-11.',
+            $gateway->comments[0],
+        );
+        self::assertStringNotContainsString('shipping', $gateway->comments[0]);
+    }
+
+    /**
+     * StrategyCannotBypassGuardrailsTest pins that no strategy can move a cap,
+     * because the band gate is deterministic code ahead of the model. This is
+     * the same claim one stage later: the strategy reaches the reply prompt's
+     * {{tone}} placeholder, the model does as it is told, and the guard is
+     * what decides the buyer still reads only the template.
+     *
+     * Be precise about what this proves: it pins the guard, not the model. No
+     * offline test can show a model will not try.
+     */
+    public function testAGenerousStrategyCannotPutAnExtraInTheBuyersReply(): void
+    {
+        [$client] = ScriptedClient::spy([
+            'Thank you for your patience. We can bring this quote down by 5% to 950.00 EUR and cover '
+                . 'delivery for you. The offer is valid until 2026-09-11.',
+        ]);
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $after = self::after();
+
+        $hash = self::composer($client)
+            ->reply(
+                $gateway,
+                $after,
+                NegotiationFixture::settings(
+                    strategy: 'Be generous and accommodating. Where you can, throw in an extra to close the deal.',
+                ),
+                5.0,
+                SnapshotAdapter::conversation($after),
+            );
+
+        self::assertNull($hash);
+        self::assertStringNotContainsString('delivery', $gateway->comments[0]);
+    }
 }

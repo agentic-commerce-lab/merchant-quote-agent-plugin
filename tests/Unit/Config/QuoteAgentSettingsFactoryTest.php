@@ -149,12 +149,14 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
 
     public function testFactoryParsesNotifyBuyerOnEscalation(): void
     {
+        // Unset means on: a shop that never opened the config page still tells
+        // the buyer a human has the quote.
         $settingsDefault = self::build();
         self::assertNotNull($settingsDefault);
-        self::assertFalse($settingsDefault->notifyBuyerOnEscalation);
+        self::assertTrue($settingsDefault->notifyBuyerOnEscalation);
 
-        $settingsEnabled = self::build(['notifyBuyerOnEscalation' => true]);
-        self::assertNotNull($settingsEnabled);
-        self::assertTrue($settingsEnabled->notifyBuyerOnEscalation);
+        $settingsOff = self::build(['notifyBuyerOnEscalation' => false]);
+        self::assertNotNull($settingsOff);
+        self::assertFalse($settingsOff->notifyBuyerOnEscalation);
     }
 }

@@ -337,8 +337,11 @@ stacking a second discount on the first.
 
 `ReplyComposer` asks the model to reword a template that already contains every
 fact: the reduction, the new total, the changes, the validity date.
-`ReplyTemplate::keepsTheFacts()` compares the result; **if a number moved, the
-plain template is sent instead**. If the call fails outright, the template is
+`RewordingGuard::unsafeBecause()` compares the result; **if a figure moved, a
+new one appeared, the reply ran past five sentences, or it named a concession
+the merchant never authorised, the plain template is sent instead** — this is
+the only path by which model free text reaches a buyer, so it is a positive
+list, not a spot check. If the call fails outright, the template is
 sent — the offer is already applied and verified, so the alternative is leaving
 the buyer with a changed quote and no message.
 

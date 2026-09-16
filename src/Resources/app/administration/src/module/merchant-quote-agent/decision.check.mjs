@@ -313,6 +313,18 @@ assert.equal(thread[0].text, 'Can you do 12% on this?', 'The stored text is trim
 assert.deepEqual(conversation(null), []);
 assert.deepEqual(conversation([]), []);
 
+// #55: a merchant's note carries createdById alone. It is not the agent's, and
+// it is not the customer's either — the page used to head it "From customer".
+const attributed = conversation([
+    { id: 'm1', comment: 'Can you do 12%?', customerId: 'c1', createdAt: '2026-09-08T09:00:00+00:00' },
+    { id: 'm2', comment: 'We can bring this down by 5%.', createdAt: '2026-09-08T09:05:00+00:00' },
+    { id: 'm3', comment: 'Margin is thin here.', createdById: 'u1', createdAt: '2026-09-08T09:10:00+00:00' },
+    { id: 'm4', comment: 'Still too much.', employeeId: 'e1', createdAt: '2026-09-08T09:15:00+00:00' },
+]);
+
+assert.deepEqual(attributed.map((m) => m.fromAgent), [false, true, false, false]);
+assert.deepEqual(attributed.map((m) => m.fromMerchant), [false, false, true, false]);
+
 assert.equal(formatPercent(7.9495), '7.9%');
 assert.equal(formatPercent(null), '–');
 assert.equal(formatDuration(0), '0 ms');

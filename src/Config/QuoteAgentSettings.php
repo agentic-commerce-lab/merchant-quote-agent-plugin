@@ -26,7 +26,13 @@ final readonly class QuoteAgentSettings
         public NegotiationPolicy $policy,
         public ModelAccess $llm,
         public ?string $strategyPrompt,
-        public bool $notifyBuyerOnEscalation = false,
+        /**
+         * On unless the merchant turns it off. An escalated quote otherwise
+         * sits in `open` with nothing said, which a buyer — and a buyer's
+         * agent polling the quote — cannot tell from a shop that has stopped
+         * answering at all. See QuoteEscalator for what is written.
+         */
+        public bool $notifyBuyerOnEscalation = true,
         public ?string $strategyVersionId = null,
     ) {}
 
