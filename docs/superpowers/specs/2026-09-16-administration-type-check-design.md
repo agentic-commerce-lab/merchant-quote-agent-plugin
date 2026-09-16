@@ -234,9 +234,14 @@ Stated plainly, because a gate whose reach is overstated is worse than none:
 - **Runtime behaviour.** Nothing renders a component. A method that type-checks
   and throws at runtime still ships. Issue #39's third option, the rendering
   smoke test, remains open and is still the only thing that closes this.
-- **The 677 baselined findings.** They are suppressed, not fixed. A regression
-  that produces an identical message in the same file is indistinguishable
-  from the baselined original.
+- **The 677 baselined findings.** Entries are keyed on file + code + message,
+  each carrying a count. An added occurrence of an already-baselined message
+  IS reported as new — verified by injecting one, which produced
+  `TypeScript ✖ 1 new · 107 baselined` and exit 1. The residual hole is
+  narrower: a change that both fixes one occurrence of a message and
+  introduces a new, unrelated occurrence of the identical message in the same
+  file leaves the count unchanged and is indistinguishable from the baselined
+  original.
 - **CI.** No GitHub runner runs this. Only a developer with the test shop does.
 - **Shopware versions other than the test shop's.** The baseline was recorded
   against trunk (`6.7.9999999-dev`). A different version yields a different

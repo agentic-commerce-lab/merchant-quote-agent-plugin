@@ -48,7 +48,12 @@ SHOP_CONTAINER="$CONTAINER" scripts/sync-to-shop.sh
 # that moment. install is additive against the same committed package-lock.json.
 if ! docker exec "$CONTAINER" test -d "$ADMIN/node_modules/vue-tsc"; then
   echo "installing the administration's dev dependencies (one-time, ~10s)..."
-  docker exec -w "$ADMIN" "$CONTAINER" npm install --no-audit --no-fund --ignore-scripts
+  # The container is shared, so two agents can both see vue-tsc missing and
+  # both start installing into the same node_modules at once. flock serialises
+  # them on a fixed path; the second one's re-run after the first finishes is
+  # harmless because npm install is additive and near-instant once installed.
+  docker exec -w "$ADMIN" "$CONTAINER" \
+    flock /tmp/mqa-admin-npm.lock npm install --no-audit --no-fund --ignore-scripts
 fi
 
 # Without this the plugin's own entities are missing from EntitySchema.Entities,

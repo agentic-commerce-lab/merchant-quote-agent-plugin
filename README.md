@@ -163,7 +163,10 @@ CI, because the entity schema it needs is generated from a live database.
 The plugin's 677 pre-existing findings are recorded in
 `.shopware-admin-baseline.json`, so the check fails only on new ones. It does
 **not** validate icon names (`icon` is typed `string`) and nothing renders a
-component, so a method that type-checks and throws at runtime still ships.
+component, so a method that type-checks and throws at runtime still ships. A
+change that both fixes one occurrence of a baselined message and introduces a
+new, unrelated occurrence of the identical message in the same file leaves the
+recorded count unchanged and so is not reported either.
 
 Two guards are skipped unless you have the relevant clone beside this
 repository: `CoreFloorCompatibilityTest` needs `shopware/shopware` (or
