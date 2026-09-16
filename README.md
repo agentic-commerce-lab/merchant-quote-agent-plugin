@@ -145,6 +145,26 @@ self-checks, which stand in for a JS test runner the project deliberately does
 not have. Conventions and the per-change checks are in
 [`AGENTS.md`](AGENTS.md).
 
+Those self-checks reach only the three extracted pure modules. The components
+are covered by a second command, which needs the test shop:
+
+```bash
+composer run quality:admin:shop                      # vue-tsc + ESLint, in the shop
+composer run quality:admin:shop -- --verbose         # show the baselined findings
+composer run quality:admin:shop -- --fix             # apply the ESLint autofixes
+```
+
+It syncs this checkout into the shop and runs Shopware's own extension
+toolchain against the live installed Administration types — the only surface
+that carries the real `Repository` class, so it catches a call to a method that
+does not exist. It is not part of `composer run quality` and does not run in
+CI, because the entity schema it needs is generated from a live database.
+
+The plugin's 677 pre-existing findings are recorded in
+`.shopware-admin-baseline.json`, so the check fails only on new ones. It does
+**not** validate icon names (`icon` is typed `string`) and nothing renders a
+component, so a method that type-checks and throws at runtime still ships.
+
 Two guards are skipped unless you have the relevant clone beside this
 repository: `CoreFloorCompatibilityTest` needs `shopware/shopware` (or
 `MQ_CORE_CLONE`) to confirm nothing in `src/` uses a core API newer than the
