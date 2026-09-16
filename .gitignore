@@ -18,5 +18,12 @@ scripts/__pycache__/
 # src/Resources/views/storefront/.
 /src/Storefront/
 
+# Shopware's administration extension tooling generates this bridge beside the
+# plugin's admin sources: absolute paths into the installed administration's
+# node_modules and type surface, so it is machine-specific by construction.
+# scripts/check-administration.sh regenerates it on every run, and
+# sync-to-shop.sh wipes it with the rest of the plugin directory anyway.
+/src/Resources/app/administration/.shopware/
+
 # Unreleased AC QA build, shared for local testing only - never commit.
 SwagAgenticCommerce-*.zip
