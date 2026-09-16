@@ -68,6 +68,7 @@ final readonly class QuoteLineMapper
             requestedUnitPrice: MirroredAsks::holds($mirrored, $lineItemId, $net->requestedUnitPrice)
                 ? null
                 : $net->requestedUnitPrice,
+            netRatio: $net->netRatio,
         );
     }
 
