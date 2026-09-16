@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * @mago-expect lint:too-many-methods
  * The fingerprint answers one question: has anything happened on this quote
  * that the agent has not already serviced? Deliberately NOT the quote's
  * revision — our own writes move `updatedAt`, so a revision marker would
@@ -38,6 +39,28 @@ final class ServicingFingerprintTest extends TestCase
         $after = QuoteSnapshotFixture::snapshot('open', [
             QuoteSnapshotFixture::buyerComment('2026-08-27 10:00:00.100'),
             new QuoteComment('agent reply', createdAt: new \DateTimeImmutable('2026-08-27 10:00:05.000')),
+        ]);
+
+        self::assertSame(ServicingFingerprint::of($before), ServicingFingerprint::of($after));
+    }
+
+    /**
+     * #55's second half. A merchant's note is not work the agent owes anyone,
+     * so it must not read as "something new happened" — otherwise it buys a
+     * pass, and that pass reads the note as the ask.
+     *
+     * This is the check that makes the fix hold even when the trigger cannot
+     * tell who wrote a comment: the pass returns at ServiceQuoteHandler's
+     * fingerprint comparison, before the preflight and before any model call.
+     */
+    public function testAppendingAMerchantCommentDoesNotChangeTheFingerprint(): void
+    {
+        $before = QuoteSnapshotFixture::snapshot('open', [QuoteSnapshotFixture::buyerComment(
+            '2026-08-27 10:00:00.100',
+        )]);
+        $after = QuoteSnapshotFixture::snapshot('open', [
+            QuoteSnapshotFixture::buyerComment('2026-08-27 10:00:00.100'),
+            QuoteSnapshotFixture::merchantComment('2026-08-27 10:00:07.000'),
         ]);
 
         self::assertSame(ServicingFingerprint::of($before), ServicingFingerprint::of($after));

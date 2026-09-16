@@ -24,20 +24,41 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
  * - **state** — a transition is work. Moves on our own writes too
  *   (open → in_review → replied), which is why the handler stamps a value
  *   recomputed from a FRESH read after servicing, not the value it compared.
- * - **authored comment count** — catches a buyer comment wherever in the
+ * - **buyer comment count** — catches a buyer comment wherever in the
  *   servicing window it lands, including one older than the agent's own reply,
- *   which a "newest comment" marker alone would hide.
- * - **newest authored createdAt** — distinguishes an edited or replaced comment
+ *   which a "newest comment" marker alone would hide. The BUYER's comments
+ *   only: see buyerAuthored().
+ * - **newest buyer createdAt** — distinguishes an edited or replaced comment
  *   from an appended one at the same count.
  * - **per-line requested prices** — the one ask that arrives without a comment,
  *   so none of the three above move when the buyer edits it. Appended rather
  *   than joined unconditionally, and only when there is an ask at all, so that
  *   every marker written before it existed stays valid.
  *
- * An agent comment is author-less on createdById, customerId and employeeId
- * alike (#3, pinned by AddCommentTest), so it is excluded from both comment
- * components and cannot move the fingerprint. The 42 pre-existing author-less
- * comments in the test shop are historical and static, so they cannot either.
+ * Two of the three writers are excluded, for different reasons. An agent
+ * comment is author-less on createdById, customerId and employeeId alike (#3,
+ * pinned by AddCommentTest), so our own reply cannot move the marker and
+ * re-trigger us forever. A merchant's note carries createdById alone and is
+ * excluded because it is not an ask — see #55; the fingerprint is what makes
+ * the trigger's own author filter a cost saving rather than the fix. The
+ * pre-existing author-less comments in the test shop — 42 when #3 counted
+ * them, 24 in the live lane on 2026-09-16 — are historical and static, so they
+ * cannot move it either.
+ *
+ * Both exclusions are measured, not assumed. That same count on 2026-09-16
+ * found 72 comments carrying customerId alone, 4 carrying createdById alone
+ * (two real merchant notes, each mirrored into the snapshot lane) and 7
+ * carrying both — seeded buyer text written through an admin context, which
+ * isBuyerAuthored() counts, correctly, as the buyer's.
+ *
+ * Both exclusions only ever REMOVE components from the composed string, never
+ * add or reorder, so two reads of the same quote still compose the same
+ * string. What they do change is the string a quote composed BEFORE this
+ * deploy: a quote carrying a merchant comment differs from its own stamp once
+ * and buys exactly one pass, the same one-off the asks component accepted.
+ * That pass is a no-op by construction — with the conversation split fixed
+ * there is no new buyer ask, so the pipeline records nothing_to_do without a
+ * model call.
  */
 final class ServicingFingerprint
 {
@@ -49,7 +70,7 @@ final class ServicingFingerprint
     {
         return self::compose(
             $snapshot->lifecycle->stateTechnicalName,
-            self::authored($snapshot),
+            self::buyerAuthored($snapshot),
             self::asks($snapshot),
         );
     }
@@ -71,7 +92,7 @@ final class ServicingFingerprint
      */
     public static function stamp(QuoteSnapshot $serviced, string $stateAfter): string
     {
-        return self::compose($stateAfter, self::authored($serviced), self::asks($serviced));
+        return self::compose($stateAfter, self::buyerAuthored($serviced), self::asks($serviced));
     }
 
     /** @param array<string, mixed> $customFields */
@@ -82,12 +103,19 @@ final class ServicingFingerprint
         return \is_string($stamped) ? $stamped : null;
     }
 
-    /** @return array<int, QuoteComment> */
-    private static function authored(QuoteSnapshot $snapshot): array
+    /**
+     * Only the BUYER's comments. A merchant's own note carries `createdById`
+     * and neither buyer column, and it is not work anyone is waiting on:
+     * counting it made a merchant's aside look like a new ask, which bought a
+     * pass that then answered the aside (#55).
+     *
+     * @return array<int, QuoteComment>
+     */
+    private static function buyerAuthored(QuoteSnapshot $snapshot): array
     {
         return array_filter(
             $snapshot->content->comments,
-            static fn(QuoteComment $comment): bool => $comment->isAuthored(),
+            static fn(QuoteComment $comment): bool => $comment->isBuyerAuthored(),
         );
     }
 

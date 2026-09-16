@@ -145,6 +145,7 @@
             },
             "openQuote": "Open quote",
             "fromCustomer": "Customer",
+            "fromMerchant": "Internal note",
             "openOrder": "Open order",
             "orderPlacedAt": "Order placed {at}",
             "historyTitle": "History",

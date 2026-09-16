@@ -119,14 +119,16 @@
                         class="mqa-entry"
                         :class="[`mqa-entry--${entry.kind}`, `mqa-entry--${entry.variant}`]"
                     >
-                        {# What the customer actually said. The pass below shows
-                           what the agent made of it, which is unreadable
-                           without this: an ask recorded as "discount: 8.0%" was
-                           a sentence first, and a merchant judging whether the
-                           agent read it correctly needs the sentence. #}
+                        {# What the customer actually said, or the merchant's own
+                           internal note (fromMerchant). The pass below shows
+                           what the agent made of a customer's message, which is
+                           unreadable without this: an ask recorded as
+                           "discount: 8.0%" was a sentence first, and a merchant
+                           judging whether the agent read it correctly needs the
+                           sentence. #}
                         <template v-if="entry.kind === 'message'">
                             <div class="mqa-entry__header">
-                                <h4 class="mqa-entry__title">{{ $tc('merchant-quote-agent.detail.fromCustomer') }}</h4>
+                                <h4 class="mqa-entry__title">{{ entry.message.fromMerchant ? $tc('merchant-quote-agent.detail.fromMerchant') : $tc('merchant-quote-agent.detail.fromCustomer') }}</h4>
                                 <span class="mqa-entry__time">{{ formatDate(entry.at) }}</span>
                             </div>
                             <p class="mqa-msg">{{ entry.message.text }}</p>

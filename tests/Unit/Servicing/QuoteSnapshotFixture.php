@@ -54,4 +54,10 @@ final class QuoteSnapshotFixture
     {
         return new QuoteComment('buyer ask', customerId: 'customer-1', createdAt: new \DateTimeImmutable($createdAt));
     }
+
+    /** A merchant's note through the administration: createdById, nothing else. */
+    public static function merchantComment(string $createdAt): QuoteComment
+    {
+        return new QuoteComment('internal note', createdById: 'user-1', createdAt: new \DateTimeImmutable($createdAt));
+    }
 }

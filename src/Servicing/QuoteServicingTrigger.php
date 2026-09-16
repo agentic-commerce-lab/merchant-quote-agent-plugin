@@ -125,6 +125,10 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
                 continue;
             }
 
+            if (self::isMerchantComment($result->getPayload())) {
+                continue;
+            }
+
             $quoteId = $result->getPayload()['quoteId'] ?? null;
 
             if (!\is_string($quoteId) || \array_key_exists($quoteId, $queued)) {
@@ -157,6 +161,48 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
     private static function isNotOurBusiness(Context $context): bool
     {
         return $context->getVersionId() !== Defaults::LIVE_VERSION || $context->hasState(AgentContext::STATE);
+    }
+
+    /**
+     * A comment the payload PROVES a merchant wrote: `createdById` set and
+     * neither buyer column. SwagCommercial's QuoteActionController writes
+     * exactly that shape — it passes customerId and employeeId as literal
+     * nulls and QuoteCommenter fills createdById from the AdminApiSource —
+     * while the storefront's QuoteCommentRoute, in store-api scope, can never
+     * produce an admin user id at all.
+     *
+     * Positive identification only, and that is the point. This reads a WRITE
+     * PAYLOAD, not the persisted row: a key that is simply absent must never
+     * be read as "nobody wrote it", or a payload shape we have not seen would
+     * silently drop a buyer's ask. Anything unrecognised still queues a pass,
+     * and ServicingFingerprint stops it there — a merchant comment leaves the
+     * fingerprint identical, so the pass returns before the preflight and
+     * before any model call.
+     *
+     * So this filter is not the fix for #55; the fingerprint and the
+     * conversation split are. It is worth having anyway: without it a
+     * merchant's note takes the per-quote lock, writes the crash-budget
+     * counter and logs a pass that did nothing.
+     *
+     * Deliberately a second expression of `QuoteComment::isAuthored() &&
+     * !isBuyerAuthored()`, against the DAL write payload rather than the read
+     * model — the DTO cannot express "this key is absent" the way this
+     * predicate must. The two must move together if SwagCommercial's
+     * authorship columns ever change; nothing enforces that but the two of
+     * them being read together.
+     *
+     * @param array<string, mixed> $payload
+     */
+    private static function isMerchantComment(array $payload): bool
+    {
+        $createdById = $payload['createdById'] ?? null;
+
+        return (
+            \is_string($createdById)
+            && $createdById !== ''
+            && ($payload['customerId'] ?? null) === null
+            && ($payload['employeeId'] ?? null) === null
+        );
     }
 
     /** @throws \Symfony\Component\Messenger\Exception\ExceptionInterface */

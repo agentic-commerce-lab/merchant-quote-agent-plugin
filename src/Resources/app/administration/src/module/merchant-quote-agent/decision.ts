@@ -490,12 +490,13 @@ export function askItems(vm: any, asks: any): { label: string; value: string }[]
  * column, no copy of a customer's text in a second place, and the thread is
  * whatever the quote currently says rather than a snapshot that can drift.
  *
- * Authorship follows QuoteComment::isAuthored() exactly: a comment with any of
- * createdById / customerId / employeeId is a person's, and one with none of
- * them is the agent's. That is not elegant, it is what SwagCommercial writes —
- * issue #3 measured all three as null on an agent comment and AddCommentTest
- * pins it. If this and the backend ever disagree, the page would credit the
- * agent's own words to the customer, so the two must move together.
+ * Authorship follows the backend's three-way split exactly: a comment with
+ * customerId or employeeId is the buyer's, one with createdById alone is the
+ * merchant's own note, and one with none of them is the agent's — issue #3
+ * measured that last one and AddCommentTest pins it. That is not elegant, it
+ * is what SwagCommercial writes. If this and the backend ever disagree, the
+ * page credits the agent's own words to the customer, so the two must move
+ * together — which is why #55 changed both.
  */
 export function conversation(comments: any[]): any[] {
     if (!Array.isArray(comments)) {
@@ -507,6 +508,7 @@ export function conversation(comments: any[]): any[] {
             id: comment.id,
             text: (comment.comment ?? '').trim(),
             fromAgent: !comment.createdById && !comment.customerId && !comment.employeeId,
+            fromMerchant: !!comment.createdById && !comment.customerId && !comment.employeeId,
             createdAt: comment.createdAt ?? null,
             lineItemId: comment.quoteLineItemId ?? null,
         }))

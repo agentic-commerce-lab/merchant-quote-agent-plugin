@@ -145,6 +145,7 @@
             },
             "openQuote": "Angebot öffnen",
             "fromCustomer": "Kunde",
+            "fromMerchant": "Interne Notiz",
             "openOrder": "Bestellung öffnen",
             "orderPlacedAt": "Bestellung ausgelöst am {at}",
             "historyTitle": "Verlauf",

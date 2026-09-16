@@ -10,10 +10,16 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
  * The quote's comments split by who wrote them, which is the whole basis for
  * "is there anything new to answer?".
  *
- * Authorship is the discriminator because #3 measured an agent comment as null
- * on createdById, customerId and employeeId alike, pinned by AddCommentTest.
- * The day SwagCommercial starts stamping an author is the day this switches to
- * reading createdById — and that test is what will tell us.
+ * Both buckets are narrow on purpose. `buyer` is the comments SwagCommercial
+ * attributes to a customer or a B2B employee; `agent` is the ones with no
+ * author at all, which is what the agent's own writes look like (#3 measured
+ * all three columns null, pinned by AddCommentTest). A merchant's note, which
+ * carries `createdById` alone, is in neither — see SnapshotAdapter's
+ * conversation(), and #55 for what it cost while it was in `buyer`.
+ *
+ * The day SwagCommercial starts stamping an author on a system-source comment
+ * is the day the agent bucket needs a new discriminator — and AddCommentTest
+ * is what will tell us.
  */
 final readonly class BuyerConversation
 {
