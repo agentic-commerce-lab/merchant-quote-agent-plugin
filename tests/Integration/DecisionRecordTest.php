@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use Doctrine\DBAL\Exception\DriverException;
 use MerchantQuoteAgentPlugin\Audit\DecisionDraft;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
@@ -15,7 +16,6 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Bucket
 use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Metric\AvgResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
-use Shopware\Core\Framework\DataAbstractionLayer\Write\WriteException;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 final class DecisionRecordTest extends IntegrationTestCase
@@ -49,19 +49,62 @@ final class DecisionRecordTest extends IntegrationTestCase
         self::assertSame(1234, $written->durationMs);
     }
 
-    public function testAStringLongerThanItsColumnIsRejectedAtWriteTime(): void
+    /**
+     * The column's width is enforced by MySQL, and by nothing above it.
+     *
+     * The DAL cannot do this job on this entity, and that is not an oversight
+     * waiting to be corrected. `QuoteDecisionRecord` is an attribute entity,
+     * so the only place a field definition could carry a length is
+     * `#[Field(..., maxLength: 32)]` — and `Attribute\Field::$maxLength` does
+     * not exist at the 6.7.1 support floor (absent up to and including
+     * 6.7.4.2, present by 6.7.13.1, where it defaults to 255 and so would not
+     * reject 33 characters even there). A named argument for a parameter the
+     * installed core does not declare is an `Error` at attribute
+     * instantiation, which happens while core builds the container: it takes
+     * the whole shop down, not just this plugin. That is what
+     * `CoreFloorCompatibilityTest::testDalAttributeArgumentsExistAtTheSupportFloor`
+     * exists to prevent, and the thirteen columns `maxLength` was once used on
+     * are why it was written.
+     *
+     * So the migrations hold the whole of the constraint —
+     * `Migration1787998662CreateQuoteAgentDecision` for every column here, and
+     * `Migration1789000000AddEscalationResolution` for `resolved_state`. `band`
+     * is the narrowest at VARCHAR(32), which is why it is the column this test
+     * writes to; every other string column on this entity is in exactly the
+     * same position, bounded by its migration and by nothing in PHP.
+     *
+     * Losing the typed `WriteException` costs a servicing pass nothing.
+     * `NegotiationPipeline::record()` wraps the audit write in
+     * `catch (\Throwable)` — not `catch (WriteException)` — and
+     * `DecisionRecorder::finish()` catches nothing at all, so a driver-level
+     * failure is logged and dropped on exactly the path a DAL-level one would
+     * take. `RecordedPassTest::testAnAuditWriteFailureDoesNotFailThePass` pins
+     * that with a bare `RuntimeException`.
+     *
+     * Asserted on the SQLSTATE rather than on the message: `22001` is the
+     * standard's "string data, right truncated" and survives MySQL rewording
+     * its 1406, while the message is read only for the column name, so another
+     * column overflowing cannot satisfy this test. Bounding these values before
+     * they reach the database at all is #60's scope.
+     */
+    public function testAStringLongerThanItsColumnIsRejectedByTheDatabaseNotTheDal(): void
     {
         $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
 
         self::assertInstanceOf(EntityRepository::class, $repository);
 
-        $this->expectException(WriteException::class);
+        try {
+            $repository->create([[
+                'id' => Uuid::randomHex(),
+                'quoteId' => Uuid::randomHex(),
+                'band' => str_repeat('x', times: 33),
+            ]], Context::createDefaultContext());
 
-        $repository->create([[
-            'id' => Uuid::randomHex(),
-            'quoteId' => Uuid::randomHex(),
-            'band' => str_repeat('x', times: 33),
-        ]], Context::createDefaultContext());
+            self::fail('The database accepted 33 characters into the VARCHAR(32) band column.');
+        } catch (DriverException $e) {
+            self::assertSame('22001', $e->getSQLState(), 'Expected SQLSTATE 22001, string data right truncated.');
+            self::assertStringContainsString('band', $e->getMessage(), 'The rejection must name the column.');
+        }
     }
 
     /**
