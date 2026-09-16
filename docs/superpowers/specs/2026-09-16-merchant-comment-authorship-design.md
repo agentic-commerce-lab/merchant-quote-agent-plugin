@@ -288,3 +288,15 @@ have been a question.
   the four production files to the pre-fix commit makes the new test fail with
   exactly one queued `ServiceQuoteMessage` — so it reproduces the bug rather
   than merely asserting the fix.
+
+  The full integration suite on that shop, after its pending plugin migrations
+  were applied, reports 164 tests with 2 failures:
+  `DecisionRecordTest::testAStringLongerThanItsColumnIsRejectedAtWriteTime`
+  (the `band` column truncates in the driver instead of the DAL raising a
+  `WriteException`) and
+  `ServicingConfigGateTest::testAMissingApiKeyEscalatesOnceRatherThanDecidingQuietly`
+  (two escalation comments where one is required — `QuoteEscalator`'s early
+  return reads the marker off the snapshot, and the second pass's fresh read
+  does not see the first pass's write). Both reproduce identically on this
+  branch's base commit, and neither touches comment authorship, so neither is
+  this change's — but both are real and worth their own issues.
