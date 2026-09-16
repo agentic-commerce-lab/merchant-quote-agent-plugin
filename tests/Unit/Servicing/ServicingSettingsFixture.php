@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
+use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use Psr\Log\NullLogger;
 
 /**
@@ -38,8 +43,11 @@ final class ServicingSettingsFixture
     }
 
     /** @param \Closure(): ?QuoteAgentSettings $outcome what the config source does when asked */
-    public static function preflight(\Closure $outcome, ?QuoteEscalator $escalator = null): ServicingPreflight
-    {
+    public static function preflight(
+        \Closure $outcome,
+        ?QuoteEscalator $escalator = null,
+        ?DecisionRecordWriterInterface $writer = null,
+    ): ServicingPreflight {
         $source = new class($outcome) implements QuoteAgentSettingsSource {
             /** @param \Closure(): ?QuoteAgentSettings $outcome */
             public function __construct(
@@ -57,6 +65,12 @@ final class ServicingSettingsFixture
             $source,
             $escalator ?? new QuoteEscalator(settingsSource: $source),
             new NullLogger(),
+            new DecisionRecorder($writer ?? new FakeDecisionWriter()),
         );
+    }
+
+    public static function context(): PassContext
+    {
+        return new PassContext(ServicingTriggerReason::CommentWritten, 0);
     }
 }

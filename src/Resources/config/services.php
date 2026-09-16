@@ -741,6 +741,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service(QuoteAgentSettingsSource::class),
         service(QuoteEscalator::class),
         service('logger'),
+        service(DecisionRecorder::class),
     ]);
 
     // Negotiation (issue #18). The prompts are read HERE, at container compile,

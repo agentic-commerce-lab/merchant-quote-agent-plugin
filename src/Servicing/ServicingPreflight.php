@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Servicing;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -27,6 +29,14 @@ use Psr\Log\LoggerInterface;
  *
  * Exists as one collaborator rather than two so ServiceQuoteHandler stays at
  * five constructor parameters.
+ *
+ * Only the misconfiguration path leaves a row in `merchant_quote_agent_decision`
+ * (via recordRefusal(), below). It is the only one of the three that DOES
+ * something a merchant or #21's run would look for: an escalation marker, a
+ * possible buyer comment, an admin notification. The kill switch and the
+ * terminal-state refusal are both silent by design — a row per buyer comment
+ * announcing that the agent is paused, or that an accepted quote is not being
+ * touched, is not an audit event, it is noise.
  */
 final readonly class ServicingPreflight
 {
@@ -49,11 +59,15 @@ final readonly class ServicingPreflight
         private QuoteAgentSettingsSource $reader,
         private QuoteEscalator $escalator,
         private LoggerInterface $logger,
+        private DecisionRecorder $recorder,
     ) {}
 
     /** Null means "do not service this quote"; the reason has already been handled. */
-    public function check(QuoteGatewayInterface $gateway, QuoteSnapshot $snapshot): ?QuoteAgentSettings
-    {
+    public function check(
+        QuoteGatewayInterface $gateway,
+        QuoteSnapshot $snapshot,
+        PassContext $context,
+    ): ?QuoteAgentSettings {
         $state = $snapshot->lifecycle->stateTechnicalName;
 
         // First, so a terminal quote in a misconfigured shop is not escalated:
@@ -81,6 +95,7 @@ final readonly class ServicingPreflight
             // the conversation the CUSTOMER reads and deliberately accepts no
             // text, so there is nowhere to pass them even by accident.
             $this->escalator->escalate($gateway, $snapshot, QuoteEscalationReason::NotConfigured);
+            $this->record($snapshot, $context, $e->problems);
 
             return null;
         }
@@ -93,5 +108,34 @@ final readonly class ServicingPreflight
         }
 
         return $settings;
+    }
+
+    /**
+     * The audit write may never cost the pass. NegotiationPipeline::record()
+     * makes the same trade for the same reason: a throw would roll the message
+     * back into Messenger's retry, and the redelivery would re-run a preflight
+     * whose escalation has already landed. A missing record beats that. The
+     * error log line above is the backstop.
+     *
+     * A separate method rather than a try inside the catch above: the catch is
+     * already nested inside check(), and a third level there would sit at
+     * mago's nesting cap.
+     *
+     * Called after escalate(), never before: the escalation is the thing that
+     * must happen and this describes it.
+     *
+     * @param list<string> $problems
+     */
+    private function record(QuoteSnapshot $snapshot, PassContext $context, array $problems): void
+    {
+        try {
+            $this->recorder->recordRefusal($snapshot, $context, QuoteEscalationReason::NotConfigured, $problems);
+        } catch (\Throwable $e) {
+            $this->logger->error('The quote agent escalated a misconfigured quote but could not record it; '
+            . 'the escalation itself stands.', [
+                'quoteId' => $snapshot->identity->quoteId,
+                'exception' => $e,
+            ]);
+        }
     }
 }
