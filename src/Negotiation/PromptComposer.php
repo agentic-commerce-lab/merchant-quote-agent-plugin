@@ -49,9 +49,10 @@ final readonly class PromptComposer
     {
         // The reply's tone comes from the same strategy field that tunes the
         // negotiation prompt; there is no separate tone setting any more. The
-        // reply model can only reword -- ReplyTemplate::keepsTheFacts() sends
-        // the template instead if a number moved -- so a strategy that talks
-        // about percentages cannot price anything from here.
+        // reply model can only reword -- RewordingGuard::unsafeBecause() sends
+        // the template instead if a figure moved or a new one appeared -- so a
+        // strategy that talks about percentages cannot price anything from
+        // here, and one that talks about extras cannot promise anything.
         $strategy = $settings->strategyPrompt;
         $tone = $strategy === null || trim($strategy) === '' ? self::NEUTRAL_TONE : trim($strategy);
 

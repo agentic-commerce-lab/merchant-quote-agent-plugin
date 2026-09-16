@@ -93,8 +93,15 @@ final readonly class ReplyComposer
             return [$template, null];
         }
 
-        if (!ReplyTemplate::keepsTheFacts($reworded, $reductionPercent, $total, $validUntil)) {
-            $this->logger->warning('The reworded reply dropped a fact; sending the template instead.', [
+        $unsafe = RewordingGuard::unsafeBecause($reworded, $reductionPercent, $total, $validUntil);
+
+        if ($unsafe !== null) {
+            // Logged with the reason, not just the text: the fallback is a
+            // correct reply, so an over-firing guard fails nothing and shows
+            // up nowhere except as replies that never sound reworded. The
+            // reason makes "always the same rule" one grep.
+            $this->logger->warning('The reworded reply did not survive the guard; sending the template instead.', [
+                'reason' => $unsafe,
                 'reworded' => $reworded,
             ]);
 

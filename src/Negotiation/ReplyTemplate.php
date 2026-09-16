@@ -12,6 +12,9 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
  * plainer sentence reaching a buyer is strictly better than a fluent one with
  * the wrong number in it.
  *
+ * `RewordingGuard` is the other half of that sentence: this class writes the
+ * fallback, that class decides when the fallback fires.
+ *
  * One sentence serves both concession shapes. A quote-wide discount and a
  * per-line price cut are the same thing to the buyer — the quote came down by
  * this much, to this total — and stating it that way is the only phrasing that
@@ -62,20 +65,5 @@ final class ReplyTemplate
     public static function money(float $totalNet): string
     {
         return sprintf('%.2f', $totalNet);
-    }
-
-    /** The prompt's own rule: a rewording must keep every figure exactly as given. */
-    public static function keepsTheFacts(
-        string $reworded,
-        float $reductionPercent,
-        float $totalNet,
-        \DateTimeImmutable $validUntil,
-    ): bool {
-        return (
-            $reworded !== ''
-            && str_contains($reworded, self::percent($reductionPercent))
-            && str_contains($reworded, self::money($totalNet))
-            && str_contains($reworded, $validUntil->format('Y-m-d'))
-        );
     }
 }
