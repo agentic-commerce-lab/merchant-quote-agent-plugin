@@ -4,7 +4,7 @@
 
 **Goal:** Stop a model rewording from adding numbers, dates, prose or concession terms the merchant never authorised, before it reaches the buyer.
 
-**Architecture:** `ReplyTemplate::keepsTheFacts(): bool` becomes `ReplyTemplate::unsafeBecause(): ?string` — the same single choke point, now running four checks instead of one, and returning an operator-readable reason instead of a boolean. The checks are: the three facts are present (unchanged); no more than five sentences; every number-shaped token is one the template wrote; no word naming a concession `AskGate` escalates. `ReplyComposer::reword()` logs the reason and falls back to the template, exactly as it does today.
+**Architecture:** `ReplyTemplate::keepsTheFacts(): bool` becomes `ReplyTemplate::unsafeBecause(): ?string` — the same single choke point, now running four checks instead of one, and returning an operator-readable reason instead of a boolean. The checks are: not empty; no more than five sentences; no word naming a concession `AskGate` escalates; and one pass over the rewording's number-shaped tokens that requires every token to be a figure the template wrote AND every figure the template wrote to appear as a token. That last pass replaces the three `str_contains()` calls rather than joining them — `str_contains($reworded, '5')` is satisfied by `950.00`, so the old check could not see a dropped single-digit reduction at all. `ReplyComposer::reword()` logs the reason and falls back to the template, exactly as it does today.
 
 **Tech Stack:** PHP 8.3, PHPUnit 11, mago (fmt + lint + analyze), no new dependencies.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - PHP 8.3, `declare(strict_types=1)` in every file.
-- No new dependency. `preg_*`, `str_contains`, `is_numeric` only.
+- No new dependency. `preg_*`, `is_numeric`, `sprintf` only.
 - mago lint: cyclomatic complexity ≤ 10 per function, ≤ 5 parameters per function/constructor, nesting ≤ 4.
 - mago analyze runs as PHPStan-max-equivalent: no `int|false` leaking out of `preg_match_all`, no untyped arrays without a docblock.
 - `php scripts/check_file_length.php src` fails any `src/` file over 400 physical lines.
@@ -154,6 +154,11 @@ final class ReplyTemplateTest extends TestCase
         yield 'the total dropped' => ['We can bring this quote down by 5%, valid until 2026-09-11.'];
         yield 'the date dropped' => ['We can bring this quote down by 5% to 950.00 EUR.'];
         yield 'the percentage dropped' => ['We can bring this quote to 950.00 EUR, valid until 2026-09-11.'];
+        yield 'the percentage dropped, surviving only inside the total' => [
+            // Passes TODAY: str_contains($reworded, '5') is satisfied by
+            // 950.00, so the old guard could not see the missing reduction.
+            'We can bring this quote to 950.00 EUR, valid until 2026-09-11.',
+        ];
         yield 'empty' => [''];
     }
 
@@ -190,7 +195,11 @@ final class ReplyTemplateTest extends TestCase
         self::assertStringContainsString('shipping', $reason);
     }
 
-    /** A per-line concession carries no discountPercent, so 0% is a real case the guard must not break. */
+    /**
+     * A per-line concession carries no discountPercent at all, so 0% is a real
+     * production case -- and `0` is a substring of `950.00`, which is the
+     * substring hole from the other side. The template must accept itself.
+     */
     public function testAZeroPercentReductionStillAcceptsItsOwnTemplate(): void
     {
         $template = ReplyTemplate::compose(0.0, 950.0, 'EUR', self::validUntil());
@@ -222,7 +231,7 @@ In `src/Negotiation/ReplyTemplate.php`, delete `keepsTheFacts()` and add the fol
      * Words that name a concession this system cannot make.
      *
      * AskGate escalates every non-price ask and OfferApplier writes price and
-     * expiry only, so none of these can be honoured even in principle — a
+     * expiry only, so none of these can be honoured even in principle -- a
      * rewording that says one of them hands the buyer a promise in writing
      * that nothing downstream will ever act on.
      *
@@ -231,11 +240,11 @@ In `src/Negotiation/ReplyTemplate.php`, delete `keepsTheFacts()` and add the fol
      * against is "free shipping", already caught by `shipping`. `net` reads as
      * "net total" far more often than as payment terms, and German "Netto"
      * names the very figure being quoted; `Net 30`/`Net 90` carry a digit and
-     * are rejected by the figure check instead. `terms` is the template's own
-     * subject matter.
+     * are rejected as unauthorised figures instead. `terms` is the template's
+     * own subject matter.
      *
      * This list is English. It is a backstop for the language the model is
-     * overwhelmingly prompted in, not the boundary — the boundary is the
+     * overwhelmingly prompted in, not the boundary -- the boundary is the
      * figure check and the sentence cap, which are language-independent.
      */
     private const CONCESSIONS = [
@@ -255,16 +264,11 @@ In `src/Negotiation/ReplyTemplate.php`, delete `keepsTheFacts()` and add the fol
      *
      * This is the last thing between a model's free text and a buyer: the
      * negotiate call's message is discarded and the escalation copy is a
-     * constant, so nothing else the model writes is ever read by a human on
-     * the other side. It used to be three `str_contains()` calls, which
-     * checked that the facts were STILL THERE and never that nothing had been
-     * added — so a rewording ending "…and we will also include free shipping
-     * and Net 90 terms" passed intact (issue #53).
-     *
-     * A positive list rather than a deny list for figures: everything that
-     * looks like a number must be one the template wrote. `percent()` and
-     * `money()` exist so both sides agree on the string, so the comparison
-     * runs through them rather than re-deriving number parsing here.
+     * constant, so nothing else the model writes is ever read on the other
+     * side. It used to be three `str_contains()` calls, which asked only
+     * whether the facts were STILL THERE and never whether anything had been
+     * added -- so a rewording ending "...and we will also include free
+     * shipping and Net 90 terms" passed intact (issue #53).
      *
      * @return string|null null when the rewording may ship
      */
@@ -278,88 +282,97 @@ In `src/Negotiation/ReplyTemplate.php`, delete `keepsTheFacts()` and add the fol
             return 'it is empty';
         }
 
-        /** @var array<string, string> $facts */
+        $sentences = (int) preg_match_all('#[.!?](?=\s|$)#u', $reworded);
+        if ($sentences > self::MAX_SENTENCES) {
+            return sprintf('it runs to %d sentences, past the %d it may use', $sentences, self::MAX_SENTENCES);
+        }
+
+        foreach (self::CONCESSIONS as $word) {
+            if (preg_match('#\b' . $word . '\b#i', $reworded) === 1) {
+                return 'it names a concession nobody authorised: ' . $word;
+            }
+        }
+
+        return self::figuresAreWrong($reworded, $reductionPercent, $totalNet, $validUntil);
+    }
+
+    /**
+     * The figures, checked in both directions in one pass over one token list.
+     *
+     * `#\d+(?:[.,:/-]\d+)*#` takes `2026-09-11`, `950.00` and `5` each as one
+     * token and `Net 90` as `90`, which is what makes "an extra number" a
+     * decidable question at all. Forwards: every token must be a figure the
+     * template wrote. Backwards: every figure the template wrote must appear
+     * as a token.
+     *
+     * The backwards direction is what replaces `str_contains()`, and it is
+     * not a restatement of it. `str_contains($reworded, '5')` is satisfied by
+     * `950.00`, so "We can bring this quote to 950.00 EUR, valid until
+     * 2026-09-11." -- a reply that dropped the reduction entirely -- passed
+     * the old guard. Every single-digit reduction has that shape, and so does
+     * every 0% one, which is exactly what a per-line concession produces.
+     */
+    private static function figuresAreWrong(
+        string $reworded,
+        float $reductionPercent,
+        float $totalNet,
+        \DateTimeImmutable $validUntil,
+    ): ?string {
+        preg_match_all('#\d+(?:[.,:/-]\d+)*#', $reworded, $matches);
+        /** @var list<string> $tokens */
+        $tokens = $matches[0];
+
         $facts = [
             'the reduction percentage' => self::percent($reductionPercent),
             'the new total' => self::money($totalNet),
             'the validity date' => $validUntil->format('Y-m-d'),
         ];
 
-        foreach ($facts as $name => $literal) {
-            if (!str_contains($reworded, $literal)) {
-                return 'it dropped ' . $name;
+        foreach ($tokens as $token) {
+            if (!self::statedAmong($facts, $token)) {
+                return 'it states a figure nobody authorised: ' . $token;
             }
         }
 
-        $sentences = (int) preg_match_all('#[.!?](?=\s|$)#u', $reworded);
-        if ($sentences > self::MAX_SENTENCES) {
-            return sprintf('it runs to %d sentences, past the %d it may use', $sentences, self::MAX_SENTENCES);
-        }
-
-        $figure = self::unauthorisedFigure($reworded, $facts, $reductionPercent, $totalNet);
-        if ($figure !== null) {
-            return sprintf('it states a figure nobody authorised: %s', $figure);
-        }
-
-        $concession = self::unauthorisedConcession($reworded);
-        if ($concession !== null) {
-            return sprintf('it names a concession nobody authorised: %s', $concession);
+        foreach ($facts as $name => $fact) {
+            if (!self::statedAmong($tokens, $fact)) {
+                return 'it dropped ' . $name;
+            }
         }
 
         return null;
     }
 
     /**
-     * The first number-shaped token the template did not write, or null.
+     * Whether any of $figures is the same figure as $subject.
      *
-     * `#\d+(?:[.,:/-]\d+)*#` takes `2026-09-11`, `950.00` and `5` each as one
-     * token and `Net 90` as `90`, which is what makes "an extra number" a
-     * decidable question at all.
+     * Symmetric on purpose: the same helper answers "is this token one of the
+     * facts" and "is this fact one of the tokens", which is the whole of the
+     * check above.
      *
-     * The numeric branch exists for one measured drift and no more: a model
-     * asked to keep `5` writes `5.00%`. Today's `str_contains($reworded, '5')`
-     * accepts that by accident — `5` is a substring of `5.00` — and a
-     * token-exact rule would newly reject a rewording that changed nothing.
-     * Comparing through `money()` keeps it accepted without inventing a
-     * tolerance rule.
+     * The numeric branch absorbs exactly one measured drift and no more: a
+     * model asked to keep `5` writes `5.00%`. Today `str_contains()` accepts
+     * that by accident, and a string-exact rule would newly reject a rewording
+     * that changed nothing. Comparing through `money()` -- which exists so
+     * both sides agree on the string -- keeps it accepted without inventing a
+     * tolerance rule. A date never reaches that branch: `2026-09-11` is not
+     * numeric.
      *
-     * @param array<string, string> $facts the exact strings the template wrote
+     * @param iterable<string> $figures
      */
-    private static function unauthorisedFigure(
-        string $reworded,
-        array $facts,
-        float $reductionPercent,
-        float $totalNet,
-    ): ?string {
-        preg_match_all('#\d+(?:[.,:/-]\d+)*#', $reworded, $matches);
-
-        $authorised = [self::money($reductionPercent), self::money($totalNet)];
-
-        foreach ($matches[0] as $token) {
-            if (in_array($token, $facts, true)) {
-                continue;
-            }
-
-            if (is_numeric($token) && in_array(self::money((float) $token), $authorised, true)) {
-                continue;
-            }
-
-            return $token;
-        }
-
-        return null;
-    }
-
-    /** The first CONCESSIONS word present as a whole word, or null. */
-    private static function unauthorisedConcession(string $reworded): ?string
+    private static function statedAmong(iterable $figures, string $subject): bool
     {
-        foreach (self::CONCESSIONS as $word) {
-            if (preg_match('#\b' . $word . '\b#i', $reworded) === 1) {
-                return $word;
+        foreach ($figures as $figure) {
+            if ($figure === $subject) {
+                return true;
+            }
+
+            if (is_numeric($figure) && is_numeric($subject) && self::money((float) $figure) === self::money((float) $subject)) {
+                return true;
             }
         }
 
-        return null;
+        return false;
     }
 ```
 
@@ -417,12 +430,18 @@ include free shipping and Net 90 terms" reached the buyer intact. Since
 AskGate escalates every non-price ask and OfferApplier writes price and
 expiry only, so nothing downstream could act on it.
 
-unsafeBecause() replaces it with a positive list -- every number-shaped
-token must be one the template wrote -- plus the prompt's own
-five-sentence cap, now enforced in code, plus a short English list of
-concession nouns. It returns the reason rather than a boolean, because
-the fallback is a correct reply: an over-firing guard fails nothing and
-would otherwise be invisible.
+unsafeBecause() replaces it with one pass over the rewording's
+number-shaped tokens, run in both directions: every token must be a
+figure the template wrote, and every figure the template wrote must
+appear as a token. The second direction is not a restatement of the old
+check -- str_contains($reworded, '5') is satisfied by 950.00, so a reply
+that dropped a single-digit reduction entirely passed too, and every 0%
+reduction (what a per-line concession produces) had the same shape.
+
+On top of that: the prompt's own five-sentence cap, now enforced in
+code, and a short English list of concession nouns. It returns the
+reason rather than a boolean, because the fallback is a correct reply --
+an over-firing guard fails nothing and would otherwise be invisible.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 MSG
@@ -635,4 +654,4 @@ MSG
 
 **Placeholders:** none. Every code step carries the code.
 
-**Type consistency:** `unsafeBecause(string, float, float, \DateTimeImmutable): ?string` is named identically in Tasks 1, 2 and 3. `unauthorisedFigure` takes four parameters (mago's limit is five). `preg_match_all` is cast to `int` before comparison so no `int|false` escapes into mago analyze.
+**Type consistency:** `unsafeBecause(string, float, float, \DateTimeImmutable): ?string` is named identically in Tasks 1, 2 and 3. `figuresAreWrong` takes four parameters (mago's limit is five). `statedAmong(iterable<string>, string): bool` is called with `array<string, string>` in one direction and `list<string>` in the other — both are `iterable<string>`, which is why the parameter is typed that way. `preg_match_all` is cast to `int` before comparison so no `int|false` escapes into mago analyze; the second `preg_match_all` is used only for its `$matches` out-parameter, whose `[0]` is always a `list<string>`.

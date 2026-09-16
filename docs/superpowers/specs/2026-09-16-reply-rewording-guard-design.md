@@ -74,7 +74,9 @@ courtesy.
 when the rewording may ship, otherwise a short operator-readable reason.
 
 The signature is otherwise unchanged and the method stays the single choke
-point, so every caller is fixed by fixing it. `ReplyComposer::reword()` logs
+point, so every caller is fixed by fixing it. It runs four checks in order —
+emptiness, the sentence cap, the vocabulary list, then the figures (§2 and §2a
+are one pass over one token list) — and returns on the first that fires. `ReplyComposer::reword()` logs
 the reason.
 
 This matters because of the failure mode named above. A guard that turns the
@@ -108,6 +110,29 @@ through `money()` keeps it accepted without inventing tolerance rules.
 Rejected by construction, and correctly: `Net 30`, `Net 90`, `2% 10 net 30`,
 `within 48 hours`, `valid for 14 days`, `order 3 more units`, a second date in
 any format, a phone number, a time of day.
+
+### 2a. The same rule, run the other way, replaces the substring fact check
+
+Once every token is decided against the facts, the fact check itself is the
+same comparison read backwards: each fact must be stated by at least one
+token. That replaces the three `str_contains()` calls rather than sitting
+beside them, and it closes a hole the issue did not name.
+
+Measured: with `percent()` writing `5` and `money()` writing `950.00`,
+`str_contains($reworded, '5')` is satisfied by the total. "We can bring this
+quote to 950.00 EUR, valid until 2026-09-11." — a rewording that dropped the
+reduction entirely — passes today's guard, because the missing figure is a
+substring of a figure that survived. Every single-digit reduction has this
+shape, and so does every `0%` reduction, which is exactly what a per-line
+concession produces (`ReplyComposer` composes one from
+`ReplyTemplate::reduction()` on the database totals, and `OfferTerms` carries
+no `discountPercent` for a per-line offer).
+
+Requiring the fact to appear as a *token* costs nothing — the tokens are
+already extracted — and is strictly stronger. A rewording that writes "five
+percent" in words and keeps the total now falls back to the template, where
+today it ships by accident. That is the prompt's own rule ("keep every number
+verbatim") finally being enforced.
 
 ### 3. Sentences: the prompt's own cap, enforced in code
 
@@ -214,9 +239,9 @@ of these is an assumption, not an agreement.
   5-sentence cap. "We would be glad to accommodate you further." is not
   reachable by substring rules. The honest ceiling of this approach.
 - **The deny list is English.** §5.
-- **A single-digit reduction percent weakens nothing but loses a little
-  precision**: with `percent()` = `5`, a stray `5` anywhere is accepted. It is
-  one authorised figure appearing twice, which is what a rewording does.
+- **An authorised figure may appear any number of times.** With `percent()` =
+  `5`, a rewording saying `5` three times is accepted. That is one authorised
+  figure restated, which is what rewording does.
 
 ## Testing
 
@@ -229,9 +254,16 @@ All unit-level; the guard is pure and needs no shop.
      written as `EUR 950.00`; five sentences exactly; a formal German-toned
      rewording that still carries the ASCII figures.
    - *Must reject*: free shipping appended; `Net 90 terms`; a second invented
-     date; `within 14 days`; six sentences; a dropped total; a dropped date;
-     empty; and each deny-listed word in a sentence a model would plausibly
-     write.
+     date; `within 14 days`; an invented quantity; six sentences; a dropped
+     total; a dropped date; empty; and each deny-listed word in a sentence a
+     model would plausibly write.
+   - *Must reject, and does not today*: `We can bring this quote to 950.00
+     EUR, valid until 2026-09-11.` — the reduction is gone and `5` survives
+     only as a substring of the total (§2a). This row is the regression pin
+     for the substring hole.
+   - *The 0% case*: `compose(0.0, …)` fed straight back to the guard must be
+     accepted. A per-line concession produces exactly this, and `0` is a
+     substring of `950.00`, so it is the same hole from the other side.
 2. **`ReplyComposerTest`** — a rewording that keeps all three facts *and*
    appends an unauthorised concession must reach the buyer as the template, and
    `reply()` must return `null` (template-authored). This is the issue's
