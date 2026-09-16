@@ -5,7 +5,14 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteIdentity;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLifecycle;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineIdentity;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
@@ -163,6 +170,67 @@ final class OfferRoundTest extends TestCase
             $pass->outcome,
             'A per-line round two with a baseline was escalated: the stopgap is still in place.',
         );
+    }
+
+    /**
+     * IMPORTANT. `$context->baseline` is read from the pass-START snapshot,
+     * whose custom fields predate ServiceQuoteHandler::claimAttempt()'s
+     * extension — the exact staleness anchor() exists to compensate for. On
+     * the pass where a line first appears, the un-extended baseline still
+     * says 1000 while the quote (with the new line) actually opened this
+     * pass at 1200; a 5% cut lands the total at 1140, and the buyer must be
+     * told 5%, not "0% to 1140.00 EUR" from reduction(1000, 1140) flooring at
+     * zero.
+     */
+    public function testTheReplyMeasuresTheReductionAgainstTheExtendedBaselineNotTheStaleOne(): void
+    {
+        [$round] = self::round(perLineOffer: false);
+
+        $lineOne = new QuoteLineSnapshot(
+            identity: new QuoteLineIdentity('line-1', 'Widget'),
+            quantity: 10,
+            unitPriceNet: 100.0,
+            totalNet: 1000.0,
+        );
+        $lineTwo = new QuoteLineSnapshot(
+            identity: new QuoteLineIdentity('line-2', 'Gizmo'),
+            quantity: 1,
+            unitPriceNet: 200.0,
+            totalNet: 200.0,
+        );
+        $comments = [
+            NegotiationFixture::agentComment('Our first offer.', '2026-08-28 09:00:00'),
+            NegotiationFixture::buyerComment('Still too high.', '2026-08-28 10:00:00'),
+        ];
+
+        // The pass-start snapshot: the buyer's line was already added, but
+        // the stored baseline (from the FIRST pass, before line-2 existed)
+        // only knows line-1 — exactly what claimAttempt() leaves behind for
+        // the in-memory snapshot the pipeline was handed.
+        $snapshot = new QuoteSnapshot(
+            identity: new QuoteIdentity('q1', '10001', 'EUR', 'sc1', 'cust-1'),
+            revision: new QuoteRevision('v1', new \DateTimeImmutable('2026-08-28 10:00:00')),
+            totals: new QuoteTotals(totalNet: 1200.0, totalGross: 1200.0),
+            lifecycle: new QuoteLifecycle(
+                stateTechnicalName: 'open',
+                expiresAt: new \DateTimeImmutable(NegotiationFixture::EXPIRES),
+                customFields: NegotiationFixture::baselineOf(1000.0, 100.0),
+            ),
+            content: new QuoteContent(lines: [$lineOne, $lineTwo], comments: $comments),
+        );
+        $after = new QuoteSnapshot(
+            identity: $snapshot->identity,
+            revision: $snapshot->revision,
+            totals: new QuoteTotals(totalNet: 1140.0, totalGross: 1140.0),
+            lifecycle: $snapshot->lifecycle,
+            content: $snapshot->content,
+        );
+
+        $gateway = new FakeQuoteGateway([$snapshot, $after]);
+        $round->play($gateway, $snapshot, self::settings(), self::decision(), null);
+
+        self::assertStringContainsString('down by 5% to 1140.00 EUR', $gateway->comments[0]);
+        self::assertStringNotContainsString('0%', $gateway->comments[0]);
     }
 
     public function testEveryPassEndsInOneStructuredEventCarryingThePromptHashes(): void

@@ -238,9 +238,13 @@ final readonly class ServiceQuoteHandler
         // deploy — and not "a pass ran but wrote nothing". This is also the
         // quote as the agent first found it, which is the spec's own
         // definition and strictly earlier than any pre-write read.
+        //
+        // #54: the same write also appends a line added since the stamp, at
+        // the price it has at pass start, which is before this pass concedes
+        // anything.
         $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
             self::ATTEMPTS_KEY => $attempts + 1,
-            ...QuoteBaseline::stampIfAbsent($snapshot),
+            ...QuoteBaseline::stampOrExtend($snapshot),
         ]));
 
         return $attempts;
