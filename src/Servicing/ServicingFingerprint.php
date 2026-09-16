@@ -40,9 +40,16 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
  * pinned by AddCommentTest), so our own reply cannot move the marker and
  * re-trigger us forever. A merchant's note carries createdById alone and is
  * excluded because it is not an ask — see #55; the fingerprint is what makes
- * the trigger's own author filter a cost saving rather than the fix. The 42
- * pre-existing author-less comments in the test shop are historical and
- * static, so they cannot move it either.
+ * the trigger's own author filter a cost saving rather than the fix. The
+ * pre-existing author-less comments in the test shop — 42 when #3 counted
+ * them, 24 in the live lane on 2026-09-16 — are historical and static, so they
+ * cannot move it either.
+ *
+ * Both exclusions are measured, not assumed. That same count on 2026-09-16
+ * found 72 comments carrying customerId alone, 4 carrying createdById alone
+ * (two real merchant notes, each mirrored into the snapshot lane) and 7
+ * carrying both — seeded buyer text written through an admin context, which
+ * isBuyerAuthored() counts, correctly, as the buyer's.
  *
  * Both exclusions only ever REMOVE components from the composed string, never
  * add or reorder, so two reads of the same quote still compose the same
