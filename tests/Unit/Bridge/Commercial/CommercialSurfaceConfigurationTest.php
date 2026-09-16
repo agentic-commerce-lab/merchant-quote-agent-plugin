@@ -127,7 +127,7 @@ final class CommercialSurfaceConfigurationTest extends TestCase
 
         $violations = [];
         foreach ($container->getDefinitions() as $id => $definition) {
-            foreach (GateMatrix::mandatoryReferences($definition) as $reference) {
+            foreach (DefinitionNeeds::mandatoryReferences($definition) as $reference) {
                 if (\array_key_exists($reference, $removed)) {
                     $violations[] = $id . ' -> ' . $reference;
                 }
@@ -156,7 +156,7 @@ final class CommercialSurfaceConfigurationTest extends TestCase
      *
      * The loadability half reads GateMatrix's build-time snapshot rather than
      * calling `class_exists()` here, because a live call is dead on precisely
-     * the classes it is meant to catch. GateMatrix::constructionNeeds() has the
+     * the classes it is meant to catch. DefinitionNeeds::inContainer() has the
      * why.
      */
     #[DataProvider('shopNames')]
@@ -191,6 +191,11 @@ final class CommercialSurfaceConfigurationTest extends TestCase
         yield 'neither SwagCommercial nor the UCP SDK bundle' => ['withoutEither'];
         yield 'the UCP SDK bundle but no SwagCommercial' => ['withoutCommercial'];
         yield 'SwagCommercial but no UCP SDK bundle' => ['withoutUcp'];
+        // A control, not a check: every registration in services.php sits
+        // inside an `if` with no `else`, so the shop with both gates open is a
+        // superset of the other three and its removed set is structurally
+        // empty. Kept so that the day someone writes an `else`, it is covered
+        // without their having to remember this file.
         yield 'both' => ['withBoth'];
     }
 }

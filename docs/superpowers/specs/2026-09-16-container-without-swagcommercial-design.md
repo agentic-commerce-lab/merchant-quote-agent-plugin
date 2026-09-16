@@ -231,9 +231,36 @@ is confirmed red, and the change is reverted:
 A mutation that does not turn the test red is a hole in the test, not a
 successful experiment.
 
+## Foreign ids, and why they needed naming
+
+The derivation above — union of all four shops minus this shop — sees only ids
+`services.php` registers. It cannot see an id that arrives **with** a plugin,
+because subtracting the file from itself never produces one. Two shapes of
+gate-crossing bug therefore hide in that gap, and both were found by review
+after the first four mutations passed:
+
+- `service('quote.repository')`, a DAL repository Shopware synthesises from
+  SwagCommercial's entity definitions. `services.php` references it plainly, in
+  five places, with no `ignoreOnInvalid()`. Ungated, it is a compile-time
+  `ServiceNotFoundException` — a shop that will not boot.
+- A `->decorate()` target. Decoration is not an argument, a property, a method
+  call or a factory, so a walker over those four misses it entirely — and a
+  decorator whose target is gone fails the container in `DecoratorServicePass`.
+  This is not hypothetical: it is the **one bug of this family the plugin has
+  actually shipped**, on the SDK's `RuntimeConfigurationResolverInterface`
+  (ADR 0001's amendment).
+
+So `removedIn()` also classifies referenced-but-never-registered ids by owner,
+and does it **by prefix** — `Shopware\Commercial*` needs SwagCommercial,
+`Ucp\Sdk*` needs the SDK bundle — so a newly injected foreign id is classified
+without anyone editing the test. Only the two repository ids are named
+literally, because they carry no namespace to recognise. That is the same
+"name the foreign string ids in exactly one place" convention
+`CommercialAvailability` already is.
+
 ## Not covered
 
-Stated plainly, because a test's blind spots are what the next person needs:
+Stated plainly, because a test's blind spots are what the next person needs.
 
 - **The route gate.** `AgentFacingRoutes::import()` has its own
   `isAvailableByClass()` branch that is meant to mirror `services.php`. Drift
@@ -242,6 +269,42 @@ Stated plainly, because a test's blind spots are what the next person needs:
 - **The probe itself.** A shop where SwagCommercial's classes are loadable but
   its bundle is gone still gets the bridge registered. That is the defect
   described under "The probe", and it is upstream of everything this test sees.
+  It also means there is a **fifth shop** — SwagCommercial vendored but
+  deactivated — that the gate reads as `withBoth` while core has already
+  removed its services. The matrix cannot model it and will not be able to
+  until the probe changes.
+- **The loadability arm is commercial-only in practice.** It asks whether a
+  class was loadable when the shop was built, and the UCP SDK is a real
+  Composer dependency, so it is in `vendor/` for every shop. Registering an SDK
+  class outside the UCP gate is therefore caught by the id arithmetic but not
+  by the loadability arm. Only SwagCommercial, which ADR 0001 keeps out of
+  `composer.json`, is genuinely absent here.
+- **A degraded reference whose parameter cannot take the degradation.**
+  `ignoreOnInvalid()` references are skipped, but Symfony *unsets* an ignored
+  argument rather than passing null, so a degraded reference is only harmless
+  where the matching parameter is nullable **and** defaulted. That holds
+  throughout `services.php` today; nothing here enforces that it keeps holding.
+  Failure mode is an `ArgumentCountError` at instantiation, not a dead
+  container, which is why it is documented rather than closed.
+- **Autowiring by implemented interface.** Symfony's `AutowirePass` registers
+  every interface a service's class implements as an autowiring candidate. An
+  interface with no explicit `alias()` and a single gated implementation is in
+  neither the container nor the removed set, so it is invisible. Every
+  interface in `services.php` carries an explicit alias today.
+- **Anything autowired outside a constructor** — a `#[Required]` setter, an
+  autowired method call, an `#[Autowire]` parameter attribute. There are none
+  in `src/` today.
+- **`TaggedIteratorArgument` contents**, which a later compiler pass resolves,
+  so there is nothing to walk at load time.
+- **The dev/test-only service locator.** Every shop is built with
+  `kernel.environment` = `prod`, so the locator block is never constructed.
+  `OrderHistoryLocatorConfigurationTest` covers its presence and absence, but
+  always with the commercial classes aliased, so it never crosses a gate.
+- **`withBoth` is a control, not a check.** Every registration in
+  `services.php` sits inside an `if` with no `else`, so the shop with both
+  gates open is a superset of the other three and its removed set is
+  structurally empty. Its data-provider row can never fail; it is kept so that
+  a future `else` branch would be covered without anyone remembering to add it.
 - **Anything that only a real compile catches.** Circular references, tag
   handling, decoration order, `ServiceLocator` contents, compiler passes from
   core or other bundles. If a service resolves in `ids(S)` this test believes
