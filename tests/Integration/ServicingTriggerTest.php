@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
@@ -11,6 +12,7 @@ use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\StateMachine\StateMachineRegistry;
 use Shopware\Core\System\StateMachine\Transition;
 use Symfony\Component\Messenger\Envelope;
@@ -148,11 +150,16 @@ final class ServicingTriggerTest extends IntegrationTestCase
      * hard-coded null — so this reproduces the persisted shape rather than
      * the transport.
      *
-     * Both halves matter. The empty bus is the pass that never gets queued;
-     * the unchanged fingerprint is what would stop the pass even if the
-     * trigger could not tell who wrote the comment, and it also proves the
-     * bridge mapper reads `createdById` off a real row, which is the premise
-     * the whole three-way split rests on.
+     * Three things this proves, and none of them is redundant. The empty bus
+     * is the pass that never gets queued. The unchanged fingerprint is the
+     * backstop that would still stop the pass even if the trigger could not
+     * tell who wrote the comment. And the three authorship assertions below
+     * are what measure SwagCommercial's actual columns on a real row — a
+     * merchant's comment carries `createdById` and neither buyer column —
+     * which is the premise the whole three-way split (isAuthored(),
+     * isBuyerAuthored(), this trigger's own payload check) rests on; nothing
+     * else in the suite pins that the mapper carries `created_by_id` through
+     * to `QuoteComment::createdById` on a live-shop row.
      */
     public function testAMerchantAdminCommentQueuesNothingAndChangesNoFingerprint(): void
     {
@@ -161,13 +168,14 @@ final class ServicingTriggerTest extends IntegrationTestCase
         self::assertInstanceOf(EntityRepository::class, $comments);
         $userId = $this->anyAdminUserId();
         $bus = self::collectingBus();
+        $text = 'ServicingTriggerTest merchant note ' . Uuid::randomHex();
 
         $before = ServicingFingerprint::of(static::gateway()->fetchSnapshot($quoteId));
 
-        $this->withTrigger($bus, static function () use ($comments, $quoteId, $userId): void {
+        $this->withTrigger($bus, static function () use ($comments, $quoteId, $userId, $text): void {
             $comments->create([[
                 'quoteId' => $quoteId,
-                'comment' => 'ServicingTriggerTest merchant note: check with sales before replying',
+                'comment' => $text,
                 'createdById' => $userId,
             ]], Context::createDefaultContext());
         });
@@ -178,6 +186,24 @@ final class ServicingTriggerTest extends IntegrationTestCase
             ServicingFingerprint::of(static::gateway()->fetchSnapshot($quoteId)),
             'A merchant admin comment moved the servicing fingerprint, which buys a pass on the next trigger.',
         );
+
+        $ours = $this->commentWithText(static::gateway()->fetchSnapshot($quoteId)->content->comments, $text);
+
+        self::assertSame($userId, $ours->createdById, 'createdById on the row we just wrote is not the admin user.');
+        self::assertTrue($ours->isAuthored(), 'A comment with createdById set is not read as authored.');
+        self::assertFalse($ours->isBuyerAuthored(), 'A merchant comment is read as the buyer\'s.');
+    }
+
+    /** @param list<QuoteComment> $comments */
+    private function commentWithText(array $comments, string $text): QuoteComment
+    {
+        foreach ($comments as $comment) {
+            if ($comment->comment === $text) {
+                return $comment;
+            }
+        }
+
+        self::fail('The comment just written is not in the quote read back.');
     }
 
     private function anyAdminUserId(): string
