@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Bridge\Commercial;
 
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
-use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
-use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnDiscoveryController;
@@ -23,11 +21,6 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
-use Symfony\Component\DependencyInjection\Argument\ArgumentInterface;
-use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\DependencyInjection\ContainerInterface;
-use Symfony\Component\DependencyInjection\Definition;
-use Symfony\Component\DependencyInjection\Reference;
 
 /**
  * The SwagCommercial half of the gate in `src/Resources/config/services.php`,
@@ -36,26 +29,24 @@ use Symfony\Component\DependencyInjection\Reference;
  *
  * This suite runs with SwagCommercial genuinely absent: ADR 0001 keeps it out
  * of composer.json, so `class_exists` is false here with no help from anyone.
- * What has to be simulated is therefore PRESENCE, which is why the two absent
- * containers are built before `class_alias` runs and the two present ones
- * after. The aliases cannot be undone, hence the process isolation — without
- * it CommercialAvailabilityTest, which asserts the opposite, fails on order.
+ * What has to be simulated is therefore PRESENCE, which GateMatrix does by
+ * aliasing three placeholders in between builds. Those aliases cannot be
+ * undone, hence the process isolation — without it CommercialAvailabilityTest,
+ * which asserts the opposite, fails on test order.
  *
  * Definitions, not a compiled container, for the reason
  * UcpSurfaceConfigurationTest already records: the file references core and SDK
  * ids nothing here provides, so compiling would fail for reasons that say
- * nothing about the gate. testNoServiceDependsOnOneItsGateRemoved() is what
- * stands in for the compile, and it is sharper — it sees only gate crossings.
+ * nothing about the gate. The last two tests are what stand in for the compile,
+ * and they are sharper than one — they see only gate crossings, and they can
+ * name which service crossed.
  *
  * @mago-expect lint:cyclomatic-complexity
  * @mago-expect lint:kan-defect
- * Both rules aggregate per class against a threshold of 10. No single method
- * here is complex; the class is, because it walks Symfony's DI graph three
- * separate ways across its test methods — the four-shop membership checks,
- * the reference walker, and the autowired-constructor walker — each with its
- * own loop and guard clauses, which is the actual shape of "the container
- * compiles" once you replace a compile with something that can name why it
- * failed.
+ * Both rules aggregate per class against a threshold of 10. No single test
+ * here is complex; the class is, because four tests each walk a container and
+ * collect violations rather than asserting one value. Collecting is deliberate:
+ * a failure names every service that crossed a gate, not just the first.
  */
 #[RunTestsInSeparateProcesses]
 #[PreserveGlobalState(false)]
@@ -70,13 +61,13 @@ final class CommercialSurfaceConfigurationTest extends TestCase
      *
      * Does not itself assert `CommercialAvailability::isAvailableByClass()` is
      * false: `CommercialAvailabilityTest::testReportsUnavailableWhenSwagCommercialIsAbsent`
-     * already covers that claim, and `shops()` has aliased the commercial
+     * already covers that claim, and GateMatrix has aliased the commercial
      * classes into existence process-wide by the time this method runs, so a
-     * second probe here would just read back its own fixture.
+     * second probe here would only read back its own fixture.
      */
     public function testTheEvidenceLayerBuildsWithoutSwagCommercial(): void
     {
-        $container = self::shops()['withoutCommercial'];
+        $container = GateMatrix::build()->shops['withoutCommercial'];
 
         foreach ([
             ProtocolHash::class,
@@ -98,7 +89,7 @@ final class CommercialSurfaceConfigurationTest extends TestCase
      */
     public function testTheBridgeAndItsConsumersAreAbsentWithoutSwagCommercial(): void
     {
-        $shops = self::shops();
+        $shops = GateMatrix::build()->shops;
 
         foreach ([
             SellerActEmitter::class,
@@ -123,68 +114,75 @@ final class CommercialSurfaceConfigurationTest extends TestCase
     }
 
     /**
-     * Both gates are booleans, so there are four shops. All four are built in
-     * one pass because `class_alias` is one-way: the two SwagCommercial-absent
-     * containers must exist before the placeholders do.
-     *
-     * @return array{
-     *     withoutEither: ContainerBuilder,
-     *     withoutCommercial: ContainerBuilder,
-     *     withBoth: ContainerBuilder,
-     *     withoutUcp: ContainerBuilder,
-     * }
-     */
-    private static function shops(): array
-    {
-        $withoutEither = self::build(ucp: false);
-        $withoutCommercial = self::build(ucp: true);
-
-        self::makeCommercialClassesAvailable();
-
-        return [
-            'withoutEither' => $withoutEither,
-            'withoutCommercial' => $withoutCommercial,
-            'withBoth' => self::build(ucp: true),
-            'withoutUcp' => self::build(ucp: false),
-        ];
-    }
-
-    /**
-     * The check that replaces "the container compiles".
-     *
-     * For each of the four shops, the ids its gates removed are the union of
-     * every id services.php registers anywhere, minus the ids this shop has —
-     * computed from the file on every run, so a service added to either side of
-     * either gate is classified without anyone updating this test. An id
-     * referenced but in neither set belongs to core or the SDK, which is not
-     * this gate's business.
-     *
-     * ignoreOnInvalid()/nullOnInvalid() references are skipped on purpose:
-     * degrading to null is exactly what services.php uses them for.
+     * The check that replaces "the container compiles", for the dependencies
+     * somebody wrote down: no service this shop still registers may hold a
+     * mandatory reference to an id this shop's gates removed.
      */
     #[DataProvider('shopNames')]
     public function testNoServiceDependsOnOneItsGateRemoved(string $shop): void
     {
-        $shops = self::shops();
-        $removed = self::removedIn($shops, $shop);
-        $container = $shops[$shop];
+        $matrix = GateMatrix::build();
+        $removed = $matrix->removedIn($shop);
+        $container = $matrix->shops[$shop];
 
         $violations = [];
         foreach ($container->getDefinitions() as $id => $definition) {
-            foreach (self::mandatoryReferences($definition) as $reference) {
-                if (isset($removed[$reference])) {
+            foreach (GateMatrix::mandatoryReferences($definition) as $reference) {
+                if (\array_key_exists($reference, $removed)) {
                     $violations[] = $id . ' -> ' . $reference;
                 }
             }
         }
 
         foreach ($container->getAliases() as $id => $alias) {
-            if (isset($removed[(string) $alias])) {
+            if (\array_key_exists((string) $alias, $removed)) {
                 $violations[] = 'alias ' . $id . ' -> ' . $alias;
             }
         }
 
         self::assertSame([], $violations, 'These services would not resolve on a ' . $shop . ' shop');
+    }
+
+    /**
+     * The same rule for the dependencies nobody wrote down. services.php sets
+     * `defaults()->autowire()`, so most definitions carry no arguments at load
+     * time and the reference walker above sees nothing at all for them — their
+     * dependencies are constructor types Symfony only resolves at compile.
+     *
+     * Two arms. A need this shop's gates removed is the #76 shape reaching the
+     * autowired majority of the graph. A need that was not LOADABLE when this
+     * shop was built is #79's other named failure mode: an unconditional
+     * service reaching for a class that only exists behind the gate.
+     *
+     * The loadability half reads GateMatrix's build-time snapshot rather than
+     * calling `class_exists()` here, because a live call is dead on precisely
+     * the classes it is meant to catch. GateMatrix::constructionNeeds() has the
+     * why.
+     */
+    #[DataProvider('shopNames')]
+    public function testNoAutowiredServiceNeedsAClassItsGateRemoved(string $shop): void
+    {
+        $matrix = GateMatrix::build();
+        $removed = $matrix->removedIn($shop);
+        $container = $matrix->shops[$shop];
+
+        $violations = [];
+        foreach ($matrix->needs[$shop] as $need) {
+            ['id' => $id, 'needs' => $name, 'of' => $of, 'loadable' => $loadable] = $need;
+
+            if (!$loadable) {
+                $violations[] = $id . ': ' . $of . ' => ' . $name . ', which is not loadable on this shop';
+
+                continue;
+            }
+
+            // A need the container satisfies is not autowired out of thin air.
+            if (!$container->has($name) && \array_key_exists($name, $removed)) {
+                $violations[] = $id . ': ' . $of . ' => ' . $name . ', which this shop\'s gates removed';
+            }
+        }
+
+        self::assertSame([], $violations, 'These services would not autowire on a ' . $shop . ' shop');
     }
 
     /** @return iterable<string, array{string}> */
@@ -194,172 +192,5 @@ final class CommercialSurfaceConfigurationTest extends TestCase
         yield 'the UCP SDK bundle but no SwagCommercial' => ['withoutCommercial'];
         yield 'SwagCommercial but no UCP SDK bundle' => ['withoutUcp'];
         yield 'both' => ['withBoth'];
-    }
-
-    /**
-     * @param array<string, ContainerBuilder> $shops
-     *
-     * @return array<string, true>
-     */
-    private static function removedIn(array $shops, string $shop): array
-    {
-        $ids = static fn(ContainerBuilder $container): array => array_merge(
-            array_keys($container->getDefinitions()),
-            array_keys($container->getAliases()),
-        );
-
-        $everywhere = array_merge(...array_map($ids, array_values($shops)));
-
-        return array_fill_keys(array_diff($everywhere, $ids($shops[$shop])), true);
-    }
-
-    /**
-     * Every id this value depends on and cannot do without. Walks arguments,
-     * properties, method calls and the factory, recursing through arrays and
-     * through ArgumentInterface wrappers (service locators, tagged iterators).
-     *
-     * @return list<string>
-     */
-    private static function mandatoryReferences(mixed $value): array
-    {
-        if ($value instanceof Reference) {
-            return (
-                $value->getInvalidBehavior() === ContainerInterface::EXCEPTION_ON_INVALID_REFERENCE
-                    ? [(string) $value]
-                    : []
-            );
-        }
-
-        if ($value instanceof ArgumentInterface) {
-            $value = $value->getValues();
-        }
-
-        if ($value instanceof Definition) {
-            $value = [$value->getArguments(), $value->getProperties(), $value->getMethodCalls(), $value->getFactory()];
-        }
-
-        if (!\is_array($value)) {
-            return [];
-        }
-
-        return array_merge(...array_map(self::mandatoryReferences(...), array_values($value)));
-    }
-
-    /**
-     * The same rule for the dependencies nobody wrote down. services.php sets
-     * `defaults()->autowire()`, so most definitions have no arguments at load
-     * time and the walker above sees nothing for them — their dependencies are
-     * constructor types Symfony resolves at compile. This reads them the way
-     * AutowirePass would, and flags a class-typed parameter whose type this
-     * shop's gates removed, or which is not loadable at all.
-     *
-     * The second arm is #79's other failure mode: an unconditional service
-     * whose constructor names a class that only exists behind the gate.
-     */
-    #[DataProvider('shopNames')]
-    public function testNoAutowiredServiceNeedsAClassItsGateRemoved(string $shop): void
-    {
-        $shops = self::shops();
-        $removed = self::removedIn($shops, $shop);
-        $container = $shops[$shop];
-
-        $violations = [];
-        foreach ($container->getDefinitions() as $id => $definition) {
-            // A factory-produced service has no constructor to autowire.
-            if (!$definition->isAutowired() || $definition->getFactory() !== null) {
-                continue;
-            }
-
-            // ResolveClassPass fills the class in from the id at compile time;
-            // services.php registers everything as set(Foo::class).
-            $class = $definition->getClass() ?? $id;
-            if (!class_exists($class)) {
-                $violations[] = $id . ': class ' . $class . ' is not loadable';
-
-                continue;
-            }
-
-            $constructor = (new \ReflectionClass($class))->getConstructor();
-            if ($constructor === null) {
-                continue;
-            }
-
-            $arguments = $definition->getArguments();
-            foreach ($constructor->getParameters() as $position => $parameter) {
-                // Filled explicitly, by position or by name: not autowired.
-                if (
-                    \array_key_exists($position, $arguments)
-                    || \array_key_exists('$' . $parameter->getName(), $arguments)
-                ) {
-                    continue;
-                }
-
-                // AutowirePass falls back rather than failing on these.
-                if ($parameter->isDefaultValueAvailable() || $parameter->isVariadic() || $parameter->allowsNull()) {
-                    continue;
-                }
-
-                $type = $parameter->getType();
-                if (!$type instanceof \ReflectionNamedType || $type->isBuiltin()) {
-                    continue;
-                }
-
-                $name = $type->getName();
-                if ($container->has($name)) {
-                    continue;
-                }
-
-                if (isset($removed[$name])) {
-                    $violations[] =
-                        $id
-                        . ': autowires $'
-                        . $parameter->getName()
-                        . ' => '
-                        . $name
-                        . ', which this shop\'s gates removed';
-
-                    continue;
-                }
-
-                if (!class_exists($name) && !interface_exists($name)) {
-                    $violations[] =
-                        $id . ': autowires $' . $parameter->getName() . ' => ' . $name . ', which is not loadable';
-                }
-            }
-        }
-
-        self::assertSame([], $violations, 'These services would not autowire on a ' . $shop . ' shop');
-    }
-
-    /**
-     * The UCP gate reads `kernel.bundles` and nothing else, so the bundle need
-     * not be loadable here — only listed, exactly as the kernel would list it.
-     */
-    private static function build(bool $ucp): ContainerBuilder
-    {
-        $container = new ContainerBuilder();
-        $container->setParameter('kernel.environment', 'prod');
-        $container->setParameter('kernel.bundles', $ucp ? ['UcpSdkBundle' => 'Ucp\Sdk\Symfony\UcpSdkBundle'] : []);
-        (new MerchantQuoteAgentPlugin(active: true, basePath: \dirname(__DIR__, levels: 4)))->build($container);
-
-        return $container;
-    }
-
-    /**
-     * The gate only asks whether these names exist and never instantiates
-     * anything behind them, so one placeholder under three names is enough.
-     * Same trick as OrderHistoryLocatorConfigurationTest, same process
-     * isolation keeping it from leaking.
-     */
-    private static function makeCommercialClassesAvailable(): void
-    {
-        $placeholder = new class {};
-        foreach ([
-            CommercialAvailability::QUOTE_MANIPULATION,
-            CommercialAvailability::QUOTE_COMMENTER,
-            'Shopware\Commercial\Licensing\License',
-        ] as $class) {
-            class_alias($placeholder::class, $class);
-        }
     }
 }
