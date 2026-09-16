@@ -43,6 +43,12 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * What leaves and what does not is in docs/for-merchants.md, and the
  * classification that decides it is AnonymizedDecision's five lists.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10); the count is `execute()`'s
+ * three refusal checks plus `write()`'s one encode-failure guard, each its
+ * own single condition. Splitting either method further would scatter one
+ * command's control flow across files for no reader's benefit.
  */
 #[AsCommand(
     name: 'merchant-quote-agent:export',
@@ -80,7 +86,7 @@ final class DecisionExportCommand extends Command
         $to = $input->getOption('to');
 
         if (!\is_string($from) || !\is_string($to) || $from === '' || $to === '') {
-            $io->error(
+            $io->getErrorStyle()->error(
                 'Both --from and --to are required: merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01',
             );
 
@@ -91,13 +97,18 @@ final class DecisionExportCommand extends Command
             $start = new \DateTimeImmutable($from);
             $end = new \DateTimeImmutable($to);
         } catch (\Exception $e) {
-            $io->error(\sprintf('"%s" or "%s" could not be read as a date: %s', $from, $to, $e->getMessage()));
+            $io->getErrorStyle()->error(\sprintf(
+                '"%s" or "%s" could not be read as a date: %s',
+                $from,
+                $to,
+                $e->getMessage(),
+            ));
 
             return Command::INVALID;
         }
 
         if ($end <= $start) {
-            $io->error(
+            $io->getErrorStyle()->error(
                 '--to must be after --from; the range is half-open, so September is --from=2026-09-01 --to=2026-10-01.',
             );
 
@@ -105,7 +116,7 @@ final class DecisionExportCommand extends Command
         }
 
         $freeText = (bool) $input->getOption('include-comments');
-        $written = $this->write($output, $start, $end, $freeText);
+        $written = $this->write($io, $start, $end, $freeText);
 
         $this->report($io, $written, $freeText);
 
@@ -113,12 +124,8 @@ final class DecisionExportCommand extends Command
     }
 
     /** @throws \Random\RandomException */
-    private function write(
-        OutputInterface $output,
-        \DateTimeImmutable $from,
-        \DateTimeImmutable $to,
-        bool $freeText,
-    ): int {
+    private function write(SymfonyStyle $io, \DateTimeImmutable $from, \DateTimeImmutable $to, bool $freeText): int
+    {
         $pseudonym = ExportPseudonym::forShop($this->systemConfig);
         $iterator = new RepositoryIterator(
             $this->decisions,
@@ -133,10 +140,29 @@ final class DecisionExportCommand extends Command
                     continue;
                 }
 
-                $output->writeln((string) json_encode(
+                // JSON_INVALID_UTF8_SUBSTITUTE swaps invalid bytes -- the only
+                // realistic failure here, e.g. a provider error body stored in
+                // errorChain under --include-comments -- for U+FFFD rather than
+                // failing the encode, so a merchant's record is kept instead of
+                // silently dropped. That makes the `false` branch below
+                // unreachable in practice; it stays as a guard so a blank line
+                // can never enter the JSONL stream uncounted.
+                $line = json_encode(
                     AnonymizedDecision::of($record, $pseudonym, $freeText),
-                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
-                ));
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
+                );
+
+                if ($line === false) {
+                    $io->getErrorStyle()->writeln(\sprintf(
+                        'Skipped one record (%s) that could not be JSON-encoded: %s',
+                        $record->id,
+                        json_last_error_msg(),
+                    ));
+
+                    continue;
+                }
+
+                $io->writeln($line);
                 ++$written;
             }
         }

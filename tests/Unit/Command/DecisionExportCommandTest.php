@@ -30,24 +30,37 @@ final class DecisionExportCommandTest extends TestCase
     {
         $tester = new CommandTester($this->command());
 
-        self::assertSame(Command::INVALID, $tester->execute(['--from' => '2026-09-01']));
-        self::assertStringContainsString('--from and --to', $tester->getDisplay());
+        $exit = $tester->execute(['--from' => '2026-09-01'], ['capture_stderr_separately' => true]);
+
+        self::assertSame(Command::INVALID, $exit);
+        self::assertStringContainsString('--from and --to', $tester->getErrorOutput());
+        self::assertSame('', $tester->getDisplay(), 'Refusal messages must not land on stdout.');
     }
 
     public function testItRefusesADateItCannotRead(): void
     {
         $tester = new CommandTester($this->command());
 
-        self::assertSame(Command::INVALID, $tester->execute(['--from' => 'last tuesday-ish', '--to' => '2026-10-01']));
-        self::assertStringContainsString('could not be read as a date', $tester->getDisplay());
+        $exit = $tester->execute(['--from' => 'last tuesday-ish', '--to' => '2026-10-01'], [
+            'capture_stderr_separately' => true,
+        ]);
+
+        self::assertSame(Command::INVALID, $exit);
+        self::assertStringContainsString('could not be read as a date', $tester->getErrorOutput());
+        self::assertSame('', $tester->getDisplay(), 'Refusal messages must not land on stdout.');
     }
 
     public function testItRefusesARangeThatRunsBackwards(): void
     {
         $tester = new CommandTester($this->command());
 
-        self::assertSame(Command::INVALID, $tester->execute(['--from' => '2026-10-01', '--to' => '2026-09-01']));
-        self::assertStringContainsString('--to must be after --from', $tester->getDisplay());
+        $exit = $tester->execute(['--from' => '2026-10-01', '--to' => '2026-09-01'], [
+            'capture_stderr_separately' => true,
+        ]);
+
+        self::assertSame(Command::INVALID, $exit);
+        self::assertStringContainsString('--to must be after --from', $tester->getErrorOutput());
+        self::assertSame('', $tester->getDisplay(), 'Refusal messages must not land on stdout.');
     }
 
     private function command(): DecisionExportCommand
