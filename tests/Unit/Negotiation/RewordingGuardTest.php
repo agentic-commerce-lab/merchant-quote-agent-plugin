@@ -96,6 +96,13 @@ final class RewordingGuardTest extends TestCase
             'We can bring this quote down by 5% to 950.00 EUR. The offer is valid until 2026-09-11, '
                 . 'which is 14 days from today.',
         ];
+        yield 'an invented quantity written with a separator' => [
+            // The separator rule below normalises a grouped figure before
+            // comparing it; this pins that it normalises rather than blanket
+            // accepts -- 1200 is not a figure the template wrote.
+            'We can bring this quote down by 5% to 950.00 EUR. Order 1,200 more units and we can do better. '
+                . 'The offer is valid until 2026-09-11.',
+        ];
         yield 'an invented quantity' => [
             'We can bring this quote down by 5% to 950.00 EUR. Order 20 more units and we can do better. '
                 . 'The offer is valid until 2026-09-11.',
@@ -195,6 +202,44 @@ final class RewordingGuardTest extends TestCase
             'If this starts rejecting, the guard grew a rule -- check it did not also start rejecting '
             . 'a rewording that simply restates the percentage.',
         );
+    }
+
+    /**
+     * A total of 1000 or more, which the table above never reaches.
+     *
+     * `money()` writes `9500.00` and a model handed that writes `9,500.00`
+     * back -- ordinary money formatting, not an invented figure. Rejecting it
+     * costs nothing visible: the template ships, every gate stays green, and
+     * rewording is simply off for every quote a B2B buyer actually sends.
+     * TOTAL above is 950.00, which is the only reason the table never saw it.
+     */
+    public function testAGroupedThousandsSeparatorIsTheSameTotal(): void
+    {
+        self::assertNull(
+            RewordingGuard::unsafeBecause(
+                'We can bring this quote down by 5% to 9,500.00 EUR. The offer is valid until 2026-09-11.',
+                self::PERCENT,
+                9500.0,
+                self::validUntil(),
+            ),
+            'A thousands separator is a spelling of the authorised total, not a figure nobody authorised.',
+        );
+    }
+
+    /**
+     * The other direction: the grouped form also satisfies the backwards
+     * check, so the total does not read as dropped either.
+     */
+    public function testAGroupedTotalDoesNotReadAsADroppedFact(): void
+    {
+        $reason = RewordingGuard::unsafeBecause(
+            'A 5% reduction takes this to 9,500.00 EUR, valid until 2026-09-11.',
+            self::PERCENT,
+            9500.0,
+            self::validUntil(),
+        );
+
+        self::assertNull($reason, (string) $reason);
     }
 
     /** The reason is what makes an over-firing guard greppable rather than invisible. */

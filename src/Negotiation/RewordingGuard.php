@@ -214,7 +214,10 @@ final class RewordingGuard
      */
     private static function statedAmong(iterable $figures, string $subject): bool
     {
+        $subject = self::ungrouped($subject);
+
         foreach ($figures as $figure) {
+            $figure = self::ungrouped($figure);
             if (
                 $figure === $subject
                 || is_numeric($figure)
@@ -226,5 +229,48 @@ final class RewordingGuard
         }
 
         return false;
+    }
+
+    /**
+     * A grouped thousands separator removed, and nothing else touched.
+     *
+     * `money()` writes `9500.00` deliberately, but a model handed that figure
+     * writes `9,500.00` back -- that is how money is spelled, not a figure
+     * nobody authorised. Without this the guard rejected every rewording of
+     * every quote of 1000 or more, which is most B2B quotes, and rejected it
+     * the invisible way: template ships, nothing fails, rewording is simply
+     * off. The old `str_contains()` check fell back identically, so this is a
+     * hole being closed rather than a regression being fixed.
+     *
+     * The pattern is narrow on purpose, because a comma is a DECIMAL point in
+     * half of this plugin's market. `^\d{1,3}(?:,\d{3})+` demands at least
+     * one full group of exactly three digits, which `1,5` and `1,50` cannot
+     * satisfy -- those reach the comparison untouched and fail it, exactly as
+     * they do today. Only the unambiguous grouped spelling is normalised.
+     *
+     * German `9.500,00` is NOT handled. Its decimal comma makes it
+     * unambiguous too, but its grouping dot is not: `9.500` is nine and a half
+     * to the same regex that has to read `950.00` as a total. That is a
+     * locale decision, not a formatting one, and it is written up as a risk
+     * rather than guessed at here.
+     *
+     * `preg_replace_callback()` rather than a match-then-replace `if`, for the
+     * same reason `array_filter()` is used above: the branch pushed this class
+     * past the linter's cyclomatic-complexity threshold, which is aggregated
+     * across the class. The pattern stays anchored either way -- a bare
+     * `preg_replace()` of grouping commas would drop the anchor with it.
+     *
+     * Applied to both sides of the comparison, so the grouped form answers
+     * "is this token authorised" and "did this fact survive" alike -- the
+     * second matters as much as the first, since a total the guard cannot
+     * recognise reads as a total the model dropped.
+     */
+    private static function ungrouped(string $figure): string
+    {
+        return (string) preg_replace_callback(
+            '#^\d{1,3}(?:,\d{3})+(?:\.\d+)?$#',
+            static fn(array $grouped): string => str_replace(',', '', (string) $grouped[0]),
+            $figure,
+        );
     }
 }
