@@ -127,6 +127,26 @@ typed `30` keeps `30`. The change is recorded in the migration's docblock and in
 `docs/end-to-end.md`'s config table, which is where a merchant reads what an
 update did.
 
+Once C is chosen, coverage of every broken shop turns out to be total, which
+is worth spelling out rather than leaving implied. There are exactly four ways
+a shop's stored `validityDays` can read on update, and C accounts for all of
+them. A row of `{"_value":0}` is rewritten by the migration directly. A row of
+`{"_value":"0"}` — the string that `system:config:set` without `--json` stores,
+the trap `docs/end-to-end.md` warns about — is rewritten too, by the same
+`isZero()` check, and that shop was already being hard-refused by
+`RawConfigValue::int` before this fix, so C is a strict improvement there, not
+a new behaviour change. A merchant who cleared the field entirely has no row
+at all: `SystemConfigService::setMultiple()` (vendor, lines 284-291 and
+324-340) deletes the `system_config` row outright when a value is written as
+`null`, rather than storing a null value, so there is nothing for this
+migration to find — and core's own update path covers it anyway, because
+`saveConfig()`'s `!isset($relevantSettings[$key])` branch (cited above) reads
+a missing key exactly like a fresh install and writes the new default `14`.
+And a merchant who chose a number is untouched by all of the above, because
+none of the three paths fire for a value that is not zero and not absent. No
+fifth case exists: every stored `system_config` row for this key is either
+present or absent, and if present, decodes to zero or to something else.
+
 ## Decisions
 
 1. **`config.xml` defaults `validityDays` to `14`,** and gains a `helpText`

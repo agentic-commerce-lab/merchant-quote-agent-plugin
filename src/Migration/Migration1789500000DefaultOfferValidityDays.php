@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Migration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception as DbalException;
 use Override;
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Migration\MigrationStep;
 
 /**
@@ -33,6 +34,17 @@ use Shopware\Core\Framework\Migration\MigrationStep;
  *
  * A shop cannot arrive back here by clearing the field: that path now fails
  * configuration validation instead, so this migration is a one-off.
+ *
+ * This writes `system_config` directly, the same way
+ * NegotiationStrategyTextConfigRows does, so no `SystemConfigChangedEvent` is
+ * dispatched and `CachedSystemConfigLoader`'s pool is not invalidated. A
+ * deploy that runs `bin/console database:migrate` without also clearing the
+ * cache keeps serving the stale `0` from cache — which `Assert\Positive` now
+ * rejects — until the cache expires or is cleared, taking the sales channel
+ * out of service in the meantime. `bin/console plugin:update` already clears
+ * the cache as part of its own run, so this is a `database:migrate`-only
+ * hazard; an operator running migrations bare should clear the cache
+ * afterwards.
  */
 class Migration1789500000DefaultOfferValidityDays extends MigrationStep
 {
@@ -81,14 +93,16 @@ class Migration1789500000DefaultOfferValidityDays extends MigrationStep
         ]);
 
         $fixed = json_encode(['_value' => self::DEFAULT_VALIDITY_DAYS], \JSON_THROW_ON_ERROR);
+        $now = (new \DateTimeImmutable())->format(Defaults::STORAGE_DATE_TIME_FORMAT);
 
         foreach ($rows as $row) {
             if (!self::isZero($row['configuration_value'])) {
                 continue;
             }
 
-            $connection->executeStatement('UPDATE `system_config` SET `configuration_value` = :value WHERE `id` = :id', [
+            $connection->executeStatement('UPDATE `system_config` SET `configuration_value` = :value, `updated_at` = :updatedAt WHERE `id` = :id', [
                 'value' => $fixed,
+                'updatedAt' => $now,
                 'id' => $row['id'],
             ]);
         }
