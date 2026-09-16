@@ -87,16 +87,35 @@ private function getAdminUserId(Context $context): ?string
 So the premise holds on trunk: merchant ⇒ `createdById` only; buyer ⇒
 `customerId` and/or `employeeId`; agent ⇒ none.
 
-**What is not verified.** The shop containers were not reachable while this was
-written (Docker daemon down), so no real `quote_comment` rows were read for
-this issue. The 2026-09-02 reading of the live shop recorded in
-`AddCommentTest` is consistent with it: of 118 comments, 4 carried
-`createdById`, 72 `customerId`, 0 `employeeId`, 42 nothing — i.e. the
-`createdById`-only population exists and is small, exactly as "the merchant
-occasionally types a note" predicts. The released SwagCommercial line
-(6.7.1.2–6.7.12) was not re-read; `employee_id` arrived there in a later
-migration (`Migration1749437764`), so a legacy shop may have only two of the
-three columns, which the design below tolerates by construction.
+**Measured against real rows.** The `merchant-quote-shop` container was brought
+up afterwards and its `quote_comment` table counted, across both version lanes:
+
+| `created_by_id` | `customer_id` | `employee_id` | rows |
+|---|---|---|---|
+| — | set | — | 72 |
+| — | — | — | 49 |
+| set | set | — | 7 |
+| set | — | — | 4 |
+
+The four `createdById`-only rows are two real merchant comments, each mirrored
+into the snapshot lane — "450 kann ich machen" and "450 is too less. What about
+490 instead", typed by an admin user in the administration. That is #55's
+subject, in the shop, in the merchant's own words.
+
+The seven rows carrying *both* an admin user and a customer are the interesting
+ones, and they are why §1 leans the way it does: their text is the buyer's
+("Can you do better on the price?"), seeded through an admin-api context that
+also passed a `customerId`. Under `isBuyerAuthored()` they classify as the
+buyer's and get serviced, which is correct for what they are — and would have
+been the safe answer even if they had not been.
+
+No row anywhere carries `employeeId`, so that column's behaviour rests on source
+reading alone.
+
+**What is still not verified.** The released SwagCommercial line (6.7.1.2–6.7.12)
+was not re-read; `employee_id` arrived there in a later migration
+(`Migration1749437764`), so a legacy shop may have only two of the three
+columns, which the design below tolerates by construction.
 
 ## Decisions
 
@@ -264,4 +283,8 @@ have been a question.
   make every agent comment look like a merchant's. It would also break
   `AddCommentTest`, loudly, which is the signal that already exists for it.
 - **The integration test is the only place the premise is measured**, so a shop
-  that cannot run it leaves this design resting on source reading alone.
+  that cannot run it leaves this design resting on source reading alone. It was
+  run: `ServicingTriggerTest` is green on `merchant-quote-shop`, and reverting
+  the four production files to the pre-fix commit makes the new test fail with
+  exactly one queued `ServiceQuoteMessage` — so it reproduces the bug rather
+  than merely asserting the fix.
