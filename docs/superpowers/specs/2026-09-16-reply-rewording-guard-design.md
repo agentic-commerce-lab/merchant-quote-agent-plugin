@@ -154,7 +154,7 @@ still pass. That residual is accepted (see Risks).
 
 Rejects, case-insensitively and on word boundaries:
 
-`shipping`, `freight`, `delivery`, `payment`, `invoice`, `deposit`,
+`shipping`, `freight`, `delivery`, `payment`, `deposit`,
 `warranty`, `instalment`, `installment`
 
 Every one of these names a concession `AskGate` escalates and `OfferApplier`
@@ -174,6 +174,9 @@ rejection waiting to happen:
   far more often than as payment terms.
 - **`terms`** — the template's own subject. "the terms of this offer" is a
   legitimate rewording.
+- **`invoice`** — names a document, not a term. "Your invoice will show the
+  new total" promises nothing this system cannot do, so rejecting it would
+  cost a rewording and buy no safety.
 
 ### 5. Language
 
@@ -242,6 +245,18 @@ of these is an assumption, not an agreement.
 - **An authorised figure may appear any number of times.** With `percent()` =
   `5`, a rewording saying `5` three times is accepted. That is one authorised
   figure restated, which is what rewording does.
+- **An invented figure that equals an authorised one is not caught.** With a
+  5% reduction, "Order 5 more units" passes: `5` is the reduction percentage.
+  Membership rather than multiplicity is deliberate — counting occurrences
+  would reject a rewording that restates a figure, which a model produces
+  constantly. The window is narrow (the invented number must equal the
+  percentage or the total to two decimal places) and what escapes is a
+  quantity, never a term: §3 and §4 still apply to the sentence around it.
+- **A localised date falls back to the template.** `11.09.2026` in place of
+  `2026-09-11` is rejected. The prompt requires `YYYY-MM-DD`, and the old
+  `str_contains()` check demanded the ISO literal too, so this is unchanged
+  behaviour rather than new strictness — but it is the most likely way a
+  non-English reply loses its rewording.
 
 ## Testing
 

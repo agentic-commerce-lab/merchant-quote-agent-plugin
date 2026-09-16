@@ -43,7 +43,9 @@ final class RewordingGuard
      * "net total" far more often than as payment terms, and German "Netto"
      * names the very figure being quoted; `Net 30`/`Net 90` carry a digit and
      * are rejected as unauthorised figures instead. `terms` is the template's
-     * own subject matter.
+     * own subject matter. `invoice` names a document rather than a term --
+     * "your invoice will show the new total" promises nothing this system
+     * cannot do, so rejecting it would cost a rewording and buy no safety.
      *
      * This list is English. It is a backstop for the language the model is
      * overwhelmingly prompted in, not the boundary -- the boundary is the
@@ -54,7 +56,6 @@ final class RewordingGuard
         'freight',
         'delivery',
         'payment',
-        'invoice',
         'deposit',
         'warranty',
         'instalment',
@@ -126,6 +127,18 @@ final class RewordingGuard
      * Each direction is `array_filter()` against `statedAmong()` rather than a
      * written-out `foreach`/`if`: same first-failure semantics (array order
      * is preserved), one fewer pair of branches for the linter to sum.
+     *
+     * One hole survives on purpose. A membership check cannot tell an invented
+     * figure from an authorised one when the two are numerically equal: with a
+     * 5% reduction, "Order 5 more units and we will do better" passes, because
+     * `5` is the reduction percentage. Counting occurrences instead of
+     * membership would close it -- and would also reject a faithful rewording
+     * that simply restates a figure, which the accepting test table already
+     * pins ('the same figure restated'). The window this leaves open is
+     * narrow: the invented number must equal the reduction percentage or the
+     * total to two decimal places. What escapes is always a quantity, never a
+     * term -- the concession list above and the sentence cap still apply to
+     * the sentence around it.
      */
     private static function figuresAreWrong(
         string $reworded,

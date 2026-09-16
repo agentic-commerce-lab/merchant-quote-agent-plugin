@@ -61,6 +61,10 @@ final class RewordingGuardTest extends TestCase
             'Good news! We can bring this quote down by 5% to 950.00 EUR. '
                 . 'The offer is valid until 2026-09-11 — shall we proceed?',
         ];
+        yield 'a sentence that mentions the invoice without promising anything' => [
+            'We can bring this quote down by 5% to 950.00 EUR. Your invoice will show the new total. '
+                . 'The offer is valid until 2026-09-11.',
+        ];
     }
 
     /** @return iterable<string, array{string}> */
@@ -111,6 +115,13 @@ final class RewordingGuardTest extends TestCase
             'We can bring this quote to 950.00 EUR, valid until 2026-09-11.',
         ];
         yield 'empty' => [''];
+        yield 'the date localised instead of kept verbatim' => [
+            // The reply prompt requires "dates as YYYY-MM-DD". A date in any
+            // other format is a figure the template did not write, and the
+            // ISO one it did write is then missing -- which is what the old
+            // str_contains() guard demanded too, so this is not new strictness.
+            'We can bring this quote down by 5% to 950.00 EUR. The offer is valid until 11.09.2026.',
+        ];
     }
 
     #[DataProvider('acceptableReasonings')]
@@ -128,6 +139,31 @@ final class RewordingGuardTest extends TestCase
         self::assertNotNull(
             RewordingGuard::unsafeBecause($reworded, self::PERCENT, self::TOTAL, self::validUntil()),
             'This rewording would put something in front of a buyer that nothing downstream can honour.',
+        );
+    }
+
+    /**
+     * The one hole the figure check cannot close, pinned so nobody mistakes
+     * it for covered.
+     *
+     * An invented figure that happens to equal an authorised one is invisible
+     * to a membership check. Counting occurrences would close it and would
+     * reject 'the same figure restated' above, which is a rewording a model
+     * produces constantly -- so this is accepted deliberately rather than
+     * overlooked.
+     */
+    public function testAnInventedFigureThatEqualsAnAuthorisedOneIsNotCaught(): void
+    {
+        self::assertNull(
+            RewordingGuard::unsafeBecause(
+                'We can bring this quote down by 5% to 950.00 EUR. Order 5 more units and we will do better. '
+                . 'Valid until 2026-09-11.',
+                self::PERCENT,
+                self::TOTAL,
+                self::validUntil(),
+            ),
+            'If this starts rejecting, the guard grew a rule -- check it did not also start rejecting '
+            . 'a rewording that simply restates the percentage.',
         );
     }
 
