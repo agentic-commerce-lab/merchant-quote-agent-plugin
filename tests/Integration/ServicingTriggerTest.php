@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
+use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -138,6 +139,56 @@ final class ServicingTriggerTest extends IntegrationTestCase
             . 'the version/state-stamp filters are unproven end to end.',
         );
         self::assertSame('comment_written', $bus->messages[0]->reason ?? null);
+    }
+
+    /**
+     * #55: a merchant typing an internal note in the administration is not a
+     * buyer ask. SwagCommercial's QuoteActionController writes exactly this
+     * row — createdById from the AdminApiSource, customerId and employeeId
+     * hard-coded null — so this reproduces the persisted shape rather than
+     * the transport.
+     *
+     * Both halves matter. The empty bus is the pass that never gets queued;
+     * the unchanged fingerprint is what would stop the pass even if the
+     * trigger could not tell who wrote the comment, and it also proves the
+     * bridge mapper reads `createdById` off a real row, which is the premise
+     * the whole three-way split rests on.
+     */
+    public function testAMerchantAdminCommentQueuesNothingAndChangesNoFingerprint(): void
+    {
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
+        $comments = static::getContainer()->get('quote_comment.repository');
+        self::assertInstanceOf(EntityRepository::class, $comments);
+        $userId = $this->anyAdminUserId();
+        $bus = self::collectingBus();
+
+        $before = ServicingFingerprint::of(static::gateway()->fetchSnapshot($quoteId));
+
+        $this->withTrigger($bus, static function () use ($comments, $quoteId, $userId): void {
+            $comments->create([[
+                'quoteId' => $quoteId,
+                'comment' => 'ServicingTriggerTest merchant note: check with sales before replying',
+                'createdById' => $userId,
+            ]], Context::createDefaultContext());
+        });
+
+        self::assertSame([], $bus->messages, 'A merchant admin comment queued a servicing pass.');
+        self::assertSame(
+            $before,
+            ServicingFingerprint::of(static::gateway()->fetchSnapshot($quoteId)),
+            'A merchant admin comment moved the servicing fingerprint, which buys a pass on the next trigger.',
+        );
+    }
+
+    private function anyAdminUserId(): string
+    {
+        $repository = static::getContainer()->get('user.repository');
+        self::assertInstanceOf(EntityRepository::class, $repository);
+
+        $id = $repository->searchIds(new Criteria(), Context::createDefaultContext())->firstId();
+        self::assertIsString($id, 'The shop has no admin user to attribute a merchant comment to.');
+
+        return $id;
     }
 
     private function anyCustomerId(): string
