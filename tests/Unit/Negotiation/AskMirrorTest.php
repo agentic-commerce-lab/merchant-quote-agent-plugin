@@ -25,13 +25,17 @@ final class AskMirrorTest extends TestCase
         $harness = PipelineHarness::with([
             '{"structural":{"lineChanges":[{"lineItemId":"line-1","targetUnitPrice":95}]}}',
             '{"action":"offer","message":"95.00 per unit, valid until 2026-09-11.","terms":{"discountPercent":5}}',
-            'We can do 95.00 per unit. Valid until 2026-09-11.',
+            PipelineHarness::rewordedReply(),
         ]);
 
         $outcome = $this->serviceWith($harness, 'can I get the widget for 95?');
 
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertSame([95.0], self::mirroredPrices($harness));
+        // The mirror is what this file is about, but the reply is the third
+        // model call it pays for: without this, a rewording the guard rejects
+        // leaves the assertions above untouched (#141).
+        self::assertSame([PipelineHarness::rewordedReply()], $harness->gateway->comments);
     }
 
     public function testAPriceAskIsRecordedEvenWhenThePassEscalates(): void
@@ -93,13 +97,14 @@ final class AskMirrorTest extends TestCase
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off, valid until 2026-09-11.","terms":{"discountPercent":5}}',
-            'We can offer 5% off. Valid until 2026-09-11.',
+            PipelineHarness::rewordedReply(),
         ]);
 
         $this->serviceWith($harness, '5% please');
 
         self::assertSame([], self::mirroredPrices($harness));
         self::assertSame([], self::markerWrites($harness));
+        self::assertSame([PipelineHarness::rewordedReply()], $harness->gateway->comments);
     }
 
     /**
@@ -112,7 +117,7 @@ final class AskMirrorTest extends TestCase
         $harness = PipelineHarness::with([
             '{"structural":{"lineChanges":[{"lineItemId":"line-1","targetUnitPrice":80}]}}',
             '{"action":"offer","message":"90.00 per unit, valid until 2026-09-11.","terms":{"discountPercent":10}}',
-            'We can do 90.00 per unit. Valid until 2026-09-11.',
+            PipelineHarness::rewordedReply(),
         ]);
         $harness->before = NegotiationFixture::snapshot(comments: [NegotiationFixture::buyerComment(
             'make it 80',
@@ -127,6 +132,9 @@ final class AskMirrorTest extends TestCase
         );
 
         self::assertSame([], self::mirroredPrices($harness));
+        // 90.00 is the buyer's stored ask, not a figure the reply may state:
+        // the quote came down 5% to 950.00, and that is all the buyer is told.
+        self::assertSame([PipelineHarness::rewordedReply()], $harness->gateway->comments);
     }
 
     private function serviceWith(PipelineHarness $harness, string $comment): NegotiationOutcome

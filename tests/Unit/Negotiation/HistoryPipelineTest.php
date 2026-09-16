@@ -74,7 +74,7 @@ final class HistoryPipelineTest extends TestCase
             [
                 '{"price":{"additionalDiscountPercent":5}}',
                 HistoryProposerHarness::offer(),
-                '5% off, valid until 2026-09-11.',
+                PipelineHarness::rewordedReply(),
             ],
             historyFactory: $factory,
         );
@@ -92,6 +92,10 @@ final class HistoryPipelineTest extends TestCase
         self::assertStringNotContainsString('INTERNAL', $h->spy->userPrompts[0]);
         self::assertStringContainsString('INTERNAL', $h->spy->userPrompts[1]);
         self::assertStringNotContainsString('INTERNAL', $h->spy->userPrompts[2]);
+        // The prompts above are this test's subject; this pins that the reply
+        // call's ANSWER still reaches the buyer, rather than being replaced by
+        // the template while all three prompt assertions stay green (#141).
+        self::assertSame([PipelineHarness::rewordedReply()], $h->gateway->comments);
     }
 
     private static function service(PipelineHarness $h): NegotiationOutcome

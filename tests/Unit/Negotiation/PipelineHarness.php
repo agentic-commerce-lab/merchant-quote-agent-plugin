@@ -15,6 +15,7 @@ use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
 use MerchantQuoteAgentPlugin\Negotiation\OfferRound;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
+use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
@@ -26,6 +27,13 @@ use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 /** A fully wired pipeline over a scripted model and a fake gateway. */
 final class PipelineHarness
 {
+    /**
+     * What `with()` serves as the post-apply re-read, so a default pass comes
+     * down from `NegotiationFixture::DEFAULT_TOTAL_NET` by exactly 5%. Named
+     * because `rewordedReply()` below has to state that same figure.
+     */
+    public const AFTER_NET = 950.0;
+
     public OfferRound $round;
 
     public ?FakeBuyerNotification $buyerNotification = null;
@@ -51,7 +59,7 @@ final class PipelineHarness
         array $replies,
         float $afterNet,
         float $afterGross,
-        float $beforeNet = 1000.0,
+        float $beforeNet = NegotiationFixture::DEFAULT_TOTAL_NET,
         ?float $baselineNet = null,
     ): self {
         $harness = self::with($replies, reReadTotalNet: $afterNet);
@@ -96,7 +104,7 @@ final class PipelineHarness
     /** @param list<string> $replies in call order: extract, negotiate, reply */
     public static function with(
         array $replies,
-        float $reReadTotalNet = 950.0,
+        float $reReadTotalNet = self::AFTER_NET,
         ?CustomerHistoryFactoryInterface $historyFactory = null,
     ): self {
         $writer = new FakeDecisionWriter();
@@ -144,5 +152,44 @@ final class PipelineHarness
         $harness->before = NegotiationFixture::snapshot();
 
         return $harness;
+    }
+
+    /**
+     * A rewording `RewordingGuard` accepts: exactly the three facts
+     * `ReplyTemplate` wrote for this harness's totals, and no fourth figure.
+     *
+     * A scripted reply is the only thing standing between these tests and the
+     * reword path, and the guard's verdict is invisible from outside. A
+     * rejected rewording is not an error — it is the deterministic template
+     * arriving instead, with the outcome, the model-call count and every
+     * gateway write unchanged. That is how five test files spent months
+     * exercising the fallback while their names said otherwise (#141).
+     *
+     * So the figures are computed by the production formatters rather than
+     * typed out. `percent()`, `money()` and `reduction()` are the very
+     * functions `RewordingGuard` compares a rewording against, and
+     * `NegotiationFixture::expires()` is the expiry the fixture quote actually
+     * carries — clock-relative since #57 — so this string cannot drift away
+     * from the template the way a hardcoded `2026-09-11` did.
+     *
+     * Deliberately NOT `ReplyTemplate::compose()`'s own sentence. A scripted
+     * reply identical to the fallback ships either way, so an assertion on it
+     * could not tell the reword path from the template path — which is the
+     * defect, not the fix. This one differs in its final clause and is
+     * accepted by the guard, which `RewordingGuardTest` pins for exactly this
+     * shape.
+     */
+    public static function rewordedReply(
+        float $afterNet = self::AFTER_NET,
+        float $beforeNet = NegotiationFixture::DEFAULT_TOTAL_NET,
+        string $currencyIso = 'EUR',
+    ): string {
+        return sprintf(
+            'We can bring this quote down by %s%% to %s %s, valid until %s.',
+            ReplyTemplate::percent(ReplyTemplate::reduction($beforeNet, $afterNet)),
+            ReplyTemplate::money($afterNet),
+            $currencyIso,
+            NegotiationFixture::expires(),
+        );
     }
 }

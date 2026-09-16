@@ -22,7 +22,7 @@ final class RecordedOutcomePathsTest extends TestCase
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":15}}',
             '{"action":"offer","message":"We can do 10%, valid until 2026-09-11.","terms":{"discountPercent":10}}',
-            'Our best is 10%. Valid until 2026-09-11.',
+            PipelineHarness::rewordedReply(),
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('15% please', '2026-08-28 09:00:00'),
@@ -38,6 +38,11 @@ final class RecordedOutcomePathsTest extends TestCase
         self::assertCount(1, $harness->writer->drafts);
         self::assertSame('countered', $harness->writer->drafts[0]->outcome);
         self::assertSame('counter', $harness->writer->drafts[0]->band);
+        // Asserted on the draft rather than the gateway, because the draft is
+        // this file's subject -- and it is the same string either way.
+        // `replyToBuyer` null-or-template is how a rejected rewording shows up
+        // in the audit trail, and nothing else here would notice (#141).
+        self::assertSame(PipelineHarness::rewordedReply(), $harness->writer->drafts[0]->replyToBuyer);
     }
 
     public function testANonPriceAskRecordsOneEscalatedRecord(): void

@@ -33,6 +33,15 @@ use Symfony\Component\HttpClient\Response\MockResponse;
 final class NegotiationFixture
 {
     /**
+     * What a fixture quote opens at, named because two other things have to
+     * agree with it: `PipelineHarness::AFTER_NET` is the total a pass re-reads
+     * against it, and `PipelineHarness::rewordedReply()` states the reduction
+     * between the two. A literal in three places is how the scripted replies
+     * in #141 drifted away from the quotes they answer.
+     */
+    public const DEFAULT_TOTAL_NET = 1000.0;
+
+    /**
      * The expiry every fixture quote carries, so the reply the template writes
      * is a fixed string rather than today + 14 days. Computed relative to now,
      * not a hardcoded date: #57 gave the verifier a lower bound on expiry, so
@@ -55,7 +64,7 @@ final class NegotiationFixture
     public static function snapshot(
         array $comments = [],
         string $state = 'open',
-        float $totalNet = 1000.0,
+        float $totalNet = self::DEFAULT_TOTAL_NET,
         ?float $requestedUnitPrice = null,
         ?QuoteRevision $revision = null,
     ): QuoteSnapshot {

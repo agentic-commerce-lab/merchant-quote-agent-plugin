@@ -61,7 +61,7 @@ final class HistoryBoundaryTest extends TestCase
     {
         $factory = new FakeCustomerHistoryFactory();
         $h = PipelineHarness::with(
-            [HistoryProposerHarness::offer(), '5% off, valid until 2026-09-11.'],
+            [HistoryProposerHarness::offer(), PipelineHarness::rewordedReply()],
             historyFactory: $factory,
         );
         $base = NegotiationFixture::snapshot(requestedUnitPrice: 95);
@@ -84,5 +84,8 @@ final class HistoryBoundaryTest extends TestCase
         self::assertSame('warning', $h->logger->records[0]['level']);
         self::assertStringNotContainsString('INTERNAL', $h->spy->userPrompts[0]);
         self::assertFalse($h->writer->drafts[0]->historyReads['available']);
+        // A pass that continued without history still answers the buyer in the
+        // model's words, not the fallback's.
+        self::assertSame([PipelineHarness::rewordedReply()], $h->gateway->comments);
     }
 }

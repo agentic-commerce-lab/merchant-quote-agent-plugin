@@ -240,9 +240,7 @@ final class OfferRoundTest extends TestCase
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
-            'We can bring this quote down by 5% to 950.00 EUR. The offer is valid until '
-                . NegotiationFixture::expires()
-                . '.',
+            PipelineHarness::rewordedReply(),
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('5% please', '2026-08-28 09:00:00'),
