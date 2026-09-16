@@ -41,6 +41,23 @@ final class OfferApplierTest extends TestCase
         self::assertNotContains('updateLineItems', $gateway->calls, 'A quote-wide offer must not write line prices.');
     }
 
+    public function testTheWrittenExpiryIsTheConfiguredValidityAheadOfTheWrite(): void
+    {
+        // #57 end to end. Asserting that *an* expiry was written is what the
+        // suite did before, and `+0 days` satisfies that: the quote came back
+        // stamped with an expiry of now and the buyer was told the offer was
+        // valid until today. The value is the assertion.
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot()]);
+
+        self::applier()
+            ->apply($gateway, NegotiationFixture::snapshot(), NegotiationFixture::settings(), self::quoteWideOffer());
+
+        $expiresAt = $gateway->quoteUpdates[0]->expiresAt;
+
+        self::assertNotNull($expiresAt);
+        self::assertSame((new \DateTimeImmutable('+14 days'))->format('Y-m-d'), $expiresAt->format('Y-m-d'));
+    }
+
     public function testAPerLineOfferWritesAbsoluteUnitPrices(): void
     {
         // Absolute, not a delta — that is what makes a retry idempotent.

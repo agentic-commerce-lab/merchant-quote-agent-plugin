@@ -32,6 +32,10 @@ final class NegotiationPolicyArray
             // reading: every price ask escalates.
             'maxDiscountPercent' => RawConfigValue::float($raw, 'maxDiscountPercent') ?? 0.0,
             'counterOfferMaxPercent' => RawConfigValue::float($raw, 'counterOfferMaxPercent'),
+            // Also null when cleared, but there is no safe reading here: an
+            // offer valid for zero days is one sent already expired (#57), so
+            // this zero is the sentinel QuoteLimits' Positive constraint
+            // rejects rather than a conservative default.
             'validityDays' => RawConfigValue::int($raw, 'validityDays') ?? 0,
         ];
 

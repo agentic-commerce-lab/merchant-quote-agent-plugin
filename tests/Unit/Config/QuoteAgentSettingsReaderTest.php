@@ -35,6 +35,7 @@ final class QuoteAgentSettingsReaderTest extends TestCase
             'llmBaseUrl' => 'https://api.openai.com/v1',
             'llmModel' => 'gpt-4o-mini',
             'maxDiscountPercent' => 10.0,
+            'validityDays' => 14,
             ...$overrides,
         ];
 

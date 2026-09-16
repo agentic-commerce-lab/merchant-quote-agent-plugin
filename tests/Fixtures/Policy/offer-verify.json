@@ -422,5 +422,134 @@
       "now": "2026-07-22T12:00:00.000Z"
     },
     "expected": []
+  },
+  {
+    "description": "an expiry already in the past is a violation, not only one too far out",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 950,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 95,
+            "totalNet": 950
+          }
+        ],
+        "expirationDate": "2026-07-01T00:00:00Z"
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 14
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": ["offer validity 2026-07-01 is not in the future"]
+  },
+  {
+    "description": "an expiry of today is a violation -- this is exactly what validityDays 0 wrote (#57)",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 950,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 95,
+            "totalNet": 950
+          }
+        ],
+        "expirationDate": "2026-07-22T00:00:00Z"
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 0
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": ["offer validity 2026-07-22 is not in the future"]
+  },
+  {
+    "description": "the smallest legal validity, one day out, passes",
+    "input": {
+      "reference": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "final": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "in_review",
+        "currencyIso": "EUR",
+        "totalNet": 950,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 95,
+            "totalNet": 950
+          }
+        ],
+        "expirationDate": "2026-07-23T00:00:00Z"
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 5000,
+        "validityDays": 1
+      },
+      "now": "2026-07-22T12:00:00.000Z"
+    },
+    "expected": []
   }
 ]

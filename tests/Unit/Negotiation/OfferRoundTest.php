@@ -213,7 +213,7 @@ final class OfferRoundTest extends TestCase
             totals: new QuoteTotals(totalNet: 1200.0, totalGross: 1200.0),
             lifecycle: new QuoteLifecycle(
                 stateTechnicalName: 'open',
-                expiresAt: new \DateTimeImmutable(NegotiationFixture::EXPIRES),
+                expiresAt: new \DateTimeImmutable(NegotiationFixture::expires()),
                 customFields: NegotiationFixture::baselineOf(1000.0, 100.0),
             ),
             content: new QuoteContent(lines: [$lineOne, $lineTwo], comments: $comments),
@@ -241,7 +241,7 @@ final class OfferRoundTest extends TestCase
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'We can bring this quote down by 5% to 950.00 EUR. The offer is valid until '
-                . NegotiationFixture::EXPIRES
+                . NegotiationFixture::expires()
                 . '.',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [

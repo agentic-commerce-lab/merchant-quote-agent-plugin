@@ -23,6 +23,9 @@ final class FakeQuoteGateway implements QuoteGatewayInterface
     /** @var list<array<string, mixed>> */
     public array $customFieldWrites = [];
 
+    /** @var list<QuoteUpdate> every quote update in call order, so a test can assert what was written and not only that something was */
+    public array $quoteUpdates = [];
+
     /** @var list<string> */
     public array $calls = [];
 
@@ -78,6 +81,7 @@ final class FakeQuoteGateway implements QuoteGatewayInterface
     public function updateQuote(string $quoteId, QuoteUpdate $update, ?QuoteRevision $expected = null): void
     {
         $this->calls[] = 'updateQuote';
+        $this->quoteUpdates[] = $update;
         $this->firstExpectedRevision ??= $expected;
 
         if ($update->customFields !== null) {

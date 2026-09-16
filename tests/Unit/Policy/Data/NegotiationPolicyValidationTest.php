@@ -20,7 +20,7 @@ final class NegotiationPolicyValidationTest extends TestCase
 {
     public function testAnOutOfRangePriceCapIsReportedAtItsNestedPath(): void
     {
-        $policy = new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 150.0));
+        $policy = new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 150.0, validityDays: 14));
 
         self::assertSame(['price.maxDiscountPercent'], self::paths(self::validator()->validate($policy)));
     }
@@ -30,11 +30,11 @@ final class NegotiationPolicyValidationTest extends TestCase
         // The deepest nesting left in the policy now that the sub-policies are
         // gone. Drop Assert\Valid from either hop and this path disappears,
         // and the per-currency map means the offending currency is named.
-        $policy =
-            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0, valueCeiling: new QuoteValueCeiling([
-                'EUR' => 50_000.0,
-                'USD' => -1.0,
-            ])));
+        $policy = new NegotiationPolicy(price: new QuoteLimits(
+            maxDiscountPercent: 5.0,
+            valueCeiling: new QuoteValueCeiling(['EUR' => 50_000.0, 'USD' => -1.0]),
+            validityDays: 14,
+        ));
 
         self::assertSame(
             ['price.valueCeiling.netByCurrencyIso[USD]'],
@@ -44,12 +44,25 @@ final class NegotiationPolicyValidationTest extends TestCase
 
     public function testAValidPolicyReportsNothing(): void
     {
-        $policy =
-            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0, valueCeiling: new QuoteValueCeiling([
-                'EUR' => 50_000.0,
-            ])));
+        $policy = new NegotiationPolicy(price: new QuoteLimits(
+            maxDiscountPercent: 5.0,
+            valueCeiling: new QuoteValueCeiling(['EUR' => 50_000.0]),
+            validityDays: 14,
+        ));
 
         self::assertSame([], self::paths(self::validator()->validate($policy)));
+    }
+
+    public function testAnUnsetValidityIsRejectedRatherThanReadAsZeroDays(): void
+    {
+        // #57. `0` is what every "nobody set this" path produces — an absent
+        // array key, a cleared admin field, this constructor's own default —
+        // and an offer valid for zero days is one sent already expired. The
+        // constraint is the only thing standing between those three paths and
+        // a buyer being told an offer is valid until today.
+        $policy = new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0));
+
+        self::assertSame(['price.validityDays'], self::paths(self::validator()->validate($policy)));
     }
 
     private static function validator(): ValidatorInterface
