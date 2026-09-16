@@ -59,6 +59,11 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
  * That pass is a no-op by construction — with the conversation split fixed
  * there is no new buyer ask, so the pipeline records nothing_to_do without a
  * model call.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10); reading the asks component
+ * back out of a stamped marker takes the same null/bounds checks composing
+ * it did, so exposing the read side is one more branch, not a new concept.
  */
 final class ServicingFingerprint
 {
@@ -71,7 +76,7 @@ final class ServicingFingerprint
         return self::compose(
             $snapshot->lifecycle->stateTechnicalName,
             self::buyerAuthored($snapshot),
-            self::asks($snapshot),
+            self::asksOf($snapshot),
         );
     }
 
@@ -92,7 +97,7 @@ final class ServicingFingerprint
      */
     public static function stamp(QuoteSnapshot $serviced, string $stateAfter): string
     {
-        return self::compose($stateAfter, self::buyerAuthored($serviced), self::asks($serviced));
+        return self::compose($stateAfter, self::buyerAuthored($serviced), self::asksOf($serviced));
     }
 
     /** @param array<string, mixed> $customFields */
@@ -101,6 +106,30 @@ final class ServicingFingerprint
         $stamped = $customFields[self::MARKER_KEY] ?? null;
 
         return \is_string($stamped) ? $stamped : null;
+    }
+
+    /**
+     * The asks half of a marker already on the quote.
+     *
+     * compose() appends the component after the third field and only when
+     * there is one, so everything from the fourth field on IS the component —
+     * and a marker written before it existed has no fourth field and reads as
+     * no asks. Split with a limit, because the component itself contains no
+     * `|` but must survive one appearing in a future component.
+     *
+     * @param array<string, mixed> $customFields
+     */
+    public static function stampedAsks(array $customFields): string
+    {
+        $stamped = self::stamped($customFields);
+
+        if ($stamped === null) {
+            return '';
+        }
+
+        $parts = explode('|', $stamped, 4);
+
+        return $parts[3] ?? '';
     }
 
     /**
@@ -153,7 +182,7 @@ final class ServicingFingerprint
      * fixed two decimals for `newestCreatedAt()`'s reason — a marker compared
      * as a string must not depend on how a float prints.
      */
-    private static function asks(QuoteSnapshot $snapshot): string
+    public static function asksOf(QuoteSnapshot $snapshot): string
     {
         $asks = [];
 
