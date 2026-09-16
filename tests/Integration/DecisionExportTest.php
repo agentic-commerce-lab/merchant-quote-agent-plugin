@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Command\DecisionExportCommand;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\Uuid\Uuid;
-use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 
 /**
@@ -211,9 +211,10 @@ final class DecisionExportTest extends IntegrationTestCase
 
     private function runExport(bool $freeText = false): CommandTester
     {
-        $application = new Application(static::getKernel());
-        $application->setAutoExit(false);
-        $tester = new CommandTester($application->find('merchant-quote-agent:export'));
+        // The container's own instance, not Application::find(): FrameworkBundle's
+        // console Application is not a dependency of this plugin, and the
+        // command needs nothing an Application adds.
+        $tester = new CommandTester(static::getContainer()->get(DecisionExportCommand::class));
 
         $options = ['--from' => '2031-05-05', '--to' => '2031-05-06'];
 
