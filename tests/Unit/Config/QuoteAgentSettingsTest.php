@@ -23,7 +23,7 @@ final class QuoteAgentSettingsTest extends TestCase
         self::assertSame($policy, $settings->policy);
         self::assertSame($llm, $settings->llm);
         self::assertSame('concede slowly', $settings->strategyPrompt);
-        self::assertFalse($settings->notifyBuyerOnEscalation);
+        self::assertTrue($settings->notifyBuyerOnEscalation);
     }
 
     public function testSettingsCarryNotifyBuyerOnEscalationFlag(): void
@@ -31,12 +31,12 @@ final class QuoteAgentSettingsTest extends TestCase
         $policy = new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0));
         $llm = new ModelAccess('sk-test', 'https://api.openai.com/v1', 'gpt-4o-mini');
 
-        $settings = new QuoteAgentSettings($policy, $llm, 'concede slowly', notifyBuyerOnEscalation: true);
+        $settings = new QuoteAgentSettings($policy, $llm, 'concede slowly', notifyBuyerOnEscalation: false);
 
-        self::assertTrue($settings->notifyBuyerOnEscalation);
+        self::assertFalse($settings->notifyBuyerOnEscalation);
 
         $cloned = $settings->withPolicy($policy);
-        self::assertTrue($cloned->notifyBuyerOnEscalation);
+        self::assertFalse($cloned->notifyBuyerOnEscalation);
     }
 
     public function testTheExceptionKeepsEveryProblemAndListsThemInItsMessage(): void
