@@ -30,7 +30,7 @@ final class ScriptedClient
     /** @var list<array{url: string, options: array<string, mixed>}> */
     public array $requests = [];
 
-    /** @param list<string> $replies each becomes one assistant message, in order */
+    /** @param list<string|\Closure(string): string> $replies each becomes one assistant message, in order */
     public static function returning(array $replies): ModelPlatform
     {
         return self::spy($replies)[0];
@@ -56,17 +56,32 @@ final class ScriptedClient
     }
 
     /**
-     * @param list<string> $replies
+     * A reply may be a closure rather than a string, resolved when its call
+     * actually arrives and handed the user prompt that arrived with it.
+     *
+     * The integration suites run against a real shop quote, so the figures a
+     * reply has to state -- the reduction, the new total, the expiry -- are
+     * not knowable when the queue is built: they are what the pass is about
+     * to write. But the reply call's user prompt IS `ReplyTemplate::compose()`
+     * over the snapshot re-read after that write, so a test that could not
+     * script such a reply up front can derive one here (#146). Without this,
+     * six integration sites scripted a reply `RewordingGuard` rejected on
+     * every run, and asserted nothing that could notice.
+     *
+     * @param list<string|\Closure(string): string> $replies
      *
      * @return array{0: ModelPlatform, 1: self}
      */
     public static function spy(array $replies, ?DecisionRecorder $recorder = null): array
     {
-        return self::build(array_map(NegotiationFixture::modelReply(...), $replies), $recorder);
+        return self::build(array_map(static fn(string|\Closure $reply): MockResponse|\Closure => $reply
+            instanceof \Closure
+                ? $reply
+                : NegotiationFixture::modelReply($reply), $replies), $recorder);
     }
 
     /**
-     * @param list<MockResponse> $queue
+     * @param list<MockResponse|\Closure(string): string> $queue
      *
      * @return array{0: ModelPlatform, 1: self}
      */
@@ -92,7 +107,11 @@ final class ScriptedClient
             $spy->systemPrompts[] = $body['messages'][0]['content'];
             $spy->userPrompts[] = $body['messages'][1]['content'];
 
-            return array_shift($queue) ?? throw new \LogicException('The scripted client ran out of replies.');
+            $reply = array_shift($queue) ?? throw new \LogicException('The scripted client ran out of replies.');
+
+            return $reply instanceof \Closure
+                ? NegotiationFixture::modelReply($reply((string) $body['messages'][1]['content']))
+                : $reply;
         });
 
         return [new ModelPlatform($client, new NullLogger(), $recorder), $spy];

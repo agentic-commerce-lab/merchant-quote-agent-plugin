@@ -28,7 +28,7 @@ final class HistoryInjectionTest extends IntegrationTestCase
             self::historyRequest('quote_history'),
             self::historyRequest('orders'),
             self::historyOffer($privateFacts),
-            'We can offer 5% off.',
+            self::reworded(...),
         ]);
         $outcome = $pipeline->service($before, self::gateway(), self::enabledSettings(), NegotiationFixture::context());
 
@@ -84,7 +84,7 @@ final class HistoryInjectionTest extends IntegrationTestCase
             self::EXTRACT_FIFTEEN,
             self::historyRequest('product_purchases', $productId),
             self::historyOffer('INTERNAL lifetime ' . $lifetime . ': ' . json_encode($purchases, JSON_THROW_ON_ERROR)),
-            'We can offer 5% off.',
+            self::reworded(...),
         ]);
         $outcome = $pipeline->service($before, self::gateway(), self::enabledSettings(), NegotiationFixture::context());
 
@@ -127,7 +127,7 @@ final class HistoryInjectionTest extends IntegrationTestCase
             self::EXTRACT_FIFTEEN,
             self::historyRequest('product_purchases', $offQuote),
             self::historyOffer('An off-quote request must not reveal a purchase.'),
-            'We can offer 5% off.',
+            self::reworded(...),
         ]);
         $outcome = $pipeline->service($before, self::gateway(), self::enabledSettings(), NegotiationFixture::context());
 
@@ -142,7 +142,15 @@ final class HistoryInjectionTest extends IntegrationTestCase
         self::assertStringNotContainsString('unit net', $refusal);
         self::assertStringNotContainsString('recent orders:', $refusal);
         self::assertForeignHistoryAbsent($spy, $foreign);
-        self::assertVerifiedCounter($before, $record);
+        $after = self::assertVerifiedCounter($before, $record);
+
+        $agentReplies = self::agentComments($after);
+        self::assertCount(1, $agentReplies, 'The buyer was never answered.');
+        self::assertSame(
+            self::reworded(self::replyTemplateFor($before, $after)),
+            $agentReplies[0],
+            'The buyer must have received the reworded reply, not the template.',
+        );
     }
 
     public function testThirdHistoryRequestEscalatesAfterTwoCompletedReadsWithoutApplyingAnOffer(): void
