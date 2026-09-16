@@ -14,6 +14,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\NegotiationProposal;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
+use MerchantQuoteAgentPlugin\Servicing\NegotiationRounds;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use Psr\Log\LoggerInterface;
 
@@ -27,6 +28,13 @@ use Psr\Log\LoggerInterface;
  * Every failure escalates. There is no fall back to rules-only on error — a
  * shop whose negotiation quietly changes character when a provider has a bad
  * minute is the silent behaviour change this design exists to remove.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10), and #142's round-cap guard is
+ * what crosses it: one real branch (capped or not), split into its own
+ * `roundCapReached()` to keep `negotiate()` readable, but the class total is
+ * unchanged either way — the check has to live somewhere on this pipeline's
+ * only entry point into a model call.
  */
 final readonly class NegotiationPipeline implements QuoteServicingPipelineInterface
 {
@@ -138,6 +146,12 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         QuoteGatewayInterface $gateway,
         QuoteAgentSettings $settings,
     ): NegotiationPass {
+        $capped = $this->roundCapReached($snapshot, $gateway);
+
+        if ($capped !== null) {
+            return $capped;
+        }
+
         $ask = $this->interpreter->interpret($settings, $snapshot, SnapshotAdapter::conversation($snapshot));
 
         // A comment is not the only way to ask. The storefront writes a
@@ -169,6 +183,35 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         }
 
         return $this->answer($ask, $snapshot, $gateway, $settings);
+    }
+
+    /**
+     * #142, and checked BEFORE the extract call on purpose: past the cap a
+     * pass costs one snapshot read, one customFields write and one audit
+     * row — no model call at all. The snapshot is the one ServiceQuoteHandler
+     * fetched before claimAttempt() wrote to it, so this count is the passes
+     * that finished BEFORE this one: `>= MAX` lets passes one through MAX run
+     * and refuses the next.
+     *
+     * Here rather than in ServicingPreflight because this is the same
+     * question AskGate asks — is this ask inside the mandate — and the
+     * answer has to reach the audit trail, which the preflight's refusals do
+     * not (#35).
+     */
+    private function roundCapReached(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): ?NegotiationPass
+    {
+        if (!NegotiationRounds::exhausted($snapshot)) {
+            return null;
+        }
+
+        $this->logger->info('This quote has had its full budget of agent passes; a human takes it from here. '
+        . 'Clear the "{key}" custom field on the quote to hand it back to the agent.', [
+            'key' => NegotiationRounds::KEY,
+            'quoteId' => $snapshot->identity->quoteId,
+            'rounds' => NegotiationRounds::completed($snapshot),
+        ]);
+
+        return $this->round->escalated($gateway, $snapshot, QuoteEscalationReason::RoundLimitExceeded, null, null);
     }
 
     /**

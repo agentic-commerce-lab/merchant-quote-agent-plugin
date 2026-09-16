@@ -7,9 +7,18 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
+use MerchantQuoteAgentPlugin\Servicing\NegotiationRounds;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * @mago-expect lint:too-many-methods
+ * One test per branch of the pipeline's own gate: in-band, out-of-authority,
+ * model failure, account-boundary failure, verification failure, and now
+ * #142's round cap on both sides of its boundary. Splitting the class would
+ * scatter one collaborator (PipelineHarness) across files instead of keeping
+ * the whole gate's behavior in one place.
+ */
 final class NegotiationPipelineTest extends TestCase
 {
     public function testAnInBandAskIsOffered(): void
@@ -256,5 +265,67 @@ final class NegotiationPipelineTest extends TestCase
         self::assertContains('updateQuote', $harness->gateway->calls, 'The applied changes must not be rolled back.');
         self::assertCount(1, $harness->writer->drafts);
         self::assertSame('escalated', $harness->writer->drafts[0]->outcome);
+    }
+
+    public function testAQuotePastItsRoundCapEscalatesWithoutPayingForAModelCall(): void
+    {
+        // The whole point of the cap: a buyer who keeps commenting stops
+        // buying model calls. The script is deliberately non-empty — if the
+        // pipeline reaches the interpreter at all, it will consume an entry
+        // and the call count will not be zero.
+        $harness = PipelineHarness::with(['{"price":{"additionalDiscountPercent":5}}']);
+        $snapshot = NegotiationFixture::withCustomFields(
+            NegotiationFixture::snapshot(comments: [
+                NegotiationFixture::buyerComment('and now 5%?', '2026-08-28 09:00:00'),
+            ]),
+            [NegotiationRounds::KEY => NegotiationRounds::MAX],
+        );
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Escalated, $outcome);
+        self::assertSame(0, $harness->spy->calls, 'A capped quote must not reach the model at all.');
+        self::assertSame(
+            [[QuoteEscalator::MARKER_KEY => QuoteEscalationReason::RoundLimitExceeded->value]],
+            $harness->gateway->customFieldWrites,
+            'The cap must escalate with its own reason, not a generic one.',
+        );
+        self::assertSame(
+            QuoteEscalationReason::RoundLimitExceeded->value,
+            $harness->writer->drafts[0]->escalationReason,
+            'The refusal must reach the audit trail: it is what #21 counts.',
+        );
+    }
+
+    public function testTheLastPassInsideTheCapStillNegotiates(): void
+    {
+        // The boundary from the other side. MAX - 1 completed passes means
+        // fourteen have run, so this one is the fifteenth and is allowed.
+        $harness = PipelineHarness::with([
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off, valid until 2026-09-11.","terms":{"discountPercent":5}}',
+            'We can offer 5% off. Valid until 2026-09-11.',
+        ]);
+        $snapshot = NegotiationFixture::withCustomFields(
+            NegotiationFixture::snapshot(comments: [
+                NegotiationFixture::buyerComment('5% please', '2026-08-28 09:00:00'),
+            ]),
+            [NegotiationRounds::KEY => NegotiationRounds::MAX - 1],
+        );
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Offered, $outcome);
+        self::assertSame(3, $harness->spy->calls);
     }
 }
