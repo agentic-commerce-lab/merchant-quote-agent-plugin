@@ -191,10 +191,22 @@ Ordering the handover branch before the `$ask === null` branch already stops
 
 For a merchant who opens the quote in the admin **without** transitioning it,
 there is no signal at all, so the method is additionally restricted to the only
-case it exists for: a previous pass that genuinely died mid-way, which is exactly
-`PassContext->attempt > 0`. The counter is claimed before the pipeline runs and
-cleared after it, so a first attempt on a quote sitting in `in_review` is not our
-crash and not ours to finish. `finishStrandedReply()` takes the pass context.
+case it exists for: a quote whose newest comment is the AGENT's own. That is what
+a stranded reply is — #31's worker died between the comment write and the `sent`
+transition — and only the agent writes an author-less comment, so no human can
+produce the shape. A quote sitting in `in_review` with no agent comment newest
+(including one with no comments at all, where a structured ask was met) is not
+ours to finish. `BuyerConversation` answers it with `agentSpokeLast()`, over the
+same three buckets the handover rule uses.
+
+**Rejected: `PassContext->attempt > 0`.** It reads as "a previous pass died
+mid-way", and for a segfault it does — the counter is committed before the
+pipeline and cleared after it. But `ServiceQuoteHandler` also clears the counter
+in its catch before rethrowing, so a pass that *threw* between the comment write
+and the transition — an `IllegalTransitionException` from the transition itself,
+which is the likeliest way to strand a reply — comes back with `attempt === 0`
+and would never be finished. The guard would have left the exact quotes #31
+exists for stranded forever.
 
 ## Testing
 
