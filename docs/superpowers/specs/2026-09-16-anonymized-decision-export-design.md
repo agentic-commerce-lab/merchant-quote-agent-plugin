@@ -127,6 +127,24 @@ assumption rather than reverse-engineer it.
    stdout.* `> quotes.jsonl` is the Unix answer and needs no code; the notices
    go to stderr so the redirect stays clean.
 
+6. **Is `--to` inclusive or exclusive?** *Assumption: exclusive, a half-open
+   range.* A bare `--to=2026-09-30` parses to midnight, so an inclusive
+   boundary would quietly drop the last day for everyone who types a date
+   rather than a timestamp. `--from=2026-09-01 --to=2026-10-01` is September,
+   which is the convention every date range in every tool already uses, and
+   the option description says so.
+7. **Is the account-history summary acceptable to export by default?**
+   *Assumption: yes, but it has to be said out loud.* `historyReads` keeps its
+   summary — past quote and order counts, lifetime order value, last order
+   date — because that is what answers whether reading history changes what
+   the agent decides. It is also the most commercially sensitive thing that
+   leaves without a flag. The plan's first draft of the merchant docs listed
+   "the past quotes and orders the agent read" under *does not leave*, which is
+   true of the rendered block and false of the summary; a merchant would have
+   read it as "none of my customers' purchase history leaves". The docs now
+   name lifetime order value explicitly. If this should be opt-in instead, it
+   moves from `RESHAPED` to behind `--include-comments` or a flag of its own.
+
 ## Decisions
 
 ### 1. An allowlist mapper, not a redactor
