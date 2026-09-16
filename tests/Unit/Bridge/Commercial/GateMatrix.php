@@ -63,13 +63,13 @@ final class GateMatrix
             $needs[$shop] = self::constructionNeeds($container);
         };
 
-        $record('withoutEither', false);
-        $record('withoutCommercial', true);
+        $record('withoutEither', ucp: false);
+        $record('withoutCommercial', ucp: true);
 
         self::makeCommercialClassesAvailable();
 
-        $record('withBoth', true);
-        $record('withoutUcp', false);
+        $record('withBoth', ucp: true);
+        $record('withoutUcp', ucp: false);
 
         return new self($shops, $needs);
     }
@@ -94,7 +94,7 @@ final class GateMatrix
 
         $everywhere = array_merge(...array_map($ids, array_values($this->shops)));
 
-        return array_fill_keys(array_diff($everywhere, $ids($this->shops[$shop])), true);
+        return array_fill_keys(array_diff($everywhere, $ids($this->shops[$shop])), value: true);
     }
 
     /**
