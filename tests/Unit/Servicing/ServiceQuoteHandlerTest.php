@@ -10,6 +10,7 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
+use MerchantQuoteAgentPlugin\Servicing\NegotiationRounds;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
@@ -17,6 +18,14 @@ use PHPUnit\Framework\Attributes\DataProviderExternal;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
+/**
+ * @mago-expect lint:too-many-methods
+ * One test per property of the handoff: the fingerprint gate, the pipeline
+ * context, the crash-budget counter, the round counter (#142), the refusal
+ * scenarios, the comment-stamping edge case, and lock release. Splitting the
+ * class would scatter one collaborator (FakeQuoteGateway, the locks) across
+ * files instead of keeping the whole handoff's behavior in one place.
+ */
 final class ServiceQuoteHandlerTest extends TestCase
 {
     /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
@@ -249,5 +258,40 @@ final class ServiceQuoteHandlerTest extends TestCase
         $handler(ServicingHandlerFixture::message());
 
         self::assertTrue($locks->for('q1')->acquire(), 'The handler did not release its lock.');
+    }
+
+    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
+    public function testEachPassRaisesTheRoundCounterBeforeTheHandOff(): void
+    {
+        $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot([
+            NegotiationRounds::KEY => 3,
+        ])]);
+
+        ServicingHandlerFixture::handler($gateway, ServicingHandlerFixture::countingPipeline())(
+            ServicingHandlerFixture::message(),
+        );
+
+        // The claim write, not the stamp: committed before the pipeline runs,
+        // so a pass that kills the worker still counts against the budget.
+        self::assertSame(4, $gateway->customFieldWrites[0][NegotiationRounds::KEY] ?? null);
+    }
+
+    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
+    public function testASuccessfulPassDoesNotClearTheRoundCounter(): void
+    {
+        // The counter sits in the same write as ATTEMPTS_KEY, which IS cleared
+        // on a normal exit because it is a crash budget. Clearing this one by
+        // symmetry would remove the spend bound entirely and leave every test
+        // above still passing.
+        $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot([
+            NegotiationRounds::KEY => 3,
+        ])]);
+
+        ServicingHandlerFixture::handler($gateway, ServicingHandlerFixture::countingPipeline())(
+            ServicingHandlerFixture::message(),
+        );
+
+        $stamp = ServicingHandlerFixture::lastCustomFieldWrite($gateway);
+        self::assertArrayNotHasKey(NegotiationRounds::KEY, $stamp);
     }
 }

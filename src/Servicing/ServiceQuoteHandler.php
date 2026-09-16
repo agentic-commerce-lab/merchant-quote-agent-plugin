@@ -245,6 +245,11 @@ final readonly class ServiceQuoteHandler
         $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
             self::ATTEMPTS_KEY => $attempts + 1,
             ...QuoteBaseline::stampOrExtend($snapshot),
+            // #142: the spend bound rides the write that already exists, and
+            // inherits its ordering — committed BEFORE the pipeline, so a pass
+            // that dies mid-flight still counts against the budget it spent.
+            // Never cleared afterwards: see NegotiationRounds.
+            ...NegotiationRounds::increment($snapshot),
         ]));
 
         return $attempts;
