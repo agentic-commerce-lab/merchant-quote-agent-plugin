@@ -19,6 +19,11 @@ use Symfony\Component\Validator\Validation;
  *
  * `sk-from-config` and `sk-from-env` are fixture credentials for a reader that
  * never talks to a real API, not real secrets.
+ *
+ * @mago-expect lint:too-many-methods
+ * Eleven cases plus two private helpers (the reader builder and a strategy
+ * resolver stub) shared across them, including the #140 regression coverage
+ * for notifyBuyerOnEscalation().
  */
 final class QuoteAgentSettingsReaderTest extends TestCase
 {
@@ -145,5 +150,36 @@ final class QuoteAgentSettingsReaderTest extends TestCase
         } catch (InvalidQuoteAgentConfiguration $e) {
             self::assertStringContainsString('archived', implode(' ', $e->problems));
         }
+    }
+
+    public function testBuyerNotificationDefaultsToTellingTheBuyer(): void
+    {
+        self::assertTrue($this->reader()->notifyBuyerOnEscalation(null));
+    }
+
+    public function testBuyerNotificationIsSilentOnlyWhenExplicitlyFalse(): void
+    {
+        self::assertFalse($this->reader(['notifyBuyerOnEscalation' => false])->notifyBuyerOnEscalation(null));
+        self::assertTrue($this->reader(['notifyBuyerOnEscalation' => true])->notifyBuyerOnEscalation(null));
+    }
+
+    /**
+     * The regression this whole change exists for (#140). A NotConfigured
+     * escalation is raised FROM forSalesChannel() throwing, and then asks
+     * whether to tell the buyer. That second question must still have an
+     * answer.
+     */
+    public function testBuyerNotificationAnswersWhileTheConfigurationIsUnusable(): void
+    {
+        $reader = $this->reader(['llmApiKey' => '', 'llmModel' => null]);
+
+        try {
+            $reader->forSalesChannel(null);
+            self::fail('The fixture configuration should be unusable.');
+        } catch (InvalidQuoteAgentConfiguration) {
+            // expected
+        }
+
+        self::assertTrue($reader->notifyBuyerOnEscalation(null));
     }
 }
