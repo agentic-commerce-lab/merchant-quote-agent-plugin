@@ -126,7 +126,7 @@
                            agent read it correctly needs the sentence. #}
                         <template v-if="entry.kind === 'message'">
                             <div class="mqa-entry__header">
-                                <h4 class="mqa-entry__title">{{ $tc('merchant-quote-agent.detail.fromCustomer') }}</h4>
+                                <h4 class="mqa-entry__title">{{ entry.message.fromMerchant ? $tc('merchant-quote-agent.detail.fromMerchant') : $tc('merchant-quote-agent.detail.fromCustomer') }}</h4>
                                 <span class="mqa-entry__time">{{ formatDate(entry.at) }}</span>
                             </div>
                             <p class="mqa-msg">{{ entry.message.text }}</p>
