@@ -48,6 +48,10 @@ final class ServicingCrashBudgetTest extends IntegrationTestCase
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'enabled', true);
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmApiKey', 'sk-integration');
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmModel', 'gpt-4o-mini');
+        // #57: a validity of zero is now refused at configuration time, so a
+        // "validly configured sales channel" has to name one rather than
+        // riding on whatever this shop happens to have stored.
+        $config->set(QuoteAgentSettingsReader::DOMAIN . 'validityDays', 14);
     }
 
     public function testAQuoteAtTheCeilingParksWithoutServicing(): void
