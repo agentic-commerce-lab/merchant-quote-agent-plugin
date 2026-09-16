@@ -29,10 +29,10 @@ final class PriceOfferCheck
         // is written as a SwagCommercial percentage discount and arrives as a
         // surcharge, and ReplyTemplate::reduction() floors its figure at 0, so
         // the buyer is told the quote came down by 0% while the total rose.
-        return (
-            $discount < -Epsilon::RATE
-                ? [sprintf('discount %s%% is negative; an offer may not raise the quote', $discount)]
-                : []
-        );
+        if ($discount < -Epsilon::RATE) {
+            return [sprintf('discount %s%% is negative; an offer may not raise the quote', $discount)];
+        }
+
+        return [];
     }
 }

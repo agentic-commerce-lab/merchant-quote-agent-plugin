@@ -64,7 +64,7 @@ final class OfferVerifierTest extends TestCase
 
         $violations = (new OfferVerifier())->verify($verifyInput);
 
-        self::assertNotEmpty($violations);
+        self::assertSame(['total discount -5.0% raises the quote above its reference total'], $violations);
     }
 
     private static function readFixtureFile(string $filename): iterable

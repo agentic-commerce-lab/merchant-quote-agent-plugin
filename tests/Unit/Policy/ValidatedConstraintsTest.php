@@ -41,7 +41,12 @@ use PHPUnit\Framework\TestCase;
  */
 final class ValidatedConstraintsTest extends TestCase
 {
-    private const VALIDATED = [
+    /**
+     * Not all "reached" — three of these are validated by
+     * QuoteAgentSettingsFactory, but the other five are reached only by
+     * ResponseFormatFactory's schema reflection, never by the validator.
+     */
+    private const REACHED_BY_A_REAL_CONSUMER = [
         'Policy/Data/NegotiationPolicy.php',
         'Policy/Data/QuoteLimits.php',
         'Policy/Data/QuoteValueCeiling.php',
@@ -64,13 +69,14 @@ final class ValidatedConstraintsTest extends TestCase
         }
 
         sort($carriers);
-        $expected = self::VALIDATED;
+        $expected = self::REACHED_BY_A_REAL_CONSUMER;
         sort($expected);
 
         self::assertSame(
             $expected,
             $carriers,
-            'A constraint outside the validated tree is decoration; one missing from it is a check that stopped running.',
+            'A constraint neither the validator nor the schema generator reaches is decoration; '
+            . 'one missing from this list is a check that stopped running.',
         );
     }
 
