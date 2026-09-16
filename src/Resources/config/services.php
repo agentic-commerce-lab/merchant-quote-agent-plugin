@@ -44,6 +44,7 @@ use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialBuyerQuoteGateway;
 use MerchantQuoteAgentPlugin\Command\AgentGrantsCommand;
 use MerchantQuoteAgentPlugin\Command\AllowAnyAgentCommand;
+use MerchantQuoteAgentPlugin\Command\DecisionExportCommand;
 use MerchantQuoteAgentPlugin\Config\BuyerNotificationPreference;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
@@ -149,6 +150,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\DefinitionInstanceRegistry;
 use Shopware\Core\Framework\Event\BusinessEventCollector;
 use Shopware\Core\Framework\Notification\NotificationService;
 use Shopware\Core\System\SalesChannel\Context\SalesChannelContextService;
+use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\DependencyInjection\ServiceLocator;
@@ -385,6 +387,17 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(DecisionRecordWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
     $services->alias(DecisionRecordWriterInterface::class, DecisionRecordWriter::class);
     $services->set(DecisionRecorder::class);
+
+    // #34: the merchant's own anonymized export of this table. A console
+    // command and nothing else -- no schedule, no route -- because sending
+    // business records to a third party is a decision a person makes.
+    $services
+        ->set(DecisionExportCommand::class)
+        ->args([
+            service('merchant_quote_agent_decision.repository'),
+            service(SystemConfigService::class),
+        ])
+        ->tag('console.command');
 
     // The outcome half of the audit trail (#33): a subscriber on the core
     // quote state machine stamps terminal_state / terminal_at onto the newest

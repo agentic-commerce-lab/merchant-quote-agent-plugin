@@ -302,7 +302,79 @@ point at a European endpoint, your own gateway, or a model you host yourself, if
 that is what your privacy commitments require.
 
 **Everything else stays in your shop.** Quotes, prices, the audit record and the
-API key all live in your own Shopware installation. Nothing goes to us.
+API key all live in your own Shopware installation. Nothing goes to us unless you
+send it yourself, which is the next part.
+
+**If you want to share your logs with us.** There is one command that prepares
+data to leave your shop, and it only runs when you run it:
+
+```
+bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 > september.jsonl
+```
+
+It writes one line of JSON for every decision the agent recorded in that range —
+`--from` is included, `--to` is not, so the line above is exactly September.
+Nothing schedules it, nothing calls it, and it sends nothing anywhere: it writes a
+file, and what you do with that file is your decision. We ask for it because
+negotiation strategies get better when they can be measured across more than one
+shop.
+
+Three lists, and together they are the whole boundary.
+
+*Leaves, as a scrambled code.* The record itself, the quote, the customer, the
+sales channel, the quote revision and the strategy version. Each is replaced by a
+code computed from a secret unique to your shop. The same customer is the same
+code in every export you make, so repeat-buyer patterns are still visible, and a
+different code from every other shop's, so nobody can line your customers up
+against anyone else's — or against your own database. The secret is created the
+first time you export and kept in your shop's configuration. If you delete it,
+future exports stop lining up with past ones, which is also how you sever that
+link on purpose.
+
+*Leaves, as it is.*
+
+- When the agent acted, what triggered it, and when the quote was last changed.
+- What the customer asked for, as the agent understood it: prices, quantities,
+  delivery and payment terms.
+- What your rules allowed, the currency, the totals before and after, and the
+  discount granted.
+- What the agent decided and why, whether its offer passed the checks, and which
+  changes it made to the quote.
+- Which prompt version ran, the model name and the host it was called on, token
+  counts and timings.
+- The type of any error and where in the code it happened — not its message.
+- How the quote ended and when, and when someone on your team resolved an
+  escalation and how.
+- **If the agent looked up the customer's history, a summary of the account**: how
+  many past quotes, how many became orders or were lost, offers made and accepted,
+  the last discount granted, the number of orders, **lifetime order value**, and
+  the date of the last order — plus which kind of lookup it made. This is the most
+  commercially sensitive thing that leaves by default. It is tied to the scrambled
+  customer code rather than to a name, but it does describe that customer's
+  relationship with you.
+
+*Does not leave, ever.* Names, e-mail addresses, postal addresses, phone numbers
+and company names — the agent's record does not hold them to begin with. The
+quote number. The details behind a history lookup: which past quotes and orders
+the agent read, their numbers, products and prices, and which product it asked
+about. And the customer's own message, which is not stored in this record in the
+first place — only the agent's reading of it.
+
+**The comments are the exception you have to opt into.** The agent's replies, the
+model's raw answers, the reasons it gave for escalating, the questions it raised
+and the full text of any error messages are withheld unless you add
+`--include-comments`. They are the most useful part of the data and the most
+sensitive: the model is shown the customer's message, so anything the customer
+typed — a signature, a phone number, an order reference — can come back in the
+model's own words. The command tells you on every run which of the two you just
+produced.
+
+**One oddity you will see and should not report as a bug.** The `modelHost`
+field sometimes reads `unparsable-host`. That means the AI base URL in your
+settings was not a URL the shop could read a hostname out of — usually a typo.
+The agent records that placeholder rather than the address you typed, because a
+base URL can carry your API key in it and that must never reach a log or an
+export.
 
 **One thing to be aware of:** the API key is stored in your shop's configuration.
 The field hides it on screen, but it is not encrypted at rest — the same as every
