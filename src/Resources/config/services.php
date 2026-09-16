@@ -44,6 +44,7 @@ use MerchantQuoteAgentPlugin\Bridge\SalesChannelContextResolver;
 use MerchantQuoteAgentPlugin\Bridge\SwagCommercialBuyerQuoteGateway;
 use MerchantQuoteAgentPlugin\Command\AgentGrantsCommand;
 use MerchantQuoteAgentPlugin\Command\AllowAnyAgentCommand;
+use MerchantQuoteAgentPlugin\Config\BuyerNotificationPreference;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
@@ -417,6 +418,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service(StrategyResolver::class),
     );
     $services->alias(QuoteAgentSettingsSource::class, QuoteAgentSettingsReader::class);
+    $services->alias(BuyerNotificationPreference::class, QuoteAgentSettingsReader::class);
 
     // --- A2CN / Protocol -----------------------------------------------
     // The evidence layer (src/Protocol/): signed negotiation acts on a quote.
@@ -735,7 +737,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // Whether a quote may be serviced at all, and with which settings (#5).
     $services->set(QuoteEscalator::class)->args([
         service(EscalationNotifierInterface::class),
-        service(QuoteAgentSettingsSource::class),
+        service(BuyerNotificationPreference::class),
     ]);
     $services->set(ServicingPreflight::class)->args([
         service(QuoteAgentSettingsSource::class),

@@ -7,8 +7,7 @@ namespace MerchantQuoteAgentPlugin\Servicing;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
-use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
-use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
+use MerchantQuoteAgentPlugin\Config\BuyerNotificationPreference;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 
@@ -57,12 +56,13 @@ final class QuoteEscalator
     private const BUYER_MESSAGE = 'A member of our team will review this quote personally and get back to you.';
 
     /**
-     * The notifier and settings source are optional so existing construction
-     * sites and tests keep working.
+     * The notifier and the buyer-notice preference are optional so existing
+     * construction sites and tests keep working; with no preference wired the
+     * escalation is silent toward the buyer.
      */
     public function __construct(
         private readonly ?EscalationNotifierInterface $notifier = null,
-        private readonly ?QuoteAgentSettingsSource $settingsSource = null,
+        private readonly ?BuyerNotificationPreference $buyerNotification = null,
     ) {}
 
     /**
@@ -108,6 +108,15 @@ final class QuoteEscalator
         // reason, and a notifier that throws must not cost the buyer their
         // comment. Guarded even though the contract forbids throwing — an
         // implementation that forgets must not break escalation.
+        //
+        // The comment/marker order above is deliberate too, and #140 asked it
+        // to be reversed. It stays. If updateQuote throws after addComment
+        // succeeded, the next pass comments again — the buyer hears it twice.
+        // Reversed, an addComment that throws after the marker was stamped is
+        // suppressed by that marker on every later pass, and the buyer is
+        // never told at all, silently, forever. For a notice whose whole
+        // purpose is that the buyer is not left in silence, failing toward
+        // "said twice" is the right way round.
         try {
             $this->notifier?->notify(EscalationNotice::of($snapshot, $reason));
         } catch (\Throwable) {
@@ -119,14 +128,6 @@ final class QuoteEscalator
 
     private function shouldNotifyBuyer(?string $salesChannelId): bool
     {
-        if ($this->settingsSource === null) {
-            return false;
-        }
-
-        try {
-            return $this->settingsSource->forSalesChannel($salesChannelId)?->notifyBuyerOnEscalation ?? false;
-        } catch (InvalidQuoteAgentConfiguration) {
-            return false;
-        }
+        return $this->buyerNotification?->notifyBuyerOnEscalation($salesChannelId) ?? false;
     }
 }

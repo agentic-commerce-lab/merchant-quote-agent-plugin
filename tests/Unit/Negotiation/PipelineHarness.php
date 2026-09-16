@@ -7,8 +7,6 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
-use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
-use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -22,6 +20,7 @@ use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
+use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeBuyerNotification;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 
 /** A fully wired pipeline over a scripted model and a fake gateway. */
@@ -29,7 +28,7 @@ final class PipelineHarness
 {
     public OfferRound $round;
 
-    public ?QuoteAgentSettingsSource $settingsSource = null;
+    public ?FakeBuyerNotification $buyerNotification = null;
 
     private function __construct(
         public NegotiationPipeline $pipeline,
@@ -105,16 +104,8 @@ final class PipelineHarness
         [$client, $spy] = ScriptedClient::spy($replies, $recorder);
         $prompts = new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
         $logger = new RecordingLogger();
-        $settingsSource = new class implements QuoteAgentSettingsSource {
-            public ?QuoteAgentSettings $settings = null;
-
-            #[\Override]
-            public function forSalesChannel(?string $salesChannelId): ?QuoteAgentSettings
-            {
-                return $this->settings;
-            }
-        };
-        $escalator = new QuoteEscalator(settingsSource: $settingsSource);
+        $buyerNotification = new FakeBuyerNotification(notify: false);
+        $escalator = new QuoteEscalator(buyerNotification: $buyerNotification);
 
         // Two snapshots: the pre-apply read, which still carries the quote as
         // the buyer asked about it, and the post-apply re-read the verifier
@@ -149,7 +140,7 @@ final class PipelineHarness
 
         $harness = new self($pipeline, $gateway, $spy, $logger, $writer);
         $harness->round = $round;
-        $harness->settingsSource = $settingsSource;
+        $harness->buyerNotification = $buyerNotification;
         $harness->before = NegotiationFixture::snapshot();
 
         return $harness;

@@ -38,7 +38,7 @@ final class ServicingPreflightTest extends TestCase
         self::assertSame([], $gateway->calls, 'A paused agent must not touch the quote.');
     }
 
-    public function testAMisconfiguredChannelEscalatesTheQuoteQuietlyByDefaultAndReturnsNull(): void
+    public function testAMisconfiguredChannelWithBuyerNotificationOffEscalatesSilentlyAndReturnsNull(): void
     {
         $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
 
@@ -47,7 +47,11 @@ final class ServicingPreflightTest extends TestCase
         })->check($gateway, QuoteSnapshotFixture::snapshot());
 
         self::assertNull($result);
-        self::assertSame(['updateQuote'], $gateway->calls, 'Misconfigured channel escalates quietly by default.');
+        self::assertSame(
+            ['updateQuote'],
+            $gateway->calls,
+            'A merchant who turned the buyer notice off gets no comment.',
+        );
         self::assertSame(
             [QuoteEscalator::MARKER_KEY => 'not_configured'],
             ServicingHandlerFixture::lastCustomFieldWrite($gateway),
@@ -55,24 +59,18 @@ final class ServicingPreflightTest extends TestCase
         self::assertEmpty($gateway->comments);
     }
 
-    public function testAMisconfiguredChannelWithBuyerNotificationEnabledWritesCommentAndMarksQuote(): void
+    /**
+     * #140. In services.php the preflight's settings source and the
+     * escalator's collaborator are both the same QuoteAgentSettingsReader, and
+     * this path is reached BECAUSE forSalesChannel() threw. The old version of
+     * this test gave the escalator a second, non-throwing settings source and
+     * so asserted a wiring that cannot exist. Two collaborators, two
+     * questions, and the second one answerable while the first throws.
+     */
+    public function testAMisconfiguredChannelWithBuyerNotificationOnCommentsAndMarksTheQuote(): void
     {
         $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
-        $settingsSource = new class implements \MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource {
-            #[\Override]
-            public function forSalesChannel(?string $salesChannelId): ?\MerchantQuoteAgentPlugin\Config\QuoteAgentSettings
-            {
-                return new \MerchantQuoteAgentPlugin\Config\QuoteAgentSettings(
-                    new \MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy(
-                        new \MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits(maxDiscountPercent: 5.0),
-                    ),
-                    new \MerchantQuoteAgentPlugin\Config\ModelAccess('key', 'https://example.com', 'model'),
-                    null,
-                    notifyBuyerOnEscalation: true,
-                );
-            }
-        };
-        $escalator = new QuoteEscalator(settingsSource: $settingsSource);
+        $escalator = new QuoteEscalator(buyerNotification: new FakeBuyerNotification());
 
         $result = ServicingSettingsFixture::preflight(static function (): ?QuoteAgentSettings {
             throw new InvalidQuoteAgentConfiguration(['No LLM API key is set.']);

@@ -32,7 +32,7 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
  * container parameter rather than read with `getenv()`, the same reason
  * `LOCK_DSN` is.
  */
-final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSource
+final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSource, BuyerNotificationPreference
 {
     public const DOMAIN = 'MerchantQuoteAgentPlugin.config.';
 
@@ -79,6 +79,19 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
         $this->resolveStrategy($raw);
 
         return $this->factory->fromValues($raw);
+    }
+
+    /**
+     * Read raw and never validated, which is the whole point: see
+     * BuyerNotificationPreference. `!== false` rather than `=== true` so an
+     * unset key means notify, matching config.xml's defaultValue and the
+     * identical rule in QuoteAgentSettingsFactory — only an explicit false
+     * silences the notice.
+     */
+    #[\Override]
+    public function notifyBuyerOnEscalation(?string $salesChannelId): bool
+    {
+        return $this->config->get(self::DOMAIN . 'notifyBuyerOnEscalation', $salesChannelId) !== false;
     }
 
     /**

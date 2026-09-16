@@ -48,8 +48,8 @@ final class ClarificationRoundTest extends TestCase
     public function testItEscalatesWhenTheQuoteWasAlreadyAsked(): void
     {
         $harness = PipelineHarness::with([]);
-        if ($harness->settingsSource !== null) {
-            $harness->settingsSource->settings = NegotiationFixture::settings(notifyBuyerOnEscalation: true);
+        if ($harness->buyerNotification !== null) {
+            $harness->buyerNotification->notify = true;
         }
         $snapshot = NegotiationFixture::withCustomFields(NegotiationFixture::snapshot(), [
             ClarificationMarker::MARKER_KEY => true,

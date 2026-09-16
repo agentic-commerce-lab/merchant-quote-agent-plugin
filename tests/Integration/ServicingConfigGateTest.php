@@ -56,6 +56,10 @@ final class ServicingConfigGateTest extends IntegrationTestCase
         $config = self::config();
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'enabled', true);
         $config->set(QuoteAgentSettingsReader::DOMAIN . 'llmApiKey', '');
+        // Named rather than left to the shop's stored value: this test asserts
+        // the buyer IS told, and a merchant who turned the notice off on this
+        // shop would otherwise make it red for a reason that is not a bug.
+        $config->set(QuoteAgentSettingsReader::DOMAIN . 'notifyBuyerOnEscalation', true);
 
         $pipeline = self::countingPipeline();
         $message = ServiceQuoteMessage::because($quoteId, ServicingTriggerReason::CommentWritten);
