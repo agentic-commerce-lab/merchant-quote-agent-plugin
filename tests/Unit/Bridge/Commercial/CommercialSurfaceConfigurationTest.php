@@ -19,10 +19,15 @@ use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\MandateSigner;
 use MerchantQuoteAgentPlugin\Protocol\Mandate\SellerMandateFactory;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\DependencyInjection\Argument\ArgumentInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\DependencyInjection\Definition;
+use Symfony\Component\DependencyInjection\Reference;
 
 /**
  * The SwagCommercial half of the gate in `src/Resources/config/services.php`,
@@ -41,6 +46,16 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
  * ids nothing here provides, so compiling would fail for reasons that say
  * nothing about the gate. testNoServiceDependsOnOneItsGateRemoved() is what
  * stands in for the compile, and it is sharper — it sees only gate crossings.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * @mago-expect lint:kan-defect
+ * Both rules aggregate per class against a threshold of 10. No single method
+ * here is complex; the class is, because it walks Symfony's DI graph three
+ * separate ways across its test methods — the four-shop membership checks,
+ * the reference walker, and the autowired-constructor walker — each with its
+ * own loop and guard clauses, which is the actual shape of "the container
+ * compiles" once you replace a compile with something that can name why it
+ * failed.
  */
 #[RunTestsInSeparateProcesses]
 #[PreserveGlobalState(false)]
@@ -132,6 +147,102 @@ final class CommercialSurfaceConfigurationTest extends TestCase
             'withBoth' => self::build(ucp: true),
             'withoutUcp' => self::build(ucp: false),
         ];
+    }
+
+    /**
+     * The check that replaces "the container compiles".
+     *
+     * For each of the four shops, the ids its gates removed are the union of
+     * every id services.php registers anywhere, minus the ids this shop has —
+     * computed from the file on every run, so a service added to either side of
+     * either gate is classified without anyone updating this test. An id
+     * referenced but in neither set belongs to core or the SDK, which is not
+     * this gate's business.
+     *
+     * ignoreOnInvalid()/nullOnInvalid() references are skipped on purpose:
+     * degrading to null is exactly what services.php uses them for.
+     */
+    #[DataProvider('shopNames')]
+    public function testNoServiceDependsOnOneItsGateRemoved(string $shop): void
+    {
+        $shops = self::shops();
+        $removed = self::removedIn($shops, $shop);
+        $container = $shops[$shop];
+
+        $violations = [];
+        foreach ($container->getDefinitions() as $id => $definition) {
+            foreach (self::mandatoryReferences($definition) as $reference) {
+                if (isset($removed[$reference])) {
+                    $violations[] = $id . ' -> ' . $reference;
+                }
+            }
+        }
+
+        foreach ($container->getAliases() as $id => $alias) {
+            if (isset($removed[(string) $alias])) {
+                $violations[] = 'alias ' . $id . ' -> ' . $alias;
+            }
+        }
+
+        self::assertSame([], $violations, 'These services would not resolve on a ' . $shop . ' shop');
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function shopNames(): iterable
+    {
+        yield 'neither SwagCommercial nor the UCP SDK bundle' => ['withoutEither'];
+        yield 'the UCP SDK bundle but no SwagCommercial' => ['withoutCommercial'];
+        yield 'SwagCommercial but no UCP SDK bundle' => ['withoutUcp'];
+        yield 'both' => ['withBoth'];
+    }
+
+    /**
+     * @param array<string, ContainerBuilder> $shops
+     *
+     * @return array<string, true>
+     */
+    private static function removedIn(array $shops, string $shop): array
+    {
+        $ids = static fn(ContainerBuilder $container): array => array_merge(
+            array_keys($container->getDefinitions()),
+            array_keys($container->getAliases()),
+        );
+
+        $everywhere = array_merge(...array_map($ids, array_values($shops)));
+
+        return array_fill_keys(array_diff($everywhere, $ids($shops[$shop])), true);
+    }
+
+    /**
+     * Every id this value depends on and cannot do without. Walks arguments,
+     * properties, method calls and the factory, recursing through arrays and
+     * through ArgumentInterface wrappers (service locators, tagged iterators).
+     *
+     * @return list<string>
+     */
+    private static function mandatoryReferences(mixed $value): array
+    {
+        if ($value instanceof Reference) {
+            return (
+                $value->getInvalidBehavior() === ContainerInterface::EXCEPTION_ON_INVALID_REFERENCE
+                    ? [(string) $value]
+                    : []
+            );
+        }
+
+        if ($value instanceof ArgumentInterface) {
+            $value = $value->getValues();
+        }
+
+        if ($value instanceof Definition) {
+            $value = [$value->getArguments(), $value->getProperties(), $value->getMethodCalls(), $value->getFactory()];
+        }
+
+        if (!\is_array($value)) {
+            return [];
+        }
+
+        return array_merge(...array_map(self::mandatoryReferences(...), array_values($value)));
     }
 
     /**
