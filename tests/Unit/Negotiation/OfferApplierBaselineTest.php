@@ -5,8 +5,13 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineIdentity;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Negotiation\QuoteBaseline;
+use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
 use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
@@ -105,6 +110,83 @@ final class OfferApplierBaselineTest extends TestCase
             $applied->verified,
             'An 85 line against a 100 baseline is 15% off and must breach the 10% cap; '
             . 'passing means the pre-write 90 was used as the reference.',
+        );
+    }
+
+    /**
+     * #54, the case that reopened #49's compounding. A line added between
+     * rounds had no baseline entry, so the merge re-derived one every round
+     * from whatever the price was by then: round two discounted it, round
+     * three measured "no concession yet" against round two's cut price, and
+     * the two rounds stacked past maxDiscountPercent with both sides clean.
+     */
+    public function testALineAddedBetweenRoundsIsAnchoredAtItsFirstSeenPrice(): void
+    {
+        $roundTwo = self::withLines(
+            NegotiationFixture::withCustomFields(NegotiationFixture::snapshot(), NegotiationFixture::baselineOf(
+                1000.0,
+                100.0,
+            )),
+            [self::line('line-1', 100.0, 10), self::line('line-2', 200.0, 1)],
+        );
+
+        $gateway = new FakeQuoteGateway([$roundTwo, $roundTwo]);
+        self::applier()->apply($gateway, $roundTwo, NegotiationFixture::settings(), self::quoteWideOffer());
+
+        $stored = null;
+
+        foreach ($gateway->customFieldWrites as $write) {
+            $stored ??= $write[QuoteBaseline::KEY] ?? null;
+        }
+
+        self::assertIsArray($stored, 'The pass that first saw the added line stored no anchor for it.');
+        $rows = array_column($stored['lines'], 'unitPriceNet', 'lineItemId');
+        self::assertSame(200.0, $rows['line-2']);
+        self::assertSame(100.0, $rows['line-1'], 'The anchor for a known line must not move.');
+
+        // Round three: the same quote with line-2 already cut to 180. The
+        // reference the checks read must still say 200, not 180.
+        $roundThree = self::withLines(
+            NegotiationFixture::withCustomFields(NegotiationFixture::snapshot(), [QuoteBaseline::KEY => $stored]),
+            [self::line('line-1', 100.0, 10), self::line('line-2', 180.0, 1)],
+        );
+
+        $baseline = QuoteBaseline::read($roundThree);
+        self::assertNotNull($baseline);
+
+        $anchored = $baseline->anchor(SnapshotAdapter::toPolicy($roundThree));
+        $prices = [];
+
+        foreach ($anchored->lines as $line) {
+            $prices[$line->lineItemId()] = $line->unitPriceNet;
+        }
+
+        self::assertSame(
+            200.0,
+            $prices['line-2'],
+            'Round three is bounded against round two\'s reduced price, so the discounts compound.',
+        );
+    }
+
+    /** @param list<QuoteLineSnapshot> $lines */
+    private static function withLines(QuoteSnapshot $snapshot, array $lines): QuoteSnapshot
+    {
+        return new QuoteSnapshot(
+            identity: $snapshot->identity,
+            revision: $snapshot->revision,
+            totals: $snapshot->totals,
+            lifecycle: $snapshot->lifecycle,
+            content: new QuoteContent(lines: $lines, comments: $snapshot->content->comments),
+        );
+    }
+
+    private static function line(string $id, float $unitPriceNet, int $quantity): QuoteLineSnapshot
+    {
+        return new QuoteLineSnapshot(
+            identity: new QuoteLineIdentity($id, $id),
+            quantity: $quantity,
+            unitPriceNet: $unitPriceNet,
+            totalNet: $unitPriceNet * $quantity,
         );
     }
 }

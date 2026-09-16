@@ -50,13 +50,63 @@ final class BaselineRow
         );
     }
 
+    /**
+     * Every row in $rows, in order, or null if any one fails to parse. Split
+     * out of QuoteBaseline::read() to keep that class within the complexity
+     * gate, the same reason this class exists at all.
+     *
+     * A partial list is a smaller cap than the merchant set, applied
+     * silently, so one bad row must fail the whole baseline, not just itself.
+     *
+     * `$rows` is `array<array-key, mixed>` rather than `list<mixed>`: it comes
+     * from a custom field, so nothing upstream guarantees sequential keys.
+     *
+     * @param array<array-key, mixed> $rows
+     *
+     * @return list<PolicyLine>|null
+     */
+    public static function readAll(array $rows): ?array
+    {
+        $lines = [];
+
+        foreach ($rows as $row) {
+            $line = self::read($row);
+
+            if ($line === null) {
+                return null;
+            }
+
+            $lines[] = $line;
+        }
+
+        return $lines;
+    }
+
     /** @return array<string, mixed> */
     public static function write(BridgeLine $line): array
     {
+        return self::row($line->identity->lineItemId, $line->unitPriceNet, $line->quantity);
+    }
+
+    /**
+     * A row the baseline already holds, re-serialised (#54). An extension
+     * rewrites the whole list, so the stored rows travel back out through the
+     * same field names they came in by.
+     *
+     * @return array<string, mixed>
+     */
+    public static function writeStored(PolicyLine $line): array
+    {
+        return self::row($line->lineItemId(), $line->unitPriceNet, $line->quantity);
+    }
+
+    /** @return array<string, mixed> */
+    private static function row(string $lineItemId, float $unitPriceNet, int $quantity): array
+    {
         return [
-            'lineItemId' => $line->identity->lineItemId,
-            'unitPriceNet' => $line->unitPriceNet,
-            'quantity' => $line->quantity,
+            'lineItemId' => $lineItemId,
+            'unitPriceNet' => $unitPriceNet,
+            'quantity' => $quantity,
         ];
     }
 }

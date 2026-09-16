@@ -39,16 +39,10 @@ final class QuoteBaseline
             return null;
         }
 
-        $lines = [];
+        $lines = BaselineRow::readAll($rows);
 
-        foreach ($rows as $row) {
-            $line = BaselineRow::read($row);
-
-            if ($line === null) {
-                return null;
-            }
-
-            $lines[] = $line;
+        if ($lines === null) {
+            return null;
         }
 
         return new QuoteBaselineLines((float) $totalNet, $lines);
@@ -71,16 +65,34 @@ final class QuoteBaseline
     }
 
     /**
-     * `stamp()`, or an empty fragment once a baseline already exists —
-     * spread-friendly, so a caller building a customFields array does not
-     * need its own conditional. Kept off `stamp()` itself because #49's other
-     * caller, OfferApplier::write(), already has its own null-vs-array shape
-     * for the same check.
+     * `stamp()` when the quote has no baseline, the baseline EXTENDED with any
+     * line it does not yet know when it has one, and an empty fragment when it
+     * already knows them all (#54) — spread-friendly, so a caller building a
+     * customFields array needs no conditional of its own.
+     *
+     * Extension is one-way and never revalues: a line the baseline already
+     * holds keeps its stored price forever, so the anchor still cannot move.
+     * Only a row with no entry at all is appended, at the price it carries on
+     * this pass — which is its price before any agent concession, because both
+     * callers compute this from a snapshot read BEFORE the pass writes.
+     *
+     * Kept as one function with two callers on purpose: OfferApplier::write()
+     * and ServiceQuoteHandler::claimAttempt() both used to ask only "is there
+     * a baseline?", and neither asked whether it covered the lines that are on
+     * the quote now.
      *
      * @return array<string, mixed>
      */
-    public static function stampIfAbsent(BridgeSnapshot $snapshot): array
+    public static function stampOrExtend(BridgeSnapshot $snapshot): array
     {
-        return self::read($snapshot) === null ? self::stamp($snapshot) : [];
+        $baseline = self::read($snapshot);
+
+        if ($baseline === null) {
+            return self::stamp($snapshot);
+        }
+
+        $fragment = $baseline->extendedFragment(SnapshotAdapter::toPolicy($snapshot)->lines);
+
+        return $fragment === null ? [] : [self::KEY => $fragment];
     }
 }
