@@ -34,10 +34,20 @@ final class NegotiationFixture
 {
     /**
      * The expiry every fixture quote carries, so the reply the template writes
-     * is a fixed string rather than today + 14 days. A date in the past is
-     * fine: the verifier only bounds how FAR OUT an offer may be valid.
+     * is a fixed string rather than today + 14 days. Computed relative to now,
+     * not a hardcoded date: #57 gave the verifier a lower bound on expiry, so
+     * a calendar date frozen in source eventually drifts into the past and
+     * every one of these fixtures would start failing the pass it is meant
+     * to exercise, for no reason connected to the code under test.
+     *
+     * +7 days, not some other offset: settings() below fixes validityDays at
+     * 14, so this must clear the new lower bound (after today) while staying
+     * inside the upper one (at most 14 + 1 days out) with room either side.
      */
-    public const EXPIRES = '2026-09-11';
+    public static function expires(): string
+    {
+        return (new \DateTimeImmutable('+7 days'))->format('Y-m-d');
+    }
 
     private function __construct() {}
 
@@ -53,7 +63,10 @@ final class NegotiationFixture
             identity: new QuoteIdentity('q1', '10001', 'EUR', 'sc1', 'cust-1'),
             revision: $revision ?? new QuoteRevision('v1', new \DateTimeImmutable('2026-08-28 10:00:00.000')),
             totals: new QuoteTotals(totalNet: $totalNet, totalGross: $totalNet),
-            lifecycle: new QuoteLifecycle(stateTechnicalName: $state, expiresAt: new \DateTimeImmutable(self::EXPIRES)),
+            lifecycle: new QuoteLifecycle(
+                stateTechnicalName: $state,
+                expiresAt: new \DateTimeImmutable(self::expires()),
+            ),
             content: new QuoteContent(lines: [new QuoteLineSnapshot(
                 identity: new QuoteLineIdentity('line-1', 'Widget', 'prod-1'),
                 quantity: 10,

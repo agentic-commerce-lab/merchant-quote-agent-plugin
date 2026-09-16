@@ -55,7 +55,7 @@ final class RecordedPassTest extends TestCase
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
-            'We can bring this quote down by 5% to 950.00 EUR, valid until 2026-09-11.',
+            'We can bring this quote down by 5% to 950.00 EUR, valid until ' . NegotiationFixture::expires() . '.',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
@@ -248,7 +248,7 @@ final class RecordedPassTest extends TestCase
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
-            'We can bring this quote down by 5% to 950.00 EUR, valid until 2026-09-11.',
+            'We can bring this quote down by 5% to 950.00 EUR, valid until ' . NegotiationFixture::expires() . '.',
         ]);
         $harness->logger->throws = new \RuntimeException('the logger is broken');
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -277,7 +277,7 @@ final class RecordedPassTest extends TestCase
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
-            'We can bring this quote down by 5% to 950.00 EUR, valid until 2026-09-11.',
+            'We can bring this quote down by 5% to 950.00 EUR, valid until ' . NegotiationFixture::expires() . '.',
         ]);
         $harness->logger->throws = new \RuntimeException('the logger is broken');
         $gatewayFailure = new \RuntimeException('the gateway is down');

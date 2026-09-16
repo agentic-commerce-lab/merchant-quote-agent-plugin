@@ -173,7 +173,7 @@ final class OfferRoundTest extends TestCase
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'We can bring this quote down by 5% to 950.00 EUR. The offer is valid until '
-                . NegotiationFixture::EXPIRES
+                . NegotiationFixture::expires()
                 . '.',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [

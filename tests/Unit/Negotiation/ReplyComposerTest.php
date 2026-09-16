@@ -49,7 +49,8 @@ final class ReplyComposerTest extends TestCase
 
     public function testItWritesTheModelsRewordingAndTransitions(): void
     {
-        $reworded = 'We can bring this quote down by 5% to 950.00 EUR, valid until 2026-09-11.';
+        $reworded =
+            'We can bring this quote down by 5% to 950.00 EUR, valid until ' . NegotiationFixture::expires() . '.';
         [$client] = ScriptedClient::spy([$reworded]);
         $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
         $after = self::after();
@@ -127,7 +128,9 @@ final class ReplyComposerTest extends TestCase
 
         self::assertSame(2, $spy->calls, 'The model must be tried, and tried only once more.');
         self::assertSame(
-            'We can bring this quote down by 15% to 850.00 EUR. The offer is valid until 2026-09-11.',
+            'We can bring this quote down by 15% to 850.00 EUR. The offer is valid until '
+            . NegotiationFixture::expires()
+            . '.',
             $gateway->comments[0],
         );
     }
