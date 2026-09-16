@@ -55,7 +55,7 @@ final class ServicingSettingsFixture
 
         return new ServicingPreflight(
             $source,
-            $escalator ?? new QuoteEscalator(settingsSource: $source),
+            $escalator ?? new QuoteEscalator(buyerNotification: new FakeBuyerNotification(notify: false)),
             new NullLogger(),
         );
     }

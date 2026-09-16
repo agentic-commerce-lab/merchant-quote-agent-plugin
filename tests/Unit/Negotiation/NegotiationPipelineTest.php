@@ -74,8 +74,8 @@ final class NegotiationPipelineTest extends TestCase
         ]);
 
         $settings = NegotiationFixture::settings(notifyBuyerOnEscalation: true);
-        if ($harness->settingsSource !== null) {
-            $harness->settingsSource->settings = $settings;
+        if ($harness->buyerNotification !== null) {
+            $harness->buyerNotification->notify = true;
         }
 
         $outcome = $harness->pipeline->service($snapshot, $harness->gateway, $settings, NegotiationFixture::context());
