@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Policy\Data;
 
-use Symfony\Component\Validator\Constraints as Assert;
-
 /**
  * ponytail: `calculatedPrice` from the TS contract is dropped — it only feeds
  * A2CN net-normalization, which belongs to the later Protocol module.
@@ -14,14 +12,13 @@ final readonly class QuoteLineSnapshot
 {
     public function __construct(
         public QuoteLineIdentity $identity,
-        #[Assert\PositiveOrZero]
         public int $quantity = 0,
-        // Not PositiveOrZero: Shopware-generated lines (e.g. the quote-discount
-        // line) are legitimately negative — see LineNetViolation, which skips
-        // the price-band check for exactly this reason.
+        // Legitimately negative: Shopware generates a quote-discount line item
+        // that is not a priced position. LineNetViolation skips the price-band
+        // check for exactly that reason, and QuoteBaselineLines::extendedWith()
+        // never takes one into the baseline.
         public float $unitPriceNet = 0.0,
         public float $totalNet = 0.0,
-        #[Assert\PositiveOrZero]
         public ?float $requestedUnitPrice = null,
     ) {}
 

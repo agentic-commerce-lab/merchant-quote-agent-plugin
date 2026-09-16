@@ -33,6 +33,43 @@ final class OfferAuthorizerTest extends TestCase
         yield from self::readFixtureFile('offer-authorize-compounding.json');
     }
 
+    /**
+     * #56. A negative discount is written as a SwagCommercial percentage
+     * discount and lands on the quote as a SURCHARGE, while
+     * ReplyTemplate::reduction() floors its reported figure at 0 — so the
+     * buyer reads "came down by 0%" on a quote that went up. The cap was
+     * one-sided by construction and bounded nothing below.
+     */
+    public function testANegativeDiscountIsRefused(): void
+    {
+        $authorization = (new OfferAuthorizer())->authorize(
+            new ProposedOffer(orderTotalNet: 1000.0, price: new OfferedPrice(discountPercent: -5.0)),
+            self::policy(),
+        );
+
+        self::assertFalse($authorization->approved);
+    }
+
+    public function testZeroIsNotANegativeDiscount(): void
+    {
+        $authorization = (new OfferAuthorizer())->authorize(
+            new ProposedOffer(orderTotalNet: 1000.0, price: new OfferedPrice(discountPercent: 0.0)),
+            self::policy(),
+        );
+
+        self::assertTrue($authorization->approved);
+    }
+
+    /**
+     * This file has no other bare policy builder — every other case reads
+     * `input.policy` from a fixture — so this is the plain construction the
+     * fixture path already uses under the hood (`NegotiationPolicy::fromArray`).
+     */
+    private static function policy(): NegotiationPolicy
+    {
+        return NegotiationPolicy::fromArray(['price' => ['maxDiscountPercent' => 10, 'validityDays' => 14]]);
+    }
+
     private static function readFixtureFile(string $filename): iterable
     {
         $cases = json_decode(

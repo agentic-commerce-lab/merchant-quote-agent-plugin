@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Policy\Data;
 
-use Symfony\Component\Validator\Constraints as Assert;
-
 /**
  * ponytail: trimmed to the fields negotiation-core actually reads
  * (currencyIso, totalNet, lines, buyerTargetNet, lifecycle). The TS contract
@@ -19,7 +17,6 @@ final readonly class QuoteSnapshot
 {
     /** @param list<QuoteLineSnapshot> $lines */
     public function __construct(
-        #[Assert\Currency]
         public string $currencyIso,
         public float $totalNet,
         public array $lines,
