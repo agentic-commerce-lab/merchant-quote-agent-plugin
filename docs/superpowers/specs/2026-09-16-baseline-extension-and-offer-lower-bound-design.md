@@ -105,9 +105,11 @@ The verifier mirror deserves its own note, because it has a false-positive mode.
 
 ### The decorative constraints
 
-`ValidatorInterface::validate()` runs in exactly one place in the plugin, `QuoteAgentSettingsFactory`, on the merchant's `NegotiationPolicy`. `Assert\Valid` extends that run to `QuoteLimits` and on to `QuoteValueCeiling`. **Those three classes are the whole of the validated tree.**
+`ValidatorInterface::validate()` runs in exactly one place in the plugin, `QuoteAgentSettingsFactory`, on the merchant's `NegotiationPolicy`. `Assert\Valid` extends that run to `QuoteLimits` and on to `QuoteValueCeiling`. Those three are the whole of the *validated* tree.
 
-Every other `Assert` attribute under `Policy\Data` — on `ProposedOffer`, `OfferedPrice`, `QuoteSnapshot`, `QuoteLineSnapshot`, `PriceAsk`, `DeliveryAsk`, `PaymentAsk`, `InterpretedLineChange`, `InterpretedProductAddition` — is never evaluated by anything.
+**Corrected during implementation.** This section first claimed that every other `Assert` attribute under `Policy\Data` was dead. That was wrong, and deleting all of them broke `ResponseFormatFactoryTest`. There is a second consumer of the same attribute classes, and it is not the validator: `Negotiation\Response\ResponseFormatFactory` — Symfony AI's structured-output schema generator — reflects them to build the JSON schema the extract call's `CommentInterpretation` answer is bound by. Its own docblock says so in as many words, about `InterpretedProductAddition::$quantity`: dropping the attribute to please a schema generator would take the validation with it. That reach covers `PriceAsk`, `DeliveryAsk`, `PaymentAsk`, `InterpretedLineChange` and `InterpretedProductAddition`, and those five keep their constraints.
+
+Four are genuinely reached by neither consumer — `ProposedOffer`, `OfferedPrice`, `QuoteSnapshot`, `QuoteLineSnapshot`. `NegotiateResponse`'s schema is built from `OfferTerms`, a deliberate constraint-free wire twin of `OfferedPrice`, not from `OfferedPrice` itself, which is why nothing evaluated the `Range(min: 0, max: 100)` that #56 found a negative discount sailing past. Those four are the deletion.
 
 **Decision: delete them, and pin that the remaining ones are real.** The alternative the issue offers — run the validator over `ProposedOffer` in `OfferAuthorizer` — was rejected:
 
@@ -117,7 +119,7 @@ Every other `Assert` attribute under `Policy\Data` — on `ProposedOffer`, `Offe
 
 A constraint that looks like enforcement and is not is worse than no constraint, so the honest move is deletion. `QuoteLineSnapshot::$unitPriceNet` keeps its comment about Shopware's negative lines — that is a domain fact worth stating — reworded so it no longer reads as a note about a sibling attribute.
 
-**The pin:** `ValidatedConstraintsTest`, in the spirit of `RecordFieldGuardsTest`, walks every class under `src/` by reflection and asserts that Symfony constraint attributes appear only on the three classes the validator actually reaches. It fails when someone adds a decorative constraint, and it fails when someone removes a class from the validated tree while leaving its constraints behind.
+**The pin:** `ValidatedConstraintsTest`, in the spirit of `RecordFieldGuardsTest`, scans every file under `src/` and asserts that the Symfony constraints namespace appears only in the eight files a real consumer reaches — the three the validator validates and the five the schema generator reflects. Scanning the source rather than reflecting classes means an import under a different alias cannot defeat it and nothing needs to be autoloadable. It fails when someone adds a decorative constraint, and it fails when someone takes a class out of either consumer's reach while leaving its constraints behind.
 
 `AGENTS.md`'s "Shared contracts" bullet currently says boundary data is validated "with constraint attributes on the `Policy\Data` DTOs", which is what made the decoration look deliberate. It is corrected to name the validated tree.
 
@@ -155,7 +157,7 @@ No human was available for this work, so these were assumed rather than settled.
 - A Shopware-generated negative line is never written into the baseline.
 - The baseline's net factor is identical before and after an extension.
 - A negative `discountPercent` is refused by the authorizer, and a total that rose is refused by the verifier.
-- No `Assert` attribute exists on a class the validator does not reach, and a test says so.
+- No `Assert` attribute exists on a class neither the validator nor the schema generator reaches, and a test says so.
 - `composer run test` and `composer run quality` are green.
 
 ## Not here
