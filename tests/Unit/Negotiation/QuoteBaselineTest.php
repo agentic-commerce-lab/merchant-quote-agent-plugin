@@ -253,6 +253,37 @@ final class QuoteBaselineTest extends TestCase
     }
 
     /**
+     * IMPORTANT. Every other fixture reaching BaselineExtension::scaledValue()
+     * has a stored totalNet equal to the stored line sum, so f is exactly 1.0
+     * and `return $raw;` would leave the suite green. This one stores a line
+     * sum of 1190 (119 * 10) against a stored total of 1000 — f ~ 0.840336 —
+     * the only case that actually exercises the scaling arithmetic rather
+     * than a no-op multiply by one.
+     */
+    public function testExtendingScalesTheAddedValueInGrossSpaceWhenTheFactorIsNotOne(): void
+    {
+        $baseline = new QuoteBaselineLines(1000.0, [self::policyLine('line-1', 119.0, 10)]);
+        $factor = 1000.0 / 1190.0;
+        $live = new PolicySnapshot(
+            currencyIso: 'EUR',
+            totalNet: 1000.0,
+            lines: $baseline->lines,
+            lifecycle: new \MerchantQuoteAgentPlugin\Policy\Data\QuoteLifecycle(stateTechnicalName: 'open'),
+        );
+        $before = NetFactor::of($baseline->anchor($live));
+
+        $extended = $baseline->extendedWith([...$baseline->lines, self::policyLine('line-2', 50.0, 2)]);
+
+        self::assertEqualsWithDelta(1000.0 + (100.0 * $factor), $extended->totalNet, 1e-9);
+        self::assertEqualsWithDelta(
+            $before,
+            NetFactor::of($extended->anchor($live)),
+            1e-9,
+            'NetFactor must stay put even when the stored factor is not 1.0.',
+        );
+    }
+
+    /**
      * #54. The applier read the STORED lines and the proposer read the stored
      * lines MERGED with the live ones, so a line added after the stamp was
      * bounded on the authorize side and invisible on the verify side —
@@ -280,6 +311,36 @@ final class QuoteBaselineTest extends TestCase
             method_exists($baseline, 'asReferenceSnapshot'),
             'Two reference builders are what let the verify side fall behind the authorize side.',
         );
+    }
+
+    /**
+     * CRITICAL. extendedWith() deliberately keeps a live negative-priced line
+     * (a Shopware quote-discount line) out of the reference's totalNet, but
+     * linesMergedWith() used to append that same unknown line to the
+     * reference's LINES regardless of sign. The merged reference's total then
+     * excluded the discount line while its line list counted it, so
+     * NetFactor::of() — totalNet divided by the line sum — read an inflated
+     * ratio and scaled every reference price up with it, moving the allowed
+     * minimum on every OTHER line in the same round.
+     */
+    public function testALiveNegativeLineDoesNotInflateTheNetFactor(): void
+    {
+        $baseline = self::storedBaseline();
+        $live = new PolicySnapshot(
+            currencyIso: 'EUR',
+            totalNet: 900.0,
+            lines: [
+                self::policyLine('line-1', 100.0, 4),
+                self::policyLine('line-2', 300.0, 2),
+                self::policyLine('discount', -100.0),
+            ],
+            lifecycle: new \MerchantQuoteAgentPlugin\Policy\Data\QuoteLifecycle(stateTechnicalName: 'open'),
+        );
+
+        // 4 * 100 + 2 * 300 = 1000, and totalNet is 1000: the stored
+        // baseline's own factor is 1.0. A live discount line must not move
+        // it.
+        self::assertSame(1.0, NetFactor::of($baseline->anchor($live)));
     }
 
     /** No baseline at all: the full stamp, exactly as #49 wrote it. */

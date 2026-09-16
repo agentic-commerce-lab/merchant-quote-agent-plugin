@@ -113,7 +113,13 @@ final readonly class OfferRound
             $applied->after,
             $settings,
             ReplyTemplate::reduction(
-                $context->baseline?->totalNet ?? $snapshot->totals->totalNet,
+                // Not $context->baseline?->totalNet: that baseline was read
+                // from the PASS-START snapshot, whose custom fields predate
+                // claimAttempt()'s extension for a line added this pass (#54)
+                // — the exact staleness anchor() exists to compensate for.
+                // anchored() re-extends in memory from $snapshot's own lines,
+                // so it is correct even though the stored fragment is stale.
+                SnapshotAdapter::anchored($snapshot)->totalNet,
                 $applied->after->totals->totalNet,
             ),
             $context->conversation,

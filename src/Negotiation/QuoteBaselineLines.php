@@ -49,8 +49,20 @@ final readonly class QuoteBaselineLines
      * halves a quantity or drops a line shrinks the total structurally and
      * the check reads that as a concession. See the design doc's "Known
      * limitations" section. The mirror case — a line added mid-negotiation —
-     * is closed: the baseline total now grows with it, so it no longer pulls
-     * the measured discount down.
+     * is closed for every reader that goes through this method (directly, or
+     * via SnapshotAdapter::anchored()): the baseline total now grows with it,
+     * so it no longer pulls the measured discount down. A caller that reads
+     * a stored `QuoteBaselineLines::$totalNet` directly instead bypasses that
+     * and stays stale.
+     *
+     * NetFactor::of() reads the same ratio on the returned snapshot as on the
+     * stored baseline: `extendedWith()` grows `totalNet` by exactly the value
+     * its added lines contribute, so the denominator and the numerator move
+     * together. That only holds if `linesMergedWith()` cannot add a LINE the
+     * total did not count — an unknown live line filtered out of the total
+     * for being negative has to be filtered out of the merged lines the same
+     * way, or the denominator grows alone and every reference price scales
+     * up with it.
      */
     public function anchor(PolicySnapshot $live): PolicySnapshot
     {
@@ -103,30 +115,6 @@ final readonly class QuoteBaselineLines
     }
 
     /**
-     * QuoteBaseline::stampOrExtend()'s custom-field fragment for $live, or
-     * null when extendedWith() found nothing to add. Split out so that class
-     * stays a plain dispatcher and this one carries the branch — the same
-     * complexity-gate reason BaselineExtension was split out of this class.
-     *
-     * @param list<PolicyLine> $live
-     *
-     * @return array<string, mixed>|null
-     */
-    public function extendedFragment(array $live): ?array
-    {
-        $extended = $this->extendedWith($live);
-
-        if ($extended === $this) {
-            return null;
-        }
-
-        return [
-            'totalNet' => $extended->totalNet,
-            'lines' => array_map(BaselineRow::writeStored(...), $extended->lines),
-        ];
-    }
-
-    /**
      * The baseline's lines, plus any current line it does not know about.
      *
      * A line added mid-negotiation has had no agent concession yet, so there
@@ -140,6 +128,14 @@ final readonly class QuoteBaselineLines
      * and a quantity — see QuoteBaseline::stamp() — so without this the
      * checks would name a raw UUID and the ceiling would see no ask at all.
      *
+     * An unknown current line is appended through BaselineExtension's own
+     * filter — the same one extendedWith() uses to grow the total — rather
+     * than a plain "not known" check, so a live negative line never enters
+     * the merged lines that extendedWith() left out of totalNet. Counting it
+     * in one and not the other is what let NetFactor::of() read an inflated
+     * ratio for a Shopware discount line unknown to the baseline (CRITICAL,
+     * caught by testALiveNegativeLineDoesNotInflateTheNetFactor).
+     *
      * @param list<PolicyLine> $current
      *
      * @return list<PolicyLine>
@@ -152,21 +148,13 @@ final readonly class QuoteBaselineLines
             $currentById[$line->lineItemId()] = $line;
         }
 
-        $known = [];
         $merged = [];
 
         foreach ($this->lines as $line) {
-            $known[$line->lineItemId()] = true;
             $match = $currentById[$line->lineItemId()] ?? null;
             $merged[] = $match === null ? $line : $line->asOriginalOf($match);
         }
 
-        foreach ($current as $line) {
-            if (!isset($known[$line->lineItemId()])) {
-                $merged[] = $line;
-            }
-        }
-
-        return $merged;
+        return [...$merged, ...BaselineExtension::unknownLines($this->lines, $current)];
     }
 }

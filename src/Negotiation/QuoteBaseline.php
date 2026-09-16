@@ -91,8 +91,17 @@ final class QuoteBaseline
             return self::stamp($snapshot);
         }
 
-        $fragment = $baseline->extendedFragment(SnapshotAdapter::toPolicy($snapshot)->lines);
+        $extended = $baseline->extendedWith(SnapshotAdapter::toPolicy($snapshot)->lines);
 
-        return $fragment === null ? [] : [self::KEY => $fragment];
+        if ($extended === $baseline) {
+            return [];
+        }
+
+        return [
+            self::KEY => [
+                'totalNet' => $extended->totalNet,
+                'lines' => array_map(BaselineRow::writeStored(...), $extended->lines),
+            ],
+        ];
     }
 }

@@ -20,6 +20,10 @@ final class BaselineExtension
      * — see QuoteBaselineLines::extendedWith() for why negative lines are
      * never taken.
      *
+     * Each appended id is marked known as it is added, so a duplicate
+     * `lineItemId` in $live (never seen in practice) cannot be appended
+     * twice and double-counted in the returned value.
+     *
      * @param list<PolicyLine> $stored
      * @param list<PolicyLine> $live
      *
@@ -40,6 +44,7 @@ final class BaselineExtension
                 continue;
             }
 
+            $known[$line->lineItemId()] = true;
             $added[] = $line;
         }
 
@@ -48,9 +53,16 @@ final class BaselineExtension
 
     /**
      * $added's value expressed in $storedTotalNet's price space, so
-     * NetFactor::of() reads the same ratio before and after: with
+     * NetFactor::of() reads the same ratio before and after — with
      * f = storedTotalNet / stored line sum, (f*S + f*v) / (S + v) is f
-     * exactly.
+     * exactly — WHEN $storedSum and $storedTotalNet are both usable (the
+     * normal branch below).
+     *
+     * When either is not (<= 0), there is no ratio to express the value in,
+     * so it is added unscaled — the same fallback NetFactor::of() itself
+     * takes (1.0) when it has no usable ratio either. That branch does NOT
+     * preserve NetFactor: the ratio a caller reads afterwards is
+     * ($storedTotalNet + $raw) / $raw, not whatever it was before.
      *
      * $added's own `totalNet` is deliberately not used — line totals are read
      * in the cart's DISPLAY space, gross on a gross-calculated cart, while the

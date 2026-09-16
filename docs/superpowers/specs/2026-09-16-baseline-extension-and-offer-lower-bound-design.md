@@ -154,7 +154,7 @@ No human was available for this work, so these were assumed rather than settled.
 
 - A line added after the baseline was stamped is anchored at the price it had when it appeared, on every later round.
 - The authorize side and the verify side read the same reference snapshot, because there is only one method producing it.
-- A Shopware-generated negative line is never written into the baseline.
+- A Shopware-generated negative line is never *added to* the baseline by the extension. `QuoteBaseline::stamp()` itself is unfiltered: a discount line already on the quote at first-stamp time is stamped like any other line, because it is not yet distinguishable from a merchant's own price. Only extension — a line appearing on a LATER pass — filters negative lines.
 - The baseline's net factor is identical before and after an extension.
 - A negative `discountPercent` is refused by the authorizer, and a total that rose is refused by the verifier.
 - No `Assert` attribute exists on a class neither the validator nor the schema generator reaches, and a test says so.
