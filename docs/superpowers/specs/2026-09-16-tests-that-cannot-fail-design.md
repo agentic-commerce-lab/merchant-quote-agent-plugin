@@ -89,8 +89,9 @@ the migrations, which are the only constraint that holds:
 All of those are `Migration1787998662CreateQuoteAgentDecision`;
 `resolved_state` (64) arrived later, in
 `Migration1789000000AddEscalationResolution`. Every one is enforced by MySQL at
-write time and by nothing before it. `band` is the narrowest, which is why it
-is the one the test uses.
+write time and by nothing before it. `band` at 32 is the column the test has
+always used and is narrow enough that a plausible value overruns it;
+`currency_iso` at 3 is narrower still, and in exactly the same position.
 
 Bounding the values at the application layer — truncating or validating in
 `DecisionRecordWriter` — is **#60's** scope (`buyer_comment` / `raw_proposal`

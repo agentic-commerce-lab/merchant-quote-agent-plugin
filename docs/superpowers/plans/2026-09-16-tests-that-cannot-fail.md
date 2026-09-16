@@ -108,10 +108,12 @@ Replace the whole of `testAStringLongerThanItsColumnIsRejectedAtWriteTime`
      *
      * So the migrations hold the whole of the constraint —
      * `Migration1787998662CreateQuoteAgentDecision` for every column here, and
-     * `Migration1789000000AddEscalationResolution` for `resolved_state`. `band`
-     * is the narrowest at VARCHAR(32), which is why it is the column this test
-     * writes to; every other string column on this entity is in exactly the
-     * same position, bounded by its migration and by nothing in PHP.
+     * `Migration1789000000AddEscalationResolution` for `resolved_state`. This
+     * test writes to `band` because VARCHAR(32) is narrow enough that a
+     * plausible value overruns it, not because it is the narrowest column —
+     * `currency_iso` is VARCHAR(3). Every string column on this entity is in
+     * exactly the same position, bounded by its migration and by nothing in
+     * PHP.
      *
      * Losing the typed `WriteException` costs a servicing pass nothing.
      * `NegotiationPipeline::record()` wraps the audit write in
