@@ -65,6 +65,12 @@ final class RewordingGuardTest extends TestCase
             'We can bring this quote down by 5% to 950.00 EUR. Your invoice will show the new total. '
                 . 'The offer is valid until 2026-09-11.',
         ];
+        yield 'a word that merely starts like a concession' => [
+            // `warrant` as a stem would reject this; the list carries
+            // `warranty`/`warranties` instead precisely so it does not.
+            'We can bring this quote down by 5% to 950.00 EUR. We hope this warrants your approval. '
+                . 'The offer is valid until 2026-09-11.',
+        ];
     }
 
     /** @return iterable<string, array{string}> */
@@ -100,6 +106,30 @@ final class RewordingGuardTest extends TestCase
         ];
         yield 'a warranty' => [
             'We can bring this quote down by 5% to 950.00 EUR, warranty included. '
+                . 'The offer is valid until 2026-09-11.',
+        ];
+        yield 'a concession in the plural, which a bare word boundary missed' => [
+            'We can bring this quote down by 5% to 950.00 EUR. We can also split this into installments. '
+                . 'The offer is valid until 2026-09-11.',
+        ];
+        yield 'plural payments' => [
+            'We can bring this quote down by 5% to 950.00 EUR. Flexible payments are available. '
+                . 'The offer is valid until 2026-09-11.',
+        ];
+        yield 'plural deposits' => [
+            'We can bring this quote down by 5% to 950.00 EUR. No deposits required. '
+                . 'The offer is valid until 2026-09-11.',
+        ];
+        yield 'a y-to-ies plural the suffix rule cannot reach' => [
+            'We can bring this quote down by 5% to 950.00 EUR. Extended warranties included. '
+                . 'The offer is valid until 2026-09-11.',
+        ];
+        yield 'deliveries, the other y-to-ies plural' => [
+            'We can bring this quote down by 5% to 950.00 EUR. Deliveries are on us. '
+                . 'The offer is valid until 2026-09-11.',
+        ];
+        yield 'shipments, which shipping does not reach' => [
+            'We can bring this quote down by 5% to 950.00 EUR. Shipments are free of charge. '
                 . 'The offer is valid until 2026-09-11.',
         ];
         yield 'six sentences' => [

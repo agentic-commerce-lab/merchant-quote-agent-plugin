@@ -154,12 +154,22 @@ still pass. That residual is accepted (see Risks).
 
 Rejects, case-insensitively and on word boundaries:
 
-`shipping`, `freight`, `delivery`, `payment`, `deposit`,
-`warranty`, `instalment`, `installment`
+`shipping`, `shipment`, `freight`, `delivery`, `deliveries`, `payment`,
+`deposit`, `warranty`, `warranties`, `instalment`, `installment`
 
 Every one of these names a concession `AskGate` escalates and `OfferApplier`
 cannot write. None can appear in a faithful rewording of a sentence about a
 percentage, a total and a date.
+
+The match also allows an optional plural suffix (`(?:e?s)?`), because a bare
+`\b` immediately after the literal word is not the boundary it looks like: a
+trailing `s` is itself a word character, so there is no boundary between it
+and the word before it, and "installments", "payments" and "deposits" all
+reached the buyer verbatim under the original check — often the more natural
+phrasing, which made the plural the likelier miss. `deliveries` and
+`warranties` are listed as their own entries rather than left to that suffix
+rule, because `(?:e?s)?` only appends and cannot turn a trailing `y` into
+`ies`.
 
 The words deliberately **left out** matter as much, because each is a false
 rejection waiting to happen:
@@ -257,6 +267,13 @@ of these is an assumption, not an agreement.
   `str_contains()` check demanded the ISO literal too, so this is unchanged
   behaviour rather than new strictness — but it is the most likely way a
   non-English reply loses its rewording.
+- **A total formatted with a thousands separator falls back to the template.**
+  `money()` writes `9500.00`; a model writing `9,500.00` is rejected as an
+  unauthorised figure. This is not new — the old `str_contains()` check
+  demanded the `9500.00` literal too, so it fell back identically — but it
+  means rewording is effectively off for any total over 999, which is most
+  B2B quotes. Fixing it means deciding whether `1,5` is a German decimal or
+  a separator, which is a locale question this change does not own.
 
 ## Testing
 

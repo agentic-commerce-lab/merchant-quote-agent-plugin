@@ -50,14 +50,39 @@ final class RewordingGuard
      * This list is English. It is a backstop for the language the model is
      * overwhelmingly prompted in, not the boundary -- the boundary is the
      * figure check and the sentence cap, which are language-independent.
+     *
+     * The match allows an optional plural suffix (`(?:e?s)?` in
+     * `unsafeBecause()`), because a bare `\b` after the literal word was not
+     * the boundary it looked like. A trailing `s` is itself a word character,
+     * so `\bpayment\b` never matches inside "payments" -- there is no
+     * boundary between `t` and `s` for `\b` to find. All three of
+     * "installments", "payments" and "deposits" reached the buyer verbatim
+     * under the old check, and the plural is often the more natural phrasing
+     * in the first place, which made it the likelier miss, not the rarer one.
+     *
+     * `deliveries` and `warranties` are listed as their own entries rather
+     * than relying on the suffix rule, because `(?:e?s)?` only ever appends
+     * -- it cannot turn a trailing `y` into `ies`. `delivery` plus that
+     * suffix matches "deliverys", which is not a word, and never matches
+     * "deliveries".
+     *
+     * Stemming to `deliver` and `warrant` was measured and rejected instead
+     * of listing the plurals separately: it does catch every plural, but
+     * `warrant` also fires on "We hope this warrants your approval", which is
+     * ordinary merchant tone and not a concession at all. Listing the plural
+     * forms explicitly catches the same concessions without that false
+     * rejection.
      */
     private const CONCESSIONS = [
         'shipping',
+        'shipment',
         'freight',
         'delivery',
+        'deliveries',
         'payment',
         'deposit',
         'warranty',
+        'warranties',
         'instalment',
         'installment',
     ];
@@ -99,7 +124,7 @@ final class RewordingGuard
         // the same regex.
         $found = array_filter(
             self::CONCESSIONS,
-            static fn(string $word): bool => preg_match('#\b' . $word . '\b#i', $reworded) === 1,
+            static fn(string $word): bool => preg_match('#\b' . $word . '(?:e?s)?\b#i', $reworded) === 1,
         );
         if ($found !== []) {
             return 'it names a concession nobody authorised: ' . reset($found);
