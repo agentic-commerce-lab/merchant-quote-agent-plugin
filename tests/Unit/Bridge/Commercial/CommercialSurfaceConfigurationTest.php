@@ -246,6 +246,92 @@ final class CommercialSurfaceConfigurationTest extends TestCase
     }
 
     /**
+     * The same rule for the dependencies nobody wrote down. services.php sets
+     * `defaults()->autowire()`, so most definitions have no arguments at load
+     * time and the walker above sees nothing for them — their dependencies are
+     * constructor types Symfony resolves at compile. This reads them the way
+     * AutowirePass would, and flags a class-typed parameter whose type this
+     * shop's gates removed, or which is not loadable at all.
+     *
+     * The second arm is #79's other failure mode: an unconditional service
+     * whose constructor names a class that only exists behind the gate.
+     */
+    #[DataProvider('shopNames')]
+    public function testNoAutowiredServiceNeedsAClassItsGateRemoved(string $shop): void
+    {
+        $shops = self::shops();
+        $removed = self::removedIn($shops, $shop);
+        $container = $shops[$shop];
+
+        $violations = [];
+        foreach ($container->getDefinitions() as $id => $definition) {
+            // A factory-produced service has no constructor to autowire.
+            if (!$definition->isAutowired() || $definition->getFactory() !== null) {
+                continue;
+            }
+
+            // ResolveClassPass fills the class in from the id at compile time;
+            // services.php registers everything as set(Foo::class).
+            $class = $definition->getClass() ?? $id;
+            if (!class_exists($class)) {
+                $violations[] = $id . ': class ' . $class . ' is not loadable';
+
+                continue;
+            }
+
+            $constructor = (new \ReflectionClass($class))->getConstructor();
+            if ($constructor === null) {
+                continue;
+            }
+
+            $arguments = $definition->getArguments();
+            foreach ($constructor->getParameters() as $position => $parameter) {
+                // Filled explicitly, by position or by name: not autowired.
+                if (
+                    \array_key_exists($position, $arguments)
+                    || \array_key_exists('$' . $parameter->getName(), $arguments)
+                ) {
+                    continue;
+                }
+
+                // AutowirePass falls back rather than failing on these.
+                if ($parameter->isDefaultValueAvailable() || $parameter->isVariadic() || $parameter->allowsNull()) {
+                    continue;
+                }
+
+                $type = $parameter->getType();
+                if (!$type instanceof \ReflectionNamedType || $type->isBuiltin()) {
+                    continue;
+                }
+
+                $name = $type->getName();
+                if ($container->has($name)) {
+                    continue;
+                }
+
+                if (isset($removed[$name])) {
+                    $violations[] =
+                        $id
+                        . ': autowires $'
+                        . $parameter->getName()
+                        . ' => '
+                        . $name
+                        . ', which this shop\'s gates removed';
+
+                    continue;
+                }
+
+                if (!class_exists($name) && !interface_exists($name)) {
+                    $violations[] =
+                        $id . ': autowires $' . $parameter->getName() . ' => ' . $name . ', which is not loadable';
+                }
+            }
+        }
+
+        self::assertSame([], $violations, 'These services would not autowire on a ' . $shop . ' shop');
+    }
+
+    /**
      * The UCP gate reads `kernel.bundles` and nothing else, so the bundle need
      * not be loadable here — only listed, exactly as the kernel would list it.
      */
