@@ -121,7 +121,15 @@ final readonly class ServiceQuoteHandler
     private function servicePass(QuoteGatewayInterface $gateway, ServiceQuoteMessage $message): void
     {
         $snapshot = $gateway->fetchSnapshot($message->quoteId);
-        $settings = $this->preflight->check($gateway, $snapshot);
+
+        // Resolved before the preflight, not just before claimAttempt(): the
+        // rule the old comment here stated — a stale enum value must throw
+        // before anything is mutated — is served strictly better this way,
+        // since the preflight can write a marker, a comment and a notification
+        // on the strength of a trigger nothing can name. The counter is read
+        // rather than claimed; a refused pass claims nothing.
+        $context = new PassContext(ServicingTriggerReason::from($message->reason), self::attemptsOn($snapshot));
+        $settings = $this->preflight->check($gateway, $snapshot, $context);
 
         if ($settings === null) {
             // Returns BEFORE stamping, like every other refusal: the quote was
@@ -154,14 +162,7 @@ final readonly class ServiceQuoteHandler
             return;
         }
 
-        // Resolved before claimAttempt() commits its counter write: a stale
-        // enum value must throw here, before anything is mutated, rather than
-        // after — an interaction with the try/catch below that clears
-        // ATTEMPTS_KEY would otherwise be needed to avoid parking the quote
-        // for four redeliveries.
-        $reason = ServicingTriggerReason::from($message->reason);
-        $attempt = $this->claimAttempt($gateway, $message, $snapshot);
-        $context = new PassContext($reason, $attempt);
+        $this->claimAttempt($gateway, $message, $snapshot);
 
         try {
             $outcome = $pipeline->service($snapshot, $gateway, $settings, $context);
@@ -204,14 +205,20 @@ final readonly class ServiceQuoteHandler
         ]));
     }
 
-    /** @return int the attempt number just claimed, for #19's audit context */
+    /** @return int the attempt count already committed against this quote, or 0 for a fresh one */
+    private static function attemptsOn(QuoteSnapshot $snapshot): int
+    {
+        $attempts = $snapshot->lifecycle->customFields[self::ATTEMPTS_KEY] ?? 0;
+
+        return \is_int($attempts) ? $attempts : 0;
+    }
+
     private function claimAttempt(
         QuoteGatewayInterface $gateway,
         ServiceQuoteMessage $message,
         QuoteSnapshot $snapshot,
-    ): int {
-        $attempts = $snapshot->lifecycle->customFields[self::ATTEMPTS_KEY] ?? 0;
-        $attempts = \is_int($attempts) ? $attempts : 0;
+    ): void {
+        $attempts = self::attemptsOn($snapshot);
 
         if ($attempts >= self::MAX_ATTEMPTS) {
             $this->logger->error('Servicing this quote has failed {attempts} times without a thrown error, which means '
@@ -246,7 +253,5 @@ final readonly class ServiceQuoteHandler
             self::ATTEMPTS_KEY => $attempts + 1,
             ...QuoteBaseline::stampOrExtend($snapshot),
         ]));
-
-        return $attempts;
     }
 }

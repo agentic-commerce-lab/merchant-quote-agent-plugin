@@ -12,11 +12,19 @@ use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteAutoReplyDetails;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * @mago-expect lint:too-many-methods
+ * One test per thing DecisionRecorder can be asked to do, plus recordRefusal()
+ * -- the second way a row gets written, alongside begin()/finish() -- and its
+ * one real risk, that it disturbs a pass already in flight. Splitting the
+ * class would separate assertions that are only meaningful read together.
+ */
 final class DecisionRecorderTest extends TestCase
 {
     public function testAFinishedPassIsHandedToTheWriterOnce(): void
@@ -140,6 +148,59 @@ final class DecisionRecorderTest extends TestCase
         $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
 
         self::assertNull($writer->drafts[0]->strategyVersionId);
+    }
+
+    public function testARefusalBeforeAnyPassWritesOneEscalatedRecord(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->recordRefusal(
+            NegotiationFixture::snapshot(),
+            self::context(),
+            QuoteEscalationReason::NotConfigured,
+            ['No LLM API key is set.'],
+        );
+
+        self::assertCount(1, $writer->drafts);
+        $draft = $writer->drafts[0];
+        self::assertSame('q1', $draft->quoteId);
+        self::assertSame('escalated', $draft->outcome);
+        self::assertSame('not_configured', $draft->escalationReason);
+        self::assertSame(['No LLM API key is set.'], $draft->violations);
+        // A pass that did not run has no duration. #21 reads durationMs as
+        // servicing latency and takes p50/p95 over it; a sub-millisecond
+        // refusal folded into that distribution would deflate both.
+        self::assertNull($draft->durationMs);
+        self::assertNull($draft->band);
+        self::assertNull($draft->model);
+    }
+
+    public function testARefusalDoesNotDisturbAPassThatIsAlreadyOpen(): void
+    {
+        // The failure mode the design claims is impossible: recordRefusal()
+        // never reads or assigns the draft, so it cannot swallow, truncate or
+        // duplicate a pass that is mid-flight. Asserted rather than argued --
+        // this is the whole reason a second write path was affordable.
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->begin(NegotiationFixture::snapshot(), self::context());
+        $recorder->recordReply('We can do 5%.', 'reply-hash');
+        $recorder->recordRefusal(
+            NegotiationFixture::snapshot(),
+            self::context(),
+            QuoteEscalationReason::NotConfigured,
+            [],
+        );
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        self::assertCount(2, $writer->drafts);
+        self::assertSame('escalated', $writer->drafts[0]->outcome);
+        self::assertNull($writer->drafts[0]->replyToBuyer);
+        self::assertNull($writer->drafts[0]->violations, 'An empty problem list is not a violation.');
+        self::assertSame('offered', $writer->drafts[1]->outcome);
+        self::assertSame('We can do 5%.', $writer->drafts[1]->replyToBuyer);
     }
 
     private static function context(): PassContext
