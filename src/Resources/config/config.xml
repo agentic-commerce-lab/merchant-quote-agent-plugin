@@ -60,7 +60,8 @@
         <input-field type="int">
             <name>validityDays</name>
             <label>Default offer validity (days)</label>
-            <defaultValue>0</defaultValue>
+            <defaultValue>14</defaultValue>
+            <helpText>How long an offer the agent sends stays valid. At least 1: a blank or zero value takes this sales channel out of service rather than sending offers that have already expired.</helpText>
         </input-field>
         <input-field type="float">
             <name>escalationSlaHours</name>

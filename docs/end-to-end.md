@@ -450,7 +450,7 @@ first.
 | `maxDiscountPercent` | `0` | `0` means every price ask escalates. |
 | `counterOfferMaxPercent` | — | Blank means no counter band. |
 | `maxQuoteValueNet` | — | Per currency, net. A currency left blank escalates. Blank everywhere means no ceiling. |
-| `validityDays` | `0` | Default offer validity. |
+| `validityDays` | `14` | How long an auto-offer stays valid. At least 1 — blank or `0` takes the channel out of service rather than sending an offer stamped as already expired. A shop updating from a release that defaulted this to `0` has that `0` rewritten to `14`; a value the merchant set is left alone. |
 | `escalationSlaHours` | — | Dashboard benchmark only. Changes nothing the agent does. |
 
 One field is deliberately **not** on that page. The **organization name

@@ -79,7 +79,7 @@ final class PluginConfigTest extends IntegrationTestCase
 
         self::assertSame(false, $config->get(QuoteAgentSettingsReader::DOMAIN . 'enabled'));
         self::assertSame(0.0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'maxDiscountPercent'));
-        self::assertSame(0, $config->get(QuoteAgentSettingsReader::DOMAIN . 'validityDays'));
+        self::assertSame(14, $config->get(QuoteAgentSettingsReader::DOMAIN . 'validityDays'));
     }
 
     public function testTheDefaultBaseUrlIsShippedByConfigXmlRatherThanOnlyByTheFactory(): void
