@@ -74,17 +74,20 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
 
     public function testAnUntouchedInstallEscalatesEverythingRatherThanFailing(): void
     {
+        // Every field a merchant may leave blank, left blank. `validityDays`
+        // stopped being one of them in #57: config.xml ships 14, and a blank
+        // one is refused by invalidConfigurations() above rather than read as
+        // "valid for no days at all".
         $settings = self::build([
             'maxDiscountPercent' => null,
             'counterOfferMaxPercent' => null,
             'maxQuoteValueNet' => null,
-            'validityDays' => null,
         ]);
 
         self::assertNotNull($settings);
         self::assertSame(0.0, $settings->policy->price->maxDiscountPercent);
         self::assertNull($settings->policy->price->valueCeiling);
-        self::assertSame(0, $settings->policy->price->validityDays);
+        self::assertSame(14, $settings->policy->price->validityDays);
     }
 
     /**
@@ -104,6 +107,12 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         // to deterministic decisions, even in rules-only mode.
         yield 'blank API key' => [['llmApiKey' => '   '], 'API key'];
         yield 'blank model name' => [['llmModel' => ''], 'model'];
+        // #57. `null` is the merchant clearing the field and `0` is the
+        // default this plugin used to ship; both wrote `+0 days` in
+        // OfferApplier, i.e. an offer stamped as expired the moment it was
+        // sent, and PositiveOrZero waved both through.
+        yield 'cleared offer validity' => [['validityDays' => null], 'price.validityDays'];
+        yield 'zero offer validity' => [['validityDays' => 0], 'price.validityDays'];
     }
 
     /** @param array<string, mixed> $overrides */

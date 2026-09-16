@@ -15,7 +15,28 @@ final readonly class QuoteLimits
         public ?float $counterOfferMaxPercent = null,
         #[Assert\Valid]
         public ?QuoteValueCeiling $valueCeiling = null,
-        #[Assert\PositiveOrZero]
+        /**
+         * At least one day.
+         *
+         * `0` is what every path meaning "nobody set this" produces: an absent
+         * key in fromArray() below, a cleared admin field in
+         * NegotiationPolicyArray::build(), and this default. Keeping all three
+         * at `0` and rejecting it here is deliberate — substituting a number
+         * would be the plugin inventing a validity on the merchant's behalf.
+         *
+         * #57: this was PositiveOrZero and config.xml shipped `0`, so
+         * OfferApplier wrote `+0 days` — an expiry of *now* — and
+         * ExpirationOfferVerifier's one-sided window had nothing to say about
+         * it. Every auto-offer on an untouched install went out already
+         * expired, and the buyer reply said "valid until <today>".
+         *
+         * The default stays `0` rather than becoming `14`: no production code
+         * reaches it (fromArray() is the only production constructor, and
+         * NegotiationPolicyArray always supplies the key), so changing it
+         * would only hide this constraint from the tests that construct
+         * QuoteLimits directly.
+         */
+        #[Assert\Positive]
         public int $validityDays = 0,
     ) {}
 
