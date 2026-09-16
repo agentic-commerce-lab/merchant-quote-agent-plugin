@@ -71,7 +71,8 @@ final class DecisionRecorder
      * Deliberately NOT part of the draft lifecycle. It neither reads nor
      * assigns $this->draft, so NegotiationPipeline stays the only class that
      * opens and closes a record and "exactly one record per pass" remains a
-     * property of one place.
+     * property of one place. RecorderOwnershipTest is what holds that line:
+     * it scans src/ and fails the moment a second class starts a record.
      *
      * Everything a pass would have measured stays null, because none of it
      * happened: no band, no model call, no duration. The problems go to
