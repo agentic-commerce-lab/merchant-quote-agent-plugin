@@ -20,4 +20,8 @@ enum QuoteEscalationReason: string
     case ModelUnavailable = 'model_unavailable';
     case ProposalRejected = 'proposal_rejected';
     case VerificationFailed = 'verification_failed';
+    // Issue #142. The quote has had its full budget of agent passes. Not a
+    // fault: the negotiation simply reached the end of what the agent is
+    // authorised to spend on one quote, and a human takes it from here.
+    case RoundLimitExceeded = 'round_limit_exceeded';
 }

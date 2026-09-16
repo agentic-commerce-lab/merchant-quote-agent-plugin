@@ -20,7 +20,8 @@
             "not_configured": "Agent not configured",
             "model_unavailable": "Model unavailable",
             "proposal_rejected": "Proposal rejected",
-            "verification_failed": "Verification failed"
+            "verification_failed": "Verification failed",
+            "round_limit_exceeded": "Too many rounds"
         },
         "trigger": {
             "state_entered": "Quote changed state",
@@ -248,7 +249,8 @@
             "not_configured": "The agent is switched on but its configuration is incomplete or invalid, so it answered nothing rather than guess. The technical details below name the fields.",
             "model_unavailable": "The model could not be reached, or answered with something unusable. Nothing was written to the quote.",
             "proposal_rejected": "The model proposed terms outside the authority your policies allow, so the policy layer refused them. The quote was left untouched.",
-            "verification_failed": "The quote was changed, but re-reading it did not match what had been authorised, so it needs a person to confirm before the customer is told anything."
+            "verification_failed": "The quote was changed, but re-reading it did not match what had been authorised, so it needs a person to confirm before the customer is told anything.",
+            "round_limit_exceeded": "This negotiation reached the maximum number of agent passes, so it was handed to a person. Clear the quote's round counter to let the agent continue."
         },
         "write": {
             "claim": "Moved the quote into review",

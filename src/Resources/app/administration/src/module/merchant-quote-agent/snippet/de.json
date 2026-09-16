@@ -20,7 +20,8 @@
             "not_configured": "Agent nicht konfiguriert",
             "model_unavailable": "Modell nicht erreichbar",
             "proposal_rejected": "Vorschlag abgelehnt",
-            "verification_failed": "Prüfung fehlgeschlagen"
+            "verification_failed": "Prüfung fehlgeschlagen",
+            "round_limit_exceeded": "Zu viele Runden"
         },
         "trigger": {
             "state_entered": "Angebot hat den Status gewechselt",
@@ -248,7 +249,8 @@
             "not_configured": "Der Agent ist aktiviert, seine Konfiguration ist aber unvollständig oder ungültig. Er hat daher nichts geantwortet, statt zu raten. Die technischen Details unten nennen die Felder.",
             "model_unavailable": "Das Modell war nicht erreichbar oder hat unbrauchbar geantwortet. Am Angebot wurde nichts geändert.",
             "proposal_rejected": "Das Modell hat Konditionen vorgeschlagen, die außerhalb der von Ihren Richtlinien erlaubten Befugnis liegen. Die Policy-Schicht hat sie abgelehnt, das Angebot blieb unverändert.",
-            "verification_failed": "Das Angebot wurde geändert, beim erneuten Lesen stimmte es aber nicht mit dem Autorisierten überein. Ein Mensch muss das prüfen, bevor der Kunde etwas erfährt."
+            "verification_failed": "Das Angebot wurde geändert, beim erneuten Lesen stimmte es aber nicht mit dem Autorisierten überein. Ein Mensch muss das prüfen, bevor der Kunde etwas erfährt.",
+            "round_limit_exceeded": "Diese Verhandlung hat die maximale Anzahl an Agentendurchläufen erreicht und wurde an einen Menschen übergeben. Setzen Sie den Rundenzähler des Angebots zurück, damit der Agent weitermacht."
         },
         "write": {
             "claim": "Angebot in Prüfung gesetzt",
