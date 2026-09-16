@@ -47,7 +47,7 @@ final class QuoteEscalatorTest extends TestCase
         );
     }
 
-    public function testItDefaultsToSilentWhenNoSettingsSourceProvided(): void
+    public function testItDefaultsToSilentWhenNoPreferenceIsWired(): void
     {
         $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
 
@@ -61,54 +61,42 @@ final class QuoteEscalatorTest extends TestCase
         self::assertEmpty($gateway->comments);
     }
 
-    public function testItResolvesBuyerNotificationFromSettingsSource(): void
+    public function testItResolvesBuyerNotificationFromTheMerchantsToggle(): void
     {
         $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
-        $settingsSource = new class implements \MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource {
-            public bool $enabled = false;
+        $preference = new FakeBuyerNotification(notify: false);
+        $escalator = new QuoteEscalator(buyerNotification: $preference);
 
-            #[\Override]
-            public function forSalesChannel(?string $salesChannelId): ?\MerchantQuoteAgentPlugin\Config\QuoteAgentSettings
-            {
-                return new \MerchantQuoteAgentPlugin\Config\QuoteAgentSettings(
-                    new \MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy(
-                        new \MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits(maxDiscountPercent: 5.0),
-                    ),
-                    new \MerchantQuoteAgentPlugin\Config\ModelAccess('key', 'https://example.com', 'model'),
-                    null,
-                    notifyBuyerOnEscalation: $this->enabled,
-                );
-            }
-        };
-
-        $escalator = new QuoteEscalator(settingsSource: $settingsSource);
-
-        $settingsSource->enabled = false;
         $escalator->escalate($gateway, QuoteSnapshotFixture::snapshot(), QuoteEscalationReason::NeedsHumanReview);
         self::assertSame(['updateQuote'], $gateway->calls);
 
         $gateway2 = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
-        $settingsSource->enabled = true;
+        $preference->notify = true;
         $escalator->escalate($gateway2, QuoteSnapshotFixture::snapshot(), QuoteEscalationReason::NeedsHumanReview);
         self::assertSame(['addComment', 'updateQuote'], $gateway2->calls);
     }
 
-    public function testItFallsBackToSilentWhenSettingsSourceThrows(): void
+    /**
+     * #140. A NotConfigured escalation exists BECAUSE the configuration is
+     * unusable, so the toggle must be readable without it. The preference is
+     * read raw and cannot throw; this pins that the escalator no longer
+     * swallows an unreadable configuration into silence.
+     */
+    public function testAMisconfiguredShopStillTellsTheBuyer(): void
     {
         $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
-        $settingsSource = new class implements \MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource {
-            #[\Override]
-            public function forSalesChannel(?string $salesChannelId): ?\MerchantQuoteAgentPlugin\Config\QuoteAgentSettings
-            {
-                throw new \MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration(['Invalid config']);
-            }
-        };
 
-        $escalator = new QuoteEscalator(settingsSource: $settingsSource);
-        $escalator->escalate($gateway, QuoteSnapshotFixture::snapshot(), QuoteEscalationReason::NeedsHumanReview);
+        (new QuoteEscalator(buyerNotification: new FakeBuyerNotification()))->escalate(
+            $gateway,
+            QuoteSnapshotFixture::snapshot(),
+            QuoteEscalationReason::NotConfigured,
+        );
 
-        self::assertSame(['updateQuote'], $gateway->calls);
-        self::assertEmpty($gateway->comments);
+        self::assertSame(['addComment', 'updateQuote'], $gateway->calls);
+        self::assertSame(
+            [QuoteEscalator::MARKER_KEY => QuoteEscalationReason::NotConfigured->value],
+            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
+        );
     }
 
     public function testTheCommentLeaksNoDiagnosticToTheBuyer(): void
