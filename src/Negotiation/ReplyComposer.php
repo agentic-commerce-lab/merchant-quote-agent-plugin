@@ -86,11 +86,9 @@ final readonly class ReplyComposer
         } catch (ModelUnavailable $e) {
             // The offer is already applied. A plainer sentence beats no
             // sentence, so the template ships and the pass still succeeds.
-            $this->logger->warning('The reply could not be reworded; sending the template instead.', [
+            return $this->fallback($template, 'The reply could not be reworded; sending the template instead.', [
                 'exception' => $e,
             ]);
-
-            return [$template, null];
         }
 
         $unsafe = RewordingGuard::unsafeBecause($reworded, $reductionPercent, $total, $validUntil);
@@ -100,15 +98,50 @@ final readonly class ReplyComposer
             // correct reply, so an over-firing guard fails nothing and shows
             // up nowhere except as replies that never sound reworded. The
             // reason makes "always the same rule" one grep.
-            $this->logger->warning('The reworded reply did not survive the guard; sending the template instead.', [
-                'reason' => $unsafe,
-                'reworded' => $reworded,
-            ]);
-
-            return [$template, null];
+            return $this->fallback(
+                $template,
+                'The reworded reply did not survive the guard; sending the template instead.',
+                [
+                    'reason' => $unsafe,
+                    'reworded' => $reworded,
+                ],
+            );
         }
 
         return [$reworded, $prompt->hash];
+    }
+
+    /**
+     * Both callers reach here with a correct reply already composed — the
+     * model produced something unusable, or the guard rejected it — and
+     * nothing left to do but hand the template back. That is exactly when a
+     * logger that throws costs the most: it turns a handled case into an
+     * unanswered buyer, one line before the fallback would have shipped.
+     * Shopware's monolog stack can throw in ordinary operation — a full disk,
+     * a failing handler, a misconfigured remote sink — this is not a
+     * hypothetical about a deliberately hostile logger. It follows the
+     * neighbours: `NegotiationPipeline::record()` wraps its own logging in
+     * `catch (\Throwable)` for the same reason, `ShopwareEscalationNotifier::attempt()`
+     * catches per channel so one failing delivery still lets the others
+     * through, and `QuoteEscalator` guards the notifier even though its
+     * contract forbids throwing.
+     *
+     * @param array<string, mixed> $context
+     *
+     * @return array{0: string, 1: null}
+     */
+    private function fallback(string $template, string $message, array $context): array
+    {
+        try {
+            $this->logger->warning($message, $context);
+        } catch (\Throwable) {
+            // @mago-expect lint:no-empty-catch-clause
+            // Deliberately empty: there is nowhere left to report a failure
+            // of the reporting channel itself, and the template must still
+            // ship to the buyer.
+        }
+
+        return [$template, null];
     }
 
     /**
