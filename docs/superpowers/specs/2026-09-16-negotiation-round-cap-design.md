@@ -282,8 +282,8 @@ if (NegotiationRounds::exhausted($snapshot)) {
 Three properties, each deliberate.
 
 **Before the extract call**, so a refused round costs zero model calls. The cost
-of a post-cap trigger is one snapshot read, one customFields write and one audit
-row.
+of a post-cap trigger is `ServiceQuoteHandler`'s two snapshot reads and two
+customFields writes (the claim write and the stamp write) plus one audit row.
 
 **Inside the pipeline, not in `ServicingPreflight`.** The preflight answers "may
 the agent run at all" — paused, misconfigured, terminal state — and none of its
@@ -437,6 +437,12 @@ falling through to the short label.
   `nothing_to_do` (a merchant note that moved the fingerprint, a stranded reply)
   reaches the cap after fewer real rounds than fifteen. Accepted: those passes
   cost model calls too, which is what the cap bounds.
+- The guard returns before `negotiate()`'s `finishStrandedReply()` call, so a
+  quote whose last allowed pass posted its reply and then died before the
+  `sent` transition is escalated rather than having that transition finished.
+  Accepted: it takes a crash on exactly the last allowed pass, and the outcome
+  either way is an escalated quote with a human notified — which is where such
+  a quote should end up regardless.
 
 **Revisit if**
 

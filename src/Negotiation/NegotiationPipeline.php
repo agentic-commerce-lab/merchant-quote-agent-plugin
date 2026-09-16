@@ -187,11 +187,12 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
 
     /**
      * #142, and checked BEFORE the extract call on purpose: past the cap a
-     * pass costs one snapshot read, one customFields write and one audit
-     * row — no model call at all. The snapshot is the one ServiceQuoteHandler
-     * fetched before claimAttempt() wrote to it, so this count is the passes
-     * that finished BEFORE this one: `>= MAX` lets passes one through MAX run
-     * and refuses the next.
+     * pass still costs ServiceQuoteHandler's two snapshot reads and two
+     * customFields writes (the claim write and the stamp write) plus one
+     * audit row — no model call at all. The snapshot is the one
+     * ServiceQuoteHandler fetched before claimAttempt() wrote to it, so this
+     * count is the passes that finished BEFORE this one: `>= MAX` lets passes
+     * one through MAX run and refuses the next.
      *
      * Here rather than in ServicingPreflight because this is the same
      * question AskGate asks — is this ask inside the mandate — and the

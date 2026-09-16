@@ -15,9 +15,9 @@ use PHPUnit\Framework\TestCase;
  * a reason has no `escalationWhy` snippet, and the short label itself falls
  * back to the raw enum value when it has no `escalation` snippet either — so
  * a reason that ships with no snippet degrades silently into the merchant
- * seeing something like `round_limit_exceeded` instead of a sentence. This
- * has already happened once (#142's first attempt shipped the enum case a
- * commit ahead of the snippets, caught only in review).
+ * seeing something like `round_limit_exceeded` instead of a sentence. The
+ * failure mode is silent by construction, which is why it needs a test
+ * rather than a convention.
  *
  * The admin's own `decision.check.mjs` self-checks cannot catch this: their
  * `vm` mock's `$t`/`$tc` never read the snippet files, they only echo the
