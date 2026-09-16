@@ -8,10 +8,12 @@ use MerchantQuoteAgentPlugin\Bridge\Data\History\CustomerSummary;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Negotiation\AppliedOffer;
 use MerchantQuoteAgentPlugin\Negotiation\InterpretedAsk;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
 use MerchantQuoteAgentPlugin\Negotiation\ProposedAnswer;
 use MerchantQuoteAgentPlugin\Negotiation\Response\HistoryRequest;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 
 /**
@@ -51,6 +53,52 @@ final class DecisionRecorder
 
     public function begin(QuoteSnapshot $snapshot, PassContext $context): void
     {
+        $this->draft = self::draftFor($snapshot, $context);
+    }
+
+    /**
+     * One record for an escalation that happened before a pass could start,
+     * written whole rather than opened and closed.
+     *
+     * ServicingPreflight escalates a misconfigured quote -- marker, buyer
+     * comment, admin notification -- and returns null, so
+     * NegotiationPipeline::service() never runs and the draft lifecycle never
+     * opens. Before #35 that action had no row at all: both of #7's pages read
+     * this table and nothing else, so the quote was absent rather than
+     * incomplete, and #21's outcome counts were short by exactly the
+     * misconfigured channels the run exists to find.
+     *
+     * Deliberately NOT part of the draft lifecycle. It neither reads nor
+     * assigns $this->draft, so NegotiationPipeline stays the only class that
+     * opens and closes a record and "exactly one record per pass" remains a
+     * property of one place.
+     *
+     * Everything a pass would have measured stays null, because none of it
+     * happened: no band, no model call, no duration. The problems go to
+     * `violations`, which is where recordProposal() already puts an escalation
+     * detail and where merchant-quote-agent-detail already renders one -- the
+     * `not_configured` snippet has been promising "the technical details below
+     * name the fields" to a row that did not exist.
+     *
+     * @param list<string> $problems the configuration's own complaints; admin-scope
+     *                               only, never routed to the buyer-facing comment
+     */
+    public function recordRefusal(
+        QuoteSnapshot $snapshot,
+        PassContext $context,
+        QuoteEscalationReason $reason,
+        array $problems,
+    ): void {
+        $draft = self::draftFor($snapshot, $context);
+        $draft->outcome = NegotiationOutcome::Escalated->value;
+        $draft->escalationReason = $reason->value;
+        $draft->violations = $problems === [] ? null : $problems;
+
+        $this->writer->write($draft);
+    }
+
+    private static function draftFor(QuoteSnapshot $snapshot, PassContext $context): DecisionDraft
+    {
         $draft = new DecisionDraft();
         $draft->quoteId = $snapshot->identity->quoteId;
         $draft->quoteNumber = $snapshot->identity->quoteNumber;
@@ -64,7 +112,7 @@ final class DecisionRecorder
         $draft->totalNetBefore = $snapshot->totals->totalNet;
         $draft->startedAt = microtime(true);
 
-        $this->draft = $draft;
+        return $draft;
     }
 
     public function recordHistorySummary(CustomerSummary $summary): void
