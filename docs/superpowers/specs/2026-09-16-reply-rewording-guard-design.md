@@ -267,13 +267,19 @@ of these is an assumption, not an agreement.
   `str_contains()` check demanded the ISO literal too, so this is unchanged
   behaviour rather than new strictness — but it is the most likely way a
   non-English reply loses its rewording.
-- **A total formatted with a thousands separator falls back to the template.**
-  `money()` writes `9500.00`; a model writing `9,500.00` is rejected as an
-  unauthorised figure. This is not new — the old `str_contains()` check
-  demanded the `9500.00` literal too, so it fell back identically — but it
-  means rewording is effectively off for any total over 999, which is most
-  B2B quotes. Fixing it means deciding whether `1,5` is a German decimal or
-  a separator, which is a locale question this change does not own.
+- **A total formatted with an English thousands separator is accepted**, since
+  `RewordingGuard::ungrouped()`. `money()` writes `9500.00`; a model writing
+  `9,500.00` used to be rejected as an unauthorised figure, which turned
+  rewording off for any total over 999 — most B2B quotes — without failing
+  anything. The normalisation is deliberately narrow: `^\d{1,3}(,\d{3})+`
+  needs a full group of exactly three digits, so `1,5` and `1,50` are still
+  read as the decimal commas they are in half this plugin's market, and still
+  fall back.
+- **A German-formatted total still falls back to the template.** `9.500,00`
+  is unambiguous only because of its decimal comma; its grouping dot is not,
+  since `9.500` and `950.00` cannot both be read by one rule. Handling it is a
+  locale decision — which format a reply is *expected* in — rather than the
+  formatting one above, and this change does not own it.
 
 ## Testing
 
