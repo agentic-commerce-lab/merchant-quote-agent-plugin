@@ -17,7 +17,7 @@ final class NegotiationPipelineTest extends TestCase
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"offer","message":"5% off, valid until 2026-09-11.","terms":{"discountPercent":5}}',
-            'We can offer 5% off. Valid until 2026-09-11.',
+            PipelineHarness::rewordedReply(),
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('5% please', '2026-08-28 09:00:00'),
@@ -32,6 +32,11 @@ final class NegotiationPipelineTest extends TestCase
 
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertSame(3, $harness->spy->calls);
+        // Not just "a comment was posted": the model's rewording, exactly.
+        // The deterministic template arriving here instead is not an error --
+        // it is RewordingGuard rejecting the script, silently, with the
+        // outcome and the call count above unchanged (#141).
+        self::assertSame([PipelineHarness::rewordedReply()], $harness->gateway->comments);
     }
 
     public function testAnOutOfAuthorityAskEscalatesAfterOneCall(): void
@@ -96,7 +101,7 @@ final class NegotiationPipelineTest extends TestCase
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":15}}',
             '{"action":"offer","message":"We can do 10%, valid until 2026-09-11.","terms":{"discountPercent":10}}',
-            'Our best is 10%. Valid until 2026-09-11.',
+            PipelineHarness::rewordedReply(),
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('15% please', '2026-08-28 09:00:00'),
@@ -110,6 +115,10 @@ final class NegotiationPipelineTest extends TestCase
         );
 
         self::assertSame(NegotiationOutcome::Countered, $outcome);
+        // 5% and 950.00, not the 10% the counter offered: the reply states
+        // what the DATABASE came down by (ReplyTemplate::reduction over the
+        // harness's re-read), and RewordingGuard rejects any other figure.
+        self::assertSame([PipelineHarness::rewordedReply()], $harness->gateway->comments);
     }
 
     public function testNothingNewCostsNothingAndWritesNothing(): void
@@ -192,7 +201,7 @@ final class NegotiationPipelineTest extends TestCase
         $harness = PipelineHarness::with([
             '{"structural":{"lineChanges":[{"lineItemId":"line-1","quantity":null,"targetUnitPrice":95,"remove":false}]}}',
             '{"action":"offer","message":"95 each.","terms":{"linePricesNet":[{"lineItemId":"line-1","unitPriceNet":95}]}}',
-            '95 each, valid until 2026-09-11.',
+            PipelineHarness::rewordedReply(),
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('95 per unit?', '2026-08-28 09:00:00'),
@@ -206,6 +215,10 @@ final class NegotiationPipelineTest extends TestCase
         );
 
         self::assertNotSame(NegotiationOutcome::Escalated, $outcome);
+        // A per-line concession is announced as the quote-wide reduction the
+        // database reports; `95` is a figure the template never wrote, and a
+        // reply stating it falls back to the template without failing here.
+        self::assertSame([PipelineHarness::rewordedReply()], $harness->gateway->comments);
     }
 
     public function testAModelFailureEscalatesRatherThanFallingBackToRules(): void
