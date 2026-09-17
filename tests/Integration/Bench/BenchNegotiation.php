@@ -114,22 +114,24 @@ final readonly class BenchNegotiation
             // than at the top of the loop, since the escalation itself is
             // discovered by the pass this iteration just ran.
             if ($outcome === NegotiationOutcome::Escalated) {
-                return new NegotiationResult($quoteId, $round, null, $outcome, null);
+                return new NegotiationResult($quoteId, $round, null, $outcome, OrderConversion::notAttempted());
             }
 
             $after = $this->gateway->fetchSnapshot($quoteId);
             $move = $buyer->respond($before, $after, self::lastAgentReply($before, $after), $round);
 
             if ($move->kind !== BuyerMoveKind::Counter) {
-                $orderId = $move->kind === BuyerMoveKind::Accept ? $this->convertToOrder($context, $quoteId) : null;
+                $order = $move->kind === BuyerMoveKind::Accept
+                    ? $this->convertToOrder($context, $quoteId)
+                    : OrderConversion::notAttempted();
 
-                return new NegotiationResult($quoteId, $round, $move->kind, $outcome, $orderId);
+                return new NegotiationResult($quoteId, $round, $move->kind, $outcome, $order);
             }
 
             $this->writeComment($quoteId, $customerId, $move->comment ?? '');
         }
 
-        return new NegotiationResult($quoteId, $scenario->maxRounds, null, $outcome, null);
+        return new NegotiationResult($quoteId, $scenario->maxRounds, null, $outcome, OrderConversion::notAttempted());
     }
 
     /**
@@ -137,16 +139,19 @@ final readonly class BenchNegotiation
      * call BuyerQuoteFlowTest proves against this shop. A quote the agent
      * escalated, or one that never got a real offer applied to it, may
      * legitimately refuse this call (SwagCommercial's quote-order route
-     * rejects it); that refusal becomes a null orderId on the bench cell, not
-     * a lost negotiation — the rounds already happened and their decision
-     * records are already committed by the time this runs.
+     * rejects it, or a test double stands in for it —
+     * BenchNegotiationTest::testAFailedConversionDoesNotLoseTheNegotiation
+     * forces exactly this path); that refusal becomes an `OrderConversion`
+     * with a non-null `orderFailure` on the bench cell, not a lost
+     * negotiation — the rounds already happened and their decision records
+     * are already committed by the time this runs.
      */
-    private function convertToOrder(SalesChannelContext $context, string $quoteId): ?string
+    private function convertToOrder(SalesChannelContext $context, string $quoteId): OrderConversion
     {
         try {
-            return $this->buyerGateway->acceptQuote($context, $quoteId)->orderId;
-        } catch (\Throwable) {
-            return null;
+            return new OrderConversion($this->buyerGateway->acceptQuote($context, $quoteId)->orderId, null);
+        } catch (\Throwable $e) {
+            return new OrderConversion(null, sprintf('%s: %s', $e::class, $e->getMessage()));
         }
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration\Bench;
 
+use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
@@ -15,7 +16,10 @@ use MerchantQuoteAgentPlugin\Tests\Bench\Scenario;
 use MerchantQuoteAgentPlugin\Tests\Bench\SyntheticBuyer;
 use MerchantQuoteAgentPlugin\Tests\Integration\PipelineFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\ScriptedClient;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteList;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot as UcpQuoteSnapshot;
 use Shopware\Core\Defaults;
+use Shopware\Core\System\SalesChannel\SalesChannelContext;
 
 /**
  * The negotiation loop against a real quote on a real shop: a real gateway, a
@@ -109,10 +113,10 @@ final class BenchNegotiationTest extends BenchTestCase
             'test-run',
         );
 
-        self::assertNotNull($result->orderId, 'An accepted negotiation must leave an order behind.');
+        self::assertNotNull($result->order->orderId, 'An accepted negotiation must leave an order behind.');
 
         self::assertSame(
-            $result->orderId,
+            $result->order->orderId,
             self::connection(static::getContainer())
                 ->fetchOne('SELECT LOWER(HEX(order_id)) FROM quote WHERE id = UNHEX(:quote) AND version_id = UNHEX(:live)', [
                     'quote' => $result->quoteId,
@@ -120,6 +124,7 @@ final class BenchNegotiationTest extends BenchTestCase
                 ]),
             'The order id must be the one the shop actually stored on the quote.',
         );
+        self::assertNull($result->order->orderFailure, 'A successful conversion must not also carry a failure reason.');
     }
 
     public function testAWalkingBuyerLeavesNoOrder(): void
@@ -143,7 +148,45 @@ final class BenchNegotiationTest extends BenchTestCase
             'test-run',
         );
 
-        self::assertNull($result->orderId);
+        self::assertNull($result->order->orderId);
+    }
+
+    public function testAFailedConversionDoesNotLoseTheNegotiation(): void
+    {
+        // convertToOrder()'s catch path is the property the whole guard
+        // exists for: the rounds already happened and their decision
+        // records are already committed, so a conversion failure must not
+        // take the negotiation result with it. Forcing acceptQuote() to
+        // throw is the only way to prove that rather than merely implement it.
+        $bench = new BenchNegotiation(
+            static::getContainer(),
+            self::gateway(),
+            new ThrowingAcceptBuyerGateway(self::buyerGateway()),
+            ScriptedClient::returning([
+                '{"price":{"additionalDiscountPercent":5}}',
+                '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
+                self::reworded(...),
+            ]),
+        );
+
+        $result = $bench->run(
+            self::acceptingScenario(),
+            new AcceptsImmediatelyBuyer(),
+            self::benchSettings(),
+            'test-run',
+        );
+
+        // The negotiation itself must survive: still one round, still an
+        // Accept, not silently restarted or truncated by the thrown error.
+        self::assertSame(1, $result->rounds);
+        self::assertSame(BuyerMoveKind::Accept, $result->terminal);
+
+        self::assertNull($result->order->orderId);
+        self::assertNotNull(
+            $result->order->orderFailure,
+            'A failed conversion must record why, not just that it failed.',
+        );
+        self::assertStringContainsString('RuntimeException', $result->order->orderFailure);
     }
 
     public function testEachRoundLeavesADecisionRecordBehind(): void
@@ -240,5 +283,58 @@ final class WalksImmediatelyBuyer implements SyntheticBuyer
     public function respond(QuoteSnapshot $before, QuoteSnapshot $after, string $agentReply, int $round): BuyerMove
     {
         return BuyerMove::walk();
+    }
+}
+
+/**
+ * Decorates the real buyer gateway so `acceptQuote()` always throws,
+ * forcing BenchNegotiation::convertToOrder()'s catch path deterministically
+ * without giving the production code itself a test-only branch. Every other
+ * method forwards to the real gateway unchanged, so the quote leading up to
+ * the forced failure is exactly as real as any other test in this file.
+ */
+final class ThrowingAcceptBuyerGateway implements BuyerQuoteGatewayInterface
+{
+    public function __construct(
+        private readonly BuyerQuoteGatewayInterface $inner,
+    ) {}
+
+    public function isAvailable(): bool
+    {
+        return $this->inner->isAvailable();
+    }
+
+    public function requestQuote(SalesChannelContext $context, array $lineItems, ?string $comment): UcpQuoteSnapshot
+    {
+        return $this->inner->requestQuote($context, $lineItems, $comment);
+    }
+
+    public function getQuote(SalesChannelContext $context, string $quoteId): UcpQuoteSnapshot
+    {
+        return $this->inner->getQuote($context, $quoteId);
+    }
+
+    public function listQuotes(SalesChannelContext $context, int $limit, int $page): QuoteList
+    {
+        return $this->inner->listQuotes($context, $limit, $page);
+    }
+
+    public function counterQuote(
+        SalesChannelContext $context,
+        string $quoteId,
+        array $lineItems,
+        ?string $comment,
+    ): UcpQuoteSnapshot {
+        return $this->inner->counterQuote($context, $quoteId, $lineItems, $comment);
+    }
+
+    public function acceptQuote(SalesChannelContext $context, string $quoteId): UcpQuoteSnapshot
+    {
+        throw new \RuntimeException('Forced failure: ThrowingAcceptBuyerGateway always refuses to convert.');
+    }
+
+    public function declineQuote(SalesChannelContext $context, string $quoteId, ?string $comment): UcpQuoteSnapshot
+    {
+        return $this->inner->declineQuote($context, $quoteId, $comment);
     }
 }
