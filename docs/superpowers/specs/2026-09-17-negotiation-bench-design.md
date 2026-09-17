@@ -449,6 +449,28 @@ reported as findings.
 table on hoelshare is a blend, and reading it as a clean experiment would be a
 mistake.
 
+**Two of the five measures need the quote to become an order.** Measured on
+`merchant-quote-shop`, 2026-09-17: the dashboard filters its quote rows to
+`stateMachineState.technicalName == ORDER_PLACED`, and of the quotes that
+carry decision records, **zero** have an `order_id`. Thirty-seven quotes on
+that shop have orders; none of them was ever serviced by the agent.
+
+So `splitDeals` puts nothing on the agent side, and `priceRetention` and
+`dealCycleTime` report absent for every strategy — correctly, since there is
+nothing to measure, but categorically rather than incidentally.
+
+The consequence for the bench is the part worth acting on: **a bench run whose
+quotes never reach `ORDER_PLACED` can never produce those two measures.** A
+synthetic buyer that "accepts" has not thereby created an order — accepting is
+a quote state change, and the conversion to an order is a separate step. If the
+bench is meant to exercise price retention and deal cycle time at all, the loop
+has to carry an accepted quote through to a placed order, and if it cannot, the
+bench's readout is honestly three measures wide, not five.
+
+This was mis-diagnosed once already. The first written explanation blamed a
+missing `strategy_version_id` link, which would have sent someone to write a
+backfill that fixes nothing.
+
 **Track A's shop is remote.** hoelshare has bitten before: frequent SSH triggers
 IP-bans on the sibling legacy host, and an admin-UI plugin update there has
 half-deleted `vendor/` and 500'd the whole shop. The bench syncs through
