@@ -65,13 +65,26 @@ interface, so a scenario is written once and run either way.
 **The bench runs against a live shop, not an in-process fake.** Decided against
 an in-memory gateway. See "Why not an in-process harness" below.
 
-**The bench shop is hoelshare / sw-ag.dev.** Its configuration is generous
-enough that scenarios exercise the bands rather than bouncing off a ceiling:
+**The two tracks use different shops.**
+
+*Track A runs on hoelshare / sw-ag.dev.* Its configuration is generous enough
+that scenarios exercise the bands rather than bouncing off a ceiling:
 `maxQuoteValueNet=500000`, `maxDiscountPercent=15`,
-`counterOfferMaxPercent=25`, `validityDays=10`. The local docker shop
-`merchant-quote-shop` is explicitly rejected for this: its 40 EUR value ceiling
-escalates nearly every seeded quote, so a bench run there would measure the
-ceiling and not the strategies.
+`counterOfferMaxPercent=25`, `validityDays=10`. The local docker shop is
+explicitly rejected for the bench: its 40 EUR value ceiling escalates nearly
+every seeded quote, so a bench run there would measure the ceiling and not the
+strategies.
+
+*Track B develops against the local docker `merchant-quote-shop`.* It only ever
+reads decision rows, so the band configuration that disqualifies the local shop
+for Track A is irrelevant to it. What it gains is the fast loop that already
+exists there — `scripts/sync-to-shop.sh`, `bin/build-administration.sh`, a
+screenshot against the cached Playwright Chromium, about four minutes end to
+end — with no SSH, and no exposure to the remote host's habit of IP-banning
+frequent connections or half-deleting `vendor/` on an admin-UI plugin update.
+
+This split also removes the only contention between the tracks: they no longer
+share a shop, so Track A's writes cannot disturb Track B's screenshots.
 
 **No bench-data isolation.** It is a test shop. Bench rows mix with whatever
 else is there, no run marker, no wipe between runs. The consequence is accepted
@@ -301,6 +314,50 @@ already prove `node --experimental-strip-types` runs these modules headless.
 5. **`strategy-measures.check.mjs`**, following `measures.check.mjs`, wired into
    `composer run quality:admin`.
 
+### Developing it: the local shop has nothing to group by
+
+Measured on `merchant-quote-shop`, 2026-09-17:
+
+```
+total decision rows                  9
+rows with strategy_version_id        0
+distinct quotes                      4
+rows with token counts               7
+seeded strategies / versions         3 / 3
+```
+
+Every built-in strategy and version row exists, but **not one decision row
+carries a `strategy_version_id`** — the column post-dates the rows. A grouped
+table built against that shop would render one group called "unattributed" and
+prove nothing.
+
+Two consequences:
+
+1. **Most of Track B needs no shop at all.** `strategy-measures.ts` is pure
+   functions over arrays, and `strategy-measures.check.mjs` tests them against
+   fixture arrays, the way `measures.check.mjs` and `decision.check.mjs` already
+   do with plain `node` and no test runner. The grouping rule, the null
+   handling, the mixed-strategy count and the fifth measure are all verifiable
+   with no database in the loop. This is the bulk of the work and it should be
+   written first, offline.
+2. **Rendering needs seeded rows.** A `scripts/seed-decisions.php`, following
+   the existing `scripts/seed-order-history.php`, writes synthetic decision rows
+   across the three built-in strategy versions with varied outcomes, discounts,
+   token counts and terminal states. Its only purpose is to make the page
+   look at something; it is dev tooling, not a fixture the tests depend on.
+
+Verification order for Track B: fixtures offline, then the seeded local shop for
+rendering, then — once Track A has produced real rows — a confirming look at
+hoelshare. The third step is what proves the table works on rows the plugin
+actually wrote, rather than on rows a seeder invented.
+
+One trap the seeder must respect: this table is append-only and nobody backfills
+it, so it already holds rows in shapes the current PHP no longer writes — an
+`outcome` of `replied` is sitting in the local shop right now, and no
+`NegotiationOutcome` case emits it. The admin module has shipped blank cells
+twice from exactly this drift. Seeded rows must use the values the current enums
+emit, and the grouping must not assume every row is well-formed.
+
 ### Honesty constraints
 
 These are requirements, not polish.
@@ -357,7 +414,18 @@ reported as findings.
 table on hoelshare is a blend, and reading it as a clean experiment would be a
 mistake.
 
-**The shop is remote.** hoelshare has bitten before: frequent SSH triggers
+**Track A's shop is remote.** hoelshare has bitten before: frequent SSH triggers
 IP-bans on the sibling legacy host, and an admin-UI plugin update there has
 half-deleted `vendor/` and 500'd the whole shop. The bench syncs through
 `scripts/test-integration.sh`, which is the path already known to work.
+
+**Track B's shop is shared.** `merchant-quote-shop` takes syncs from every
+session working in this repo, and the compiled administration bundle is never
+committed. A page that looks stale usually means another session synced over it,
+or `bin/build-administration.sh` was not run after the sync — re-sync and
+rebuild before concluding a rendering bug is real.
+
+**Track B's seeded rows are invented.** A table that looks right over seeded
+data has only been shown to render, not to be correct on production shapes. The
+confirming pass against hoelshare's real rows is what closes that, and it cannot
+happen until Track A has run.
