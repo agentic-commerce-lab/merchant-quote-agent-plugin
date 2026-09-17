@@ -379,11 +379,17 @@ is still a human acting. The result lands on
 The buyer's side of the comparison is the newer of their newest comment and
 their newest per-line ask. A per-line ask can arrive with no comment at all —
 the storefront writes straight into `quote_line_item.requested_price` — so
-it's dated by the newest `updatedAt` among the lines still carrying a
-requested price, but only once the whole quote's asks — the same string
-`ServicingFingerprint` composes for its own marker — have moved from what the
-last pass stamped. That gate is what stops a line the agent already answered
-from reading its own price write as a fresh buyer ask on every later pass.
+`MerchantHandover::freshAskAt()` reads it line by line: it parses the ask
+tokens the last pass stamped into a set, then, for each line still carrying a
+requested price, composes that line's own `id:price` token
+(`ServicingFingerprint::askToken()`, the one place the token is formatted,
+shared with `asksOf()`'s whole-quote marker) and skips the line whenever that
+token is already in the stamped set. Only a line whose own token differs from
+what was stamped contributes its `updatedAt`. That has to be a per-line
+comparison rather than a whole-quote one: our own price writes move
+`updatedAt` on every line we concede on, including a line the buyer never
+touched, so gating on whether anything anywhere had changed would read that
+unrelated concession as a fresh buyer ask on the line it landed on.
 `Negotiation\MerchantHandover::tookOver()` runs this whole comparison as a
 static predicate over the snapshot.
 
