@@ -44,7 +44,10 @@ final class MerchantHandover
         $buyer = self::latest($conversation->buyerSpokeAt(), self::freshAskAt($snapshot));
 
         // No datable buyer input at all, and a merchant who acted: theirs.
-        return $buyer === null || $merchant > $buyer;
+        // A tie goes to the human, matching BuyerConversation::agentSpokeLast()
+        // — two admin-request writes (a line edit and a transition, say) can
+        // land in the same millisecond, and the merchant must not lose that.
+        return $buyer === null || $merchant >= $buyer;
     }
 
     /**
@@ -56,11 +59,19 @@ final class MerchantHandover
      * concessions included, so the newest line timestamp on its own would read
      * our last pass as a fresh buyer ask on every quote we have ever serviced.
      *
-     * Known ceiling, accepted: a merchant who hand-edits the buyer's own
-     * `requested_price` column moves that line's `updatedAt` themselves and
-     * would be read here as the buyer. The column is the buyer's own, the
-     * administration gives the merchant no reason to touch it, and the one
-     * writer that does — ours — is already hidden by MirroredAsks.
+     * Known ceiling, accepted: `updatedAt` carries no authorship, so a line
+     * timestamp is weak evidence of a buyer at best — strongest when the
+     * buyer's own target changed, which is exactly what the token
+     * comparison above checks, but never proof. A merchant who writes ANY
+     * column on the line moves the same `updatedAt` — the unit price is
+     * the one they have every reason to touch, since it is what
+     * OfferApplier overwrites. If that line's ask token already differs
+     * from the stamp — a real, still-unread buyer ask — the merchant's
+     * later write to the SAME row is what this method reads back as the
+     * buyer's timestamp, dating the ask after the merchant acted and
+     * hiding a stand-down that should have covered it. A full fix needs
+     * per-write authorship this column does not carry; short of that, this
+     * stays a known gap rather than a claimed mitigation.
      */
     private static function freshAskAt(QuoteSnapshot $snapshot): ?string
     {

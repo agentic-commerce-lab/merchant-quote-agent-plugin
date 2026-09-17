@@ -128,12 +128,18 @@ asks component of the stamped fingerprint — the buyer's number, changed since 
 last looked. `ServicingFingerprint::asks()` already composes exactly that string;
 it gains a public reader for the stamped half.
 
-Known ceiling, deliberately accepted: a merchant who hand-edits the buyer's
-`requested_price` column moves that line's `updated_at` themselves, and the pass
-would then read their write as the buyer's ask. The column is the buyer's own and
-the administration offers the merchant no reason to touch it, and
-`MirroredAsks` already hides the one writer that does (ours). If it happens, the
-outcome is the pre-existing behaviour, not a new failure.
+Known ceiling, deliberately accepted: `updated_at` carries no authorship, so a
+line timestamp is weak evidence of a buyer at best — strongest when the
+buyer's own target changed, which is exactly what the per-line token
+comparison checks, but never proof. A merchant who writes ANY column on the
+line moves the same `updated_at`, and the unit price — the column
+`OfferApplier` overwrites — is the one they have every reason to touch. If
+that line's ask token already differs from the stamp (a real, still-unread
+buyer ask), the merchant's own later write to that row is what gets read back
+as the buyer's timestamp, dating the ask after the merchant acted and
+suppressing a stand-down that should have covered it. A full fix would need
+per-write authorship the column does not have; this is a known gap, not a
+mitigation.
 
 A quote with no stamped fingerprint has no "since when" to compare against, so a
 comment-less ask on a never-serviced quote is dated by the line's `updatedAt`

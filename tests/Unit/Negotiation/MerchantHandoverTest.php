@@ -19,7 +19,7 @@ use PHPUnit\Framework\TestCase;
  * @see docs/superpowers/specs/2026-09-16-merchant-handover-stand-down-design.md
  *
  * @mago-expect lint:too-many-methods
- * Eleven cases plus four private helpers (single-line and multi-line quote
+ * Fourteen cases plus four private helpers (single-line and multi-line quote
  * builders, a line builder, and the merchant-comment builder) covering both
  * the whole-quote comment path and the per-line comment-less ask path. Same
  * shape as the existing suppression on QuoteBaselineTest in this same
@@ -64,6 +64,61 @@ final class MerchantHandoverTest extends TestCase
             '5% please',
             '2026-09-16 11:00:00',
         )], lastAdminTransitionAt: new \DateTimeImmutable('2026-09-16 10:00:00'));
+
+        self::assertFalse(MerchantHandover::tookOver($snapshot, SnapshotAdapter::conversation($snapshot)));
+    }
+
+    /**
+     * A tie goes to the human, matching BuyerConversation::agentSpokeLast().
+     * Two admin-request writes — a comment and a transition, say — can land
+     * in the same millisecond, and `>` would have resolved that in the
+     * agent's favour.
+     */
+    public function testATieBetweenTheMerchantsCommentAndTheBuyersCommentStandsTheAgentDown(): void
+    {
+        $snapshot = self::quote(comments: [
+            NegotiationFixture::buyerComment('5% please', '2026-09-16 10:00:00.500000'),
+            self::merchantComment('2026-09-16 10:00:00.500000'),
+        ]);
+
+        self::assertTrue(MerchantHandover::tookOver($snapshot, SnapshotAdapter::conversation($snapshot)));
+    }
+
+    /** The same tie, on the other dating path: an admin transition against a comment-less fresh ask. */
+    public function testATieBetweenAnAdminTransitionAndAFreshAskStandsTheAgentDown(): void
+    {
+        $tied = new \DateTimeImmutable('2026-09-16 10:00:00.500000');
+        $snapshot = self::quote(
+            comments: [],
+            lastAdminTransitionAt: $tied,
+            requestedUnitPrice: 90.0,
+            lineUpdatedAt: $tied,
+            stampedAsks: '',
+        );
+
+        self::assertTrue(MerchantHandover::tookOver($snapshot, SnapshotAdapter::conversation($snapshot)));
+    }
+
+    /**
+     * The ceiling the class docblock now names outright: `updatedAt` moves on
+     * ANY write to the line, so a merchant's hand-edit of the line's unit
+     * price — the column OfferApplier overwrites, not the buyer's own
+     * `requested_price` — restamps a buyer ask that was already sitting
+     * there unread. The buyer's real ask (T1, not modelled here since only
+     * the line's OWN updatedAt is read) ends up dated by the merchant's
+     * later write (T2b), which reads as newer than the merchant's own
+     * comment (T2a) and the agent is not stood down. This is the accepted
+     * gap, not a regression: fixing it needs per-write authorship the
+     * `quote_line_item` row does not carry.
+     */
+    public function testAMerchantsUnrelatedLineEditMasksTheirOwnTakeover(): void
+    {
+        $snapshot = self::quote(
+            comments: [self::merchantComment('2026-09-16 10:00:00')],
+            requestedUnitPrice: 75.0,
+            lineUpdatedAt: new \DateTimeImmutable('2026-09-16 10:05:00'),
+            stampedAsks: 'line-1:80.00',
+        );
 
         self::assertFalse(MerchantHandover::tookOver($snapshot, SnapshotAdapter::conversation($snapshot)));
     }
