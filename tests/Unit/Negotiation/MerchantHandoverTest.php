@@ -21,7 +21,10 @@ use PHPUnit\Framework\TestCase;
  * @mago-expect lint:too-many-methods
  * Eleven cases plus four private helpers (single-line and multi-line quote
  * builders, a line builder, and the merchant-comment builder) covering both
- * the whole-quote comment path and the per-line comment-less ask path.
+ * the whole-quote comment path and the per-line comment-less ask path. Same
+ * shape as the existing suppression on QuoteBaselineTest in this same
+ * directory (fifteen cases plus six private helpers): count grows with
+ * cases and their shared fixture builders, not with unrelated concerns.
  */
 final class MerchantHandoverTest extends TestCase
 {
