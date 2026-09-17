@@ -187,6 +187,34 @@ that set the price the measure reads. A quote whose passes span strategies is
 counted in its last strategy's group and reported as mixed, never silently
 dropped.
 
+**Rows roll up to the strategy, not the version** (decided 2026-09-17, after the
+table was first built). Attribution resolves to a strategy *version* — that is
+the audit-level fact, and it is what every decision row stores — but the table
+groups those versions back up to their strategy.
+
+The defect that forced the decision: rows were keyed by `strategyVersionId` and
+labelled with the strategy's name. With one version per strategy that is
+invisible. `StrategyVersion`'s contract is that editing a strategy **appends** a
+version and never rewrites one, so the first prompt edit produces two rows both
+labelled "Margin defender", indistinguishable, each holding a fraction of the
+data.
+
+Rolling up rather than splitting is the honest choice for this surface. A
+version is a prompt edit within one posture, and the question the table answers
+is which posture to run. Splitting divides an N that #99 already warns is too
+small to call a winner on — a strategy with six quotes across three versions
+gives two per version, and a selector over that would let a merchant slice their
+way to a confidently meaningless number. The spread is shown on the row instead,
+so mixing is visible rather than silent.
+
+Version-level comparison is still real; it belongs where the volume supports it,
+which is the bench readout over hundreds of negotiations, not a merchant's
+dashboard. So: **version is the audit key, strategy is the reporting key.**
+
+One consequence: `mixedQuotes` counts a quote whose passes span two
+*strategies*, not two versions. A quote that ran v1 then v2 of the same strategy
+is not contamination of a strategy comparison, and flagging it would cry wolf.
+
 ## Track A — the bench
 
 ### Where it lives
