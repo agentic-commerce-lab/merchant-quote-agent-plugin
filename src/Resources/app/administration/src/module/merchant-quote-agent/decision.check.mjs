@@ -92,6 +92,7 @@ assert.equal(outcomeVariant('countered'), 'positive');
 assert.equal(outcomeVariant('replied'), 'positive');
 assert.equal(outcomeVariant('escalated'), 'critical');
 assert.equal(outcomeVariant('nothing_to_do'), 'neutral');
+assert.equal(outcomeVariant('handed_over'), 'neutral');
 assert.equal(outcomeVariant('clarified'), 'info');
 assert.equal(outcomeVariant(null), 'neutral');
 assert.equal(outcomeVariant('something_new'), 'neutral');
@@ -101,6 +102,7 @@ assert.equal(answeredTheBuyer('countered'), true);
 assert.equal(answeredTheBuyer('replied'), true);
 assert.equal(answeredTheBuyer('escalated'), false);
 assert.equal(answeredTheBuyer('nothing_to_do'), false);
+assert.equal(answeredTheBuyer('handed_over'), false);
 assert.equal(answeredTheBuyer(null), false);
 
 // Every outcome lands in exactly one disposition, and an unknown one is
@@ -111,6 +113,7 @@ assert.equal(disposition('replied'), 'answered');
 assert.equal(disposition('escalated'), 'needsReview');
 assert.equal(disposition('clarified'), 'awaitingBuyer');
 assert.equal(disposition('nothing_to_do'), 'noAction');
+assert.equal(disposition('handed_over'), 'noAction');
 assert.equal(disposition('some_future_outcome'), 'other');
 assert.equal(disposition(null), 'other');
 
@@ -371,6 +374,7 @@ assert.deepEqual(passNotes(vm, { outcome: 'offered', attempt: 2 }).map((note) =>
 
 // A pass with nothing to answer says so, rather than showing one bare header.
 assert.deepEqual(passNotes(vm, { outcome: 'nothing_to_do', attempt: 0 }).map((note) => note.key), ['nothingToDo']);
+assert.deepEqual(passNotes(vm, { outcome: 'handed_over', attempt: 0 }).map((note) => note.key), ['handedOver']);
 
 // A pass that did its job has nothing to add.
 assert.deepEqual(passNotes(vm, { outcome: 'offered', authorized: true, verified: true, violations: [] }), []);
