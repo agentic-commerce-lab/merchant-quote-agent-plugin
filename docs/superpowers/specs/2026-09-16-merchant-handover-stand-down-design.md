@@ -244,3 +244,11 @@ here. Standing down removes the case where it does damage unasked; feeding a
 merchant's text into the negotiate prompt is a separate product decision about
 whether the agent should speak for a human who has already spoken, and it belongs
 in its own issue.
+
+`ServicingPreflight`'s misconfiguration path is not covered by this rule
+either, and stays that way by design: the guard lives in the pipeline, one
+step after the preflight check, so a shop with an unusable configuration
+still escalates — and, once per quote per reason, can still post the
+customer-facing "a member of our team will review this quote personally and
+get back to you" comment — on a quote a human has already taken over. Worth
+recording rather than leaving for someone to rediscover.

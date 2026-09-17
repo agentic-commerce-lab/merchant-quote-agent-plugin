@@ -358,8 +358,11 @@ told the buyer, and still did not finish.
 
 Before the extract call, `NegotiationPipeline::negotiate()` asks one thing:
 has a human merchant acted on this quote more recently than the buyer's
-newest input? If so, the pass writes nothing, calls no model, and ends as
-`handed_over`.
+newest input? If so, the pipeline itself writes nothing and calls no model,
+and ends as `handed_over` — though `ServiceQuoteHandler::claimAttempt()` has
+already committed the attempt counter and the baseline before the pipeline
+ever runs, and the fingerprint is stamped after it, same as any other
+outcome.
 
 "Acted" means either of two things, whichever is newer. **A comment** — an
 administration note, kept in `BuyerConversation`'s third bucket (`merchant`),

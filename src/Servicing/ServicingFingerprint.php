@@ -57,9 +57,11 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
  * string. What they do change is the string a quote composed BEFORE this
  * deploy: a quote carrying a merchant comment differs from its own stamp once
  * and buys exactly one pass, the same one-off the asks component accepted.
- * That pass is a no-op by construction — with the conversation split fixed
- * there is no new buyer ask, so the pipeline records nothing_to_do without a
- * model call.
+ * That pass writes nothing and calls no model either way — with the
+ * conversation split fixed there is no new buyer ask, so the pipeline
+ * records nothing_to_do; and if the merchant's note also happens to be the
+ * newest thing on the quote, MerchantHandover stands the pass down instead
+ * and it records handed_over. Both are no-ops by construction.
  *
  * @mago-expect lint:cyclomatic-complexity
  * The rule aggregates per class (threshold 10); reading the asks component
@@ -115,8 +117,16 @@ final class ServicingFingerprint
      * compose() appends the component after the third field and only when
      * there is one, so everything from the fourth field on IS the component —
      * and a marker written before it existed has no fourth field and reads as
-     * no asks. Split with a limit, because the component itself contains no
-     * `|` but must survive one appearing in a future component.
+     * no asks. Split with a limit of 4, not because the asks component might
+     * itself contain a `|` (it does not, `askToken()` never emits one), but
+     * so a comma-joined list of tokens with no `|` in it is never itself cut
+     * on one. The limit is a cost, not a safety margin: it also means
+     * `$parts[3]` absorbs everything from the fourth field on, so a FIFTH
+     * component appended by some future change would fold silently into this
+     * one's return value. `freshAskAt()` matches tokens by exact set
+     * membership, so a stamp carrying that appended tail would never match
+     * any current token, and every quote would read as carrying a fresh ask.
+     * Whoever adds a fifth component must raise this limit in step.
      *
      * @param array<string, mixed> $customFields
      */
