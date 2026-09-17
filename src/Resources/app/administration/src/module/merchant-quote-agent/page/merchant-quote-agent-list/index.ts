@@ -62,6 +62,8 @@ Shopware.Component.register('merchant-quote-agent-list', {
             orderDates: new Map(),
             orderDatesUnavailable: false,
             slaHours: null,
+            strategyVersions: null,
+            strategies: null,
             isLoading: false,
             rangeDays: 30,
             dispositionFilter: 'needsReview',
@@ -73,6 +75,14 @@ Shopware.Component.register('merchant-quote-agent-list', {
     computed: {
         decisionRepository() {
             return this.repositoryFactory.create('merchant_quote_agent_decision');
+        },
+
+        strategyVersionRepository() {
+            return this.repositoryFactory.create('merchant_quote_agent_strategy_version');
+        },
+
+        strategyRepository() {
+            return this.repositoryFactory.create('merchant_quote_agent_strategy');
         },
 
         /** The start of the period the page describes. */
@@ -279,6 +289,30 @@ Shopware.Component.register('merchant-quote-agent-list', {
             return this.$tc(`merchant-quote-agent.disposition.${key}`);
         },
 
+        /**
+         * A version id to the strategy's display name, via the version's strategyId.
+         *
+         * Two reads rather than an association, because StrategyVersion.strategyId is a
+         * plain UUID column by design — see that entity's docblock.
+         *
+         * An unknown id returns null rather than a placeholder string: the template
+         * decides how an unnamed group reads, and a name invented here would be
+         * indistinguishable from a real one.
+         */
+        strategyNameFor(strategyVersionId) {
+            if (strategyVersionId === null) {
+                return null;
+            }
+
+            const version = (this.strategyVersions ?? []).find((row) => row.id === strategyVersionId);
+
+            if (!version) {
+                return null;
+            }
+
+            return (this.strategies ?? []).find((row) => row.id === version.strategyId)?.name ?? null;
+        },
+
         async load() {
             this.isLoading = true;
 
@@ -287,6 +321,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
                 // the quote rows first, so those two are sequential.
                 await Promise.all([
                     this.loadPasses(),
+                    this.loadStrategies(),
                     this.loadSla(),
                     this.loadQuotes().then(() => this.loadOrderDates()),
                 ]);
@@ -313,6 +348,30 @@ Shopware.Component.register('merchant-quote-agent-list', {
                 this.passTotal = 0;
                 // eslint-disable-next-line no-console
                 console.error('merchant-quote-agent: failed to load servicing passes', error);
+            }
+        },
+
+        /**
+         * The strategy versions and strategies behind the passes, so
+         * `strategyNameFor` can resolve a version id to a display name.
+         *
+         * Nulled rather than left stale on failure: a merchant without the
+         * strategy ACL privilege should get absent names, not a broken page.
+         */
+        async loadStrategies() {
+            try {
+                const [versions, strategies] = await Promise.all([
+                    this.strategyVersionRepository.search(new Criteria(1, 500), Shopware.Context.api),
+                    this.strategyRepository.search(new Criteria(1, 500), Shopware.Context.api),
+                ]);
+
+                this.strategyVersions = Array.from(versions);
+                this.strategies = Array.from(strategies);
+            } catch (error) {
+                this.strategyVersions = null;
+                this.strategies = null;
+                // eslint-disable-next-line no-console
+                console.error('merchant-quote-agent: strategy names unavailable', error);
             }
         },
 
