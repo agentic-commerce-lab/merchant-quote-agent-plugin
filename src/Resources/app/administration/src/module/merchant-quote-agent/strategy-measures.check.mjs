@@ -115,5 +115,37 @@ assert.equal(fastClose.priceRetention.baselineDiscount, null);
 // An id with no name still renders as a group; it is not dropped.
 assert.equal(strategyRows(passes, quoteRows, orderDates, null, () => null)[0].name, null);
 
+// ------------------------------------------------- shared baseline, overlapping bands
+
+// Two strategies, each negotiating one quote, both landing at the same net
+// value (900) — so their value bands overlap completely. A quote NOT in a
+// group's own fold is not necessarily untouched: it can be another
+// strategy's agent-negotiated deal. If a group's baseline were built from
+// "everything not in this group's fold" (the old, wrong shape), v1's row
+// would pick up v2's own agent quote (q4, a steep 25% quote-level discount)
+// as if it were a human-only baseline deal, and vice versa. The fix computes
+// the agent/baseline split ONCE over every pass, so only q5 — untouched by
+// either strategy — ever lands on the baseline side, and both rows share it.
+const bandPasses = [
+    { id: 'b1', quoteId: 'q1', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(2), totalNetBefore: 1000, totalNetAfter: 900 },
+    { id: 'b4', quoteId: 'q4', outcome: 'offered', strategyVersionId: 'v2', createdAt: iso(2), totalNetBefore: 1200, totalNetAfter: 900 },
+];
+const bandQuoteRows = [
+    { id: 'q1', amountNet: 900, requestedAt: iso(1), createdAt: iso(1), orderId: null, totalDiscount: 0, totalLineItemDiscount: 100 },
+    { id: 'q4', amountNet: 900, requestedAt: iso(1), createdAt: iso(1), orderId: null, totalDiscount: 0, totalLineItemDiscount: 300 },
+    { id: 'q5', amountNet: 900, requestedAt: iso(1), createdAt: iso(1), orderId: null, totalDiscount: 0, totalLineItemDiscount: 100 },
+];
+const bandRows = strategyRows(bandPasses, bandQuoteRows, new Map(), null, () => null);
+const [v1Row, v2Row] = bandRows;
+
+// q4 (v2's own agent quote, 25% quote-level discount) must NOT appear in v1's
+// baseline — only q5 (10%, genuinely untouched) does.
+assert.equal(v1Row.priceRetention.comparable, 1);
+assert.equal(v1Row.priceRetention.baselineDiscount, 10);
+
+// Symmetrically, q1 (v1's own agent quote) must not contaminate v2's baseline.
+assert.equal(v2Row.priceRetention.comparable, 1);
+assert.equal(v2Row.priceRetention.baselineDiscount, 10);
+
 // eslint-disable-next-line no-console
 console.log('strategy-measures.check.mjs: all assertions passed');

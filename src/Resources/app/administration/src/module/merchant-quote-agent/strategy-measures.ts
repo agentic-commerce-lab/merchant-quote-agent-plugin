@@ -107,10 +107,16 @@ export function groupPassesByStrategy(passes: any[]): Map<string | null, any[]> 
  * One row per strategy, each carrying the same five measures the overall
  * tiles show, plus the counts that keep the row honest.
  *
- * The baseline is deliberately NOT partitioned. `priceRetention` and
- * `dealCycleTime` compare against quotes the agent never touched, and an
- * untouched quote has no strategy — so every group is compared against the
- * same shop-wide baseline.
+ * The baseline is shared, and genuinely so: it is computed ONCE from every
+ * pass across every strategy, not from this group's quotes alone. A quote
+ * folded under a DIFFERENT strategy is still an agent-touched quote — it is
+ * not "a quote the agent never touched" just because it is not in this
+ * group — so building the baseline per group (everything not in THIS group's
+ * fold) would leak other strategies' agent-negotiated deals into this row's
+ * baseline. Only the untouched-by-any-strategy set qualifies as baseline, and
+ * that set is the same for every row. Each group's agent side is then that
+ * global agent list filtered down to the quote ids this group actually
+ * folded.
  */
 export function strategyRows(
     passes: any[],
@@ -119,10 +125,13 @@ export function strategyRows(
     slaHours: number | null,
     nameFor: (strategyVersionId: string | null) => string | null,
 ): any[] {
+    const allFoldedByQuoteId = new Map(foldToQuotes(passes ?? []).map((quote) => [quote.quoteId, quote]));
+    const { agent: globalAgent, baseline } = splitDeals(quoteRows ?? [], orderDates, allFoldedByQuoteId);
+
     return [...groupPassesByStrategy(passes).entries()].map(([strategyVersionId, group]) => {
         const folded = foldToQuotes(group);
-        const foldedByQuoteId = new Map(folded.map((quote) => [quote.quoteId, quote]));
-        const { agent, baseline } = splitDeals(quoteRows ?? [], orderDates, foldedByQuoteId);
+        const groupQuoteIds = new Set(folded.map((quote) => quote.quoteId));
+        const agent = globalAgent.filter((deal) => groupQuoteIds.has(deal.quoteId));
 
         const mixedQuotes = [...groupByQuoteId(group).values()].filter((quotePasses) => attributeStrategy(quotePasses).mixed)
             .length;
