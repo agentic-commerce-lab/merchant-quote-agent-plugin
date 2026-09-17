@@ -148,6 +148,87 @@
             </sw-card>
             {% endblock %}
 
+            {# One row per negotiation strategy, the same measures as the tiles
+               above. No highlighting and no score sort: B2B quote volume does
+               not reach significance at the per-strategy split, and #99 is
+               explicit that dressing 6 vs 4 up as a result is the failure
+               mode this table must not repeat. #}
+            {% block merchant_quote_agent_list_strategy_comparison %}
+            <sw-card :title="$tc('merchant-quote-agent.strategyComparison.title')" :is-loading="isLoading">
+                <sw-data-grid
+                    v-if="strategyComparison.length"
+                    :data-source="strategyComparison"
+                    :columns="strategyColumns"
+                    :is-loading="isLoading"
+                    :plain-appearance="true"
+                    :show-selection="false"
+                    :show-settings="false"
+                    :show-actions="false"
+                    :allow-column-edit="false"
+                >
+                    <template #column-name="{ item }">
+                        <div class="mqa-cell">
+                            <mt-badge v-if="item.name === null" variant="neutral">
+                                {{ $tc('merchant-quote-agent.strategyComparison.unattributed') }}
+                            </mt-badge>
+                            <strong v-else>{{ item.name }}</strong>
+                            <span v-if="item.mixedQuotes > 0" class="mqa-cell__aside">
+                                {{ $t('merchant-quote-agent.strategyComparison.mixedFootnote', { count: item.mixedQuotes }) }}
+                            </span>
+                        </div>
+                    </template>
+
+                    <template #column-quotes="{ item }">
+                        {{ item.quotes }}
+                    </template>
+
+                    <template #column-autoExecution="{ item }">
+                        <div class="mqa-cell">
+                            <span class="mqa-cell__value">{{ formatPercent(item.autoExecution.rate) }}</span>
+                            <span class="mqa-cell__aside">
+                                {{ $t('merchant-quote-agent.figures.autoExecutionAside', {
+                                    escalated: item.autoExecution.escalated,
+                                    total: item.autoExecution.total,
+                                }) }}
+                            </span>
+                        </div>
+                    </template>
+
+                    <template #column-escalations="{ item }">
+                        <div class="mqa-cell">
+                            <span class="mqa-cell__value">{{ formatSpan(item.escalations.meanMs) }}</span>
+                            <span v-if="item.escalations.open > 0" class="mqa-cell__aside">
+                                {{ $t('merchant-quote-agent.figures.openEscalations', { open: item.escalations.open }) }}
+                            </span>
+                        </div>
+                    </template>
+
+                    <template #column-priceRetention="{ item }">
+                        {{ $t('merchant-quote-agent.strategyComparison.retentionValue', {
+                            agent: formatPercent(item.priceRetention.agentDiscount),
+                            baseline: formatPercent(item.priceRetention.baselineDiscount),
+                        }) }}
+                    </template>
+
+                    <template #column-cycleTime="{ item }">
+                        {{ formatSpan(item.cycleTime.agentMs) }}
+                    </template>
+
+                    <template #column-tokens="{ item }">
+                        {{ item.tokens.meanTokens === null ? '–' : Math.round(item.tokens.meanTokens) }}
+                    </template>
+                </sw-data-grid>
+
+                <sw-empty-state
+                    v-else-if="!isLoading"
+                    :absolute="false"
+                    :title="$tc('merchant-quote-agent.strategyComparison.emptyStateTitle')"
+                />
+
+                <p class="mqa-figures__note">{{ $tc('merchant-quote-agent.strategyComparison.disclaimer') }}</p>
+            </sw-card>
+            {% endblock %}
+
             {% block merchant_quote_agent_list_grid %}
             <sw-card :title="$tc('merchant-quote-agent.list.gridTitle')">
                 <div class="mqa-list__toolbar">

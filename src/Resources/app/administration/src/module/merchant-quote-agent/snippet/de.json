@@ -112,6 +112,21 @@
             "unavailableQuotes": "Berechtigung zum Lesen von Angeboten erforderlich",
             "unavailableOrders": "Berechtigung zum Lesen von Bestellungen erforderlich"
         },
+        "strategyComparison": {
+            "title": "Vergleich nach Verhandlungsstrategie",
+            "columnStrategy": "Strategie",
+            "columnQuotes": "Angebote",
+            "columnAutoExecution": "Automatisierung",
+            "columnResolution": "Bearbeitungszeit bei Eskalation",
+            "columnRetention": "Gewährter Rabatt (Agent vs. Baseline)",
+            "columnCycleTime": "Abschlussdauer",
+            "columnTokens": "Ø Tokens",
+            "unattributed": "Nicht zugeordnet",
+            "mixedFootnote": "{count} der Angebote haben die Strategie während der Verhandlung gewechselt",
+            "retentionValue": "{agent} vs. {baseline}",
+            "emptyStateTitle": "Keine Verhandlungen in diesem Zeitraum",
+            "disclaimer": "Die Fallzahlen sind bei den meisten Strategien gering; hier wird keine Strategie als Gewinner ausgewiesen."
+        },
         "detail": {
             "pageTitle": "Angebot #{quoteNumber}",
             "agentTitle": "Quote Agent",

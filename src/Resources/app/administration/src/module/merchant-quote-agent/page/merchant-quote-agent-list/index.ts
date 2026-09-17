@@ -21,6 +21,7 @@ import {
     priceRetention,
     splitDeals,
 } from '../../measures';
+import { strategyRows } from '../../strategy-measures';
 
 const { Criteria } = Shopware.Data;
 
@@ -185,6 +186,45 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
         cycleTime() {
             return dealCycleTime(this.deals.agent, this.deals.baseline);
+        },
+
+        /**
+         * The same success measures as the tiles above, one row per
+         * negotiation strategy. Sorted by name rather than by any figure —
+         * this table states no winner, and a score-sorted row order would
+         * imply one regardless of what the template does with it.
+         *
+         * Null-named (unattributed) rows sort last: "no name" is not the
+         * empty string and should not win a lexical sort against real ones.
+         */
+        strategyComparison() {
+            const rows = strategyRows(
+                this.currentPasses,
+                this.quoteRows ?? [],
+                this.orderDates,
+                this.slaHours,
+                (id) => this.strategyNameFor(id),
+            );
+
+            return [...rows].sort((a, b) => {
+                if (a.name === null || b.name === null) {
+                    return (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0);
+                }
+
+                return a.name.localeCompare(b.name);
+            });
+        },
+
+        strategyColumns() {
+            return [
+                { property: 'name', label: 'merchant-quote-agent.strategyComparison.columnStrategy', primary: true },
+                { property: 'quotes', label: 'merchant-quote-agent.strategyComparison.columnQuotes', width: '90px' },
+                { property: 'autoExecution', label: 'merchant-quote-agent.strategyComparison.columnAutoExecution' },
+                { property: 'escalations', label: 'merchant-quote-agent.strategyComparison.columnResolution' },
+                { property: 'priceRetention', label: 'merchant-quote-agent.strategyComparison.columnRetention' },
+                { property: 'cycleTime', label: 'merchant-quote-agent.strategyComparison.columnCycleTime' },
+                { property: 'tokens', label: 'merchant-quote-agent.strategyComparison.columnTokens' },
+            ];
         },
 
         filteredQuotes() {
