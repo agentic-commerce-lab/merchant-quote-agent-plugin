@@ -52,7 +52,7 @@ final class SnapshotAdapter
 
     /**
      * The comments split by who wrote them — and a merchant's own note belongs
-     * to neither side.
+     * to neither the buyer's side nor the agent's.
      *
      * It is not an ask: answering it writes a reply to an internal note in the
      * one thread the customer reads (#55). And it is not something the agent
@@ -60,14 +60,18 @@ final class SnapshotAdapter
      * prompt either — a merchant's aside is not a promise the agent made, and
      * the model must not repeat it back to the buyer.
      *
-     * Dropping it is deliberate rather than incidental: the merchant's channel
-     * for steering a pass is the strategy library and the policy settings, not
-     * a sentence the buyer can also read.
+     * An authored, non-buyer comment is the administration's own, and it is
+     * now kept — in its own bucket — rather than dropped: still out of both
+     * prompts, but datable, which is what lets a later stage tell that a human
+     * already took the quote over. The merchant's channel for steering a pass
+     * stays the strategy library and the policy settings, not a sentence the
+     * buyer can also read.
      */
     public static function conversation(BridgeSnapshot $snapshot): BuyerConversation
     {
         $buyer = [];
         $agent = [];
+        $merchant = [];
 
         foreach ($snapshot->content->comments as $comment) {
             if ($comment->isBuyerAuthored()) {
@@ -76,12 +80,16 @@ final class SnapshotAdapter
                 continue;
             }
 
-            if (!$comment->isAuthored()) {
-                $agent[] = $comment;
+            if ($comment->isAuthored()) {
+                $merchant[] = $comment;
+
+                continue;
             }
+
+            $agent[] = $comment;
         }
 
-        return new BuyerConversation($buyer, $agent);
+        return new BuyerConversation($buyer, $agent, $merchant);
     }
 
     private static function line(BridgeLine $line): PolicyLine

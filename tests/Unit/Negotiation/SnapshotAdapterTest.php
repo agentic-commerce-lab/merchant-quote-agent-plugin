@@ -147,4 +147,97 @@ final class SnapshotAdapterTest extends TestCase
         self::assertFalse($conversation->hasNewBuyerAsk());
         self::assertSame('can you do better?', $conversation->newestBuyerText());
     }
+
+    public function testAMerchantsNoteIsKeptSeparatelyAndNotAsTheBuyersAsk(): void
+    {
+        $conversation = SnapshotAdapter::conversation(NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% please', '2026-09-16 09:00:00'),
+            new QuoteComment(
+                'called them, handling personally',
+                createdById: 'admin-1',
+                createdAt: new \DateTimeImmutable('2026-09-16 10:00:00'),
+            ),
+        ]));
+
+        self::assertCount(1, $conversation->buyer, "A merchant's note is not the buyer's ask.");
+        self::assertCount(0, $conversation->agent, "A merchant's note is not the agent's reply.");
+        self::assertSame(
+            (new \DateTimeImmutable('2026-09-16 10:00:00'))->format('U.u'),
+            $conversation->merchantSpokeAt(),
+        );
+    }
+
+    public function testTheMerchantBucketNeverLeaksIntoEitherPrompt(): void
+    {
+        $conversation = SnapshotAdapter::conversation(NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% please', '2026-09-16 09:00:00'),
+            new QuoteComment(
+                'internal: margin is thin',
+                createdById: 'admin-1',
+                createdAt: new \DateTimeImmutable('2026-09-16 10:00:00'),
+            ),
+        ]));
+
+        self::assertSame('', $conversation->agentText());
+        self::assertSame('5% please', $conversation->newestBuyerText());
+    }
+
+    public function testAnAgentReplyNewerThanEveryHumanIsAStrandedReply(): void
+    {
+        $conversation = SnapshotAdapter::conversation(NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% please', '2026-09-16 09:00:00'),
+            NegotiationFixture::agentComment('here is 5%', '2026-09-16 09:30:00'),
+        ]));
+
+        self::assertTrue($conversation->agentSpokeLast());
+    }
+
+    public function testAMerchantWritingAfterTheAgentIsNotAStrandedReply(): void
+    {
+        $conversation = SnapshotAdapter::conversation(NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::agentComment('here is 5%', '2026-09-16 09:30:00'),
+            new QuoteComment(
+                'I took this one over',
+                createdById: 'admin-1',
+                createdAt: new \DateTimeImmutable('2026-09-16 10:00:00'),
+            ),
+        ]));
+
+        self::assertFalse($conversation->agentSpokeLast());
+    }
+
+    public function testAQuoteWithNoCommentsAtAllHasNoStrandedReply(): void
+    {
+        self::assertFalse(SnapshotAdapter::conversation(NegotiationFixture::snapshot())->agentSpokeLast());
+    }
+
+    /**
+     * A buyer comment at the exact same instant as the agent's is not older
+     * than it, so a strict "newer than the agent" check would wrongly call
+     * this a stranded reply. Ties go to the human.
+     */
+    public function testABuyerCommentAtTheSameInstantAsTheAgentIsNotAStrandedReply(): void
+    {
+        $conversation = SnapshotAdapter::conversation(NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::agentComment('here is 5%', '2026-09-16 09:30:00'),
+            NegotiationFixture::buyerComment('still 5%?', '2026-09-16 09:30:00'),
+        ]));
+
+        self::assertFalse($conversation->agentSpokeLast());
+    }
+
+    /** Same tie, on the merchant bucket instead of the buyer's. */
+    public function testAMerchantCommentAtTheSameInstantAsTheAgentIsNotAStrandedReply(): void
+    {
+        $conversation = SnapshotAdapter::conversation(NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::agentComment('here is 5%', '2026-09-16 09:30:00'),
+            new QuoteComment(
+                'took over right as it replied',
+                createdById: 'admin-1',
+                createdAt: new \DateTimeImmutable('2026-09-16 09:30:00'),
+            ),
+        ]));
+
+        self::assertFalse($conversation->agentSpokeLast());
+    }
 }
