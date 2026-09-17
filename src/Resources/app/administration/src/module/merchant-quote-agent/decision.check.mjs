@@ -106,9 +106,12 @@ assert.equal(answeredTheBuyer('countered'), true);
 assert.equal(answeredTheBuyer('replied'), true);
 assert.equal(answeredTheBuyer('escalated'), false);
 assert.equal(answeredTheBuyer('nothing_to_do'), false);
-// Documents intent, not a pin: answeredTheBuyer is an allow-list, and
-// `handed_over` was correctly never added to ANSWERED_OUTCOMES, so this holds
-// whether or not it ever is. disposition() and passNotes() below are where
+// Documents intent, not a pin on THIS task: answeredTheBuyer is a plain
+// allow-list with no fallback, so this passes only because `handed_over` is
+// not on it today, unchanged by this task's edits. Unlike outcomeVariant
+// above, it is not invariant — add `handed_over` to ANSWERED_OUTCOMES and
+// this assertion fails, which is the point: it is a tripwire against that,
+// not proof of it. disposition() and passNotes() below are where
 // handed_over is actually pinned.
 assert.equal(answeredTheBuyer('handed_over'), false);
 assert.equal(answeredTheBuyer(null), false);
