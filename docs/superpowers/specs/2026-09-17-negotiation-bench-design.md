@@ -471,6 +471,20 @@ This was mis-diagnosed once already. The first written explanation blamed a
 missing `strategy_version_id` link, which would have sent someone to write a
 backfill that fixes nothing.
 
+**An unreachable model produces unattributed rows, not failed-model rows.**
+`NegotiationPipeline` records the decision — and with it `strategyVersionId` —
+inside `answer()`, which is reached only once the extract call has succeeded.
+`ModelUnavailable` is caught upstream and escalates through `NegotiationFailure`
+before `answer()` ever runs, and `recordModelCall` only fires on a call that
+returned. So a pass whose model could not be reached leaves a decision row with
+no strategy and no model on it.
+
+For the bench this is an interpretation hazard rather than a bug: if one model
+in the matrix is unreachable, its cells do not appear as that model performing
+badly — they vanish into the "Unattributed" group, and the comparison silently
+loses a column. A run must therefore report its failed cells separately from
+its measured ones, and a reader must not treat "Unattributed" as a strategy.
+
 **Track A's shop is remote.** hoelshare has bitten before: frequent SSH triggers
 IP-bans on the sibling legacy host, and an admin-UI plugin update there has
 half-deleted `vendor/` and 500'd the whole shop. The bench syncs through
