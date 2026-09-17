@@ -4,7 +4,7 @@ Date: 2026-09-17
 
 ## Status
 
-Approved, not yet implemented.
+Approved 2026-09-17. Implementation in progress.
 
 ## Context
 
@@ -91,9 +91,16 @@ else is there, no run marker, no wipe between runs. The consequence is accepted
 and stated here so it is not later mistaken for a defect: the per-strategy table
 on that shop shows a blend of bench traffic and ad-hoc traffic.
 
-**No spend ceiling.** A token budget that aborts the matrix was considered and
-cut for this work. See "The round cap does not exist" — this decision interacts
-with a finding made while writing this spec, and the interaction is load-bearing.
+**No spend ceiling in the plugin.** A token budget that aborts the matrix was
+considered and cut. Spend is bounded outside the code, by a limit configured on
+the OpenRouter account the shop's key belongs to. That is a better place for it
+than a budget we enforce ourselves — it cannot be bypassed by a harness bug, and
+it holds for every caller of that key rather than only for the bench.
+
+It does not, however, bound *rounds*. A non-converging scenario would burn the
+account limit rather than run forever, which is a cheaper failure but still a
+failure. See "The round cap does not exist" — that finding is what makes the
+bench's own `maxRounds` mandatory regardless of where the money stops.
 
 ## Finding: the round cap does not exist
 
