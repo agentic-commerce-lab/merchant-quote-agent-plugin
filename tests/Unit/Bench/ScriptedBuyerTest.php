@@ -31,8 +31,28 @@ final class ScriptedBuyerTest extends TestCase
         self::assertSame(BuyerMoveKind::Accept, $move->kind);
     }
 
+    public function testItAcceptsAtExactlyItsTarget(): void
+    {
+        // 1000 -> 900 is exactly 10% off. The rule is "meets or beats", so this
+        // pins the >= boundary rather than only ever exercising strictly-more.
+        $buyer = new ScriptedBuyer(targetDiscountPercent: 10.0, concessionRatio: 0.6, patience: 4);
+
+        $move = $buyer->respond(
+            NegotiationFixture::snapshot(totalNet: 1000.0),
+            NegotiationFixture::snapshot(totalNet: 900.0),
+            'We can offer 10% off.',
+            round: 1,
+        );
+
+        self::assertSame(BuyerMoveKind::Accept, $move->kind);
+    }
+
     public function testItCountersAcrossTheRemainingGapWhenTheOfferFallsShort(): void
     {
+        // 1000 -> 960 realizes 4%. The ask is realized + (target - realized) *
+        // concessionRatio = 4 + (10 - 4) * 0.6 = 7.6%. Asserted as the exact
+        // rendered sentence, not a substring, so a wrong formula (including one
+        // that drops concessionRatio) cannot coincidentally match.
         $buyer = new ScriptedBuyer(targetDiscountPercent: 10.0, concessionRatio: 0.6, patience: 4);
 
         $move = $buyer->respond(
@@ -43,7 +63,26 @@ final class ScriptedBuyerTest extends TestCase
         );
 
         self::assertSame(BuyerMoveKind::Counter, $move->kind);
-        self::assertNotNull($move->comment);
+        self::assertSame('That still leaves us short. Can you get to 7.6% off?', $move->comment);
+    }
+
+    public function testTheCounterAskScalesWithTheConcessionRatio(): void
+    {
+        // Same realized gap (4%) as above but a different concessionRatio, so a
+        // formula that ignores concessionRatio entirely would still pass the
+        // test above by coincidence but fails this one: 4 + (10 - 4) * 0.25 =
+        // 5.5%, not 7.6%.
+        $buyer = new ScriptedBuyer(targetDiscountPercent: 10.0, concessionRatio: 0.25, patience: 4);
+
+        $move = $buyer->respond(
+            NegotiationFixture::snapshot(totalNet: 1000.0),
+            NegotiationFixture::snapshot(totalNet: 960.0),
+            'We can offer 4% off.',
+            round: 1,
+        );
+
+        self::assertSame(BuyerMoveKind::Counter, $move->kind);
+        self::assertSame('That still leaves us short. Can you get to 5.5% off?', $move->comment);
     }
 
     public function testItWalksOnceItsPatienceIsSpent(): void
