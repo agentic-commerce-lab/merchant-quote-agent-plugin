@@ -41,6 +41,7 @@ final readonly class QuoteSnapshotReader
         private EntityRepository $quoteRepository,
         private QuoteVersionResolver $versionResolver,
         CommercialCapabilities $capabilities,
+        private MerchantActionReader $merchantActions,
     ) {
         $this->lineMapper = new QuoteLineMapper($capabilities);
         $this->commentMapper = new QuoteCommentMapper($capabilities);
@@ -73,7 +74,10 @@ final readonly class QuoteSnapshotReader
                 discount: $this->discountMapper->map($quote->get('discount')),
                 totalGross: (float) $quote->get('amountTotal'),
             ),
-            lifecycle: $this->readLifecycle($quote),
+            lifecycle: $this->readLifecycle($quote, $this->merchantActions->lastTransitionAt(
+                $quoteId,
+                $versionedContext,
+            )),
             content: new QuoteContent(
                 lines: $this->lineMapper->map($quote),
                 comments: $this->commentMapper->map($quote),
@@ -114,7 +118,7 @@ final readonly class QuoteSnapshotReader
         );
     }
 
-    private function readLifecycle(Entity $quote): QuoteLifecycle
+    private function readLifecycle(Entity $quote, ?\DateTimeImmutable $lastAdminTransitionAt): QuoteLifecycle
     {
         $state = $quote->get('stateMachineState');
         $expiresAt = $quote->get('expirationDate');
@@ -129,6 +133,7 @@ final readonly class QuoteSnapshotReader
                 ? \DateTimeImmutable::createFromInterface($expiresAt)
                 : null,
             customFields: $normalizedCustomFields,
+            lastAdminTransitionAt: $lastAdminTransitionAt,
         );
     }
 }

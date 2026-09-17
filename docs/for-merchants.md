@@ -173,6 +173,11 @@ Repeat visits are handled: it can see its own earlier offers on a quote and keep
 negotiating within the same caps, which are always measured against the *current*
 prices, so concessions never quietly compound.
 
+If someone on your team answers a quote by hand — a reply, a note, moving it
+along yourself — the agent leaves that quote alone. There is nothing to switch
+off and nothing to reset: it simply notices a colleague got there first, and it
+starts negotiating again only once the customer comes back with something new.
+
 ### It may look at the customer's history
 
 While deciding, the agent can ask for that customer's own past quotes, their

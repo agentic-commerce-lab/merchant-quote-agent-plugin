@@ -10,26 +10,41 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
  * The quote's comments split by who wrote them, which is the whole basis for
  * "is there anything new to answer?".
  *
- * Both buckets are narrow on purpose. `buyer` is the comments SwagCommercial
- * attributes to a customer or a B2B employee; `agent` is the ones with no
- * author at all, which is what the agent's own writes look like (#3 measured
- * all three columns null, pinned by AddCommentTest). A merchant's note, which
- * carries `createdById` alone, is in neither — see SnapshotAdapter's
- * conversation(), and #55 for what it cost while it was in `buyer`.
+ * All three buckets are narrow on purpose. `buyer` is the comments
+ * SwagCommercial attributes to a customer or a B2B employee; `agent` is the
+ * ones with no author at all, which is what the agent's own writes look like
+ * (#3 measured all three columns null, pinned by AddCommentTest). `merchant`
+ * is the administration's own notes, `createdById` alone — kept rather than
+ * dropped, because MerchantHandover needs to know a human already answered,
+ * but still out of both prompts: see SnapshotAdapter's conversation(), and
+ * #55 for what it cost while a merchant's note lived in `buyer` instead.
  *
  * The day SwagCommercial starts stamping an author on a system-source comment
  * is the day the agent bucket needs a new discriminator — and AddCommentTest
  * is what will tell us.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10). The class was already AT that
+ * threshold before this file's own task touched it — `hasNewBuyerAsk()`,
+ * `newestBuyerText()`, and `newest()` alone measure 10, with zero headroom,
+ * and that baseline is unrelated to what this task added. `agentSpokeLast()`
+ * is written as small as the comparison allows — one `newest()` call over the
+ * merged human buckets, one `&&` and one `||` to handle "no agent comment" and
+ * "no human comment" — measuring 2, for a class total of 12. Splitting either
+ * side further would trade a branch for a second method with the same branch
+ * moved, not fewer of them.
  */
 final readonly class BuyerConversation
 {
     /**
      * @param list<QuoteComment> $buyer
      * @param list<QuoteComment> $agent
+     * @param list<QuoteComment> $merchant the administration's own notes: `createdById` and neither buyer column
      */
     public function __construct(
         public array $buyer,
         public array $agent,
+        public array $merchant = [],
     ) {}
 
     /**
@@ -78,6 +93,35 @@ final readonly class BuyerConversation
         }
 
         return $text;
+    }
+
+    /** The newest merchant note, as a 'U.u' string, or null when there is none. */
+    public function merchantSpokeAt(): ?string
+    {
+        return self::newest($this->merchant);
+    }
+
+    /** The newest buyer ask, as a 'U.u' string, or null when there is none. */
+    public function buyerSpokeAt(): ?string
+    {
+        return self::newest($this->buyer);
+    }
+
+    /**
+     * True when the agent's own reply is the newest comment on the quote.
+     *
+     * That shape IS a stranded reply: only the agent writes an author-less
+     * comment (#3, pinned by AddCommentTest), so a pass that posted its reply
+     * and then died before the transition leaves exactly this. No human can
+     * produce it, which is what makes it safe for OfferRound to finish a
+     * transition on the strength of it.
+     */
+    public function agentSpokeLast(): bool
+    {
+        $agent = self::newest($this->agent);
+        $human = self::newest([...$this->buyer, ...$this->merchant]);
+
+        return $agent !== null && ($human === null || $human < $agent);
     }
 
     /** @param list<QuoteComment> $comments */

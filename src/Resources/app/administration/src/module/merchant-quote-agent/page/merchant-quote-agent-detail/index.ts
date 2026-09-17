@@ -368,7 +368,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 // A state-change pass with nothing to answer carries no ask, no
                 // band and no model. It gets one line instead of the same card
                 // as a round that negotiated.
-                isNoop: !answered && round.outcome === 'nothing_to_do',
+                isNoop: !answered && (round.outcome === 'nothing_to_do' || round.outcome === 'handed_over'),
                 title: this.$tc('merchant-quote-agent.detail.agentTitle'),
                 timestamp: formatDate(round.createdAt),
                 outcomeLabel: outcomeLabel(this, round.outcome),

@@ -30,6 +30,7 @@ use MerchantQuoteAgentPlugin\Bridge\History\CustomerHistoryFactory;
 use MerchantQuoteAgentPlugin\Bridge\History\DecisionAggregate;
 use MerchantQuoteAgentPlugin\Bridge\History\OrderHistoryReads;
 use MerchantQuoteAgentPlugin\Bridge\History\QuoteHistoryReads;
+use MerchantQuoteAgentPlugin\Bridge\MerchantActionReader;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -579,10 +580,12 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // Repositories are resolved by string id and typed with a covariant
     // template in the consumer, so autowiring cannot supply them.
     $services->set(QuoteVersionResolver::class);
+    $services->set(MerchantActionReader::class)->args([service('state_machine_history.repository')]);
     $services->set(QuoteSnapshotReader::class)->args([
         service('quote.repository'),
         service(QuoteVersionResolver::class),
         service(CommercialCapabilities::class),
+        service(MerchantActionReader::class),
     ]);
     $services->set(QuoteLineItemWriter::class)->args([
         service('quote_line_item.repository'),
