@@ -27,6 +27,19 @@ use Psr\Log\LoggerInterface;
  * Every failure escalates. There is no fall back to rules-only on error — a
  * shop whose negotiation quietly changes character when a provider has a bad
  * minute is the silent behaviour change this design exists to remove.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * This class measured exactly 10 -- the threshold itself, lint-clean -- before
+ * the merchant-handover check in `negotiate()` was added. That check is one
+ * `if` and contributes exactly one branch, bringing the class to 11. Moving
+ * it into its own private method was measured too: the method's own `if` plus
+ * the `!== null` check the call site then needs are two branches, not one,
+ * bringing the class to 12 -- higher than leaving it inline, not lower. The
+ * branch cannot move to another class either: it must run before the extract
+ * call (`AskInterpreter::interpret()`) and before the stranded-reply branch
+ * that follows it in this same method, both in `negotiate()`, so it has to
+ * live here. There is no lower-complexity home for this branch in this class
+ * as it stands today.
  */
 final readonly class NegotiationPipeline implements QuoteServicingPipelineInterface
 {
@@ -138,7 +151,24 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         QuoteGatewayInterface $gateway,
         QuoteAgentSettings $settings,
     ): NegotiationPass {
-        $ask = $this->interpreter->interpret($settings, $snapshot, SnapshotAdapter::conversation($snapshot));
+        $conversation = SnapshotAdapter::conversation($snapshot);
+
+        // Before the extract call and before the stranded-reply branch: a
+        // human merchant has already answered this quote, and a second reply
+        // from the agent — or worse, its line-price writes over theirs — is
+        // exactly the surprise this plugin exists to prevent. Not permanent:
+        // the buyer's next ask is newer than the merchant's action and
+        // re-enables the agent by itself.
+        if (MerchantHandover::tookOver($snapshot, $conversation)) {
+            $this->logger->info('A human merchant answered this quote more recently than the buyer asked; '
+            . 'standing down.', [
+                'quoteId' => $snapshot->identity->quoteId,
+            ]);
+
+            return new NegotiationPass(NegotiationOutcome::HandedOver);
+        }
+
+        $ask = $this->interpreter->interpret($settings, $snapshot, $conversation);
 
         // A comment is not the only way to ask. The storefront writes a
         // per-line target into `quote_line_item.requested_price`, and a buyer

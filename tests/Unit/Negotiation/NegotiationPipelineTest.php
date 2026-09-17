@@ -4,12 +4,22 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * @mago-expect lint:too-many-methods
+ * Thirteen cases, one per branch of NegotiationPipeline::negotiate() and the
+ * outcomes it can return -- the count grows with the pipeline's own branches,
+ * not with unrelated concerns that belong in a separate class. Same shape as
+ * the existing suppression on QuoteBaselineTest (fifteen cases plus six
+ * private helpers), so a later reader can tell this kind of growth, tied
+ * one-for-one to the thing under test, from a class that should be split.
+ */
 final class NegotiationPipelineTest extends TestCase
 {
     public function testAnInBandAskIsOffered(): void
@@ -269,5 +279,86 @@ final class NegotiationPipelineTest extends TestCase
         self::assertContains('updateQuote', $harness->gateway->calls, 'The applied changes must not be rolled back.');
         self::assertCount(1, $harness->writer->drafts);
         self::assertSame('escalated', $harness->writer->drafts[0]->outcome);
+    }
+
+    public function testAMerchantWhoAnsweredFirstStopsThePassBeforeAnyModelCall(): void
+    {
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% please', '2026-09-16 09:00:00'),
+            new QuoteComment(
+                'called them, sending a revised offer',
+                createdById: 'admin-1',
+                createdAt: new \DateTimeImmutable('2026-09-16 10:00:00'),
+            ),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::HandedOver, $outcome);
+        self::assertSame(0, $harness->spy->calls, 'A human has this quote; the agent must not pay for a model call.');
+        self::assertSame([], $harness->gateway->comments, 'The buyer must not hear from the agent as well.');
+        self::assertSame([], $harness->gateway->calls, 'Standing down writes nothing at all.');
+    }
+
+    public function testTheBuyerComingBackAfterTheMerchantIsServicedAsAlways(): void
+    {
+        // The same three-reply script as testAnAskInTheCounterBandIsCountered:
+        // the point is that a merchant's note older than the buyer's ask
+        // changes nothing about a pass that would otherwise run.
+        $harness = PipelineHarness::with([
+            '{"price":{"additionalDiscountPercent":15}}',
+            '{"action":"offer","message":"We can do 10%, valid until 2026-09-11.","terms":{"discountPercent":10}}',
+            PipelineHarness::rewordedReply(),
+        ]);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            new QuoteComment(
+                'sent a revised offer',
+                createdById: 'admin-1',
+                createdAt: new \DateTimeImmutable('2026-09-16 10:00:00'),
+            ),
+            NegotiationFixture::buyerComment('still too expensive', '2026-09-16 11:00:00'),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(
+            NegotiationOutcome::Countered,
+            $outcome,
+            'A newer buyer ask re-enables the agent; this is not a permanent handover.',
+        );
+        self::assertSame(3, $harness->spy->calls);
+    }
+
+    public function testTheStandDownIsRecordedAsItsOwnOutcome(): void
+    {
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% please', '2026-09-16 09:00:00'),
+            new QuoteComment(
+                'mine now',
+                createdById: 'admin-1',
+                createdAt: new \DateTimeImmutable('2026-09-16 10:00:00'),
+            ),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame('handed_over', $harness->writer->drafts[0]->outcome);
     }
 }
