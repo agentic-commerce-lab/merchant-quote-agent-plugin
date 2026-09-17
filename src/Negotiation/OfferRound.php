@@ -140,10 +140,12 @@ final readonly class OfferRound
      * — and the `sent` transition never happens. The buyer holds a correct,
      * verified offer against a quote that still says it is being reviewed.
      *
-     * The state check alone is enough. A crash BEFORE the comment also leaves
-     * `in_review`, but then no agent comment exists, the buyer's ask is still
-     * the newest, and the retry replays the whole round instead of arriving
-     * here.
+     * The state check alone only finds a candidate: a human merchant's quote
+     * sits in `in_review` too, with no reply of ours on it, and that one is
+     * not ours to finish — the guard below is what tells the two apart. A
+     * crash BEFORE the comment write also leaves `in_review`, but then no
+     * agent comment exists, the buyer's ask is still the newest, and the
+     * retry replays the whole round instead of arriving here at all.
      */
     public function finishStrandedReply(
         QuoteGatewayInterface $gateway,
