@@ -92,6 +92,10 @@ assert.equal(outcomeVariant('countered'), 'positive');
 assert.equal(outcomeVariant('replied'), 'positive');
 assert.equal(outcomeVariant('escalated'), 'critical');
 assert.equal(outcomeVariant('nothing_to_do'), 'neutral');
+// Documents intent, not a pin: outcomeVariant's own fallback for an unmapped
+// value is already 'neutral' (see below and outcomeVariant's return), so this
+// holds whether or not `handed_over` is in OUTCOME_VARIANTS. disposition() and
+// passNotes() below are where handed_over is actually pinned.
 assert.equal(outcomeVariant('handed_over'), 'neutral');
 assert.equal(outcomeVariant('clarified'), 'info');
 assert.equal(outcomeVariant(null), 'neutral');
@@ -102,6 +106,10 @@ assert.equal(answeredTheBuyer('countered'), true);
 assert.equal(answeredTheBuyer('replied'), true);
 assert.equal(answeredTheBuyer('escalated'), false);
 assert.equal(answeredTheBuyer('nothing_to_do'), false);
+// Documents intent, not a pin: answeredTheBuyer is an allow-list, and
+// `handed_over` was correctly never added to ANSWERED_OUTCOMES, so this holds
+// whether or not it ever is. disposition() and passNotes() below are where
+// handed_over is actually pinned.
 assert.equal(answeredTheBuyer('handed_over'), false);
 assert.equal(answeredTheBuyer(null), false);
 
