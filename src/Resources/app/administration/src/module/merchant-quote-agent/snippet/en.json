@@ -91,6 +91,11 @@
             "last30": "Last 30 days",
             "last90": "Last 90 days"
         },
+        "export": {
+            "button": "Export",
+            "withoutComments": "Export without comments",
+            "failed": "The export could not be created."
+        },
         "figures": {
             "title": "This period",
             "ofCap": "of a {cap} cap",

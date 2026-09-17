@@ -91,6 +91,11 @@
             "last30": "Letzte 30 Tage",
             "last90": "Letzte 90 Tage"
         },
+        "export": {
+            "button": "Exportieren",
+            "withoutComments": "Ohne Kommentare exportieren",
+            "failed": "Der Export konnte nicht erstellt werden."
+        },
         "figures": {
             "title": "Dieser Zeitraum",
             "ofCap": "bei einem Limit von {cap}",

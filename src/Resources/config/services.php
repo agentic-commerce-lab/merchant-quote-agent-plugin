@@ -9,6 +9,8 @@ use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
 use MerchantQuoteAgentPlugin\Audit\EscalationResolutionSubscriber;
 use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriter;
 use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriterInterface;
+use MerchantQuoteAgentPlugin\Audit\Export\DecisionExportController;
+use MerchantQuoteAgentPlugin\Audit\Export\DecisionExportStream;
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeSubscriber;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
@@ -389,16 +391,17 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->alias(DecisionRecordWriterInterface::class, DecisionRecordWriter::class);
     $services->set(DecisionRecorder::class);
 
-    // #34: the merchant's own anonymized export of this table. A console
-    // command and nothing else -- no schedule, no route -- because sending
-    // business records to a third party is a decision a person makes.
-    $services
-        ->set(DecisionExportCommand::class)
-        ->args([
-            service('merchant_quote_agent_decision.repository'),
-            service(SystemConfigService::class),
-        ])
-        ->tag('console.command');
+    // #34: the merchant's own anonymized export of this table. Never
+    // scheduled and never called by the plugin itself, because sending
+    // business records to a third party is a decision a person makes -- they
+    // make it by running the command or by clicking Export on the dashboard,
+    // and both read the same stream.
+    $services->set(DecisionExportStream::class)->args([
+        service('merchant_quote_agent_decision.repository'),
+        service(SystemConfigService::class),
+    ]);
+    $services->set(DecisionExportCommand::class)->tag('console.command');
+    $services->set(DecisionExportController::class)->tag('controller.service_arguments');
 
     // The outcome half of the audit trail (#33): a subscriber on the core
     // quote state machine stamps terminal_state / terminal_at onto the newest
