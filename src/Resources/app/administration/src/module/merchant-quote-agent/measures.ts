@@ -251,6 +251,52 @@ function mean(values: (number | null | undefined)[]): number | null {
 }
 
 /**
+ * What one negotiation cost in tokens, averaged over the negotiations we could
+ * measure.
+ *
+ * Takes raw passes rather than folded quotes because `foldToQuotes()` keeps
+ * only `latest` and `latestAnswered`, discarding the token counts on every
+ * other round — and a negotiation's cost is what all its rounds cost together.
+ * `escalationResolution` takes raw passes for a comparable reason.
+ *
+ * Not every OpenAI-compatible provider sends a `usage` block, so a pass can be
+ * unmeasured. An unmeasured pass contributes nothing to its quote's sum; a
+ * quote whose passes are ALL unmeasured is dropped entirely rather than
+ * reported as having cost zero.
+ *
+ * Deliberately not money: the plugin records `model` and `modelHost` but
+ * carries no price table, and a currency figure derived from rates we do not
+ * have would be invented.
+ */
+export function tokensPerNegotiation(passes: any[]): {
+    meanTokens: number | null;
+    measured: number;
+    quotes: number;
+} {
+    const byQuote = new Map<string, number>();
+    let measured = 0;
+
+    (passes ?? []).forEach((pass) => {
+        const promptKnown = typeof pass.promptTokens === 'number';
+        const completionKnown = typeof pass.completionTokens === 'number';
+
+        if (!promptKnown && !completionKnown) {
+            return;
+        }
+
+        measured += 1;
+        const tokens = (promptKnown ? pass.promptTokens : 0) + (completionKnown ? pass.completionTokens : 0);
+        byQuote.set(pass.quoteId, (byQuote.get(pass.quoteId) ?? 0) + tokens);
+    });
+
+    return {
+        meanTokens: mean([...byQuote.values()]),
+        measured,
+        quotes: byQuote.size,
+    };
+}
+
+/**
  * A duration at the scale a merchant reads it. `formatDuration` in decision.ts
  * is for a single pass and tops out at seconds; these spans are hours and
  * days.
