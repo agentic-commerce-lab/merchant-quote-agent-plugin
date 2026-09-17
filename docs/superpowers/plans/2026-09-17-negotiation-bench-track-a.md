@@ -799,3 +799,103 @@ Open the admin on the target shop. The per-strategy table should now show one ro
 
 - **#142's round cap never landed.** PR #148 closed unmerged. The bench's round-count distribution per strategy is the evidence that issue lacked — reopen it with the numbers.
 - Anything the bench reveals about the engine. The bench measures; it does not adjust.
+
+---
+
+### Task 5b: Place the order when the buyer accepts
+
+**Files:**
+- Modify: `tests/Integration/Bench/BenchNegotiation.php`
+- Modify: `tests/Integration/Bench/NegotiationResult.php`
+- Modify: `tests/Integration/Bench/BenchNegotiationTest.php`
+
+**Interfaces:**
+- Consumes: `BuyerQuoteGatewayInterface::acceptQuote(SalesChannelContext $context, string $quoteId): QuoteSnapshot` — already exists, already used against the live shop by `BuyerQuoteFlowTest`.
+- Produces: `NegotiationResult` gains `?string $orderId`. Task 6 records it per cell.
+
+**Why this exists — it was found after Task 5 shipped.** Two of the bench's five intended measures, `priceRetention` and `dealCycleTime`, read quote rows filtered to `stateMachineState.technicalName == ORDER_PLACED`. Measured on the test shop: of the quotes carrying decision records, **zero** have an `order_id` (2 serviced, 37 with orders, no overlap). A synthetic buyer returning `Accept` performs a quote state change — it does **not** create an order. So as built, the bench can never feed those two measures, and its readout would be three measures wide while claiming five.
+
+`SwagCommercialBuyerQuoteGateway::acceptQuote()` is the fix: it calls SwagCommercial's quote-order route and returns the snapshot `withOrder(orderId, orderNumber)`. It is the same path a real buyer takes from the storefront, so the bench measures the real conversion rather than a simulation of it.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `BenchNegotiationTest`:
+
+```php
+public function testAnAcceptingBuyerLeavesARealOrderBehind(): void
+{
+    // Without this, priceRetention and dealCycleTime can never be computed
+    // for anything the bench produces: they read quote rows filtered to
+    // ORDER_PLACED, and accepting a quote does not place an order.
+    $result = BenchNegotiation::run(
+        self::acceptingScenario(),
+        new AcceptsImmediatelyBuyer(),
+        self::benchSettings(),
+        'test-run',
+    );
+
+    self::assertNotNull($result->orderId, 'An accepted negotiation must leave an order behind.');
+
+    self::assertSame(
+        $result->orderId,
+        self::connection(static::getContainer())->fetchOne(
+            'SELECT LOWER(HEX(order_id)) FROM quote WHERE id = UNHEX(:quote) AND version_id = UNHEX(:live)',
+            ['quote' => $result->quoteId, 'live' => Defaults::LIVE_VERSION],
+        ),
+        'The order id must be the one the shop actually stored on the quote.',
+    );
+}
+
+public function testAWalkingBuyerLeavesNoOrder(): void
+{
+    // The converse, so the assertion above cannot pass by always ordering.
+    $result = BenchNegotiation::run(
+        self::acceptingScenario(),
+        new WalksImmediatelyBuyer(),
+        self::benchSettings(),
+        'test-run',
+    );
+
+    self::assertNull($result->orderId);
+}
+```
+
+`WalksImmediatelyBuyer` is a two-line `SyntheticBuyer` returning `BuyerMove::walk()`, alongside the existing stand-ins. `self::acceptingScenario()` is whatever scenario the existing accept test already uses — reuse it rather than inventing a second one.
+
+- [ ] **Step 2: Run to verify it fails**
+
+```bash
+composer run test:integration -- --filter BenchNegotiationTest
+```
+
+Expected: fails — `NegotiationResult` has no `orderId`.
+
+- [ ] **Step 3: Implement**
+
+On `Accept`, before returning: call `self::buyerGateway()->acceptQuote($context, $quoteId)` with the same buyer `SalesChannelContext` the quote was created with, and carry the resulting snapshot's order id onto `NegotiationResult`.
+
+**Do not let a failed conversion abort the run.** A quote the agent escalated, or one with no offer on it, may legitimately refuse to convert. Catch the failure, leave `orderId` null, and record the reason — a bench cell that could not convert is data, not a crash. A `\Throwable` from the conversion must not lose the negotiation that preceded it.
+
+- [ ] **Step 4: Run to verify it passes**
+
+```bash
+composer run test:integration -- --filter BenchNegotiationTest
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/Integration/Bench/
+git commit -m "feat(bench): place the order when the synthetic buyer accepts
+
+Price retention and deal cycle time read quote rows filtered to
+ORDER_PLACED, and accepting a quote does not place an order — so the
+bench could never feed two of its five measures. acceptQuote() is the
+same path a real buyer takes, so the bench now measures the real
+conversion rather than a simulation of it.
+
+A conversion that legitimately refuses leaves orderId null and records
+the reason; it never aborts the negotiation that preceded it.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```
