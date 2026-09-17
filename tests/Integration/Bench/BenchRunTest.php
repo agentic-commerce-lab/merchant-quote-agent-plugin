@@ -140,6 +140,69 @@ final class BenchRunTest extends BenchTestCase
         self::assertCount($written, $lines, 'The JSONL must carry exactly one line per decision row this run wrote.');
     }
 
+    /**
+     * The one line the whole bench rests on: `CellSettings::for()` must hand
+     * each cell ITS OWN strategy prompt, ITS OWN version id and ITS OWN
+     * model -- not a shared default. If this regresses, the run still
+     * completes and the JSONL still fills, so nothing else here would catch
+     * it; every decision row would just group as "Unattributed" in the
+     * admin, silently. Deliberately not gated behind requireEnv(): a guard
+     * against a silent failure must not itself be silent about running.
+     */
+    public function testCellSettingsCarryThatCellsOwnStrategyVersionAndModel(): void
+    {
+        $platform = static::getContainer()->get(ModelPlatform::class);
+        self::assertInstanceOf(ModelPlatform::class, $platform);
+
+        // Never reached over the network -- CellSettings::for() only builds
+        // an object, it makes no call.
+        $config = new BenchRunConfig(
+            'sk-fake-for-this-test',
+            'https://example.invalid/v1',
+            'scripted',
+            $platform,
+            'run-fake',
+        );
+        $scenario = Scenario::fromArray([
+            'id' => 'settings-wiring-check',
+            'description' => 'Fixture only -- CellSettings::for() never makes a network call.',
+            'lines' => [['productRef' => 'any-purchasable', 'quantity' => 1]],
+            'openingAsk' => 'n/a',
+            'persona' => 'n/a',
+            'maxRounds' => 1,
+        ]);
+
+        $marginDefenderId = BuiltInStrategies::MARGIN_DEFENDER;
+        $marginDefenderVersionId = str_repeat('a', 32);
+        $marginDefenderCell = new BenchCell($scenario, $marginDefenderId, $marginDefenderVersionId, 'model-a', $config);
+
+        $fastCloseId = BuiltInStrategies::FAST_CLOSE;
+        $fastCloseVersionId = str_repeat('b', 32);
+        $fastCloseCell = new BenchCell($scenario, $fastCloseId, $fastCloseVersionId, 'model-b', $config);
+
+        $marginDefenderSettings = CellSettings::for($marginDefenderCell);
+        $fastCloseSettings = CellSettings::for($fastCloseCell);
+
+        // Non-null and each cell's OWN id -- two different cells must not
+        // collapse onto the same version, which a hardcoded or defaulted
+        // value would do.
+        self::assertSame($marginDefenderVersionId, $marginDefenderSettings->strategyVersionId);
+        self::assertSame($fastCloseVersionId, $fastCloseSettings->strategyVersionId);
+        self::assertNotSame($marginDefenderSettings->strategyVersionId, $fastCloseSettings->strategyVersionId);
+
+        // The RIGHT strategy's prompt, not a coincidentally-shared one.
+        self::assertSame(
+            BuiltInStrategies::all()[$marginDefenderId]['prompt'],
+            $marginDefenderSettings->strategyPrompt,
+        );
+        self::assertSame(BuiltInStrategies::all()[$fastCloseId]['prompt'], $fastCloseSettings->strategyPrompt);
+        self::assertNotSame($marginDefenderSettings->strategyPrompt, $fastCloseSettings->strategyPrompt);
+
+        // The cell's OWN model, not a shared default.
+        self::assertSame('model-a', $marginDefenderSettings->llm->model);
+        self::assertSame('model-b', $fastCloseSettings->llm->model);
+    }
+
     /** @return array{apiKey: string, models: list<string>, buyerKind: string, baseUrl: string} */
     private static function requireEnv(): array
     {
@@ -225,14 +288,7 @@ final class BenchRunTest extends BenchTestCase
         RunWriter $writer,
         BenchCell $cell,
     ): int {
-        $settings = new QuoteAgentSettings(
-            self::policy(),
-            new ModelAccess($cell->config->apiKey, $cell->config->baseUrl, $cell->model),
-            BuiltInStrategies::all()[$cell->strategyId]['prompt'],
-            strategyVersionId: $cell->strategyVersionId,
-        );
-
-        $result = $bench->run($cell->scenario, self::buyerFor($cell), $settings, $cell->config->runId);
+        $result = $bench->run($cell->scenario, self::buyerFor($cell), CellSettings::for($cell), $cell->config->runId);
 
         $rows = DecisionRowMapper::rows($connection, $result->quoteId);
         foreach ($rows as $index => $row) {
@@ -281,25 +337,6 @@ final class BenchRunTest extends BenchTestCase
             $e::class,
             $e->getMessage(),
         );
-    }
-
-    /**
-     * The bands hoelshare's own `system_config` carries (see the design
-     * spec's "The two tracks use different shops"): generous enough that
-     * scenarios exercise them instead of bouncing off a ceiling.
-     * `QuoteAgentSettings` is built directly here rather than read from
-     * config -- writing to `system_config` per cell would race any other
-     * session on the shop -- so this mirrors that shop's config by hand
-     * instead of drifting from it.
-     */
-    private static function policy(): NegotiationPolicy
-    {
-        return new NegotiationPolicy(price: new QuoteLimits(
-            maxDiscountPercent: 15.0,
-            counterOfferMaxPercent: 25.0,
-            valueCeiling: new QuoteValueCeiling([QuoteValueCeiling::ANY_CURRENCY => 500_000.0]),
-            validityDays: 10,
-        ));
     }
 
     private static function newRunId(): string
@@ -444,5 +481,47 @@ final class DecisionRowMapper
     private static function nullableInt(mixed $value): ?int
     {
         return $value === null ? null : (int) $value;
+    }
+}
+
+/**
+ * Builds one cell's `QuoteAgentSettings` -- the single line the whole bench
+ * rests on, per its own docblock in `BenchRunTest`. Kept as its own class
+ * (rather than a private method on `BenchRunTest`) for two reasons: it moves
+ * one more method off `BenchRunTest`'s own mago method-count budget, and it
+ * makes the wiring directly callable from a covering test with no
+ * reflection needed.
+ */
+final class CellSettings
+{
+    private function __construct() {}
+
+    public static function for(BenchCell $cell): QuoteAgentSettings
+    {
+        return new QuoteAgentSettings(
+            self::policy(),
+            new ModelAccess($cell->config->apiKey, $cell->config->baseUrl, $cell->model),
+            BuiltInStrategies::all()[$cell->strategyId]['prompt'],
+            strategyVersionId: $cell->strategyVersionId,
+        );
+    }
+
+    /**
+     * The bands hoelshare's own `system_config` carries (see the design
+     * spec's "The two tracks use different shops"): generous enough that
+     * scenarios exercise them instead of bouncing off a ceiling.
+     * `QuoteAgentSettings` is built directly here rather than read from
+     * config -- writing to `system_config` per cell would race any other
+     * session on the shop -- so this mirrors that shop's config by hand
+     * instead of drifting from it.
+     */
+    private static function policy(): NegotiationPolicy
+    {
+        return new NegotiationPolicy(price: new QuoteLimits(
+            maxDiscountPercent: 15.0,
+            counterOfferMaxPercent: 25.0,
+            valueCeiling: new QuoteValueCeiling([QuoteValueCeiling::ANY_CURRENCY => 500_000.0]),
+            validityDays: 10,
+        ));
     }
 }
