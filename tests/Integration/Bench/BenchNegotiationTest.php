@@ -15,6 +15,7 @@ use MerchantQuoteAgentPlugin\Tests\Bench\Scenario;
 use MerchantQuoteAgentPlugin\Tests\Bench\SyntheticBuyer;
 use MerchantQuoteAgentPlugin\Tests\Integration\PipelineFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\ScriptedClient;
+use Shopware\Core\Defaults;
 
 /**
  * The negotiation loop against a real quote on a real shop: a real gateway, a
@@ -63,15 +64,6 @@ final class BenchNegotiationTest extends BenchTestCase
 
     public function testAnAcceptingBuyerEndsTheNegotiationEarly(): void
     {
-        $scenario = Scenario::fromArray([
-            'id' => 'plain-percentage',
-            'description' => 'A five percent ask inside the band.',
-            'lines' => [['productRef' => 'any-purchasable', 'quantity' => 3]],
-            'openingAsk' => 'Could you do 5% off?',
-            'persona' => 'scripted:moderate',
-            'maxRounds' => 8,
-        ]);
-
         $bench = new BenchNegotiation(
             static::getContainer(),
             self::gateway(),
@@ -83,10 +75,75 @@ final class BenchNegotiationTest extends BenchTestCase
             ]),
         );
 
-        $result = $bench->run($scenario, new AcceptsImmediatelyBuyer(), self::benchSettings(), 'test-run');
+        $result = $bench->run(
+            self::acceptingScenario(),
+            new AcceptsImmediatelyBuyer(),
+            self::benchSettings(),
+            'test-run',
+        );
 
         self::assertSame(1, $result->rounds);
         self::assertSame(BuyerMoveKind::Accept, $result->terminal);
+    }
+
+    public function testAnAcceptingBuyerLeavesARealOrderBehind(): void
+    {
+        // Without this, priceRetention and dealCycleTime can never be computed
+        // for anything the bench produces: they read quote rows filtered to
+        // ORDER_PLACED, and accepting a quote does not place an order.
+        $bench = new BenchNegotiation(
+            static::getContainer(),
+            self::gateway(),
+            self::buyerGateway(),
+            ScriptedClient::returning([
+                '{"price":{"additionalDiscountPercent":5}}',
+                '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
+                self::reworded(...),
+            ]),
+        );
+
+        $result = $bench->run(
+            self::acceptingScenario(),
+            new AcceptsImmediatelyBuyer(),
+            self::benchSettings(),
+            'test-run',
+        );
+
+        self::assertNotNull($result->orderId, 'An accepted negotiation must leave an order behind.');
+
+        self::assertSame(
+            $result->orderId,
+            self::connection(static::getContainer())
+                ->fetchOne('SELECT LOWER(HEX(order_id)) FROM quote WHERE id = UNHEX(:quote) AND version_id = UNHEX(:live)', [
+                    'quote' => $result->quoteId,
+                    'live' => Defaults::LIVE_VERSION,
+                ]),
+            'The order id must be the one the shop actually stored on the quote.',
+        );
+    }
+
+    public function testAWalkingBuyerLeavesNoOrder(): void
+    {
+        // The converse, so the assertion above cannot pass by always ordering.
+        $bench = new BenchNegotiation(
+            static::getContainer(),
+            self::gateway(),
+            self::buyerGateway(),
+            ScriptedClient::returning([
+                '{"price":{"additionalDiscountPercent":5}}',
+                '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
+                self::reworded(...),
+            ]),
+        );
+
+        $result = $bench->run(
+            self::acceptingScenario(),
+            new WalksImmediatelyBuyer(),
+            self::benchSettings(),
+            'test-run',
+        );
+
+        self::assertNull($result->orderId);
     }
 
     public function testEachRoundLeavesADecisionRecordBehind(): void
@@ -125,6 +182,19 @@ final class BenchNegotiationTest extends BenchTestCase
         );
     }
 
+    /** The single-round accept scenario shared by every test in this file that needs a buyer to take the first offer. */
+    private static function acceptingScenario(): Scenario
+    {
+        return Scenario::fromArray([
+            'id' => 'plain-percentage',
+            'description' => 'A five percent ask inside the band.',
+            'lines' => [['productRef' => 'any-purchasable', 'quantity' => 3]],
+            'openingAsk' => 'Could you do 5% off?',
+            'persona' => 'scripted:moderate',
+            'maxRounds' => 8,
+        ]);
+    }
+
     /**
      * Built directly rather than reused from PipelineFixture::enabledSettings():
      * this suite runs several growing scripted asks (5%, 8%, 10%) in one
@@ -161,5 +231,14 @@ final class AcceptsImmediatelyBuyer implements SyntheticBuyer
     public function respond(QuoteSnapshot $before, QuoteSnapshot $after, string $agentReply, int $round): BuyerMove
     {
         return BuyerMove::accept();
+    }
+}
+
+/** Walks away from whatever the very first pass offers. */
+final class WalksImmediatelyBuyer implements SyntheticBuyer
+{
+    public function respond(QuoteSnapshot $before, QuoteSnapshot $after, string $agentReply, int $round): BuyerMove
+    {
+        return BuyerMove::walk();
     }
 }

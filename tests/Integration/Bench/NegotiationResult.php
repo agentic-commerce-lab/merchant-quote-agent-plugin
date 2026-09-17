@@ -17,10 +17,16 @@ use MerchantQuoteAgentPlugin\Tests\Bench\BuyerMoveKind;
  * pass's own result, so a caller can tell a round-cap timeout apart from a
  * round-cap reached while every pass kept offering.
  *
- * Two scalars and two small value objects: a plain promoted constructor, not
- * the single-array-parameter shape — nothing in src/ uses that for a class
- * this size (see e.g. Config\QuoteAgentSettings or Servicing\Data\PassContext,
- * both plain constructors of comparable width).
+ * `orderId` is null whenever `terminal` is not Accept, and also when it is
+ * Accept but the shop's own quote-order route refused the conversion (see
+ * BenchNegotiation::convertToOrder) — a quote the agent escalated, or one
+ * with no real offer on it, may legitimately never become an order. Null
+ * here is a bench finding, not a sign the run itself failed.
+ *
+ * Three scalars and two small value objects: a plain promoted constructor,
+ * not the single-array-parameter shape — nothing in src/ uses that for a
+ * class this size (see e.g. Config\QuoteAgentSettings or
+ * Servicing\Data\PassContext, both plain constructors of comparable width).
  */
 final readonly class NegotiationResult
 {
@@ -29,5 +35,6 @@ final readonly class NegotiationResult
         public int $rounds,
         public ?BuyerMoveKind $terminal,
         public NegotiationOutcome $outcome,
+        public ?string $orderId,
     ) {}
 }

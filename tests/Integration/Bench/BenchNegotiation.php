@@ -35,6 +35,7 @@ use MerchantQuoteAgentPlugin\Tests\Integration\BuyerQuoteFixture;
 use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -87,18 +88,14 @@ final readonly class BenchNegotiation
         ], $scenario->lines);
 
         $quote = $this->buyerGateway->requestQuote($context, $lineItems, null);
-        $this->writeComment($quote->id, $customerId, $scenario->openingAsk);
+        $quoteId = $quote->id;
+        $this->writeComment($quoteId, $customerId, $scenario->openingAsk);
 
-        return $this->negotiate($quote->id, $customerId, $scenario, $buyer, $settings);
-    }
-
-    private function negotiate(
-        string $quoteId,
-        string $customerId,
-        Scenario $scenario,
-        SyntheticBuyer $buyer,
-        QuoteAgentSettings $settings,
-    ): NegotiationResult {
+        // Folded into run() rather than kept as its own negotiate() method:
+        // that split needed six parameters (context, quoteId, customerId,
+        // scenario, buyer, settings) once the buyer context joined the list,
+        // past this codebase's excessive-parameter-list gate of five — and
+        // every one of those six is already a local here.
         $pipeline = $this->pipeline();
         $outcome = NegotiationOutcome::NothingToDo;
 
@@ -117,20 +114,40 @@ final readonly class BenchNegotiation
             // than at the top of the loop, since the escalation itself is
             // discovered by the pass this iteration just ran.
             if ($outcome === NegotiationOutcome::Escalated) {
-                return new NegotiationResult($quoteId, $round, null, $outcome);
+                return new NegotiationResult($quoteId, $round, null, $outcome, null);
             }
 
             $after = $this->gateway->fetchSnapshot($quoteId);
             $move = $buyer->respond($before, $after, self::lastAgentReply($before, $after), $round);
 
             if ($move->kind !== BuyerMoveKind::Counter) {
-                return new NegotiationResult($quoteId, $round, $move->kind, $outcome);
+                $orderId = $move->kind === BuyerMoveKind::Accept ? $this->convertToOrder($context, $quoteId) : null;
+
+                return new NegotiationResult($quoteId, $round, $move->kind, $outcome, $orderId);
             }
 
             $this->writeComment($quoteId, $customerId, $move->comment ?? '');
         }
 
-        return new NegotiationResult($quoteId, $scenario->maxRounds, null, $outcome);
+        return new NegotiationResult($quoteId, $scenario->maxRounds, null, $outcome, null);
+    }
+
+    /**
+     * The real path a storefront buyer takes to convert a quote — the same
+     * call BuyerQuoteFlowTest proves against this shop. A quote the agent
+     * escalated, or one that never got a real offer applied to it, may
+     * legitimately refuse this call (SwagCommercial's quote-order route
+     * rejects it); that refusal becomes a null orderId on the bench cell, not
+     * a lost negotiation — the rounds already happened and their decision
+     * records are already committed by the time this runs.
+     */
+    private function convertToOrder(SalesChannelContext $context, string $quoteId): ?string
+    {
+        try {
+            return $this->buyerGateway->acceptQuote($context, $quoteId)->orderId;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private static function resolveProduct(ContainerInterface $container, string $productRef): string
