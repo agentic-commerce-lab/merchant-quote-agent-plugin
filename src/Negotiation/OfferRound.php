@@ -145,9 +145,21 @@ final readonly class OfferRound
      * the newest, and the retry replays the whole round instead of arriving
      * here.
      */
-    public function finishStrandedReply(QuoteGatewayInterface $gateway, QuoteSnapshot $snapshot): void
-    {
+    public function finishStrandedReply(
+        QuoteGatewayInterface $gateway,
+        QuoteSnapshot $snapshot,
+        BuyerConversation $conversation,
+    ): void {
         if ($snapshot->lifecycle->stateTechnicalName !== 'in_review') {
+            return;
+        }
+
+        // The agent's own comment newest IS the stranded shape: #31's worker
+        // died between the reply write and the `sent` transition. Only the
+        // agent writes an author-less comment (#3, pinned by AddCommentTest),
+        // so no human can produce it — and a quote a merchant is holding in
+        // in_review, with nothing of ours on it, is not ours to finish.
+        if (!$conversation->agentSpokeLast()) {
             return;
         }
 

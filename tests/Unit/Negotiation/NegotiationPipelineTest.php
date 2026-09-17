@@ -178,6 +178,25 @@ final class NegotiationPipelineTest extends TestCase
         self::assertSame(0, $harness->spy->calls, 'Finishing a transition must not cost a model call.');
     }
 
+    public function testAQuoteAHumanLeftInReviewIsNotTransitionedByUs(): void
+    {
+        // A merchant opened this quote in the administration and left it in
+        // in_review. Nothing here is the agent's: no agent comment, so no
+        // reply of ours was ever stranded.
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::snapshot(state: 'in_review', comments: []);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame([], $harness->gateway->transitions, "A human's quote is not ours to move.");
+    }
+
     public function testAStructuralAskEscalatesRatherThanBeingSilentlyDropped(): void
     {
         // Nothing in the policy layer acts on a quantity change or a removal:

@@ -183,7 +183,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         // reach it, which is what SnapshotAdapter's docblock already promises
         // it does.
         if ($ask === null && !StructuredAsk::isUnmet($snapshot)) {
-            $this->round->finishStrandedReply($gateway, $snapshot);
+            $this->round->finishStrandedReply($gateway, $snapshot, $conversation);
 
             return new NegotiationPass(NegotiationOutcome::NothingToDo);
         }
