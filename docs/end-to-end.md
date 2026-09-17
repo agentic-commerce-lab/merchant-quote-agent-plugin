@@ -237,8 +237,8 @@ Earlier `[merchant]` comments in the thread are the agent's own previous
 replies, used as context and never as buyer asks.
 
 If there is no ask at all and no unmet structured target price, the pass ends as
-`nothing_to_do` — after finishing a stranded `in_review → replied` transition if
-a previous pass left one.
+`nothing_to_do` — first finishing a stranded `in_review → replied` transition,
+but only when the agent's own comment is the newest one on the quote.
 
 ### 4.2 The gate — what the agent refuses to answer itself
 
@@ -354,7 +354,50 @@ The quote then transitions to `replied`. If that transition fails, the failure
 is appended to the record's `violations` — the pass authorized, verified and
 told the buyer, and still did not finish.
 
-### 4.7 Escalation
+### 4.7 Standing down for a human
+
+Before the extract call, `NegotiationPipeline::negotiate()` asks one thing:
+has a human merchant acted on this quote more recently than the buyer's
+newest input? If so, the pass writes nothing, calls no model, and ends as
+`handed_over`.
+
+"Acted" means either of two things, whichever is newer. **A comment** — an
+administration note, kept in `BuyerConversation`'s third bucket (`merchant`),
+which `SnapshotAdapter::conversation()` fills from the comment's own author
+columns and which reaches neither prompt. **A transition** — read by
+`Bridge\MerchantActionReader` off the newest `state_machine_history` row for
+the quote whose `user_id` is not null. Core fills that column only when the
+context source is an `AdminApiSource` (`StateMachineRegistry.php:154` at core
+tag `v6.7.1.0`), so the buyer's storefront transitions
+(`SalesChannelApiSource`) and the agent's own (`SystemSource`) both write null
+by construction — an administration user is the only party this column can
+name. The query is deliberately not filtered by `referenced_version_id`:
+SwagCommercial edits a quote inside a version lane, and a human acting there
+is still a human acting. The result lands on
+`QuoteLifecycle::$lastAdminTransitionAt`.
+
+The buyer's side of the comparison is the newer of their newest comment and
+their newest per-line ask. A per-line ask can arrive with no comment at all —
+the storefront writes straight into `quote_line_item.requested_price` — so
+it's dated by the newest `updatedAt` among the lines still carrying a
+requested price, but only once the whole quote's asks — the same string
+`ServicingFingerprint` composes for its own marker — have moved from what the
+last pass stamped. That gate is what stops a line the agent already answered
+from reading its own price write as a fresh buyer ask on every later pass.
+`Negotiation\MerchantHandover::tookOver()` runs this whole comparison as a
+static predicate over the snapshot.
+
+There is no persistent handover flag and no merchant-operated switch: a later
+buyer comment, or a later per-line ask, makes the comparison read `false`
+again on the very next pass, and the agent answers as normal.
+
+The outcome, `NegotiationOutcome::HandedOver`, is returned before the extract
+call and before the stranded-reply branch that follows it. It does not answer
+the buyer, so `answeredTheBuyer()` is false and neither the escalation marker
+nor the clarification marker is released — the fingerprint is stamped all the
+same, because the trigger was handled.
+
+### 4.8 Escalation
 
 `QuoteEscalator` posts one fixed, customer-facing comment — *"A member of our
 team will review this quote personally and get back to you."* — stamps the
