@@ -122,6 +122,8 @@
             "columnCycleTime": "Cycle time",
             "columnTokens": "Mean tokens",
             "unattributed": "Unattributed",
+            "versionSingle": "Version {version}",
+            "versionRange": "Versions {from}–{to}",
             "mixedFootnote": "{count} of its quotes changed strategy mid-negotiation",
             "retentionValue": "{agent} vs {baseline}",
             "emptyStateTitle": "No negotiations in this period",

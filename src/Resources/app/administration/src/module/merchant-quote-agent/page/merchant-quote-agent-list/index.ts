@@ -203,7 +203,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
                 this.quoteRows ?? [],
                 this.orderDates,
                 this.slaHours,
-                (id) => this.strategyNameFor(id),
+                (id) => this.strategyOf(id),
             );
 
             return [...rows].sort((a, b) => {
@@ -330,16 +330,18 @@ Shopware.Component.register('merchant-quote-agent-list', {
         },
 
         /**
-         * A version id to the strategy's display name, via the version's strategyId.
+         * A version id resolved to the strategy it belongs to: its strategy id, the
+         * strategy's display name, and the version's own number — via the version's
+         * strategyId.
          *
          * Two reads rather than an association, because StrategyVersion.strategyId is a
          * plain UUID column by design — see that entity's docblock.
          *
-         * An unknown id returns null rather than a placeholder string: the template
-         * decides how an unnamed group reads, and a name invented here would be
+         * An unknown id returns null rather than a placeholder: the template decides
+         * how an unnamed group reads, and a name invented here would be
          * indistinguishable from a real one.
          */
-        strategyNameFor(strategyVersionId) {
+        strategyOf(strategyVersionId) {
             if (strategyVersionId === null) {
                 return null;
             }
@@ -350,7 +352,9 @@ Shopware.Component.register('merchant-quote-agent-list', {
                 return null;
             }
 
-            return (this.strategies ?? []).find((row) => row.id === version.strategyId)?.name ?? null;
+            const name = (this.strategies ?? []).find((row) => row.id === version.strategyId)?.name ?? null;
+
+            return { strategyId: version.strategyId, name, version: version.version };
         },
 
         async load() {
@@ -393,7 +397,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
         /**
          * The strategy versions and strategies behind the passes, so
-         * `strategyNameFor` can resolve a version id to a display name.
+         * `strategyOf` can resolve a version id to its strategy.
          *
          * Nulled rather than left stale on failure: a merchant without the
          * strategy ACL privilege should get absent names, not a broken page.

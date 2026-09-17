@@ -91,9 +91,12 @@ const quoteRows = [
     { id: 'q3', amountNet: 475, requestedAt: iso(1), createdAt: iso(1), orderId: 'o2', totalDiscount: 0, totalLineItemDiscount: 25 },
 ];
 const orderDates = new Map([['o1', iso(3)], ['o2', iso(2)]]);
-const nameFor = (id) => ({ v1: 'Margin defender', v2: 'Fast close' })[id] ?? null;
+const strategyOf = (id) => ({
+    v1: { strategyId: 's-margin', name: 'Margin defender', version: 1 },
+    v2: { strategyId: 's-fast', name: 'Fast close', version: 1 },
+})[id] ?? null;
 
-const rows = strategyRows(passes, quoteRows, orderDates, null, nameFor);
+const rows = strategyRows(passes, quoteRows, orderDates, null, strategyOf);
 
 assert.deepEqual(rows.map((r) => r.name), ['Margin defender', 'Fast close']);
 
@@ -135,7 +138,13 @@ const bandQuoteRows = [
     { id: 'q4', amountNet: 900, requestedAt: iso(1), createdAt: iso(1), orderId: null, totalDiscount: 0, totalLineItemDiscount: 300 },
     { id: 'q5', amountNet: 900, requestedAt: iso(1), createdAt: iso(1), orderId: null, totalDiscount: 0, totalLineItemDiscount: 100 },
 ];
-const bandRows = strategyRows(bandPasses, bandQuoteRows, new Map(), null, () => null);
+// v1 and v2 here are two DIFFERENT strategies (not two versions of one), so
+// the rollup must keep them as two rows for this fixture to mean anything.
+const bandStrategyOf = (id) => ({
+    v1: { strategyId: 'v1', name: null, version: 1 },
+    v2: { strategyId: 'v2', name: null, version: 1 },
+})[id] ?? null;
+const bandRows = strategyRows(bandPasses, bandQuoteRows, new Map(), null, bandStrategyOf);
 const [v1Row, v2Row] = bandRows;
 
 // q4 (v2's own agent quote, 25% quote-level discount) must NOT appear in v1's
@@ -146,6 +155,56 @@ assert.equal(v1Row.priceRetention.baselineDiscount, 10);
 // Symmetrically, q1 (v1's own agent quote) must not contaminate v2's baseline.
 assert.equal(v2Row.priceRetention.comparable, 1);
 assert.equal(v2Row.priceRetention.baselineDiscount, 10);
+
+// --------------------------------------------------- rollup across versions
+
+// v1 and v2 are two versions of ONE strategy. Before this rollup they produced
+// two rows both labelled "Margin defender"; now they are one row.
+const versionOf = (id) => ({
+    v1: { strategyId: 's-margin', name: 'Margin defender', version: 1 },
+    v2: { strategyId: 's-margin', name: 'Margin defender', version: 2 },
+    v9: { strategyId: 's-fast', name: 'Fast close', version: 1 },
+})[id] ?? null;
+
+const rollupPasses = [
+    { id: 'r1', quoteId: 'q1', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(2), totalNetBefore: 1000, totalNetAfter: 900, promptTokens: 100, completionTokens: 0 },
+    { id: 'r2', quoteId: 'q2', outcome: 'offered', strategyVersionId: 'v2', createdAt: iso(2), totalNetBefore: 1000, totalNetAfter: 950, promptTokens: 300, completionTokens: 0 },
+    { id: 'r3', quoteId: 'q3', outcome: 'offered', strategyVersionId: 'v9', createdAt: iso(1), totalNetBefore: 500, totalNetAfter: 475, promptTokens: 200, completionTokens: 0 },
+];
+
+const rolled = strategyRows(rollupPasses, [], new Map(), null, versionOf);
+
+// One row per STRATEGY, not per version.
+assert.deepEqual(rolled.map((r) => r.name), ['Margin defender', 'Fast close']);
+assert.equal(rolled.length, 2);
+
+// Both versions' quotes land in the one row, so N is not fragmented.
+assert.equal(rolled[0].quotes, 2);
+// ...and the spread is visible rather than silent.
+assert.deepEqual(rolled[0].versions, [1, 2]);
+assert.deepEqual(rolled[1].versions, [1]);
+
+// Tokens sum across versions: (100 + 300) / 2 quotes.
+assert.equal(rolled[0].tokens.meanTokens, 200);
+
+// A quote spanning two VERSIONS of one strategy is not contamination.
+const spansVersions = strategyRows([
+    { id: 'a', quoteId: 'q7', outcome: 'offered', strategyVersionId: 'v2', createdAt: iso(3), totalNetBefore: 1000, totalNetAfter: 900 },
+    { id: 'b', quoteId: 'q7', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(2), totalNetBefore: 1000, totalNetAfter: 950 },
+], [], new Map(), null, versionOf);
+assert.equal(spansVersions.length, 1);
+assert.equal(spansVersions[0].mixedQuotes, 0);
+assert.deepEqual(spansVersions[0].versions, [1, 2]);
+
+// A quote spanning two STRATEGIES is contamination, and still counted.
+const spansStrategies = strategyRows([
+    { id: 'c', quoteId: 'q8', outcome: 'offered', strategyVersionId: 'v9', createdAt: iso(3), totalNetBefore: 1000, totalNetAfter: 900 },
+    { id: 'd', quoteId: 'q8', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(2), totalNetBefore: 1000, totalNetAfter: 950 },
+], [], new Map(), null, versionOf);
+assert.equal(spansStrategies[0].mixedQuotes, 1);
+
+// An unresolvable version id still groups, under null, rather than vanishing.
+assert.equal(strategyRows(rollupPasses, [], new Map(), null, () => null).length, 1);
 
 // eslint-disable-next-line no-console
 console.log('strategy-measures.check.mjs: all assertions passed');

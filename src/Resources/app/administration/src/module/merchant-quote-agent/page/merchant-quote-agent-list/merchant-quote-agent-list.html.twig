@@ -168,10 +168,25 @@
                 >
                     <template #column-name="{ item }">
                         <div class="mqa-cell">
-                            <mt-badge v-if="item.name === null" variant="neutral">
-                                {{ $tc('merchant-quote-agent.strategyComparison.unattributed') }}
-                            </mt-badge>
-                            <strong v-else>{{ item.name }}</strong>
+                            <div class="mqa-cell__title">
+                                <mt-badge v-if="item.name === null" variant="neutral">
+                                    {{ $tc('merchant-quote-agent.strategyComparison.unattributed') }}
+                                </mt-badge>
+                                <strong v-else>{{ item.name }}</strong>
+                                {# The version spread, not the version itself: this table rolled the
+                                   strategy's versions up into one row precisely so a prompt edit does
+                                   not fragment it into a second, identically-labelled row. Empty for an
+                                   unattributed row -- there is no version to report. #}
+                                <span v-if="item.versions.length === 1" class="mqa-cell__aside">
+                                    {{ $t('merchant-quote-agent.strategyComparison.versionSingle', { version: item.versions[0] }) }}
+                                </span>
+                                <span v-else-if="item.versions.length > 1" class="mqa-cell__aside">
+                                    {{ $t('merchant-quote-agent.strategyComparison.versionRange', {
+                                        from: item.versions[0],
+                                        to: item.versions[item.versions.length - 1],
+                                    }) }}
+                                </span>
+                            </div>
                             <span v-if="item.mixedQuotes > 0" class="mqa-cell__aside">
                                 {{ $t('merchant-quote-agent.strategyComparison.mixedFootnote', { count: item.mixedQuotes }) }}
                             </span>

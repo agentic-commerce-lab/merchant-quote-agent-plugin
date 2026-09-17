@@ -10,6 +10,17 @@
  * This file states no winner. B2B quote volume is small enough that a
  * quarter's difference between two strategies is usually noise, so every row
  * carries its N and the template shows it.
+ *
+ * Rows are keyed by STRATEGY, not by strategy version. `StrategyVersion`'s
+ * contract is that editing a strategy appends a version and never rewrites
+ * one, so a single posture accumulates versions over time; splitting the
+ * table on them would fragment an already-small N across rows that are all
+ * still labelled with the same strategy name. `attributeStrategy` keeps
+ * attributing at the version level — that is the correct audit-level
+ * granularity, and it is what a decision row actually records — but
+ * `strategyRows` rolls each attributed version up to its strategy afterwards,
+ * via the `strategyOf` lookup, and reports the version spread it collapsed
+ * as `versions` instead of silently discarding it.
  */
 
 import {
@@ -103,6 +114,20 @@ export function groupPassesByStrategy(passes: any[]): Map<string | null, any[]> 
     return grouped;
 }
 
+/** A strategy version, resolved to the strategy it belongs to. */
+type ResolvedStrategy = { strategyId: string; name: string | null; version: number };
+
+/**
+ * A pass's own `strategyVersionId`, resolved through `strategyOf` — or null,
+ * for a pass that carries no version id or an id `strategyOf` cannot place.
+ */
+function resolveOwnStrategy(
+    pass: any,
+    strategyOf: (strategyVersionId: string | null) => ResolvedStrategy | null,
+): ResolvedStrategy | null {
+    return pass.strategyVersionId ? strategyOf(pass.strategyVersionId) : null;
+}
+
 /**
  * One row per strategy, each carrying the same five measures the overall
  * tiles show, plus the counts that keep the row honest.
@@ -117,28 +142,72 @@ export function groupPassesByStrategy(passes: any[]): Map<string | null, any[]> 
  * that set is the same for every row. Each group's agent side is then that
  * global agent list filtered down to the quote ids this group actually
  * folded.
+ *
+ * `groupPassesByStrategy` still keys its groups by the ATTRIBUTED VERSION —
+ * that function is also used on its own, at the audit granularity. Here, each
+ * of those version-keyed groups is rolled up one more step: the version id
+ * is resolved to a strategy id via `strategyOf`, and every group that
+ * resolves to the same strategy is merged into one row. Two versions of one
+ * strategy therefore land in the same row instead of producing two rows both
+ * labelled with that strategy's name.
  */
 export function strategyRows(
     passes: any[],
     quoteRows: any[],
     orderDates: Map<string, string>,
     slaHours: number | null,
-    nameFor: (strategyVersionId: string | null) => string | null,
+    strategyOf: (strategyVersionId: string | null) => ResolvedStrategy | null,
 ): any[] {
     const allFoldedByQuoteId = new Map(foldToQuotes(passes ?? []).map((quote) => [quote.quoteId, quote]));
     const { agent: globalAgent, baseline } = splitDeals(quoteRows ?? [], orderDates, allFoldedByQuoteId);
 
-    return [...groupPassesByStrategy(passes).entries()].map(([strategyVersionId, group]) => {
+    const rolled = new Map<string | null, any[]>();
+
+    groupPassesByStrategy(passes).forEach((group, versionId) => {
+        const strategyId = versionId === null ? null : (strategyOf(versionId)?.strategyId ?? null);
+        const bucket = rolled.get(strategyId);
+
+        if (bucket) {
+            bucket.push(...group);
+
+            return;
+        }
+
+        rolled.set(strategyId, [...group]);
+    });
+
+    return [...rolled.entries()].map(([strategyId, group]) => {
         const folded = foldToQuotes(group);
         const groupQuoteIds = new Set(folded.map((quote) => quote.quoteId));
         const agent = globalAgent.filter((deal) => groupQuoteIds.has(deal.quoteId));
 
-        const mixedQuotes = [...groupByQuoteId(group).values()].filter((quotePasses) => attributeStrategy(quotePasses).mixed)
-            .length;
+        // A quote spanning two STRATEGIES is contamination; spanning two
+        // VERSIONS of the same strategy is just its prompt getting edited
+        // mid-negotiation, and must not be flagged as if it were the same
+        // thing.
+        const mixedQuotes = [...groupByQuoteId(group).values()].filter((quotePasses) => {
+            const strategyIds = new Set(
+                quotePasses
+                    .map((pass) => resolveOwnStrategy(pass, strategyOf)?.strategyId)
+                    .filter((id): id is string => id !== undefined),
+            );
+
+            return strategyIds.size > 1;
+        }).length;
+
+        // Only versions that actually resolve to THIS row's strategy count —
+        // a mixed quote's foreign-strategy pass must not leak its version
+        // number into this row's spread.
+        const ownVersions = strategyId === null
+            ? []
+            : group
+                .map((pass) => resolveOwnStrategy(pass, strategyOf))
+                .filter((resolved): resolved is ResolvedStrategy => resolved !== null && resolved.strategyId === strategyId);
 
         return {
-            strategyVersionId,
-            name: nameFor(strategyVersionId),
+            strategyId,
+            name: ownVersions[0]?.name ?? null,
+            versions: [...new Set(ownVersions.map((resolved) => resolved.version))].sort((a, b) => a - b),
             quotes: folded.length,
             mixedQuotes,
             autoExecution: autoExecutionRate(folded),

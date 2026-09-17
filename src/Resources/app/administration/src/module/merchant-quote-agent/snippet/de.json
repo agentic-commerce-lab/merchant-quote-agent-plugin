@@ -122,6 +122,8 @@
             "columnCycleTime": "Abschlussdauer",
             "columnTokens": "Ø Tokens",
             "unattributed": "Nicht zugeordnet",
+            "versionSingle": "Version {version}",
+            "versionRange": "Versionen {from}–{to}",
             "mixedFootnote": "{count} der Angebote haben die Strategie während der Verhandlung gewechselt",
             "retentionValue": "{agent} vs. {baseline}",
             "emptyStateTitle": "Keine Verhandlungen in diesem Zeitraum",
