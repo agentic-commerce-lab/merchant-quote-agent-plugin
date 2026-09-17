@@ -1,0 +1,11 @@
+{
+    "id": "multi-round-anchoring",
+    "description": "Five rounds of counters. By the fifth, the ask must still be measured against the ORIGINAL price, never the previous round's already-reduced one.",
+    "lines": [
+        {"productRef": "any-purchasable", "quantity": 10}
+    ],
+    "openingAsk": "Following up again -- can you get to 71.20 a unit?",
+    "persona": "scripted:persistent",
+    "maxRounds": 5,
+    "expectedBand": "auto"
+}

@@ -1,0 +1,11 @@
+{
+    "id": "structured-only",
+    "description": "A per-line requested price with no comment about it at all. This path once recorded a real price ask as nothing_to_do.",
+    "lines": [
+        {"productRef": "any-purchasable", "quantity": 10}
+    ],
+    "openingAsk": "Requested via the quote form -- no message left.",
+    "persona": "scripted:silent",
+    "maxRounds": 2,
+    "expectedBand": "auto"
+}

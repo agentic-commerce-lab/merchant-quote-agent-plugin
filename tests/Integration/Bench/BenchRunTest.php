@@ -21,8 +21,9 @@ use MerchantQuoteAgentPlugin\Tests\Bench\SyntheticBuyer;
  * The bench. Opt-in: it makes real model calls against a live shop and leaves
  * its decision records behind. Never gate CI on this.
  *
- * Iterates scenarios (`tests/Integration/Bench/scenarios/*.json`, Task 7's
- * directory -- empty until that task lands, which fails the "no scenarios
+ * Iterates scenarios (`tests/Bench/scenarios/*.json` -- shop-free data lives
+ * under `tests/Bench/` per Ruling A1, and Task 2's `ScenarioTest` already
+ * reads that directory; a scenario missing from it fails the "no scenarios
  * found" assertion below rather than silently running zero cells) x the three
  * built-in strategies x every model in `QUOTE_AGENT_BENCH_MODELS`. Each
  * strategy's current version id is resolved from
@@ -81,10 +82,10 @@ final class BenchRunTest extends BenchTestCase
         $platform = $container->get(ModelPlatform::class);
         self::assertInstanceOf(ModelPlatform::class, $platform);
 
-        $scenarios = Scenario::all(__DIR__ . '/scenarios');
+        $scenarios = Scenario::all(\dirname(__DIR__, levels: 2) . '/Bench/scenarios');
         self::assertNotEmpty(
             $scenarios,
-            'No scenarios found under tests/Integration/Bench/scenarios -- seed at least one *.json file first (Task 7).',
+            'No scenarios found under tests/Bench/scenarios -- seed at least one *.json file first (Task 7).',
         );
 
         $strategyVersions = self::resolveStrategyVersions($connection);

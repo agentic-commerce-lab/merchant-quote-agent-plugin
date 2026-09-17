@@ -1,0 +1,11 @@
+{
+    "id": "bundle-ask",
+    "description": "A bundle ask the agent has no mandate over. Nothing carries this past the interpreter, so it must escalate before the negotiate call.",
+    "lines": [
+        {"productRef": "any-purchasable", "quantity": 3}
+    ],
+    "openingAsk": "Any chance you could throw in the matching stand as part of this deal?",
+    "persona": "scripted:moderate",
+    "maxRounds": 2,
+    "expectedBand": "escalate"
+}

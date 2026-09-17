@@ -103,9 +103,55 @@ final class ScenarioTest extends TestCase
     public function testAllLoadsEveryScenarioInADirectorySortedByFilename(): void
     {
         $scenarios = Scenario::all(__DIR__ . '/../../Bench/scenarios');
+        $ids = array_map(static fn(Scenario $scenario): string => $scenario->id, $scenarios);
 
         self::assertNotEmpty($scenarios);
         self::assertContainsOnlyInstancesOf(Scenario::class, $scenarios);
-        self::assertSame('plain-percentage', $scenarios[0]->id);
+        self::assertContains('plain-percentage', $ids);
+        // Sorted by FILENAME: Task 7 added scenario files whose names sort
+        // before 'plain-percentage.json', so position 0 is no longer pinned
+        // to it here -- testTheFullScenarioSetLoadsWithoutError() below pins
+        // the exact order; this one only pins the general sortedness.
+        $sorted = $ids;
+        sort($sorted);
+        self::assertSame($sorted, $ids);
+    }
+
+    /**
+     * The bench's own regression gate on the scenario set (Task 7): every
+     * failure class the set is meant to cover must actually be present, by
+     * id, and nothing else must throw while loading. A malformed scenario
+     * must fail here -- three model calls before a paid matrix run, not
+     * during one.
+     */
+    public function testTheFullScenarioSetLoadsWithoutError(): void
+    {
+        $scenarios = Scenario::all(__DIR__ . '/../../Bench/scenarios');
+
+        self::assertSame(
+            [
+                'ambiguous-ask',
+                'bundle-ask',
+                'exactly-at-the-ceiling',
+                'gross-figure-in-comment',
+                'hostile-extraction',
+                'multi-round-anchoring',
+                'payment-terms-ask',
+                'plain-percentage',
+                'structured-only',
+            ],
+            array_map(static fn(Scenario $scenario): string => $scenario->id, $scenarios),
+            'One scenario per file, sorted by filename -- add a new *.json here and this list, never silently.',
+        );
+
+        foreach ($scenarios as $scenario) {
+            self::assertNotSame('', $scenario->openingAsk, sprintf('%s: openingAsk must not be empty.', $scenario->id));
+            self::assertGreaterThanOrEqual(
+                1,
+                $scenario->maxRounds,
+                sprintf('%s: maxRounds must be >= 1.', $scenario->id),
+            );
+            self::assertNotEmpty($scenario->lines, sprintf('%s: lines must not be empty.', $scenario->id));
+        }
     }
 }
