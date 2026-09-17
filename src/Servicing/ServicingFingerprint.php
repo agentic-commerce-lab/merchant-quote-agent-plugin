@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Servicing;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 
 /**
@@ -187,14 +188,35 @@ final class ServicingFingerprint
         $asks = [];
 
         foreach ($snapshot->content->lines as $line) {
-            if ($line->requestedUnitPrice !== null) {
-                $asks[] = $line->identity->lineItemId . ':' . number_format($line->requestedUnitPrice, 2, '.', '');
+            $token = self::askToken($line);
+
+            if ($token !== null) {
+                $asks[] = $token;
             }
         }
 
         sort($asks);
 
         return implode(',', $asks);
+    }
+
+    /**
+     * The `id:price` token for a single line's ask, or null when it has none.
+     *
+     * The one place this is composed. MerchantHandover::freshAskAt() needs to
+     * compare a single line's token against the stamped set rather than the
+     * whole-quote string asksOf() builds, and a second `number_format` call
+     * there would be the exact drift this class's comments keep warning
+     * about — the two must format identically or a line that hasn't changed
+     * would misread as fresh.
+     */
+    public static function askToken(QuoteLineSnapshot $line): ?string
+    {
+        if ($line->requestedUnitPrice === null) {
+            return null;
+        }
+
+        return $line->identity->lineItemId . ':' . number_format($line->requestedUnitPrice, 2, '.', '');
     }
 
     /**

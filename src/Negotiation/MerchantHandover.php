@@ -64,18 +64,15 @@ final class MerchantHandover
      */
     private static function freshAskAt(QuoteSnapshot $snapshot): ?string
     {
-        if (
-            ServicingFingerprint::asksOf(
-                $snapshot,
-            ) === ServicingFingerprint::stampedAsks($snapshot->lifecycle->customFields)
-        ) {
-            return null;
-        }
+        $stamped = ServicingFingerprint::stampedAsks($snapshot->lifecycle->customFields);
+        $stampedTokens = $stamped === '' ? [] : array_flip(explode(',', $stamped));
 
         $newest = null;
 
         foreach ($snapshot->content->lines as $line) {
-            if ($line->requestedUnitPrice === null) {
+            $token = ServicingFingerprint::askToken($line);
+
+            if ($token === null || isset($stampedTokens[$token])) {
                 continue;
             }
 
