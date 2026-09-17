@@ -277,8 +277,8 @@ export function tokensPerNegotiation(passes: any[]): {
     let measured = 0;
 
     (passes ?? []).forEach((pass) => {
-        const promptKnown = typeof pass.promptTokens === 'number';
-        const completionKnown = typeof pass.completionTokens === 'number';
+        const promptKnown = typeof pass.promptTokens === 'number' && Number.isFinite(pass.promptTokens);
+        const completionKnown = typeof pass.completionTokens === 'number' && Number.isFinite(pass.completionTokens);
 
         if (!promptKnown && !completionKnown) {
             return;

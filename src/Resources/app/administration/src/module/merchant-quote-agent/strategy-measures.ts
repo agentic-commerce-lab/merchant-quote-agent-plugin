@@ -129,8 +129,9 @@ function resolveOwnStrategy(
 }
 
 /**
- * One row per strategy, each carrying the same five measures the overall
- * tiles show, plus the counts that keep the row honest.
+ * One row per strategy, each carrying the same four measures the overall
+ * tiles show, plus the token-cost measure the tiles do not carry, plus the
+ * counts that keep the row honest.
  *
  * The baseline is shared, and genuinely so: it is computed ONCE from every
  * pass across every strategy, not from this group's quotes alone. A quote

@@ -126,6 +126,8 @@
             "versionRange": "Versionen {from}–{to}",
             "mixedFootnote": "{count} der Angebote haben die Strategie während der Verhandlung gewechselt",
             "retentionValue": "{agent} vs. {baseline}",
+            "escalationsAside": "{measured} bearbeitet",
+            "tokensAside": "{quotes} von {total} Angeboten gemessen",
             "emptyStateTitle": "Keine Verhandlungen in diesem Zeitraum",
             "disclaimer": "Die Fallzahlen sind bei den meisten Strategien gering; hier wird keine Strategie als Gewinner ausgewiesen."
         },

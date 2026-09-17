@@ -163,7 +163,7 @@ assert.equal(v2Row.priceRetention.baselineDiscount, 10);
 const versionOf = (id) => ({
     v1: { strategyId: 's-margin', name: 'Margin defender', version: 1 },
     v2: { strategyId: 's-margin', name: 'Margin defender', version: 2 },
-    v9: { strategyId: 's-fast', name: 'Fast close', version: 1 },
+    v9: { strategyId: 's-fast', name: 'Fast close', version: 3 },
 })[id] ?? null;
 
 const rollupPasses = [
@@ -182,7 +182,7 @@ assert.equal(rolled.length, 2);
 assert.equal(rolled[0].quotes, 2);
 // ...and the spread is visible rather than silent.
 assert.deepEqual(rolled[0].versions, [1, 2]);
-assert.deepEqual(rolled[1].versions, [1]);
+assert.deepEqual(rolled[1].versions, [3]);
 
 // Tokens sum across versions: (100 + 300) / 2 quotes.
 assert.equal(rolled[0].tokens.meanTokens, 200);
@@ -202,6 +202,11 @@ const spansStrategies = strategyRows([
     { id: 'd', quoteId: 'q8', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(2), totalNetBefore: 1000, totalNetAfter: 950 },
 ], [], new Map(), null, versionOf);
 assert.equal(spansStrategies[0].mixedQuotes, 1);
+// v9 (s-fast) is version 3; v1 (s-margin) is version 1 — distinct numbers, so a
+// scoped spread ([3]) and an unscoped one ([1, 3]) can no longer coincide. This
+// is what makes the "must not leak its version number" guard in
+// strategy-measures.ts falsifiable.
+assert.deepEqual(spansStrategies[0].versions, [3]);
 
 // An unresolvable version id still groups, under null, rather than vanishing.
 assert.equal(strategyRows(rollupPasses, [], new Map(), null, () => null).length, 1);

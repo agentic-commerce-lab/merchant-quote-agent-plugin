@@ -212,6 +212,9 @@
                     <template #column-escalations="{ item }">
                         <div class="mqa-cell">
                             <span class="mqa-cell__value">{{ formatSpan(item.escalations.meanMs) }}</span>
+                            <span class="mqa-cell__aside">
+                                {{ $t('merchant-quote-agent.strategyComparison.escalationsAside', { measured: item.escalations.measured }) }}
+                            </span>
                             <span v-if="item.escalations.open > 0" class="mqa-cell__aside">
                                 {{ $t('merchant-quote-agent.figures.openEscalations', { open: item.escalations.open }) }}
                             </span>
@@ -226,11 +229,22 @@
                     </template>
 
                     <template #column-cycleTime="{ item }">
-                        {{ formatSpan(item.cycleTime.agentMs) }}
+                        {{ $t('merchant-quote-agent.strategyComparison.retentionValue', {
+                            agent: formatSpan(item.cycleTime.agentMs),
+                            baseline: formatSpan(item.cycleTime.baselineMs),
+                        }) }}
                     </template>
 
                     <template #column-tokens="{ item }">
-                        {{ item.tokens.meanTokens === null ? '–' : Math.round(item.tokens.meanTokens) }}
+                        <div class="mqa-cell">
+                            <span class="mqa-cell__value">{{ item.tokens.meanTokens === null ? '–' : Math.round(item.tokens.meanTokens) }}</span>
+                            <span class="mqa-cell__aside">
+                                {{ $t('merchant-quote-agent.strategyComparison.tokensAside', {
+                                    quotes: item.tokens.quotes,
+                                    total: item.quotes,
+                                }) }}
+                            </span>
+                        </div>
                     </template>
                 </sw-data-grid>
 
