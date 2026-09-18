@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Assistant\AssistantAskStamp;
 use MerchantQuoteAgentPlugin\Assistant\AssistantAvailability;
+use MerchantQuoteAgentPlugin\Assistant\QuoteStatusToolFactory;
 use MerchantQuoteAgentPlugin\Assistant\RequestQuoteToolFactory;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
@@ -720,6 +721,16 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
                 service(AssistantAskStamp::class),
                 service(BuyerQuoteGatewayInterface::class)->nullOnInvalid(),
             ])
+            ->autoconfigure(false)
+            ->tag('swag_assistant.tool_factory');
+
+        // The read side (Task 6): not gated on assistantQuoteRequests, and not
+        // sharing RequestQuoteToolFactory above — a merchant who turns
+        // request-writing off still lets a shopper ask what happened to a
+        // quote they already have.
+        $services
+            ->set(QuoteStatusToolFactory::class)
+            ->args([service('request_stack'), service(BuyerQuoteGatewayInterface::class)->nullOnInvalid()])
             ->autoconfigure(false)
             ->tag('swag_assistant.tool_factory');
     }
