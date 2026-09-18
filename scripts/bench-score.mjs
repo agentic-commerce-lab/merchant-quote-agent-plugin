@@ -1,15 +1,22 @@
 #!/usr/bin/env node
 /**
- * Scores a bench run's JSONL (one decision-record pass per line) by grouping
- * rows into (strategyVersionId, model) cells and running each cell through
- * the admin's own measure code -- foldToQuotes() from decision.ts, then
- * autoExecutionRate() and escalationResolution() from measures.ts -- so the
- * bench readout and the merchant dashboard can never drift apart. See those
- * modules' own docblocks for what each figure means.
+ * Scores a bench run's JSONL (one decision-record pass per line, plus one
+ * failure row per cell that threw before producing any decision row) by
+ * grouping rows into (strategyVersionId, model) cells and running each cell
+ * through the admin's own measure code -- foldToQuotes() from decision.ts,
+ * then autoExecutionRate() and escalationResolution() from measures.ts -- so
+ * the bench readout and the merchant dashboard can never drift apart. See
+ * those modules' own docblocks for what each figure means.
+ *
+ * A failure row (`cellFailure: true`, written by `BenchRunTest::attemptCell`)
+ * is never a negotiation, so it is counted as a failed cell and excluded from
+ * every group below rather than folded in as if it were a real pass.
  *
  * Usage: node scripts/bench-score.mjs var/bench/<runId>.jsonl
  */
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
 import { foldToQuotes } from '../src/Resources/app/administration/src/module/merchant-quote-agent/decision.ts';
 import * as measures from '../src/Resources/app/administration/src/module/merchant-quote-agent/measures.ts';
 
@@ -20,15 +27,53 @@ const { autoExecutionRate, escalationResolution, formatSpan } = measures;
 // it -- a local copy is the exact drift the shared contract forbids.
 const tokensPerNegotiation = typeof measures.tokensPerNegotiation === 'function' ? measures.tokensPerNegotiation : null;
 
-function readRows(path) {
+export function readRows(path) {
     return readFileSync(path, 'utf8')
         .split('\n')
         .filter((line) => line.trim() !== '')
         .map((line) => JSON.parse(line));
 }
 
-function groupKey(row) {
+/**
+ * Splits a run's lines into real decision-record passes and failure rows.
+ * `cellFailure: true` is the explicit discriminator a failure row carries
+ * (see `DecisionRowMapper::toFailureRow` in `BenchRunTest.php`) -- it is
+ * checked directly rather than inferred from a missing field, because a
+ * failure row still carries `strategyVersionId`/`model` (so it can be
+ * reported against the cell it belongs to), which is exactly what would make
+ * an absent-field check misclassify it as a real, if sparse, decision row.
+ *
+ * @return {{ failureRows: object[], decisionRows: object[] }}
+ */
+export function partitionRows(rows) {
+    const failureRows = rows.filter((row) => row.cellFailure === true);
+    const decisionRows = rows.filter((row) => row.cellFailure !== true);
+    return { failureRows, decisionRows };
+}
+
+export function groupKey(row) {
     return JSON.stringify([row.strategyVersionId, row.model]);
+}
+
+/**
+ * Groups decision rows (never failure rows -- callers pass the
+ * `decisionRows` half of `partitionRows()`) into (strategyVersionId, model)
+ * cells.
+ */
+export function buildGroups(decisionRows) {
+    const unattributed = decisionRows.filter((row) => row.strategyVersionId === null || row.strategyVersionId === undefined);
+    const attributed = decisionRows.filter((row) => row.strategyVersionId !== null && row.strategyVersionId !== undefined);
+
+    const groups = new Map();
+    for (const row of attributed) {
+        const key = groupKey(row);
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+        groups.get(key).push(row);
+    }
+
+    return { unattributed, attributed, groups };
 }
 
 /**
@@ -39,7 +84,7 @@ function groupKey(row) {
  * (DecisionRowMapper's `ORDER BY created_at ASC`), so skipping this sort
  * silently swaps in the OLDEST pass as each quote's "latest" state.
  */
-function scoreGroup(rows) {
+export function scoreGroup(rows) {
     const newestFirst = [...rows].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
     const folded = foldToQuotes(newestFirst);
 
@@ -61,18 +106,9 @@ function main() {
     }
 
     const rows = readRows(path);
-    const unattributed = rows.filter((row) => row.strategyVersionId === null || row.strategyVersionId === undefined);
-    const attributed = rows.filter((row) => row.strategyVersionId !== null && row.strategyVersionId !== undefined);
-    const failedQuoteIds = new Set(rows.filter((row) => row.orderFailure != null).map((row) => row.quoteId));
-
-    const groups = new Map();
-    for (const row of attributed) {
-        const key = groupKey(row);
-        if (!groups.has(key)) {
-            groups.set(key, []);
-        }
-        groups.get(key).push(row);
-    }
+    const { failureRows, decisionRows } = partitionRows(rows);
+    const { unattributed, attributed, groups } = buildGroups(decisionRows);
+    const failedQuoteIds = new Set(decisionRows.filter((row) => row.orderFailure != null).map((row) => row.quoteId));
 
     // No rank: sorted by (strategyVersionId, model) only, never by a measure.
     // B2B volume does not reach significance and the admin table declares no
@@ -81,8 +117,9 @@ function main() {
 
     console.log(`Run: ${path}`);
     console.log(
-        `${rows.length} rows, ${groups.size} (strategy, model) groups, `
-        + `${unattributed.length} unattributed rows, ${failedQuoteIds.size} quotes with an orderFailure.\n`,
+        `${rows.length} lines (${decisionRows.length} decision rows, ${failureRows.length} failed cells), `
+        + `${groups.size} (strategy, model) groups, ${unattributed.length} unattributed rows, `
+        + `${failedQuoteIds.size} quotes with an orderFailure.\n`,
     );
 
     if (!tokensPerNegotiation) {
@@ -133,6 +170,24 @@ function main() {
             + "does not affect the decision record's own fields -- called out here so a run does not omit them.",
         );
     }
+
+    if (failureRows.length > 0) {
+        console.log(
+            `Failed cells: ${failureRows.length} cell(s) threw before producing a single decision row. Excluded `
+            + 'from every group above -- a cell that never negotiated must never be folded in as if it had:',
+        );
+        for (const row of failureRows) {
+            console.log(
+                `  ${row.scenarioId} / ${row.strategyVersionId ?? 'null'} / ${row.model ?? 'null'}: `
+                + `${row.failureClass}: ${row.failureMessage}`,
+            );
+        }
+    }
 }
 
-main();
+// Only run when invoked as a script (`node scripts/bench-score.mjs ...`), not
+// when imported by `bench-score.check.mjs` -- realpath so a relative argv[1]
+// (as typed on the command line) still matches this file's absolute URL.
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    main();
+}

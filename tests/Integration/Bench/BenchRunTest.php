@@ -41,6 +41,15 @@ use MerchantQuoteAgentPlugin\Tests\Bench\SyntheticBuyer;
  * and `round`, plus `orderId`/`orderFailure` so a cell that never tried to
  * convert is distinguishable from one that tried and failed.
  *
+ * A cell that throws before producing any decision row (an unreachable
+ * model, a scenario that cannot convert) still leaves exactly one line
+ * behind: a failure row carrying `cellFailure: true`, `runId`, `scenarioId`,
+ * the cell's own `strategyVersionId` and `model`, and the throwable's class
+ * and message. Without it that cell vanishes from the JSONL entirely, and a
+ * scorer reading the file cannot tell "nothing attempted this model" from
+ * "this model failed every time" -- exactly the gap that matters most when
+ * one model in the matrix is the one that is down.
+ *
  *   QUOTE_AGENT_BENCH_KEY=sk-... \
  *   QUOTE_AGENT_BENCH_MODELS=google/gemini-3.7-flash,openai/gpt-5-mini \
  *   QUOTE_AGENT_BENCH_BUYER=scripted \
@@ -138,7 +147,11 @@ final class BenchRunTest extends BenchTestCase
 
         $lines = file(self::runPath($runId), \FILE_IGNORE_NEW_LINES | \FILE_SKIP_EMPTY_LINES);
         self::assertIsArray($lines, 'The run file must be readable back after writing it.');
-        self::assertCount($written, $lines, 'The JSONL must carry exactly one line per decision row this run wrote.');
+        self::assertCount(
+            $written,
+            $lines,
+            'The JSONL must carry exactly one line per decision row or cell failure this run wrote.',
+        );
     }
 
     /**
@@ -278,7 +291,14 @@ final class BenchRunTest extends BenchTestCase
         try {
             return new BenchCellOutcome(self::runCell($bench, $connection, $writer, $cell), null);
         } catch (\Throwable $e) {
-            return new BenchCellOutcome(0, self::describeFailure($cell, $e));
+            $failure = self::describeFailure($cell, $e);
+            $writer->writeRow(DecisionRowMapper::toFailureRow($cell, $e));
+
+            // The failure row IS this cell's one JSONL line -- not a decision
+            // row, but a line the loop's $written tally (and the final
+            // assertCount below) must still account for, or the harness
+            // would under-count its own output.
+            return new BenchCellOutcome(1, $failure);
         }
     }
 
@@ -455,6 +475,29 @@ final class DecisionRowMapper
             ...$decisionRow,
             'orderId' => $result->order->orderId,
             'orderFailure' => $result->order->orderFailure,
+        ];
+    }
+
+    /**
+     * The trace a cell that threw before any decision row existed still
+     * leaves behind. Same runId/scenarioId/strategyVersionId/model shape as
+     * a real decision row, so the scorer's grouping-by-key logic sees it,
+     * plus `cellFailure: true` as an explicit discriminator -- inferring
+     * "this was a failure" from an absent field (a null outcome, say) is
+     * exactly the kind of silent gap this row exists to close.
+     *
+     * @return array<string, mixed>
+     */
+    public static function toFailureRow(BenchCell $cell, \Throwable $e): array
+    {
+        return [
+            'runId' => $cell->config->runId,
+            'scenarioId' => $cell->scenario->id,
+            'strategyVersionId' => $cell->strategyVersionId,
+            'model' => $cell->model,
+            'cellFailure' => true,
+            'failureClass' => $e::class,
+            'failureMessage' => $e->getMessage(),
         ];
     }
 
