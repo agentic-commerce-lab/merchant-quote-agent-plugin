@@ -87,6 +87,8 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
         strategyRepository() {
             return this.repositoryFactory.create('merchant_quote_agent_strategy');
+        },
+
         httpClient() {
             return this.syncService.httpClient;
         },
@@ -360,6 +362,9 @@ Shopware.Component.register('merchant-quote-agent-list', {
             const name = (this.strategies ?? []).find((row) => row.id === version.strategyId)?.name ?? null;
 
             return { strategyId: version.strategyId, name, version: version.version };
+        },
+
+        /**
          * Download the selected period as anonymized JSONL, for sending to
          * Shopware.
          *
