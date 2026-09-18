@@ -53,7 +53,9 @@ const PAGE_SIZE = 25;
 Shopware.Component.register('merchant-quote-agent-list', {
     template,
 
-    inject: ['repositoryFactory', 'acl'],
+    inject: ['repositoryFactory', 'syncService', 'acl'],
+
+    mixins: [Shopware.Mixin.getByName('notification')],
 
     data() {
         return {
@@ -70,6 +72,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
             dispositionFilter: 'needsReview',
             page: 1,
             pendingDelete: null,
+            isExporting: false,
         };
     },
 
@@ -84,6 +87,8 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
         strategyRepository() {
             return this.repositoryFactory.create('merchant_quote_agent_strategy');
+        httpClient() {
+            return this.syncService.httpClient;
         },
 
         /** The start of the period the page describes. */
@@ -355,6 +360,56 @@ Shopware.Component.register('merchant-quote-agent-list', {
             const name = (this.strategies ?? []).find((row) => row.id === version.strategyId)?.name ?? null;
 
             return { strategyId: version.strategyId, name, version: version.version };
+         * Download the selected period as anonymized JSONL, for sending to
+         * Shopware.
+         *
+         * The period is the one the smart bar's select scopes, and the end is
+         * NOW rather than an open range: the endpoint's range is half-open, so
+         * an end is required, and a record written between this line and the
+         * query belongs in the next export rather than this one.
+         *
+         * `responseType: 'blob'` and an object URL rather than a plain link,
+         * because the admin API needs the Authorization header and a browser
+         * navigation cannot carry one. The filename comes from the response's
+         * own Content-Disposition, so a `curl` of the endpoint and a click
+         * here produce the same file under the same name.
+         */
+        async exportDecisions(withComments: boolean) {
+            this.isExporting = true;
+
+            try {
+                const response = await this.httpClient.get('_action/merchant-quote-agent/decision-export', {
+                    params: {
+                        from: this.windowStart.toISOString(),
+                        to: new Date().toISOString(),
+                        comments: withComments ? '1' : '0',
+                    },
+                    headers: this.syncService.getBasicHeaders(),
+                    responseType: 'blob',
+                });
+
+                const disposition = response.headers?.['content-disposition'] ?? '';
+                const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'merchant-quote-agent.jsonl';
+                const url = URL.createObjectURL(response.data);
+                const link = document.createElement('a');
+
+                link.href = url;
+                link.download = name;
+                link.click();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                // ponytail: one message for every failure. The endpoint's own
+                // 400s describe a range this button cannot produce -- it
+                // computes both dates -- and under `responseType: 'blob'` the
+                // body is a Blob that would have to be read and parsed before
+                // it could be shown. If a failure a merchant can act on ever
+                // appears here, read `error.response.data.text()` then.
+                this.createNotificationError({ message: this.$tc('merchant-quote-agent.export.failed') });
+                // eslint-disable-next-line no-console
+                console.error('merchant-quote-agent: export failed', error);
+            } finally {
+                this.isExporting = false;
+            }
         },
 
         async load() {

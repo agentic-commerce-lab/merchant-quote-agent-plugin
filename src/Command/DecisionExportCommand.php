@@ -4,17 +4,8 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Command;
 
-use MerchantQuoteAgentPlugin\Audit\Export\AnonymizedDecision;
-use MerchantQuoteAgentPlugin\Audit\Export\ExportPseudonym;
-use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
+use MerchantQuoteAgentPlugin\Audit\Export\DecisionExportStream;
 use Override;
-use Shopware\Core\Framework\Context;
-use Shopware\Core\Framework\DataAbstractionLayer\Dbal\Common\RepositoryIterator;
-use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\RangeFilter;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
-use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -27,9 +18,11 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * anonymized, so a merchant can send them to Shopware for the collective
  * strategy work #19 describes.
  *
- * A merchant action, never automatic: nothing schedules this and nothing calls
- * it. Sharing business records with a third party is a decision a person
- * makes, once, deliberately.
+ * A merchant action, never automatic: nothing schedules this. Sharing business
+ * records with a third party is a decision a person makes, once, deliberately
+ * -- here by typing the command, or on the dashboard by clicking Export, which
+ * serves the same records through DecisionExportController. Both go through
+ * DecisionExportStream, so neither can drift into exporting a different shape.
  *
  * JSONL goes to stdout and every notice to stderr, so
  * `... > september.jsonl` produces a file containing only records. The
@@ -43,12 +36,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * What leaves and what does not is in docs/for-merchants.md, and the
  * classification that decides it is AnonymizedDecision's five lists.
- *
- * @mago-expect lint:cyclomatic-complexity
- * The rule aggregates per class (threshold 10); the count is `execute()`'s
- * three refusal checks plus `write()`'s one encode-failure guard, each its
- * own single condition. Splitting either method further would scatter one
- * command's control flow across files for no reader's benefit.
  */
 #[AsCommand(
     name: 'merchant-quote-agent:export',
@@ -57,8 +44,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 final class DecisionExportCommand extends Command
 {
     public function __construct(
-        private readonly EntityRepository $decisions,
-        private readonly SystemConfigService $systemConfig,
+        private readonly DecisionExportStream $export,
     ) {
         parent::__construct();
     }
@@ -126,61 +112,19 @@ final class DecisionExportCommand extends Command
     /** @throws \Random\RandomException */
     private function write(SymfonyStyle $io, \DateTimeImmutable $from, \DateTimeImmutable $to, bool $freeText): int
     {
-        $pseudonym = ExportPseudonym::forShop($this->systemConfig);
-        $iterator = new RepositoryIterator(
-            $this->decisions,
-            Context::createDefaultContext(),
-            self::criteria($from, $to),
-        );
+        $lines = $this->export->lines($from, $to, $freeText);
         $written = 0;
 
-        while (($result = $iterator->fetch()) !== null) {
-            foreach ($result->getEntities() as $record) {
-                if (!$record instanceof QuoteDecisionRecord) {
-                    continue;
-                }
+        foreach ($lines as $line) {
+            $io->writeln($line);
+            ++$written;
+        }
 
-                // JSON_INVALID_UTF8_SUBSTITUTE swaps invalid bytes -- the only
-                // realistic failure here, e.g. a provider error body stored in
-                // errorChain under --include-comments -- for U+FFFD rather than
-                // failing the encode, so a merchant's record is kept instead of
-                // silently dropped. That makes the `false` branch below
-                // unreachable in practice; it stays as a guard so a blank line
-                // can never enter the JSONL stream uncounted.
-                $line = json_encode(
-                    AnonymizedDecision::of($record, $pseudonym, $freeText),
-                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
-                );
-
-                if ($line === false) {
-                    $io->getErrorStyle()->writeln(\sprintf(
-                        'Skipped one record (%s) that could not be JSON-encoded: %s',
-                        $record->id,
-                        json_last_error_msg(),
-                    ));
-
-                    continue;
-                }
-
-                $io->writeln($line);
-                ++$written;
-            }
+        foreach ($lines->getReturn() as $notice) {
+            $io->getErrorStyle()->writeln($notice);
         }
 
         return $written;
-    }
-
-    private static function criteria(\DateTimeImmutable $from, \DateTimeImmutable $to): Criteria
-    {
-        $criteria = new Criteria();
-        $criteria->addFilter(new RangeFilter('createdAt', [
-            RangeFilter::GTE => $from->format(\DateTimeInterface::ATOM),
-            RangeFilter::LT => $to->format(\DateTimeInterface::ATOM),
-        ]));
-        $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::ASCENDING));
-        $criteria->setLimit(500);
-
-        return $criteria;
     }
 
     /** Notices go to stderr so a redirect of stdout captures only JSONL. */

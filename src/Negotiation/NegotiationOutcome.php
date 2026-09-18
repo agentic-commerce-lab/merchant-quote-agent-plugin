@@ -10,6 +10,11 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
  * re-escalates on every later buyer comment.
  * `Clarified` asked the buyer a question rather than answering them, so it
  * does not clear the escalation marker and does not count as a reply.
+ * `HandedOver` is a pass that found a human merchant already on the quote and
+ * wrote nothing. It does not answer the buyer, so `answeredTheBuyer()` stays
+ * false for it and neither the escalation nor the clarification marker is
+ * released -- deliberately: the merchant is already handling this quote, and
+ * releasing either marker would let a later pass answer on top of them.
  */
 enum NegotiationOutcome: string
 {
@@ -18,6 +23,7 @@ enum NegotiationOutcome: string
     case Escalated = 'escalated';
     case NothingToDo = 'nothing_to_do';
     case Clarified = 'clarified';
+    case HandedOver = 'handed_over';
 
     public function answeredTheBuyer(): bool
     {

@@ -19,6 +19,11 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity;
  * AGENT wrote it. This is the single read boundary every guard that treats
  * that field as buyer-only comes through, so hiding the mirror here is what
  * keeps all of them seeing what they saw before it existed — see MirroredAsks.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10); mapping the DAL entity's
+ * nullable fields (label, referencedId, updatedAt/createdAt) and the mirrored
+ * vs. buyer requestedUnitPrice each takes one null/type check.
  */
 final readonly class QuoteLineMapper
 {
@@ -55,6 +60,7 @@ final readonly class QuoteLineMapper
     private function line(Entity $lineItem, QuoteLineNet $net, array $mirrored): QuoteLineSnapshot
     {
         $lineItemId = (string) $lineItem->get('id');
+        $updatedAt = $lineItem->get('updatedAt') ?? $lineItem->get('createdAt');
 
         return new QuoteLineSnapshot(
             identity: new QuoteLineIdentity(
@@ -69,6 +75,9 @@ final readonly class QuoteLineMapper
                 ? null
                 : $net->requestedUnitPrice,
             netRatio: $net->netRatio,
+            updatedAt: $updatedAt instanceof \DateTimeInterface
+                ? \DateTimeImmutable::createFromInterface($updatedAt)
+                : null,
         );
     }
 

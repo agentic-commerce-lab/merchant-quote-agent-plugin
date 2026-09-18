@@ -10,7 +10,8 @@
             "replied": "Offer sent",
             "clarified": "Question asked",
             "escalated": "Needs review",
-            "nothing_to_do": "No action needed"
+            "nothing_to_do": "No action needed",
+            "handed_over": "Left to you"
         },
         "escalation": {
             "discount_limit_exceeded": "Discount above the cap",
@@ -89,6 +90,11 @@
             "last7": "Last 7 days",
             "last30": "Last 30 days",
             "last90": "Last 90 days"
+        },
+        "export": {
+            "button": "Export",
+            "withoutComments": "Export without comments",
+            "failed": "The export could not be created."
         },
         "figures": {
             "title": "This period",
@@ -278,6 +284,7 @@
         "note": {
             "attemptRetried": "An earlier attempt on this quote crashed before it finished ({count} so far). This pass started over.",
             "nothingToDo": "There was nothing to answer: no new customer request the agent could read, and no open price target on any line. The quote was left untouched.",
+            "handedOver": "Someone from your team had already answered this quote more recently than the customer wrote, so the agent left it alone. It will pick the conversation up again if the customer replies.",
             "notAuthorized": "The agent proposed terms your policies do not allow, so nothing was authorised and the quote was left untouched.",
             "notVerified": "The quote was changed, but re-reading it afterwards did not match what had been authorised.",
             "needsAttention": "This pass reported success but did not finish cleanly. Check the quote before relying on it."

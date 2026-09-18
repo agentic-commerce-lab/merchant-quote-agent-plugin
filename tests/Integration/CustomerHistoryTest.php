@@ -142,8 +142,13 @@ final class CustomerHistoryTest extends IntegrationTestCase
                 $seen,
                 sprintf('Quote %s appeared in its own history.', (string) $row['quote_number']),
             );
-            // The exclusion must remove exactly one quote, not the whole account.
-            self::assertSame(min($liveCount, 25) - 1, \count($entries));
+            // The exclusion is a filter, so the 25-row cap applies to the set it
+            // has already left behind -- not the other way round. What this
+            // proves is the second half of the docblock: the account is not
+            // emptied and no more than the one quote is removed. That the
+            // removal happened at all is the assertNotContains above; below the
+            // cap the two halves meet and this count sees it directly.
+            self::assertSame(min($liveCount - 1, 25), \count($entries));
         }
     }
 

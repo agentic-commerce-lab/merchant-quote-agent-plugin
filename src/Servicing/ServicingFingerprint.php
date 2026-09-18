@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Servicing;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 
 /**
@@ -56,9 +57,16 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
  * string. What they do change is the string a quote composed BEFORE this
  * deploy: a quote carrying a merchant comment differs from its own stamp once
  * and buys exactly one pass, the same one-off the asks component accepted.
- * That pass is a no-op by construction — with the conversation split fixed
- * there is no new buyer ask, so the pipeline records nothing_to_do without a
- * model call.
+ * That pass writes nothing and calls no model either way — with the
+ * conversation split fixed there is no new buyer ask, so the pipeline
+ * records nothing_to_do; and if the merchant's note also happens to be the
+ * newest thing on the quote, MerchantHandover stands the pass down instead
+ * and it records handed_over. Both are no-ops by construction.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10); reading the asks component
+ * back out of a stamped marker takes the same null/bounds checks composing
+ * it did, so exposing the read side is one more branch, not a new concept.
  */
 final class ServicingFingerprint
 {
@@ -71,7 +79,7 @@ final class ServicingFingerprint
         return self::compose(
             $snapshot->lifecycle->stateTechnicalName,
             self::buyerAuthored($snapshot),
-            self::asks($snapshot),
+            self::asksOf($snapshot),
         );
     }
 
@@ -92,7 +100,7 @@ final class ServicingFingerprint
      */
     public static function stamp(QuoteSnapshot $serviced, string $stateAfter): string
     {
-        return self::compose($stateAfter, self::buyerAuthored($serviced), self::asks($serviced));
+        return self::compose($stateAfter, self::buyerAuthored($serviced), self::asksOf($serviced));
     }
 
     /** @param array<string, mixed> $customFields */
@@ -101,6 +109,38 @@ final class ServicingFingerprint
         $stamped = $customFields[self::MARKER_KEY] ?? null;
 
         return \is_string($stamped) ? $stamped : null;
+    }
+
+    /**
+     * The asks half of a marker already on the quote.
+     *
+     * compose() appends the component after the third field and only when
+     * there is one, so everything from the fourth field on IS the component —
+     * and a marker written before it existed has no fourth field and reads as
+     * no asks. Split with a limit of 4, not because the asks component might
+     * itself contain a `|` (it does not, `askToken()` never emits one), but
+     * so a comma-joined list of tokens with no `|` in it is never itself cut
+     * on one. The limit is a cost, not a safety margin: it also means
+     * `$parts[3]` absorbs everything from the fourth field on, so a FIFTH
+     * component appended by some future change would fold silently into this
+     * one's return value. `freshAskAt()` matches tokens by exact set
+     * membership, so a stamp carrying that appended tail would never match
+     * any current token, and every quote would read as carrying a fresh ask.
+     * Whoever adds a fifth component must raise this limit in step.
+     *
+     * @param array<string, mixed> $customFields
+     */
+    public static function stampedAsks(array $customFields): string
+    {
+        $stamped = self::stamped($customFields);
+
+        if ($stamped === null) {
+            return '';
+        }
+
+        $parts = explode('|', $stamped, 4);
+
+        return $parts[3] ?? '';
     }
 
     /**
@@ -153,19 +193,40 @@ final class ServicingFingerprint
      * fixed two decimals for `newestCreatedAt()`'s reason — a marker compared
      * as a string must not depend on how a float prints.
      */
-    private static function asks(QuoteSnapshot $snapshot): string
+    public static function asksOf(QuoteSnapshot $snapshot): string
     {
         $asks = [];
 
         foreach ($snapshot->content->lines as $line) {
-            if ($line->requestedUnitPrice !== null) {
-                $asks[] = $line->identity->lineItemId . ':' . number_format($line->requestedUnitPrice, 2, '.', '');
+            $token = self::askToken($line);
+
+            if ($token !== null) {
+                $asks[] = $token;
             }
         }
 
         sort($asks);
 
         return implode(',', $asks);
+    }
+
+    /**
+     * The `id:price` token for a single line's ask, or null when it has none.
+     *
+     * The one place this is composed. MerchantHandover::freshAskAt() needs to
+     * compare a single line's token against the stamped set rather than the
+     * whole-quote string asksOf() builds, and a second `number_format` call
+     * there would be the exact drift this class's comments keep warning
+     * about — the two must format identically or a line that hasn't changed
+     * would misread as fresh.
+     */
+    public static function askToken(QuoteLineSnapshot $line): ?string
+    {
+        if ($line->requestedUnitPrice === null) {
+            return null;
+        }
+
+        return $line->identity->lineItemId . ':' . number_format($line->requestedUnitPrice, 2, '.', '');
     }
 
     /**

@@ -105,6 +105,31 @@ final class QuoteLineMapperTest extends TestCase
         self::assertNull($lines[0]->requestedUnitPrice);
     }
 
+    public function testALinesUpdatedAtReachesTheReadModel(): void
+    {
+        $line = new ModernLineItemEntity(id: 'line-1');
+        $line->setUpdatedAt(new \DateTimeImmutable('2026-09-16 11:00:00'));
+
+        $lines = (new QuoteLineMapper(CommercialCapabilities::modern()))->map(self::quoteWithLines([$line]));
+
+        self::assertSame(
+            '2026-09-16 11:00:00',
+            $lines[0]->updatedAt?->format('Y-m-d H:i:s'),
+            'A per-line ask arrives with no comment, so the line timestamp is the only date it has.',
+        );
+    }
+
+    /** A line written once and never edited has no `updatedAt` at all; the DAL leaves it null. */
+    public function testALineNeverEditedFallsBackToItsCreatedAt(): void
+    {
+        $line = new ModernLineItemEntity(id: 'line-1');
+        $line->setCreatedAt(new \DateTimeImmutable('2026-09-16 09:00:00'));
+
+        $lines = (new QuoteLineMapper(CommercialCapabilities::modern()))->map(self::quoteWithLines([$line]));
+
+        self::assertSame('2026-09-16 09:00:00', $lines[0]->updatedAt?->format('Y-m-d H:i:s'));
+    }
+
     /** @param array<string, mixed> $customFields */
     private static function quote(float $requestedPriceGross, array $customFields): ArrayEntity
     {

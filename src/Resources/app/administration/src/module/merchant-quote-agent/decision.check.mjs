@@ -92,6 +92,11 @@ assert.equal(outcomeVariant('countered'), 'positive');
 assert.equal(outcomeVariant('replied'), 'positive');
 assert.equal(outcomeVariant('escalated'), 'critical');
 assert.equal(outcomeVariant('nothing_to_do'), 'neutral');
+// Documents intent, not a pin: outcomeVariant's own fallback for an unmapped
+// value is already 'neutral' (see below and outcomeVariant's return), so this
+// holds whether or not `handed_over` is in OUTCOME_VARIANTS. disposition() and
+// passNotes() below are where handed_over is actually pinned.
+assert.equal(outcomeVariant('handed_over'), 'neutral');
 assert.equal(outcomeVariant('clarified'), 'info');
 assert.equal(outcomeVariant(null), 'neutral');
 assert.equal(outcomeVariant('something_new'), 'neutral');
@@ -101,6 +106,14 @@ assert.equal(answeredTheBuyer('countered'), true);
 assert.equal(answeredTheBuyer('replied'), true);
 assert.equal(answeredTheBuyer('escalated'), false);
 assert.equal(answeredTheBuyer('nothing_to_do'), false);
+// Documents intent, not a pin on THIS task: answeredTheBuyer is a plain
+// allow-list with no fallback, so this passes only because `handed_over` is
+// not on it today, unchanged by this task's edits. Unlike outcomeVariant
+// above, it is not invariant — add `handed_over` to ANSWERED_OUTCOMES and
+// this assertion fails, which is the point: it is a tripwire against that,
+// not proof of it. disposition() and passNotes() below are where
+// handed_over is actually pinned.
+assert.equal(answeredTheBuyer('handed_over'), false);
 assert.equal(answeredTheBuyer(null), false);
 
 // Every outcome lands in exactly one disposition, and an unknown one is
@@ -111,6 +124,7 @@ assert.equal(disposition('replied'), 'answered');
 assert.equal(disposition('escalated'), 'needsReview');
 assert.equal(disposition('clarified'), 'awaitingBuyer');
 assert.equal(disposition('nothing_to_do'), 'noAction');
+assert.equal(disposition('handed_over'), 'noAction');
 assert.equal(disposition('some_future_outcome'), 'other');
 assert.equal(disposition(null), 'other');
 
@@ -371,6 +385,7 @@ assert.deepEqual(passNotes(vm, { outcome: 'offered', attempt: 2 }).map((note) =>
 
 // A pass with nothing to answer says so, rather than showing one bare header.
 assert.deepEqual(passNotes(vm, { outcome: 'nothing_to_do', attempt: 0 }).map((note) => note.key), ['nothingToDo']);
+assert.deepEqual(passNotes(vm, { outcome: 'handed_over', attempt: 0 }).map((note) => note.key), ['handedOver']);
 
 // A pass that did its job has nothing to add.
 assert.deepEqual(passNotes(vm, { outcome: 'offered', authorized: true, verified: true, violations: [] }), []);

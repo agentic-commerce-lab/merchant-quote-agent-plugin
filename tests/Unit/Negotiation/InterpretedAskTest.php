@@ -39,6 +39,14 @@ final class InterpretedAskTest extends TestCase
         self::assertFalse(NegotiationOutcome::Clarified->answeredTheBuyer());
         self::assertTrue(NegotiationOutcome::Offered->answeredTheBuyer());
         self::assertTrue(NegotiationOutcome::Countered->answeredTheBuyer());
+
+        // Same load: HandedOver found a human already on the quote and wrote
+        // nothing, so both QuoteEscalator::releaseFor() and
+        // ClarificationMarker::releaseFor() must keep releasing nothing for
+        // it. If this ever flips true, a stand-down starts releasing the
+        // escalation marker and the next pass re-escalates a quote a human
+        // is holding.
+        self::assertFalse(NegotiationOutcome::HandedOver->answeredTheBuyer());
     }
 
     public function testAnAskIsNotStructuralWhenQuantityMatchesExistingSnapshot(): void

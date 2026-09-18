@@ -155,4 +155,31 @@ final class ServicingFingerprintTest extends TestCase
         self::assertNull(ServicingFingerprint::stamped([ServicingFingerprint::MARKER_KEY => null]));
         self::assertNull(ServicingFingerprint::stamped([ServicingFingerprint::MARKER_KEY => 42]));
     }
+
+    public function testTheStampedAsksCanBeReadBackOutOfAMarker(): void
+    {
+        $snapshot = QuoteSnapshotFixture::snapshot(lines: [QuoteSnapshotFixture::line(90.0)]);
+        $stamp = ServicingFingerprint::stamp($snapshot, 'replied');
+
+        self::assertSame(
+            ServicingFingerprint::asksOf($snapshot),
+            ServicingFingerprint::stampedAsks([ServicingFingerprint::MARKER_KEY => $stamp]),
+        );
+    }
+
+    /**
+     * Every marker written before the asks component existed ends after the
+     * third field. Reading one must not invent a fourth.
+     */
+    public function testAMarkerWithoutAnAsksComponentReadsAsNoAsks(): void
+    {
+        self::assertSame('', ServicingFingerprint::stampedAsks([
+            ServicingFingerprint::MARKER_KEY => 'open|1|1756371600.000000',
+        ]));
+    }
+
+    public function testAQuoteThatWasNeverServicedHasNoStampedAsks(): void
+    {
+        self::assertSame('', ServicingFingerprint::stampedAsks([]));
+    }
 }
