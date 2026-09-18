@@ -9,7 +9,7 @@ paths = ["src"]
 # Dependencies: parsed so the analyzer can resolve their symbols, never linted or
 # rewritten. Without this every vendor class reads as "not found" — so `vendor/**`
 # must NOT be excluded, or the exclude cancels the include.
-includes = ["vendor"]
+includes = ["vendor", "tests/Stub"]
 excludes = ["var/**", "build/**", "dist/**", "vendor/bin"]
 extensions = ["php"]
 
