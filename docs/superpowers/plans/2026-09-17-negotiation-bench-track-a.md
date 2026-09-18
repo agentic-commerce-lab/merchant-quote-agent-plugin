@@ -799,3 +799,178 @@ Open the admin on the target shop. The per-strategy table should now show one ro
 
 - **#142's round cap never landed.** PR #148 closed unmerged. The bench's round-count distribution per strategy is the evidence that issue lacked — reopen it with the numbers.
 - Anything the bench reveals about the engine. The bench measures; it does not adjust.
+
+---
+
+### Task 5b: Place the order when the buyer accepts
+
+**Files:**
+- Modify: `tests/Integration/Bench/BenchNegotiation.php`
+- Modify: `tests/Integration/Bench/NegotiationResult.php`
+- Modify: `tests/Integration/Bench/BenchNegotiationTest.php`
+
+**Interfaces:**
+- Consumes: `BuyerQuoteGatewayInterface::acceptQuote(SalesChannelContext $context, string $quoteId): QuoteSnapshot` — already exists, already used against the live shop by `BuyerQuoteFlowTest`.
+- Produces: `NegotiationResult` gains `?string $orderId`. Task 6 records it per cell.
+
+**Why this exists — it was found after Task 5 shipped.** Two of the bench's five intended measures, `priceRetention` and `dealCycleTime`, read quote rows filtered to `stateMachineState.technicalName == ORDER_PLACED`. Measured on the test shop: of the quotes carrying decision records, **zero** have an `order_id` (2 serviced, 37 with orders, no overlap). A synthetic buyer returning `Accept` performs a quote state change — it does **not** create an order. So as built, the bench can never feed those two measures, and its readout would be three measures wide while claiming five.
+
+`SwagCommercialBuyerQuoteGateway::acceptQuote()` is the fix: it calls SwagCommercial's quote-order route and returns the snapshot `withOrder(orderId, orderNumber)`. It is the same path a real buyer takes from the storefront, so the bench measures the real conversion rather than a simulation of it.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `BenchNegotiationTest`:
+
+```php
+public function testAnAcceptingBuyerLeavesARealOrderBehind(): void
+{
+    // Without this, priceRetention and dealCycleTime can never be computed
+    // for anything the bench produces: they read quote rows filtered to
+    // ORDER_PLACED, and accepting a quote does not place an order.
+    $result = BenchNegotiation::run(
+        self::acceptingScenario(),
+        new AcceptsImmediatelyBuyer(),
+        self::benchSettings(),
+        'test-run',
+    );
+
+    self::assertNotNull($result->orderId, 'An accepted negotiation must leave an order behind.');
+
+    self::assertSame(
+        $result->orderId,
+        self::connection(static::getContainer())->fetchOne(
+            'SELECT LOWER(HEX(order_id)) FROM quote WHERE id = UNHEX(:quote) AND version_id = UNHEX(:live)',
+            ['quote' => $result->quoteId, 'live' => Defaults::LIVE_VERSION],
+        ),
+        'The order id must be the one the shop actually stored on the quote.',
+    );
+}
+
+public function testAWalkingBuyerLeavesNoOrder(): void
+{
+    // The converse, so the assertion above cannot pass by always ordering.
+    $result = BenchNegotiation::run(
+        self::acceptingScenario(),
+        new WalksImmediatelyBuyer(),
+        self::benchSettings(),
+        'test-run',
+    );
+
+    self::assertNull($result->orderId);
+}
+```
+
+`WalksImmediatelyBuyer` is a two-line `SyntheticBuyer` returning `BuyerMove::walk()`, alongside the existing stand-ins. `self::acceptingScenario()` is whatever scenario the existing accept test already uses — reuse it rather than inventing a second one.
+
+- [ ] **Step 2: Run to verify it fails**
+
+```bash
+composer run test:integration -- --filter BenchNegotiationTest
+```
+
+Expected: fails — `NegotiationResult` has no `orderId`.
+
+- [ ] **Step 3: Implement**
+
+On `Accept`, before returning: call `self::buyerGateway()->acceptQuote($context, $quoteId)` with the same buyer `SalesChannelContext` the quote was created with, and carry the resulting snapshot's order id onto `NegotiationResult`.
+
+**Do not let a failed conversion abort the run.** A quote the agent escalated, or one with no offer on it, may legitimately refuse to convert. Catch the failure, leave `orderId` null, and record the reason — a bench cell that could not convert is data, not a crash. A `\Throwable` from the conversion must not lose the negotiation that preceded it.
+
+- [ ] **Step 4: Run to verify it passes**
+
+```bash
+composer run test:integration -- --filter BenchNegotiationTest
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/Integration/Bench/
+git commit -m "feat(bench): place the order when the synthetic buyer accepts
+
+Price retention and deal cycle time read quote rows filtered to
+ORDER_PLACED, and accepting a quote does not place an order — so the
+bench could never feed two of its five measures. acceptQuote() is the
+same path a real buyer takes, so the bench now measures the real
+conversion rather than a simulation of it.
+
+A conversion that legitimately refuses leaves orderId null and records
+the reason; it never aborts the negotiation that preceded it.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 7b: Let a scenario carry a requested unit price
+
+**Files:**
+- Modify: `tests/Bench/Scenario.php`, `tests/Bench/ScenarioLines.php`
+- Modify: `tests/Integration/Bench/BenchNegotiation.php`
+- Modify: `tests/Bench/scenarios/structured-only.json`
+- Modify: `tests/Unit/Bench/ScenarioTest.php`, `tests/Integration/Bench/BenchNegotiationTest.php`
+
+**Why this exists — found by Task 7's review.** The `structured-only` scenario exists to cover a path this codebase has actually got wrong: a per-line `requested_price` with no comment at all, which once recorded a real price ask as `nothing_to_do`. But `Scenario::$lines` carries only `productRef` and `quantity`, and `BenchNegotiation::run()` builds its line items from those two fields — so no requested price ever reaches the quote.
+
+The consequence is worse than the scenario not working: **it does not fail.** With no comment and no requested price, the pass legitimately records `NothingToDo`, the cell completes, and the run looks healthy while covering nothing. A bench that ships a scenario it cannot exercise is making a claim it cannot support.
+
+`BuyerQuoteGatewayInterface::requestQuote()`'s line-item shape already accepts `requested_unit_price`, so the gateway is not the gap — the scenario schema and the mapping are.
+
+- [ ] **Step 1: Write the failing test**
+
+In `BenchNegotiationTest`:
+
+```php
+public function testAScenariosRequestedUnitPriceReachesTheQuoteLine(): void
+{
+    // Without this, structured-only covers nothing: no comment and no
+    // requested price means the pass records NothingToDo and the cell looks
+    // healthy while exercising the path it exists to test.
+    $result = BenchNegotiation::run(
+        self::structuredOnlyScenario(),
+        new AcceptsImmediatelyBuyer(),
+        self::benchSettings(),
+        'test-run',
+    );
+
+    $line = self::gateway()->fetchSnapshot($result->quoteId)->content->lines[0];
+
+    self::assertSame(80.0, $line->requestedUnitPrice, 'The scenario line must reach the quote.');
+}
+```
+
+Check the real property name on the snapshot's line object before writing this — do not assume `requestedUnitPrice`.
+
+And in `ScenarioTest`, assert the field round-trips through `fromArray()`, and that a line **without** one leaves it null rather than defaulting to a number.
+
+- [ ] **Step 2: Run to verify it fails**
+
+```bash
+composer run test:integration -- --filter BenchNegotiationTest
+composer run test -- --filter ScenarioTest
+```
+
+- [ ] **Step 3: Implement**
+
+Add an optional `requestedUnitPriceNet` to the line shape in `ScenarioLines`, thread it through `Scenario::$lines`, and map it into `requestQuote()`'s line items as `requested_unit_price` when present. Omit the key entirely when null — do not send a null, which is a different statement from not asking.
+
+Then give `structured-only.json` a requested price, and keep its `openingAsk` empty: the whole point of that scenario is a structured ask with no comment.
+
+- [ ] **Step 4: Run to verify it passes, then prove it can fail**
+
+Break the mapping — drop the field on the way to `requestQuote()` — confirm the new test fails, restore, confirm it passes. Put both outputs in the report.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/
+git commit -m "feat(bench): let a scenario carry a requested unit price
+
+structured-only exists to cover a per-line requested_price with no
+comment, the path that once recorded a real price ask as nothing_to_do.
+Scenario lines carried only productRef and quantity, so no requested
+price ever reached the quote — and the scenario did not fail, it recorded
+NothingToDo and looked healthy while covering nothing.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```

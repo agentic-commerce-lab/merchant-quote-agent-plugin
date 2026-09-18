@@ -173,6 +173,11 @@ Repeat visits are handled: it can see its own earlier offers on a quote and keep
 negotiating within the same caps, which are always measured against the *current*
 prices, so concessions never quietly compound.
 
+If someone on your team answers a quote by hand — a reply, a note, moving it
+along yourself — the agent leaves that quote alone. There is nothing to switch
+off and nothing to reset: it simply notices a colleague got there first, and it
+starts negotiating again only once the customer comes back with something new.
+
 ### It may look at the customer's history
 
 While deciding, the agent can ask for that customer's own past quotes, their
@@ -305,19 +310,25 @@ that is what your privacy commitments require.
 API key all live in your own Shopware installation. Nothing goes to us unless you
 send it yourself, which is the next part.
 
-**If you want to share your logs with us.** There is one command that prepares
-data to leave your shop, and it only runs when you run it:
+**If you want to share your logs with us.** Two ways to prepare data to leave
+your shop, and both only run when you ask for them.
+
+On the agent's dashboard, **Export** downloads the period the date selector at
+the top is showing. That is the easier one, and it is the one to use if you do
+not work in a shell.
+
+The command does the same thing for any range you name:
 
 ```
 bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 > september.jsonl
 ```
 
-It writes one line of JSON for every decision the agent recorded in that range —
-`--from` is included, `--to` is not, so the line above is exactly September.
-Nothing schedules it, nothing calls it, and it sends nothing anywhere: it writes a
-file, and what you do with that file is your decision. We ask for it because
-negotiation strategies get better when they can be measured across more than one
-shop.
+Either way you get one line of JSON for every decision the agent recorded in that
+range — `--from` is included, `--to` is not, so the line above is exactly
+September. Nothing schedules either of them, nothing calls them, and neither
+sends anything anywhere: you get a file, and what you do with that file is your
+decision. We ask for it because negotiation strategies get better when they can be
+measured across more than one shop.
 
 Three lists, and together they are the whole boundary.
 
@@ -360,14 +371,19 @@ the agent read, their numbers, products and prices, and which product it asked
 about. And the customer's own message, which is not stored in this record in the
 first place — only the agent's reading of it.
 
-**The comments are the exception you have to opt into.** The agent's replies, the
-model's raw answers, the reasons it gave for escalating, the questions it raised
-and the full text of any error messages are withheld unless you add
-`--include-comments`. They are the most useful part of the data and the most
-sensitive: the model is shown the customer's message, so anything the customer
-typed — a signature, a phone number, an order reference — can come back in the
-model's own words. The command tells you on every run which of the two you just
-produced.
+**The comments are the part to decide about, and the two ways round differ.** The
+agent's replies, the model's raw answers, the reasons it gave for escalating, the
+questions it raised and the full text of any error messages are the most useful
+part of the data and the most sensitive: the model is shown the customer's
+message, so anything the customer typed — a signature, a phone number, an order
+reference — can come back in the model's own words.
+
+The dashboard's **Export** includes them. To leave them out, use **Export without
+comments** in the menu beside that button.
+
+The command leaves them out, and `--include-comments` puts them in. It prints
+which of the two you just produced on every run, so a redirected export is never
+ambiguous about what is in the file.
 
 **One oddity you will see and should not report as a bug.** The `modelHost`
 field sometimes reads `unparsable-host`. That means the AI base URL in your

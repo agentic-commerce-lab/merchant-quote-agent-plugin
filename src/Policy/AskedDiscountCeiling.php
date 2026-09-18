@@ -20,6 +20,17 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  * the right field and is not: `SnapshotAdapter::toPolicy()` never populates it,
  * and only CommentTargetMerger does — so it is null for exactly the
  * structured-ask quotes this exists for.
+ *
+ * A buyer has three ways to name a number and all three bind the agent: a
+ * percentage in the conversation, the storefront's per-line "Requested price"
+ * field, and a per-unit price typed in the conversation. The third one used to
+ * fall through here — it lands in `structural.lineChanges` rather than on the
+ * line, and NegotiationPipeline hands this class the ANCHORED snapshot, which
+ * AskMirror's write-back does not reach — so the model was told the merchant's
+ * whole band on exactly the asks QuoteDiscountApplier was already pricing at
+ * the buyer's figure. Merging below closes that, and reuses the merger so the
+ * cap is measured on the same targets the pricer prices against, including its
+ * "structured field wins outside a renegotiation" precedence.
  */
 final class AskedDiscountCeiling
 {
@@ -38,6 +49,13 @@ final class AskedDiscountCeiling
         if ($interpretation?->price->bestPriceRequested === true) {
             return null;
         }
+
+        // Comment-borne per-unit targets onto the lines first, so the one
+        // ask shape that never touches `requestedUnitPrice` is measured like
+        // the two that do. Safe in tax terms: AskInterpreter already ran
+        // BuyerPriceSpace::toNet() over these, so they are net here, the same
+        // space as `unitPriceNet`. A null interpretation merges nothing.
+        $snapshot = (new CommentTargetMerger())->merge($snapshot, $interpretation);
 
         // The prompt defines additionalDiscountPercent as being asked "on top
         // of any requested prices already entered", so the two asks add rather

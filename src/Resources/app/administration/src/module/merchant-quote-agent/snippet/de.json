@@ -10,7 +10,8 @@
             "replied": "Angebot gesendet",
             "clarified": "Rückfrage gestellt",
             "escalated": "Prüfung nötig",
-            "nothing_to_do": "Kein Handlungsbedarf"
+            "nothing_to_do": "Kein Handlungsbedarf",
+            "handed_over": "An Ihr Team übergeben"
         },
         "escalation": {
             "discount_limit_exceeded": "Rabatt über dem Limit",
@@ -90,6 +91,11 @@
             "last30": "Letzte 30 Tage",
             "last90": "Letzte 90 Tage"
         },
+        "export": {
+            "button": "Exportieren",
+            "withoutComments": "Ohne Kommentare exportieren",
+            "failed": "Der Export konnte nicht erstellt werden."
+        },
         "figures": {
             "title": "Dieser Zeitraum",
             "ofCap": "bei einem Limit von {cap}",
@@ -111,6 +117,25 @@
             "unavailable": "Nicht verfügbar",
             "unavailableQuotes": "Berechtigung zum Lesen von Angeboten erforderlich",
             "unavailableOrders": "Berechtigung zum Lesen von Bestellungen erforderlich"
+        },
+        "strategyComparison": {
+            "title": "Vergleich nach Verhandlungsstrategie",
+            "columnStrategy": "Strategie",
+            "columnQuotes": "Angebote",
+            "columnAutoExecution": "Automatisierung",
+            "columnResolution": "Bearbeitungszeit bei Eskalation",
+            "columnRetention": "Gewährter Rabatt (Agent vs. Baseline)",
+            "columnCycleTime": "Abschlussdauer",
+            "columnTokens": "Ø Tokens",
+            "unattributed": "Nicht zugeordnet",
+            "versionSingle": "Version {version}",
+            "versionRange": "Versionen {from}–{to}",
+            "mixedFootnote": "{count} der Angebote haben die Strategie während der Verhandlung gewechselt",
+            "retentionValue": "{agent} vs. {baseline}",
+            "escalationsAside": "{measured} bearbeitet",
+            "tokensAside": "{quotes} von {total} Angeboten gemessen",
+            "emptyStateTitle": "Keine Verhandlungen in diesem Zeitraum",
+            "disclaimer": "Die Fallzahlen sind bei den meisten Strategien gering; hier wird keine Strategie als Gewinner ausgewiesen."
         },
         "detail": {
             "pageTitle": "Angebot #{quoteNumber}",
@@ -259,6 +284,7 @@
         "note": {
             "attemptRetried": "Ein früherer Durchlauf zu diesem Angebot ist abgebrochen, bevor er fertig war (bisher {count}). Dieser Durchlauf hat neu begonnen.",
             "nothingToDo": "Es gab nichts zu beantworten: keine neue Kundenanfrage, die der Agent lesen konnte, und kein offener Preiswunsch auf einer Position. Das Angebot blieb unverändert.",
+            "handedOver": "Jemand aus Ihrem Team hatte dieses Angebot zuletzt beantwortet, neuer als die Nachricht des Kunden. Der Agent hat es deshalb nicht angefasst und meldet sich erst wieder, wenn der Kunde antwortet.",
             "notAuthorized": "Der Agent hat Konditionen vorgeschlagen, die Ihre Richtlinien nicht erlauben. Es wurde nichts freigegeben, das Angebot blieb unverändert.",
             "notVerified": "Das Angebot wurde geändert, aber die anschließende Prüfung stimmte nicht mit dem Freigegebenen überein.",
             "needsAttention": "Dieser Durchlauf meldet Erfolg, ist aber nicht sauber zu Ende gelaufen. Prüfen Sie das Angebot, bevor Sie sich darauf verlassen."

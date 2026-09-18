@@ -9,7 +9,7 @@ namespace MerchantQuoteAgentPlugin\Bridge\Data;
  * lines (the quote-discount line) are legitimately negative.
  *
  * @mago-expect lint:excessive-parameter-list
- * Six promoted properties on a data carrier, not six arguments to a behaviour:
+ * Seven promoted properties on a data carrier, not seven arguments to a behaviour:
  * the threshold guards call sites that have to be read in order, and every one
  * of these is named at construction. The alternative — folding the money into
  * a value object — would rewrite every line read in the bridge, the adapter
@@ -30,5 +30,15 @@ final readonly class QuoteLineSnapshot
          * it without a second read of the line.
          */
         public float $netRatio = 1.0,
+        /**
+         * When this line was last written, by anyone.
+         *
+         * The one ask that arrives without a comment is a per-line
+         * `requested_price`, so this is the only date a comment-less ask has.
+         * It is NOT a buyer signal on its own: our own price writes move it
+         * too, which is why MerchantHandover dates only the line whose
+         * requested price differs from the stamped fingerprint.
+         */
+        public ?\DateTimeImmutable $updatedAt = null,
     ) {}
 }

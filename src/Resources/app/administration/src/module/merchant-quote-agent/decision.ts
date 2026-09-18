@@ -21,6 +21,7 @@ const OUTCOME_VARIANTS: Record<string, string> = {
     clarified: 'info',
     escalated: 'critical',
     nothing_to_do: 'neutral',
+    handed_over: 'neutral',
 };
 
 const BAND_VARIANTS: Record<string, string> = {
@@ -63,6 +64,7 @@ const DISPOSITIONS: Record<string, string> = {
     replied: 'answered',
     clarified: 'awaitingBuyer',
     nothing_to_do: 'noAction',
+    handed_over: 'noAction',
 };
 
 /**
@@ -592,6 +594,10 @@ export function passNotes(vm: any, round: any): PassNote[] {
 
     if (round.outcome === 'nothing_to_do') {
         notes.push(note('nothingToDo', 'neutral'));
+    }
+
+    if (round.outcome === 'handed_over') {
+        notes.push(note('handedOver', 'neutral'));
     }
 
     if (round.escalationReason) {

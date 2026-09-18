@@ -106,11 +106,22 @@
 
 /* ------------------------------------------------------------------- list */
 
+/* A column flex stretches its children across the cell, which is right for the
+   text lines but wrong for a badge: "Needs review" came out as wide as the
+   escalation reason underneath it. Only the badge draws its own box, so only
+   the badge shows the stretch. */
 .mqa-cell {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     gap: 2px;
     min-width: 0;
+}
+
+.mqa-cell__title {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
 }
 
 .mqa-cell__aside {

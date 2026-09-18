@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialCommentWriter;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\SwagCommercialProductAdder;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\VariantRejectingProductAdder;
+use MerchantQuoteAgentPlugin\Bridge\MerchantActionReader;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -201,8 +202,11 @@ trait ShopServices
         $capabilities = static::getContainer()->get(CommercialCapabilities::class);
         self::assertInstanceOf(CommercialCapabilities::class, $capabilities);
 
+        $merchantActions = static::getContainer()->get(MerchantActionReader::class);
+        self::assertInstanceOf(MerchantActionReader::class, $merchantActions);
+
         return new QuoteGatewayFactory(
-            new QuoteSnapshotReader($quoteRepository, new QuoteVersionResolver(), $capabilities),
+            new QuoteSnapshotReader($quoteRepository, new QuoteVersionResolver(), $capabilities, $merchantActions),
             new QuoteWriters(
                 new QuoteLineItemWriter($lineItemRepository, $capabilities),
                 new QuoteWriter($quoteRepository),

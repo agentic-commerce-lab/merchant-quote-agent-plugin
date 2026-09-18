@@ -298,6 +298,12 @@
         },
         {
             "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
+            "code": "TS2571",
+            "message": "Object is of type 'unknown'.",
+            "count": 2
+        },
+        {
+            "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
             "code": "TS7006",
             "message": "Parameter 'asks' implicitly has an 'any' type.",
             "count": 1
@@ -1496,8 +1502,14 @@
         {
             "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
             "rule": "@typescript-eslint/no-unsafe-argument",
+            "message": "Unsafe argument of type error typed assigned to a parameter of type `Blob | MediaSource`",
+            "count": 1
+        },
+        {
+            "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
+            "rule": "@typescript-eslint/no-unsafe-argument",
             "message": "Unsafe argument of type error typed assigned to a parameter of type `string`",
-            "count": 2
+            "count": 3
         },
         {
             "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
@@ -1507,8 +1519,26 @@
         },
         {
             "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
+            "rule": "@typescript-eslint/no-unsafe-assignment",
+            "message": "Unsafe assignment of an error typed value",
+            "count": 3
+        },
+        {
+            "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
+            "rule": "@typescript-eslint/no-unsafe-call",
+            "message": "Unsafe call of a type that could not be resolved",
+            "count": 2
+        },
+        {
+            "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
             "rule": "@typescript-eslint/no-unsafe-member-access",
             "message": "Unsafe member access .currencyIso on an `any` value",
+            "count": 1
+        },
+        {
+            "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
+            "rule": "@typescript-eslint/no-unsafe-member-access",
+            "message": "Unsafe member access .data on a type that cannot be resolved",
             "count": 1
         },
         {
@@ -1521,6 +1551,18 @@
             "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
             "rule": "@typescript-eslint/no-unsafe-member-access",
             "message": "Unsafe member access .disposition on an `any` value",
+            "count": 1
+        },
+        {
+            "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
+            "rule": "@typescript-eslint/no-unsafe-member-access",
+            "message": "Unsafe member access .get on a type that cannot be resolved",
+            "count": 1
+        },
+        {
+            "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
+            "rule": "@typescript-eslint/no-unsafe-member-access",
+            "message": "Unsafe member access .headers on a type that cannot be resolved",
             "count": 1
         },
         {
@@ -1563,7 +1605,7 @@
             "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts",
             "rule": "@typescript-eslint/no-unsafe-return",
             "message": "Unsafe return of a value of type error",
-            "count": 2
+            "count": 3
         },
         {
             "file": "src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/merchant-quote-agent-list.html.twig",

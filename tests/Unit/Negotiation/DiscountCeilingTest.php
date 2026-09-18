@@ -117,4 +117,72 @@ final class DiscountCeilingTest extends TestCase
             'A best-price ask names no number, so the merchant cap stands.',
         );
     }
+
+    public function testAPerUnitPriceTypedInACommentCapsTheModelToo(): void
+    {
+        // The same 2% ask as the first test, arriving through the only other
+        // channel a buyer has: typed in the conversation instead of filled
+        // into the storefront's "Requested price" field. No structured ask on
+        // the line, so CommentLineTargets adopts the comment's target and
+        // QuoteDiscountApplier prices against 98.00 — the cap the model is
+        // told has to be measured on the same number.
+        $harness = PipelineHarness::with(
+            [
+                '{"structural":{"lineChanges":[{"lineItemId":"line-1","targetUnitPrice":98.0}]}}',
+                self::OFFER_5_PERCENT,
+                'Here you go.',
+            ],
+            reReadTotalNet: 980.0,
+        );
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('can you do 98 each?', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(maxDiscountPercent: 15.0),
+            NegotiationFixture::context(),
+        );
+
+        self::assertStringContainsString(
+            'maximum discount you may grant: 2.00%',
+            $harness->spy->userPrompts[1],
+            'A per-unit price typed in a comment is the buyer\'s ask like any other, and must cap the model.',
+        );
+    }
+
+    public function testAGrossPriceTypedInACommentIsCappedInNetSpace(): void
+    {
+        // The hazard that could have justified leaving comment targets out:
+        // the buyer types a GROSS figure, and a cap measured on it unconverted
+        // would be one tax factor wrong. It is already handled upstream —
+        // AskInterpreter runs BuyerPriceSpace::toNet() before anything sees
+        // the ask — so 90.00 gross on a 25% quote is 72.00 net against an
+        // 80.00 net line: a 10% ask, not the 12.5% the raw figure implies.
+        $harness = PipelineHarness::with(
+            [
+                '{"structural":{"lineChanges":[{"lineItemId":"line-1","targetUnitPrice":90.0}]}}',
+                self::OFFER_5_PERCENT,
+                'Here you go.',
+            ],
+            reReadTotalNet: 760.0,
+        );
+        $snapshot = NegotiationFixture::grossSnapshot([
+            NegotiationFixture::buyerComment('90 per unit and we have a deal', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(maxDiscountPercent: 15.0),
+            NegotiationFixture::context(),
+        );
+
+        self::assertStringContainsString(
+            'maximum discount you may grant: 10.00%',
+            $harness->spy->userPrompts[1],
+            'A gross figure must cap the model on its net value, not on the number as typed.',
+        );
+    }
 }

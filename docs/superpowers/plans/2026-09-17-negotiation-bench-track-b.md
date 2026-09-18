@@ -737,3 +737,142 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - [ ] Rows with no `strategy_version_id` appear under "Unattributed" rather than vanishing.
 
 Deferred by the spec, and out of scope here: the confirming pass against hoelshare's real rows, which cannot happen until Track A has run.
+
+---
+
+### Task 6: Roll rows up to the strategy, not the version
+
+**Files:**
+- Modify: `src/Resources/app/administration/src/module/merchant-quote-agent/strategy-measures.ts`
+- Modify: `src/Resources/app/administration/src/module/merchant-quote-agent/strategy-measures.check.mjs`
+- Modify: `src/Resources/app/administration/src/module/merchant-quote-agent/page/merchant-quote-agent-list/index.ts`
+- Modify: `.../merchant-quote-agent-list/merchant-quote-agent-list.html.twig`
+- Modify: `.../snippet/en.json`, `.../snippet/de.json`
+
+**Interfaces:**
+- Consumes: `attributeStrategy`, `groupByQuoteId` (Task 2); `strategyNameFor` (Task 3), which this task **replaces**.
+- Produces: `strategyRows(passes, quoteRows, orderDates, slaHours, strategyOf)` where the last argument changes from
+  `nameFor: (strategyVersionId: string | null) => string | null`
+  to
+  `strategyOf: (strategyVersionId: string | null) => { strategyId: string; name: string | null; version: number } | null`.
+  Each returned row gains `versions: number[]` (ascending, distinct) and its `strategyVersionId` field becomes `strategyId: string | null`.
+
+**The defect this fixes.** `groupPassesByStrategy` keys its `Map` by `strategyVersionId`, but `strategyRows` labels each row with the *strategy* name. Every strategy currently has exactly one version, so this is invisible. `StrategyVersion`'s contract is that editing a strategy **appends** a version and never rewrites one — so the first prompt edit produces two rows both labelled "Margin defender", indistinguishable, each holding a fraction of the data. It ships the moment a merchant edits a strategy.
+
+**Why roll up rather than split.** The question the table answers is "which strategy should I run?" A version is a prompt edit within one posture. Splitting divides an already-small N — #99 is explicit that B2B quote volume does not reach significance and that the table must not let 6-vs-4 read as a result. Version-level comparison is real, but it belongs where the volume supports it: the bench readout, which runs hundreds of negotiations. Version remains the **audit** key on every decision row; it stops being the **reporting** key.
+
+**The semantic change to `mixedQuotes`.** It currently counts a quote whose passes span two strategy *versions*. After this change it must count a quote whose passes span two *strategies* — that is the contaminating case for a strategy comparison. A quote that ran v1 then v2 of the same strategy is not contamination, and flagging it would cry wolf. The version spread is surfaced separately, by `versions`.
+
+- [ ] **Step 1: Write the failing assertions**
+
+Extend `strategy-measures.check.mjs`. Add to the existing fixtures a second version of one strategy, and a quote that spans those two versions.
+
+```js
+// --------------------------------------------------- rollup across versions
+
+// v1 and v2 are two versions of ONE strategy. Before this rollup they produced
+// two rows both labelled "Margin defender"; now they are one row.
+const versionOf = (id) => ({
+    v1: { strategyId: 's-margin', name: 'Margin defender', version: 1 },
+    v2: { strategyId: 's-margin', name: 'Margin defender', version: 2 },
+    v9: { strategyId: 's-fast', name: 'Fast close', version: 1 },
+})[id] ?? null;
+
+const rollupPasses = [
+    { id: 'r1', quoteId: 'q1', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(2), totalNetBefore: 1000, totalNetAfter: 900, promptTokens: 100, completionTokens: 0 },
+    { id: 'r2', quoteId: 'q2', outcome: 'offered', strategyVersionId: 'v2', createdAt: iso(2), totalNetBefore: 1000, totalNetAfter: 950, promptTokens: 300, completionTokens: 0 },
+    { id: 'r3', quoteId: 'q3', outcome: 'offered', strategyVersionId: 'v9', createdAt: iso(1), totalNetBefore: 500, totalNetAfter: 475, promptTokens: 200, completionTokens: 0 },
+];
+
+const rolled = strategyRows(rollupPasses, [], new Map(), null, versionOf);
+
+// One row per STRATEGY, not per version.
+assert.deepEqual(rolled.map((r) => r.name), ['Margin defender', 'Fast close']);
+assert.equal(rolled.length, 2);
+
+// Both versions' quotes land in the one row, so N is not fragmented.
+assert.equal(rolled[0].quotes, 2);
+// ...and the spread is visible rather than silent.
+assert.deepEqual(rolled[0].versions, [1, 2]);
+assert.deepEqual(rolled[1].versions, [1]);
+
+// Tokens sum across versions: (100 + 300) / 2 quotes.
+assert.equal(rolled[0].tokens.meanTokens, 200);
+
+// A quote spanning two VERSIONS of one strategy is not contamination.
+const spansVersions = strategyRows([
+    { id: 'a', quoteId: 'q7', outcome: 'offered', strategyVersionId: 'v2', createdAt: iso(3), totalNetBefore: 1000, totalNetAfter: 900 },
+    { id: 'b', quoteId: 'q7', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(2), totalNetBefore: 1000, totalNetAfter: 950 },
+], [], new Map(), null, versionOf);
+assert.equal(spansVersions.length, 1);
+assert.equal(spansVersions[0].mixedQuotes, 0);
+assert.deepEqual(spansVersions[0].versions, [1, 2]);
+
+// A quote spanning two STRATEGIES is contamination, and still counted.
+const spansStrategies = strategyRows([
+    { id: 'c', quoteId: 'q8', outcome: 'offered', strategyVersionId: 'v9', createdAt: iso(3), totalNetBefore: 1000, totalNetAfter: 900 },
+    { id: 'd', quoteId: 'q8', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(2), totalNetBefore: 1000, totalNetAfter: 950 },
+], [], new Map(), null, versionOf);
+assert.equal(spansStrategies[0].mixedQuotes, 1);
+
+// An unresolvable version id still groups, under null, rather than vanishing.
+assert.equal(strategyRows(rollupPasses, [], new Map(), null, () => null).length, 1);
+```
+
+Keep every existing assertion in the file passing; update only the `nameFor` call sites to the new `strategyOf` shape.
+
+- [ ] **Step 2: Run to verify it fails**
+
+```bash
+node src/Resources/app/administration/src/module/merchant-quote-agent/strategy-measures.check.mjs
+```
+
+Expected: fails — rows are still keyed by version, so `rolled.length` is 3 and `versions` is undefined.
+
+- [ ] **Step 3: Implement**
+
+In `strategy-measures.ts`: keep `attributeStrategy` returning a **version** id — that is the correct audit-level attribution and its escalation-only fallback is already reviewed. Add a rollup step that maps each attributed version id through `strategyOf` to a strategy id, and key the group `Map` on that instead. Collect each group's distinct version numbers, ascending, into `versions`. Recompute `mixedQuotes` over strategy ids rather than version ids.
+
+Update the file's docblock: it currently explains grouping in terms of versions.
+
+- [ ] **Step 4: Run to verify it passes**
+
+```bash
+node src/Resources/app/administration/src/module/merchant-quote-agent/strategy-measures.check.mjs
+```
+
+- [ ] **Step 5: Replace the page resolver**
+
+`strategyNameFor` becomes `strategyOf`, returning `{ strategyId, name, version }` from the already-loaded `strategyVersions` and `strategies` arrays. Both reads already exist; `version` is `StrategyVersion.version`, an int column. Keep the null-on-unknown behaviour and the try/catch-null ACL guard exactly as they are.
+
+- [ ] **Step 6: Show the spread in the template**
+
+Render the version range beside the strategy name — `v2` for a single version, `v1–v3` for a span. A row whose `versions` is empty (unattributed) shows nothing. Add snippet keys to **both** `en.json` and `de.json`, with real German.
+
+- [ ] **Step 7: Verify against the shop**
+
+```bash
+./scripts/sync-to-shop.sh
+docker exec merchant-quote-shop sh -c 'cd /var/www/html && bin/build-administration.sh'
+```
+
+Seed a second version of one strategy (extend `scripts/seed-decisions.php` or add rows directly) so the rollup is exercised on real data, then screenshot at full width and hand-check that the rolled-up row's N equals the sum of its versions' quotes.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/Resources/app/administration/src/module/merchant-quote-agent/ scripts/
+git commit -m "fix(admin): compare strategies, not strategy versions
+
+Rows were keyed by strategy_version_id but labelled with the strategy
+name, so the first prompt edit produced two rows both called "Margin
+defender", each holding half the data. Versions are prompt edits within
+one posture; splitting on them fragments an N that is already too small
+to call a winner on. The spread is shown instead, and mixedQuotes now
+counts quotes spanning two strategies rather than two versions.
+
+Version stays the audit key on every decision row; it stops being the
+reporting key.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```

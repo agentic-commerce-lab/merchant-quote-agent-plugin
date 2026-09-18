@@ -14,6 +14,7 @@ import {
     formatSpan,
     priceRetention,
     splitDeals,
+    tokensPerNegotiation,
     valueRange,
     withinRange,
 } from './measures.ts';
@@ -184,6 +185,38 @@ assert.equal(
     null,
 );
 assert.deepEqual(dealCycleTime([], []), { agentMs: null, baselineMs: null, comparable: 0 });
+
+// ------------------------------------------------------------ tokens per negotiation
+
+// Every pass of a quote counts, not just the latest: the cost of a
+// negotiation is what all its rounds cost together.
+assert.deepEqual(
+    tokensPerNegotiation([
+        { quoteId: 'q1', promptTokens: 100, completionTokens: 50 },
+        { quoteId: 'q1', promptTokens: 200, completionTokens: 100 },
+        { quoteId: 'q2', promptTokens: 400, completionTokens: 50 },
+    ]),
+    { meanTokens: 450, measured: 3, quotes: 2 },
+);
+
+// A provider that sends no `usage` block leaves nulls. The pass still
+// happened, so the quote is still measured — its unknown passes contribute
+// nothing rather than poisoning the sum.
+assert.deepEqual(
+    tokensPerNegotiation([
+        { quoteId: 'q1', promptTokens: 100, completionTokens: null },
+        { quoteId: 'q1', promptTokens: null, completionTokens: null },
+    ]),
+    { meanTokens: 100, measured: 1, quotes: 1 },
+);
+
+// A quote whose every pass is unmeasured is not a zero-cost quote.
+assert.deepEqual(
+    tokensPerNegotiation([{ quoteId: 'q1', promptTokens: null, completionTokens: null }]),
+    { meanTokens: null, measured: 0, quotes: 0 },
+);
+
+assert.deepEqual(tokensPerNegotiation([]), { meanTokens: null, measured: 0, quotes: 0 });
 
 // ------------------------------------------------------------------ formatting
 

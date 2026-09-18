@@ -187,6 +187,34 @@ that set the price the measure reads. A quote whose passes span strategies is
 counted in its last strategy's group and reported as mixed, never silently
 dropped.
 
+**Rows roll up to the strategy, not the version** (decided 2026-09-17, after the
+table was first built). Attribution resolves to a strategy *version* — that is
+the audit-level fact, and it is what every decision row stores — but the table
+groups those versions back up to their strategy.
+
+The defect that forced the decision: rows were keyed by `strategyVersionId` and
+labelled with the strategy's name. With one version per strategy that is
+invisible. `StrategyVersion`'s contract is that editing a strategy **appends** a
+version and never rewrites one, so the first prompt edit produces two rows both
+labelled "Margin defender", indistinguishable, each holding a fraction of the
+data.
+
+Rolling up rather than splitting is the honest choice for this surface. A
+version is a prompt edit within one posture, and the question the table answers
+is which posture to run. Splitting divides an N that #99 already warns is too
+small to call a winner on — a strategy with six quotes across three versions
+gives two per version, and a selector over that would let a merchant slice their
+way to a confidently meaningless number. The spread is shown on the row instead,
+so mixing is visible rather than silent.
+
+Version-level comparison is still real; it belongs where the volume supports it,
+which is the bench readout over hundreds of negotiations, not a merchant's
+dashboard. So: **version is the audit key, strategy is the reporting key.**
+
+One consequence: `mixedQuotes` counts a quote whose passes span two
+*strategies*, not two versions. A quote that ran v1 then v2 of the same strategy
+is not contamination of a strategy comparison, and flagging it would cry wolf.
+
 ## Track A — the bench
 
 ### Where it lives
@@ -420,6 +448,42 @@ reported as findings.
 **No isolation means the shop's data is cumulative.** Accepted. A per-strategy
 table on hoelshare is a blend, and reading it as a clean experiment would be a
 mistake.
+
+**Two of the five measures need the quote to become an order.** Measured on
+`merchant-quote-shop`, 2026-09-17: the dashboard filters its quote rows to
+`stateMachineState.technicalName == ORDER_PLACED`, and of the quotes that
+carry decision records, **zero** have an `order_id`. Thirty-seven quotes on
+that shop have orders; none of them was ever serviced by the agent.
+
+So `splitDeals` puts nothing on the agent side, and `priceRetention` and
+`dealCycleTime` report absent for every strategy — correctly, since there is
+nothing to measure, but categorically rather than incidentally.
+
+The consequence for the bench is the part worth acting on: **a bench run whose
+quotes never reach `ORDER_PLACED` can never produce those two measures.** A
+synthetic buyer that "accepts" has not thereby created an order — accepting is
+a quote state change, and the conversion to an order is a separate step. If the
+bench is meant to exercise price retention and deal cycle time at all, the loop
+has to carry an accepted quote through to a placed order, and if it cannot, the
+bench's readout is honestly three measures wide, not five.
+
+This was mis-diagnosed once already. The first written explanation blamed a
+missing `strategy_version_id` link, which would have sent someone to write a
+backfill that fixes nothing.
+
+**An unreachable model produces unattributed rows, not failed-model rows.**
+`NegotiationPipeline` records the decision — and with it `strategyVersionId` —
+inside `answer()`, which is reached only once the extract call has succeeded.
+`ModelUnavailable` is caught upstream and escalates through `NegotiationFailure`
+before `answer()` ever runs, and `recordModelCall` only fires on a call that
+returned. So a pass whose model could not be reached leaves a decision row with
+no strategy and no model on it.
+
+For the bench this is an interpretation hazard rather than a bug: if one model
+in the matrix is unreachable, its cells do not appear as that model performing
+badly — they vanish into the "Unattributed" group, and the comparison silently
+loses a column. A run must therefore report its failed cells separately from
+its measured ones, and a reader must not treat "Unattributed" as a strategy.
 
 **Track A's shop is remote.** hoelshare has bitten before: frequent SSH triggers
 IP-bans on the sibling legacy host, and an admin-UI plugin update there has
