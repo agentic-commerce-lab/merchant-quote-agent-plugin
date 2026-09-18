@@ -60,6 +60,56 @@ trait ShopServices
     }
 
     /**
+     * Skip when this shop has no shopping-assistant-starter-kit.
+     *
+     * That plugin is optional the same way Agentic Commerce is: a shop without
+     * it is a supported configuration, and the two chat tools this plugin
+     * contributes are simply not registered there.
+     *
+     * Deliberately NOT `AssistantAvailability::isRegistered()` — that reads
+     * `kernel.bundles` for the literal bundle key `SwagAssistantStarterKit`,
+     * which is exactly the value
+     * `ToolWiringTest::testKernelBundlesListsTheStarterKit()` exists to assert.
+     * A skip guard built on the same literal could never fail independently of
+     * that assertion: if upstream renamed the bundle, this shop's bundle key
+     * would change, the guard would skip, and the rename would never be seen —
+     * on the one shop where it matters. Scanning for a registered bundle
+     * *class* under the `Swag\AssistantStarterKit\` namespace instead detects
+     * the plugin however its bundle is named, so the assertion downstream stays
+     * free to fail for real.
+     */
+    protected static function requireAssistantSurface(): void
+    {
+        if (!self::anyBundleClassIsUnderTheAssistantStarterKitNamespace()) {
+            self::markTestSkipped('This shop has no shopping-assistant-starter-kit: no registered bundle class is under '
+            . 'Swag\AssistantStarterKit\.');
+        }
+    }
+
+    private static function anyBundleClassIsUnderTheAssistantStarterKitNamespace(): bool
+    {
+        $container = static::getContainer();
+
+        if (!$container->hasParameter('kernel.bundles')) {
+            return false;
+        }
+
+        $bundles = $container->getParameter('kernel.bundles');
+
+        if (!\is_array($bundles)) {
+            return false;
+        }
+
+        foreach ($bundles as $bundleClass) {
+            if (\is_string($bundleClass) && str_starts_with($bundleClass, 'Swag\\AssistantStarterKit\\')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Fetch a service by raw id. Commercial services are not typed here on
      * purpose — the adapters are what give them a type.
      */

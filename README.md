@@ -16,6 +16,16 @@ replies, same escalations, same decision log. What is not registered without it
 is listed under
 [Without Agentic Commerce](docs/end-to-end.md#11-without-agentic-commerce).
 
+**The shopping-assistant-starter-kit is optional the same way.** Install it and
+a shopper chatting with the storefront assistant can ask it to request a quote
+on their cart and check what happened to one they already have — the same
+servicing loop answers either way, unaware whether the ask came from a form or
+a chat message. Reading a quote's status is always on; requesting one waits on
+its own toggle, `assistantQuoteRequests`, off by default, because it acts in
+the buyer's name rather than the buyer's own click. Leave the starter kit out
+and neither tool exists to be gated. See
+[The shopping assistant](docs/end-to-end.md#12-the-shopping-assistant).
+
 **Building or operating it? [`docs/end-to-end.md`](docs/end-to-end.md)** — the
 full process with a TL;DR at the top: triggers, the pass, the model calls,
 escalation, configuration, the dashboard, the A2CN evidence trail, and running
