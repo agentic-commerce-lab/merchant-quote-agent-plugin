@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Assistant;
 
+use MerchantQuoteAgentPlugin\Assistant\AssistantAskStamp;
 use MerchantQuoteAgentPlugin\Assistant\RequestQuoteTool;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Ucp\Sdk\Exception\ValidationException;
 
@@ -69,7 +71,11 @@ final class RequestQuoteToolTest extends TestCase
                 return self::snapshot();
             });
 
-        return new RequestQuoteTool($gateway, $this->createMock(SalesChannelContext::class));
+        return new RequestQuoteTool(
+            $gateway,
+            $this->createMock(SalesChannelContext::class),
+            new AssistantAskStamp(new NullLogger()),
+        );
     }
 
     private static function snapshot(): QuoteSnapshot

@@ -43,6 +43,7 @@ final class RequestQuoteTool
     public function __construct(
         private readonly BuyerQuoteGatewayInterface $gateway,
         private readonly SalesChannelContext $context,
+        private readonly AssistantAskStamp $askStamp,
     ) {}
 
     /**
@@ -70,6 +71,10 @@ final class RequestQuoteTool
             $lineItems,
             mb_substr(trim($comment), 0, self::MAX_COMMENT),
         );
+
+        if ([] !== $targets) {
+            $this->askStamp->stamp($snapshot, $targetSource);
+        }
 
         return [
             'quote_number' => $snapshot->quoteNumber,

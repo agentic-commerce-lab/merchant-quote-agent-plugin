@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Assistant;
 
+use MerchantQuoteAgentPlugin\Assistant\AssistantAskStamp;
 use MerchantQuoteAgentPlugin\Assistant\RequestQuoteTool;
 use MerchantQuoteAgentPlugin\Assistant\RequestQuoteToolFactory;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
@@ -11,6 +12,7 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
@@ -80,7 +82,12 @@ final class RequestQuoteToolFactoryTest extends TestCase
         $gateway = $this->createMock(BuyerQuoteGatewayInterface::class);
         $gateway->method('isAvailable')->willReturn($gatewayAvailable);
 
-        return new RequestQuoteToolFactory($requestStack, $this->settings($toggle), $gateway);
+        return new RequestQuoteToolFactory(
+            $requestStack,
+            $this->settings($toggle),
+            new AssistantAskStamp(new NullLogger()),
+            $gateway,
+        );
     }
 
     private function settings(bool $toggle): QuoteAgentSettingsReader

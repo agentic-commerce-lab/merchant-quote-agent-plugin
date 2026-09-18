@@ -18,6 +18,7 @@ final readonly class RequestQuoteToolFactory implements ToolFactoryInterface
     public function __construct(
         private RequestStack $requestStack,
         private QuoteAgentSettingsReader $settings,
+        private AssistantAskStamp $askStamp,
         private ?BuyerQuoteGatewayInterface $gateway = null,
     ) {}
 
@@ -55,6 +56,6 @@ final readonly class RequestQuoteToolFactory implements ToolFactoryInterface
             return null;
         }
 
-        return new RequestQuoteTool($this->gateway, $salesChannelContext);
+        return new RequestQuoteTool($this->gateway, $salesChannelContext, $this->askStamp);
     }
 }
