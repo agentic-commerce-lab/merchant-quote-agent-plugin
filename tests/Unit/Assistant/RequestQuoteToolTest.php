@@ -7,6 +7,8 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Assistant;
 use MerchantQuoteAgentPlugin\Assistant\AssistantAskStamp;
 use MerchantQuoteAgentPlugin\Assistant\RequestQuoteTool;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
+use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -18,6 +20,9 @@ final class RequestQuoteToolTest extends TestCase
     private ?array $lastLineItems = null;
 
     private ?string $lastComment = null;
+
+    /** @var list<array{0: string, 1: array<string, mixed>|null}> */
+    private array $stampCalls = [];
 
     /**
      * The tool returns the quote's identity and NOTHING about money. The
@@ -54,6 +59,40 @@ final class RequestQuoteToolTest extends TestCase
         self::assertSame(2_000, mb_strlen((string) $this->lastComment));
     }
 
+    /**
+     * The guard at RequestQuoteTool that calls the stamp only when targets
+     * are present, with the exact $targetSource the caller passed — not a
+     * hardcoded default.
+     */
+    public function testATargetStampsTheAssistantProposedSource(): void
+    {
+        $this->tool()->__invoke(
+            '98 each would work',
+            [['product_id' => 'prod-1', 'unit_price' => 98.0]],
+            'assistant_proposed',
+        );
+
+        self::assertSame([['quote-1', ['merchantQuoteAgentAssistantAsk' => 'assistant_proposed']]], $this->stampCalls);
+    }
+
+    public function testATargetStampsTheBuyerStatedSource(): void
+    {
+        $this->tool()->__invoke(
+            '98 each would work',
+            [['product_id' => 'prod-1', 'unit_price' => 98.0]],
+            'buyer_stated',
+        );
+
+        self::assertSame([['quote-1', ['merchantQuoteAgentAssistantAsk' => 'buyer_stated']]], $this->stampCalls);
+    }
+
+    public function testNoTargetsDoesNotStamp(): void
+    {
+        $this->tool()->__invoke('Can you do better on these?');
+
+        self::assertSame([], $this->stampCalls);
+    }
+
     private function tool(): RequestQuoteTool
     {
         $gateway = $this->createMock(BuyerQuoteGatewayInterface::class);
@@ -71,10 +110,17 @@ final class RequestQuoteToolTest extends TestCase
                 return self::snapshot();
             });
 
+        $quoteGateway = $this->createMock(QuoteGatewayInterface::class);
+        $quoteGateway
+            ->method('updateQuote')
+            ->willReturnCallback(function (string $quoteId, QuoteUpdate $update): void {
+                $this->stampCalls[] = [$quoteId, $update->customFields];
+            });
+
         return new RequestQuoteTool(
             $gateway,
             $this->createMock(SalesChannelContext::class),
-            new AssistantAskStamp(new NullLogger()),
+            new AssistantAskStamp(new NullLogger(), $quoteGateway),
         );
     }
 
