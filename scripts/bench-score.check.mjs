@@ -15,7 +15,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { buildGroups, groupKey, partitionRows } from './bench-score.mjs';
+import { buildGroups, groupKey, partitionRows, scoreGroup } from './bench-score.mjs';
 
 const decisionRow = {
     runId: 'run-1',
@@ -69,6 +69,15 @@ assert.ok(
     !groups.has(groupKey(failureRow)),
     'a failed cell must never be folded into a measure as if it were a negotiation',
 );
+
+// tokensPerNegotiation must be the admin's own sum (promptTokens +
+// completionTokens per quote), reached through scoreGroup(), not a
+// reimplementation. decisionRow carries promptTokens: 10, completionTokens:
+// 20 for its one quote, so the known sum is 30.
+const score = scoreGroup(decisionRows);
+assert.equal(score.tokens.measured, 1, 'one decision row has token fields, so one measured pass');
+assert.equal(score.tokens.quotes, 1, 'the one measured pass belongs to a single quote');
+assert.equal(score.tokens.meanTokens, 30, 'tokensPerNegotiation must sum promptTokens + completionTokens (10 + 20)');
 
 // eslint-disable-next-line no-console
 console.log('bench-score.check.mjs: all assertions passed');

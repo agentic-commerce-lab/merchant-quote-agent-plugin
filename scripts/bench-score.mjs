@@ -4,9 +4,10 @@
  * failure row per cell that threw before producing any decision row) by
  * grouping rows into (strategyVersionId, model) cells and running each cell
  * through the admin's own measure code -- foldToQuotes() from decision.ts,
- * then autoExecutionRate() and escalationResolution() from measures.ts -- so
- * the bench readout and the merchant dashboard can never drift apart. See
- * those modules' own docblocks for what each figure means.
+ * then autoExecutionRate(), escalationResolution() and tokensPerNegotiation()
+ * from measures.ts -- so the bench readout and the merchant dashboard can
+ * never drift apart. See those modules' own docblocks for what each figure
+ * means.
  *
  * A failure row (`cellFailure: true`, written by `BenchRunTest::attemptCell`)
  * is never a negotiation, so it is counted as a failed cell and excluded from
@@ -18,14 +19,12 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { foldToQuotes } from '../src/Resources/app/administration/src/module/merchant-quote-agent/decision.ts';
-import * as measures from '../src/Resources/app/administration/src/module/merchant-quote-agent/measures.ts';
-
-const { autoExecutionRate, escalationResolution, formatSpan } = measures;
-
-// tokensPerNegotiation lands with admin PR #159 (Track B), not yet merged
-// into this branch's measures.ts. Feature-detect rather than reimplementing
-// it -- a local copy is the exact drift the shared contract forbids.
-const tokensPerNegotiation = typeof measures.tokensPerNegotiation === 'function' ? measures.tokensPerNegotiation : null;
+import {
+    autoExecutionRate,
+    escalationResolution,
+    formatSpan,
+    tokensPerNegotiation,
+} from '../src/Resources/app/administration/src/module/merchant-quote-agent/measures.ts';
 
 export function readRows(path) {
     return readFileSync(path, 'utf8')
@@ -93,7 +92,7 @@ export function scoreGroup(rows) {
         rows: rows.length,
         autoExecution: autoExecutionRate(folded),
         escalation: escalationResolution(rows, null),
-        tokens: tokensPerNegotiation ? tokensPerNegotiation(rows) : null,
+        tokens: tokensPerNegotiation(rows),
     };
 }
 
@@ -122,12 +121,6 @@ function main() {
         + `${failedQuoteIds.size} quotes with an orderFailure.\n`,
     );
 
-    if (!tokensPerNegotiation) {
-        console.log(
-            "tokensPerNegotiation: unavailable -- not exported by this branch's measures.ts "
-            + '(lands with admin PR #159, Track B, not yet merged). Not reimplemented here.\n',
-        );
-    }
     console.log(
         'priceRetention / dealCycleTime: unavailable -- both need quoteRows and orderDates, '
         + 'which a JSONL of decision records does not carry. Not fabricated here.\n',
@@ -149,9 +142,10 @@ function main() {
             `  escalationResolution: mean ${formatSpan(esc.meanMs)} over ${esc.measured} resolved, ${esc.open} open`
             + `${esc.withinSla === null ? '' : `, ${esc.withinSla} within SLA`}`,
         );
-        if (tokensPerNegotiation) {
-            console.log(`  tokensPerNegotiation: ${JSON.stringify(score.tokens)}`);
-        }
+        console.log(
+            `  tokensPerNegotiation: mean ${score.tokens.meanTokens === null ? 'n/a' : score.tokens.meanTokens.toFixed(0)} `
+            + `over ${score.tokens.measured} measured passes across ${score.tokens.quotes} quotes`,
+        );
         console.log('');
     }
 
