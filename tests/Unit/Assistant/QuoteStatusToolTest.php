@@ -20,6 +20,29 @@ final class QuoteStatusToolTest extends TestCase
         self::assertSame('replied', $result['state']);
     }
 
+    /**
+     * `taxStatus` decides which total is the customer-facing authoritative
+     * amount. A net-priced quote must report `totalNet`, not `totalGross` —
+     * picking the wrong one would show the wrong figure to the shopper.
+     */
+    public function testItReportsTheNetTotalForANetPricedQuote(): void
+    {
+        $result = $this->tool([self::snapshot('Q1001', taxStatus: 'net')])->__invoke('Q1001');
+
+        self::assertSame('200.00 EUR', $result['total']);
+    }
+
+    /**
+     * The gross counterpart: a gross-priced quote must report `totalGross`,
+     * not `totalNet`.
+     */
+    public function testItReportsTheGrossTotalForAGrossPricedQuote(): void
+    {
+        $result = $this->tool([self::snapshot('Q1001', taxStatus: 'gross')])->__invoke('Q1001');
+
+        self::assertSame('238.00 EUR', $result['total']);
+    }
+
     public function testItFindsAQuoteByNumber(): void
     {
         $result = $this->tool([self::snapshot('Q1002'), self::snapshot('Q1001')])->__invoke('Q1001');
@@ -60,7 +83,7 @@ final class QuoteStatusToolTest extends TestCase
         return new QuoteStatusTool($gateway, $this->createMock(SalesChannelContext::class));
     }
 
-    private static function snapshot(string $number): QuoteSnapshot
+    private static function snapshot(string $number, string $taxStatus = 'net'): QuoteSnapshot
     {
         return new QuoteSnapshot(
             id: 'quote-' . $number,
@@ -70,7 +93,7 @@ final class QuoteStatusToolTest extends TestCase
             currency: 'EUR',
             totalGross: 238.00,
             totalNet: 200.00,
-            taxStatus: 'net',
+            taxStatus: $taxStatus,
             lineItems: [],
             comments: [],
         );
