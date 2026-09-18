@@ -21,6 +21,7 @@ import {
     priceRetention,
     splitDeals,
 } from '../../measures';
+import { strategyRows } from '../../strategy-measures';
 
 const { Criteria } = Shopware.Data;
 
@@ -64,6 +65,8 @@ Shopware.Component.register('merchant-quote-agent-list', {
             orderDates: new Map(),
             orderDatesUnavailable: false,
             slaHours: null,
+            strategyVersions: null,
+            strategies: null,
             isLoading: false,
             rangeDays: 30,
             dispositionFilter: 'needsReview',
@@ -76,6 +79,14 @@ Shopware.Component.register('merchant-quote-agent-list', {
     computed: {
         decisionRepository() {
             return this.repositoryFactory.create('merchant_quote_agent_decision');
+        },
+
+        strategyVersionRepository() {
+            return this.repositoryFactory.create('merchant_quote_agent_strategy_version');
+        },
+
+        strategyRepository() {
+            return this.repositoryFactory.create('merchant_quote_agent_strategy');
         },
 
         httpClient() {
@@ -184,6 +195,45 @@ Shopware.Component.register('merchant-quote-agent-list', {
             return dealCycleTime(this.deals.agent, this.deals.baseline);
         },
 
+        /**
+         * The same success measures as the tiles above, one row per
+         * negotiation strategy. Sorted by name rather than by any figure —
+         * this table states no winner, and a score-sorted row order would
+         * imply one regardless of what the template does with it.
+         *
+         * Null-named (unattributed) rows sort last: "no name" is not the
+         * empty string and should not win a lexical sort against real ones.
+         */
+        strategyComparison() {
+            const rows = strategyRows(
+                this.currentPasses,
+                this.quoteRows ?? [],
+                this.orderDates,
+                this.slaHours,
+                (id) => this.strategyOf(id),
+            );
+
+            return [...rows].sort((a, b) => {
+                if (a.name === null || b.name === null) {
+                    return (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0);
+                }
+
+                return a.name.localeCompare(b.name);
+            });
+        },
+
+        strategyColumns() {
+            return [
+                { property: 'name', label: 'merchant-quote-agent.strategyComparison.columnStrategy', primary: true },
+                { property: 'quotes', label: 'merchant-quote-agent.strategyComparison.columnQuotes', width: '90px' },
+                { property: 'autoExecution', label: 'merchant-quote-agent.strategyComparison.columnAutoExecution' },
+                { property: 'escalations', label: 'merchant-quote-agent.strategyComparison.columnResolution' },
+                { property: 'priceRetention', label: 'merchant-quote-agent.strategyComparison.columnRetention' },
+                { property: 'cycleTime', label: 'merchant-quote-agent.strategyComparison.columnCycleTime' },
+                { property: 'tokens', label: 'merchant-quote-agent.strategyComparison.columnTokens' },
+            ];
+        },
+
         filteredQuotes() {
             if (this.dispositionFilter === 'all') {
                 return this.quotes;
@@ -287,6 +337,34 @@ Shopware.Component.register('merchant-quote-agent-list', {
         },
 
         /**
+         * A version id resolved to the strategy it belongs to: its strategy id, the
+         * strategy's display name, and the version's own number — via the version's
+         * strategyId.
+         *
+         * Two reads rather than an association, because StrategyVersion.strategyId is a
+         * plain UUID column by design — see that entity's docblock.
+         *
+         * An unknown id returns null rather than a placeholder: the template decides
+         * how an unnamed group reads, and a name invented here would be
+         * indistinguishable from a real one.
+         */
+        strategyOf(strategyVersionId) {
+            if (strategyVersionId === null) {
+                return null;
+            }
+
+            const version = (this.strategyVersions ?? []).find((row) => row.id === strategyVersionId);
+
+            if (!version) {
+                return null;
+            }
+
+            const name = (this.strategies ?? []).find((row) => row.id === version.strategyId)?.name ?? null;
+
+            return { strategyId: version.strategyId, name, version: version.version };
+        },
+
+        /**
          * Download the selected period as anonymized JSONL, for sending to
          * Shopware.
          *
@@ -347,6 +425,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
                 // the quote rows first, so those two are sequential.
                 await Promise.all([
                     this.loadPasses(),
+                    this.loadStrategies(),
                     this.loadSla(),
                     this.loadQuotes().then(() => this.loadOrderDates()),
                 ]);
@@ -373,6 +452,30 @@ Shopware.Component.register('merchant-quote-agent-list', {
                 this.passTotal = 0;
                 // eslint-disable-next-line no-console
                 console.error('merchant-quote-agent: failed to load servicing passes', error);
+            }
+        },
+
+        /**
+         * The strategy versions and strategies behind the passes, so
+         * `strategyOf` can resolve a version id to its strategy.
+         *
+         * Nulled rather than left stale on failure: a merchant without the
+         * strategy ACL privilege should get absent names, not a broken page.
+         */
+        async loadStrategies() {
+            try {
+                const [versions, strategies] = await Promise.all([
+                    this.strategyVersionRepository.search(new Criteria(1, 500), Shopware.Context.api),
+                    this.strategyRepository.search(new Criteria(1, 500), Shopware.Context.api),
+                ]);
+
+                this.strategyVersions = Array.from(versions);
+                this.strategies = Array.from(strategies);
+            } catch (error) {
+                this.strategyVersions = null;
+                this.strategies = null;
+                // eslint-disable-next-line no-console
+                console.error('merchant-quote-agent: strategy names unavailable', error);
             }
         },
 

@@ -118,6 +118,25 @@
             "unavailableQuotes": "Needs permission to read quotes",
             "unavailableOrders": "Needs permission to read orders"
         },
+        "strategyComparison": {
+            "title": "Comparison by negotiation strategy",
+            "columnStrategy": "Strategy",
+            "columnQuotes": "Quotes",
+            "columnAutoExecution": "Auto-execution",
+            "columnResolution": "Escalation resolution",
+            "columnRetention": "Discount granted (agent vs. baseline)",
+            "columnCycleTime": "Cycle time",
+            "columnTokens": "Mean tokens",
+            "unattributed": "Unattributed",
+            "versionSingle": "Version {version}",
+            "versionRange": "Versions {from}–{to}",
+            "mixedFootnote": "{count} of its quotes changed strategy mid-negotiation",
+            "retentionValue": "{agent} vs {baseline}",
+            "escalationsAside": "{measured} resolved",
+            "tokensAside": "{quotes} of {total} quotes measured",
+            "emptyStateTitle": "No negotiations in this period",
+            "disclaimer": "Counts are small for most strategies here; no strategy is declared a winner."
+        },
         "detail": {
             "pageTitle": "Quote #{quoteNumber}",
             "agentTitle": "Quote Agent",

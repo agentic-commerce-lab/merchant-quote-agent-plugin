@@ -118,6 +118,12 @@
     min-width: 0;
 }
 
+.mqa-cell__title {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
 .mqa-cell__aside {
     color: var(--color-text-secondary-default);
     font-size: 12px;
