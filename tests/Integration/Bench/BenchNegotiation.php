@@ -53,6 +53,13 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
  * `maxRounds` is the only bound on the loop — see Scenario's own docblock:
  * issue #142's round cap was closed unmerged, so nothing in src/ stops a
  * non-converging negotiation, and this class must stop itself.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * One class drives the whole negotiation loop end to end against a real
+ * shop: round bound, escalation short-circuit, buyer-move branching, order
+ * conversion's try/catch, and the optional per-line requested price all
+ * belong to the single scenario this class runs, not to separate concerns
+ * that would justify separate classes.
  */
 final readonly class BenchNegotiation
 {
@@ -82,14 +89,19 @@ final readonly class BenchNegotiation
         $context = BuyerQuoteContextFixture::contextForCustomer($this->container, $customerId);
         $context->getContext()->addState(AgentContext::STATE, Context::SKIP_TRIGGER_FLOW);
 
-        $lineItems = array_map(fn(array $line): array => [
-            'product_id' => self::resolveProduct($this->container, $line['productRef']),
-            'quantity' => $line['quantity'],
-        ], $scenario->lines);
+        $lineItems = array_map(self::lineItem(...), $scenario->lines);
 
         $quote = $this->buyerGateway->requestQuote($context, $lineItems, null);
         $quoteId = $quote->id;
-        $this->writeComment($quoteId, $customerId, $scenario->openingAsk);
+
+        // Empty on purpose for a structured-only ask: `structured-only`
+        // writes no buyer comment at all, so AskInterpreter sees nothing to
+        // extract and the per-line requested_unit_price is the only thing
+        // reaching the quote -- writing even an empty comment here would
+        // still count as a newer buyer comment and defeat that.
+        if ($scenario->openingAsk !== '') {
+            $this->writeComment($quoteId, $customerId, $scenario->openingAsk);
+        }
 
         // Folded into run() rather than kept as its own negotiate() method:
         // that split needed six parameters (context, quoteId, customerId,
@@ -153,6 +165,29 @@ final readonly class BenchNegotiation
         } catch (\Throwable $e) {
             return new OrderConversion(null, sprintf('%s: %s', $e::class, $e->getMessage()));
         }
+    }
+
+    /**
+     * @param array{productRef: string, quantity: int, requestedUnitPrice: ?float} $line
+     *
+     * @return array{product_id: string, quantity: int, requested_unit_price?: float}
+     */
+    private function lineItem(array $line): array
+    {
+        $item = [
+            'product_id' => self::resolveProduct($this->container, $line['productRef']),
+            'quantity' => $line['quantity'],
+        ];
+
+        // Omitted entirely when null: requestQuote()'s line-item shape reads
+        // an explicit `requested_unit_price` as a statement that a price was
+        // asked, and sending one for every line regardless would say that
+        // for lines the scenario never asked anything about.
+        if ($line['requestedUnitPrice'] !== null) {
+            $item['requested_unit_price'] = $line['requestedUnitPrice'];
+        }
+
+        return $item;
     }
 
     private static function resolveProduct(ContainerInterface $container, string $productRef): string

@@ -145,7 +145,16 @@ final class ScenarioTest extends TestCase
         );
 
         foreach ($scenarios as $scenario) {
-            self::assertNotSame('', $scenario->openingAsk, sprintf('%s: openingAsk must not be empty.', $scenario->id));
+            // structured-only is the one deliberate exception: its entire
+            // point is a per-line ask with no comment at all, so its
+            // openingAsk is empty on purpose -- see BenchNegotiation::run().
+            if ($scenario->id !== 'structured-only') {
+                self::assertNotSame(
+                    '',
+                    $scenario->openingAsk,
+                    sprintf('%s: openingAsk must not be empty.', $scenario->id),
+                );
+            }
             self::assertGreaterThanOrEqual(
                 1,
                 $scenario->maxRounds,
@@ -153,5 +162,36 @@ final class ScenarioTest extends TestCase
             );
             self::assertNotEmpty($scenario->lines, sprintf('%s: lines must not be empty.', $scenario->id));
         }
+    }
+
+    public function testARequestedUnitPriceRoundTripsThroughItsArrayForm(): void
+    {
+        $scenario = Scenario::fromArray([
+            'id' => 'structured-only',
+            'description' => 'A per-line requested price with no comment about it at all.',
+            'lines' => [['productRef' => 'any-purchasable', 'quantity' => 10, 'requestedUnitPrice' => 80.0]],
+            'openingAsk' => '',
+            'persona' => 'scripted:silent',
+            'maxRounds' => 2,
+        ]);
+
+        self::assertSame(80.0, $scenario->lines[0]['requestedUnitPrice']);
+    }
+
+    public function testALineWithoutARequestedUnitPriceLeavesItNullRatherThanDefaulting(): void
+    {
+        // Not a number, not zero -- null, so BenchNegotiation can tell "no
+        // ask" apart from "an ask of 0" and omit the key entirely rather
+        // than send a price nobody asked for.
+        $scenario = Scenario::fromArray([
+            'id' => 'plain-percentage',
+            'description' => 'A five percent ask inside the band.',
+            'lines' => [['productRef' => 'any-purchasable', 'quantity' => 3]],
+            'openingAsk' => 'Could you do 5% off?',
+            'persona' => 'scripted:moderate',
+            'maxRounds' => 4,
+        ]);
+
+        self::assertNull($scenario->lines[0]['requestedUnitPrice']);
     }
 }

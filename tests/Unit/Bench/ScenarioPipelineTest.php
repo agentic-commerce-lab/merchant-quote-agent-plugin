@@ -85,6 +85,15 @@ final class ScenarioPipelineTest extends TestCase
      * `requestedUnitPrice`, exactly `StructuredAskGateTest`'s regression case.
      * Two model calls, not three: with no comment there is nothing for
      * `AskInterpreter` to extract, so the extract call never happens.
+     *
+     * The JSON's own `expectedBand` is `escalate` -- Ruling A14: a scenario
+     * cannot know the unit price of a `productRef` resolved against a real
+     * shop, so the end-to-end bench run escalates instead of landing in a
+     * band. This test builds its own synthetic snapshot below (98.0 against
+     * a 980.0 net total, a 2% ask) precisely because it does NOT need that
+     * resolved price -- it exercises the no-comment code path against a
+     * hand-picked, in-band figure, so its own outcome is legitimately
+     * `Offered`, independent of what the live bench would escalate.
      */
     public function testStructuredOnlyAskIsAnsweredWithoutAComment(): void
     {
@@ -106,7 +115,7 @@ final class ScenarioPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame('auto', $scenario->expectedBand);
+        self::assertSame('escalate', $scenario->expectedBand);
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertSame(2, $harness->spy->calls, 'A structured-only ask needs no extraction call.');
     }

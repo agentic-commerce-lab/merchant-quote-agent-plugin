@@ -19,6 +19,13 @@ namespace MerchantQuoteAgentPlugin\Tests\Bench;
  * `productRef` (inside `lines`) is a symbolic name the runner resolves
  * against whichever shop it targets, deliberately not a product UUID, so a
  * scenario ports between shops.
+ *
+ * `requestedUnitPrice` (inside `lines`) is optional: a per-line ask the
+ * buyer typed into the storefront's own price field, with no comment about
+ * it at all. Carries no Net/Gross suffix on purpose -- see ScenarioLines
+ * for the unit it actually lands in on the quote. `structured-only` exists
+ * to carry one -- see BenchNegotiation, which maps it onto requestQuote()'s
+ * `requested_unit_price` only when present, never as an explicit null.
  */
 final readonly class Scenario
 {
@@ -26,7 +33,7 @@ final readonly class Scenario
 
     public string $description;
 
-    /** @var list<array{productRef: string, quantity: int}> */
+    /** @var list<array{productRef: string, quantity: int, requestedUnitPrice: ?float}> */
     public array $lines;
 
     public string $openingAsk;
@@ -41,7 +48,7 @@ final readonly class Scenario
      * @param array{
      *     id: string,
      *     description: string,
-     *     lines: list<array{productRef: string, quantity: int}>,
+     *     lines: list<array{productRef: string, quantity: int, requestedUnitPrice: ?float}>,
      *     openingAsk: string,
      *     persona: string,
      *     maxRounds: int,
@@ -68,7 +75,7 @@ final readonly class Scenario
             'id' => ScenarioFields::string($data, 'id'),
             'description' => ScenarioFields::string($data, 'description'),
             'lines' => ScenarioLines::from($data, 'lines'),
-            'openingAsk' => ScenarioFields::string($data, 'openingAsk'),
+            'openingAsk' => ScenarioFields::string($data, 'openingAsk', allowEmpty: true),
             'persona' => ScenarioFields::string($data, 'persona'),
             'maxRounds' => ScenarioFields::maxRounds($data),
             'expectedBand' => ScenarioFields::optionalString($data, 'expectedBand'),

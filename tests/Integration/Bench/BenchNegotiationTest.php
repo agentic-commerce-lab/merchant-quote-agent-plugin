@@ -26,6 +26,14 @@ use Shopware\Core\System\SalesChannel\SalesChannelContext;
  * real authorizer and verifier, real decision records. Only the model
  * (scripted, so this test is free and needs no API key) and the buyer
  * (one of the two tiny SyntheticBuyer stand-ins below) are substituted.
+ *
+ * @mago-expect lint:too-many-methods
+ * Seven real end-to-end cases plus the small handful of private fixture
+ * builders (`structuredOnlyScenario()`, `acceptingScenario()`,
+ * `benchSettings()`, `generousSettings()`) they share. Splitting one
+ * negotiation loop's coverage into a second file would scatter the set
+ * this test exists to keep together, the same call `ScenarioPipelineTest`
+ * already makes.
  */
 final class BenchNegotiationTest extends BenchTestCase
 {
@@ -189,6 +197,48 @@ final class BenchNegotiationTest extends BenchTestCase
         self::assertStringContainsString('RuntimeException', $result->order->orderFailure);
     }
 
+    public function testAScenariosRequestedUnitPriceReachesTheQuoteLine(): void
+    {
+        // Without this, structured-only covers nothing: no comment and no
+        // requested price means the pass records NothingToDo and the cell
+        // looks healthy while exercising nothing the path it exists to test.
+        $bench = new BenchNegotiation(
+            static::getContainer(),
+            self::gateway(),
+            self::buyerGateway(),
+            ScriptedClient::returning([
+                // No extract call: structured-only writes no buyer comment,
+                // so AskInterpreter::interpret() returns null before ever
+                // reaching the model. Only the negotiate and reply calls run.
+                '{"action":"offer","message":"10% off.","terms":{"discountPercent":10}}',
+                self::reworded(...),
+            ]),
+        );
+
+        $scenario = self::structuredOnlyScenario();
+        $sentPrice = $scenario->lines[0]['requestedUnitPrice'];
+        self::assertNotNull($sentPrice, 'This test only means something when the fixture carries a requested price.');
+
+        $result = $bench->run($scenario, new AcceptsImmediatelyBuyer(), self::generousSettings(), 'test-run');
+
+        $line = self::gateway()->fetchSnapshot($result->quoteId)->content->lines[0];
+
+        // SwagCommercial reads `requested_unit_price` as GROSS but stores it as
+        // NET, so the sent figure never equals what lands on the quote -- it is
+        // divided by the line's own tax factor first. Deriving the expected
+        // value from that line's own `netRatio` (rather than hardcoding e.g.
+        // 0.84) is what keeps this test honest on a shop with a different VAT
+        // rate: a hardcoded number would pin one shop's rate and pass silently
+        // on another, which is exactly the tax-factor defect class this bench
+        // exists to catch (see gross-figure-in-comment.json).
+        self::assertNotNull($line->requestedUnitPrice, 'The scenario line must reach the quote.');
+        self::assertSame(
+            round($sentPrice * $line->netRatio, 2),
+            $line->requestedUnitPrice,
+            'The scenario line must reach the quote, converted by its own tax factor.',
+        );
+    }
+
     public function testEachRoundLeavesADecisionRecordBehind(): void
     {
         $scenario = Scenario::fromArray([
@@ -225,6 +275,12 @@ final class BenchNegotiationTest extends BenchTestCase
         );
     }
 
+    /** Loaded from disk, not built inline: this is the real structured-only.json, the file the bench actually ships. */
+    private static function structuredOnlyScenario(): Scenario
+    {
+        return Scenario::load(__DIR__ . '/../../Bench/scenarios/structured-only.json');
+    }
+
     /** The single-round accept scenario shared by every test in this file that needs a buyer to take the first offer. */
     private static function acceptingScenario(): Scenario
     {
@@ -251,6 +307,25 @@ final class BenchNegotiationTest extends BenchTestCase
             new NegotiationPolicy(price: new QuoteLimits(
                 maxDiscountPercent: 20.0,
                 counterOfferMaxPercent: 20.0,
+                validityDays: 14,
+            )),
+            llm: new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini'),
+            strategyPrompt: null,
+        );
+    }
+
+    /**
+     * A cap generous enough that structured-only's requested price (whatever
+     * discount it works out to against this shop's own product price) never
+     * escalates on discount grounds -- the test below is about the line
+     * reaching the quote at all, not about which band it lands in.
+     */
+    private static function generousSettings(): QuoteAgentSettings
+    {
+        return new QuoteAgentSettings(
+            new NegotiationPolicy(price: new QuoteLimits(
+                maxDiscountPercent: 99.0,
+                counterOfferMaxPercent: 99.0,
                 validityDays: 14,
             )),
             llm: new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini'),

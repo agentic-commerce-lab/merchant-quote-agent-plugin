@@ -14,11 +14,17 @@ final class ScenarioFields
 {
     private function __construct() {}
 
-    /** @param array<string, mixed> $data */
-    public static function string(array $data, string $key): string
+    /**
+     * `$allowEmpty` exists for `openingAsk` alone: `structured-only` writes no
+     * buyer comment at all, and an empty string is how a scenario says so —
+     * every other caller keeps the non-empty check.
+     *
+     * @param array<string, mixed> $data
+     */
+    public static function string(array $data, string $key, bool $allowEmpty = false): string
     {
         $value = $data[$key] ?? null;
-        if (!\is_string($value) || $value === '') {
+        if (!\is_string($value) || !$allowEmpty && $value === '') {
             throw new \InvalidArgumentException(\sprintf(
                 'Scenario field "%s" is required and must be a non-empty string.',
                 $key,
