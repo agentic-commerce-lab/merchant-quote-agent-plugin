@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Doctrine\DBAL\Connection;
+use MerchantQuoteAgentPlugin\Assistant\AssistantAvailability;
+use MerchantQuoteAgentPlugin\Assistant\RequestQuoteToolFactory;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
@@ -695,6 +697,22 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         ->arg('$quoteOrderRoute', service(CommercialAvailability::QUOTE_ORDER_ROUTE)->nullOnInvalid());
 
     $services->alias(BuyerQuoteGatewayInterface::class, SwagCommercialBuyerQuoteGateway::class);
+
+    // The shopping assistant's two tools. Both gates matter: without the
+    // starter-kit bundle the tag has no collector and ToolFactoryInterface is
+    // not on the classpath at all, so registering the factory would fatal on
+    // autoload rather than degrade.
+    if (AssistantAvailability::isRegistered($container)) {
+        $services
+            ->set(RequestQuoteToolFactory::class)
+            ->args([
+                service('request_stack'),
+                service(QuoteAgentSettingsReader::class),
+                service(BuyerQuoteGatewayInterface::class)->nullOnInvalid(),
+            ])
+            ->autoconfigure(false)
+            ->tag('swag_assistant.tool_factory');
+    }
 
     // Only the installed dev/test seeder can reach this narrow locator. The
     // gateway, resolver, transitioner and Commercial route remain private.

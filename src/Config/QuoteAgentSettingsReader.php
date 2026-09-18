@@ -47,6 +47,7 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
         'maxQuoteValueNet',
         'validityDays',
         'notifyBuyerOnEscalation',
+        'assistantQuoteRequests',
     ];
 
     public function __construct(
@@ -92,6 +93,12 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
     public function notifyBuyerOnEscalation(?string $salesChannelId): bool
     {
         return $this->config->get(self::DOMAIN . 'notifyBuyerOnEscalation', $salesChannelId) !== false;
+    }
+
+    /** Default off: absent or false both mean the assistant may not act for the buyer. */
+    public function assistantQuoteRequests(?string $salesChannelId): bool
+    {
+        return $this->config->get(self::DOMAIN . 'assistantQuoteRequests', $salesChannelId) === true;
     }
 
     /**
