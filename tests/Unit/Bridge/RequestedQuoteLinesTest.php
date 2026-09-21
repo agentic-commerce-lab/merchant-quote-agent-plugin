@@ -71,6 +71,19 @@ final class RequestedQuoteLinesTest extends TestCase
         RequestedQuoteLines::from([['product_id' => 'prod-1', 'quantity' => 0]], $this->pricing());
     }
 
+    /**
+     * `quantity` is untrusted model-supplied JSON, so a numeric string is not
+     * a quantity: `is_int()` guards against exactly this, and a stringly
+     * "3" quietly widening the cart by a JSON quirk would be worse than
+     * refusing it outright.
+     */
+    public function testANonIntQuantityIsRejected(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        RequestedQuoteLines::from([['product_id' => 'prod-1', 'quantity' => '3']], $this->pricing());
+    }
+
     public function testALineThatNeitherAddsNorAsksIsRejected(): void
     {
         $this->expectException(ValidationException::class);

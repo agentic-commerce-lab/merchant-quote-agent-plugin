@@ -33,7 +33,14 @@ final readonly class RequestedQuoteLines
     ) {}
 
     /**
-     * @param list<array{product_id?: string, quantity?: int, requested_unit_price?: float|int|string}> $lineItems
+     * `quantity` is `mixed`, not `int`: this shape describes untrusted
+     * model-supplied JSON, and `is_int($quantity)` below is real validation
+     * of a caller that can send anything. Typing it `int` here would make
+     * that guard look redundant to static analysis — which is exactly the
+     * "redundant-type-comparison" `mago analyze` reported before this
+     * docblock was corrected; the fix is the accurate type, not a suppression.
+     *
+     * @param list<array{product_id?: string, quantity?: mixed, requested_unit_price?: float|int|string}> $lineItems
      *
      * @throws ValidationException
      */
