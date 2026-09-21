@@ -80,6 +80,12 @@ final readonly class AskInterpreter
      * number the buyer typed, the number they were shown and the number the
      * model echoes are then all the same money, and BuyerPriceSpace::toNet()
      * converts whatever comes back exactly once.
+     *
+     * The quote total precedes the table, in the same buyer-facing space
+     * (`QuoteTotals::buyerFacingTotal()` — already gross where the quote is,
+     * no conversion needed to show it), so a buyer who names a figure for the
+     * WHOLE quote ("can you do 3,500?") has something to check it against
+     * instead of summing the line table itself — see PriceAsk::$targetTotal.
      */
     private static function userPrompt(QuoteSnapshot $snapshot, BuyerConversation $conversation): string
     {
@@ -98,8 +104,11 @@ final readonly class AskInterpreter
             );
         }, $snapshot->content->lines);
 
-        return (
-            "Line items:\n" . implode("\n", $lines) . "\n\nBuyer's latest comment:\n" . $conversation->newestBuyerText()
+        return sprintf(
+            "Quote total: %.2f\n\nLine items:\n%s\n\nBuyer's latest comment:\n%s",
+            $snapshot->totals->buyerFacingTotal(),
+            implode("\n", $lines),
+            $conversation->newestBuyerText(),
         );
     }
 }

@@ -51,7 +51,7 @@ final class HistoryBoundaryTest extends TestCase
             HistoryProposerHarness::request('product_purchases', 'outside'),
             HistoryProposerHarness::request(),
         ]);
-        self::assertSame(QuoteEscalationReason::NeedsHumanReview, $h->propose()->escalation);
+        self::assertSame(QuoteEscalationReason::ModelUnavailable, $h->propose()->escalation);
         self::assertSame(0, $h->history->quoteCalls);
         self::assertSame([], $h->history->products);
         self::assertCount(2, $h->writer->drafts[0]->historyReads['rounds']);

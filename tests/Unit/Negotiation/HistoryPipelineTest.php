@@ -64,6 +64,7 @@ final class HistoryPipelineTest extends TestCase
         self::assertNull($h->writer->drafts[0]->replyToBuyer);
         self::assertFalse($h->writer->drafts[0]->authorized);
         self::assertNotContains('recalculate', $h->gateway->calls);
+        self::assertSame(QuoteEscalationReason::ModelUnavailable->value, $h->writer->drafts[0]->escalationReason);
     }
 
     public function testHistoryStaysOutOfExtractionAndReplyPrompts(): void

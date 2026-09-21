@@ -47,6 +47,14 @@ final readonly class OfferProposer
         $details = $decision->autoReply;
 
         if ($details === null) {
+            // Should be unreachable: OfferRound is only reached once
+            // NegotiationPipeline's own gate has confirmed the band is Grant
+            // or Counter, which is exactly when NegotiationDecider gives
+            // QuoteDecision::autoReply() rather than ::escalate(). Kept as
+            // NeedsHumanReview rather than a new case (issue #169) because,
+            // being a violated invariant, its true cause is by definition not
+            // one of the named ones below — the generic case's own honest
+            // "cause not recorded" reading fits it exactly.
             return $this->recorded(null, ProposedAnswer::escalate(
                 QuoteEscalationReason::NeedsHumanReview,
                 'No priced band decision.',
@@ -69,9 +77,13 @@ final readonly class OfferProposer
                 $snapshot->lines,
             );
         } catch (HistoryBudgetExhausted $e) {
+            // Issue #169: the model kept asking for account history and never
+            // produced a usable answer within the round budget — the "or
+            // answered unusably" half of ModelUnavailable's own remit, not an
+            // unspecified human-review catch-all.
             return $this->recorded(
                 (string) json_encode($e->response),
-                ProposedAnswer::escalate(QuoteEscalationReason::NeedsHumanReview, $e->getMessage(), $prompt->hash),
+                ProposedAnswer::escalate(QuoteEscalationReason::ModelUnavailable, $e->getMessage(), $prompt->hash),
             );
         }
 
@@ -85,8 +97,11 @@ final readonly class OfferProposer
         $raw = (string) json_encode($response);
 
         if ($response->escalates()) {
+            // Issue #169: the model itself declined to offer anything — the
+            // "the model itself declined" half of ModelUnavailable's own
+            // remit, not the buyer asking for a human.
             return $this->recorded($raw, ProposedAnswer::escalate(
-                QuoteEscalationReason::NeedsHumanReview,
+                QuoteEscalationReason::ModelUnavailable,
                 $response->escalationReason ?? 'The agent declined to answer this ask.',
                 $prompt->hash,
             ));
@@ -172,20 +187,34 @@ final readonly class OfferProposer
             $l->unitPriceNet,
         ), $snapshot->lines);
 
-        // The prompt tells the model it is shown its own earlier offers, so it
-        // is — and the buyer's LATEST comment is the ask this round answers;
-        // the earlier ones were answered by the replies listed above it.
+        // #166: the prompt used to show the agent's own earlier replies as
+        // prose, which drops its figures the moment a reword changes the
+        // wording around them. NegotiationTranscript reads the same thread
+        // and keeps only what round-over-round memory actually needs: the
+        // buyer's ask and the offer made for it, per round. Empty on round
+        // one, when there is nothing yet to remember.
+        //
+        // The buyer's LATEST comment is the ask this round answers; the
+        // earlier ones were already answered by the rounds in the transcript.
         //
         // The authority covers every dimension the response schema allows, not
         // just the discount cap: see AuthorityBrief for what silence cost.
+        $transcript = NegotiationTranscript::of($conversation);
+        $earlierRounds = $transcript === ''
+            ? ''
+            : sprintf(
+                "Earlier rounds of this negotiation (buyer's ask -> your offer, oldest first):\n%s\n\n",
+                $transcript,
+            );
+
         return sprintf(
             "Quote total (net): %.2f %s\n\nLine items (lineItemId | productId | label | quantity | unit price net):\n%s\n\nYOUR AUTHORITY:\n%s\n\n"
-            . "Your earlier replies on this quote:\n%s\n\nBuyer's latest comment:\n%s",
+            . "%sBuyer's latest comment:\n%s",
             $snapshot->totalNet,
             $snapshot->currencyIso,
             implode("\n", $lines),
             AuthorityBrief::of($settings->policy, $decision->autoReply?->counteredRequestPercent),
-            $conversation->agentText(),
+            $earlierRounds,
             $conversation->newestBuyerText(),
         );
     }

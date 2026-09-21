@@ -79,7 +79,18 @@ final readonly class OfferRound
                 'quoteId' => $snapshot->identity->quoteId,
             ]);
 
-            return $this->escalated($gateway, $snapshot, null, $extractHash, $answer->promptHash);
+            // Issue #169: the model DID propose a per-line offer ($answer->offer
+            // is non-null here); the system declines to authorize applying it
+            // for want of a baseline to bound it against. That is a policy-layer
+            // refusal of a real proposal, the same family ProposalRejected
+            // already names below — not an unspecified "needs a human".
+            return $this->escalated(
+                $gateway,
+                $snapshot,
+                QuoteEscalationReason::ProposalRejected,
+                $extractHash,
+                $answer->promptHash,
+            );
         }
 
         $applied = $this->applier->apply($gateway, $snapshot, $settings, $answer->offer);
@@ -191,6 +202,11 @@ final readonly class OfferRound
         ?string $extractHash,
         ?string $negotiateHash,
     ): NegotiationPass {
+        // Defensive default only: every caller of escalated() now passes an
+        // explicit reason (issue #169 moved the last implicit-null caller to
+        // ProposalRejected), so this should never actually fire. Left as
+        // NeedsHumanReview rather than removed, because $reason stays
+        // nullable for callers this class does not control.
         $reason ??= QuoteEscalationReason::NeedsHumanReview;
         $this->escalator->escalate($gateway, $snapshot, $reason);
 

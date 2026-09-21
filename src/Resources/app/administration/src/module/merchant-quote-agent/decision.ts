@@ -248,6 +248,25 @@ export function escalationLabel(vm: any, reason: string | null): string {
 }
 
 /**
+ * The buyer's own words for why a human is needed, when this pass is the one
+ * genuine case (HumanReviewEscalation) rather than one of the specific
+ * escalation reasons split out by issue #169. Read off the same interpreted-
+ * ask payload askItems() already reads for the decision drawer, so nothing
+ * new is stored or fetched for it.
+ *
+ * Issue #169: previously rendered only inside askItems(), reached from the
+ * per-pass drawer on the detail page — never on the list page's own
+ * escalation badge, which is the surface a merchant actually scans. Empty for
+ * every other escalation reason, since only HumanReviewEscalation populates
+ * `humanReviewRequests`.
+ */
+export function humanReviewRequests(asks: any): string[] {
+    const value = asks?.humanReviewRequests;
+
+    return Array.isArray(value) ? value.filter((entry: unknown): entry is string => typeof entry === 'string' && entry !== '') : [];
+}
+
+/**
  * Why a human was asked, in a sentence, with this pass's own numbers in it.
  *
  * The reason column is an enum and its label is four words — "Discount above

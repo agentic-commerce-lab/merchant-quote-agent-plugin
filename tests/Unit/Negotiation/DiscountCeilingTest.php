@@ -152,6 +152,40 @@ final class DiscountCeilingTest extends TestCase
         );
     }
 
+    /**
+     * #164, verified live in the 2026-09-18 session: a buyer who names a
+     * figure for the WHOLE quote ("take 200 off the total") had nowhere for
+     * it to land, so the model was left to compute the percentage itself —
+     * and on a 3,700.00 quote it answered with 5.41% one round and 5.41% a
+     * different way the next, neither one checked against the 200 actually
+     * asked for. The absolute target now carries the number in code: 200 off
+     * 3,700.00 is a 5.41% ask (200 / 3,700 = 5.405...%), and that is what
+     * must cap the model — not the merchant's full 15%.
+     */
+    public function testAQuoteLevelAbsoluteAskCapsTheModelToo(): void
+    {
+        $harness = PipelineHarness::with(
+            ['{"price":{"targetTotal":3500}}', self::OFFER_5_PERCENT, 'Here you go.'],
+            reReadTotalNet: 3500.0,
+        );
+        $snapshot = NegotiationFixture::snapshot(totalNet: 3700.0, comments: [
+            NegotiationFixture::buyerComment('can you take 200 off the total?', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(maxDiscountPercent: 15.0),
+            NegotiationFixture::context(),
+        );
+
+        self::assertStringContainsString(
+            'maximum discount you may grant: 5.41%',
+            $harness->spy->userPrompts[1],
+            'An absolute quote-level target must cap the model at what it implies, not the configured 15%.',
+        );
+    }
+
     public function testAGrossPriceTypedInACommentIsCappedInNetSpace(): void
     {
         // The hazard that could have justified leaving comment targets out:

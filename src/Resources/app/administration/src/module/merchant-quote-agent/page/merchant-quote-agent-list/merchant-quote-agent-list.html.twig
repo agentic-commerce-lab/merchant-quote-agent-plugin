@@ -338,6 +338,18 @@
                             <span v-if="item.latest.escalationReason" class="mqa-cell__aside">
                                 {{ escalationLabel(item.latest.escalationReason) }}
                             </span>
+                            {# The customer's own words for a genuine human-review
+                               escalation, on the surface a merchant actually scans
+                               rather than only inside the per-pass drawer on the
+                               detail page (issue #169). Empty for every other
+                               escalation reason. #}
+                            <span
+                                v-if="humanReviewRequests(item.latest.interpretedAsks).length"
+                                class="mqa-cell__aside"
+                                :title="humanReviewRequests(item.latest.interpretedAsks).join(' · ')"
+                            >
+                                {{ humanReviewRequests(item.latest.interpretedAsks).join(' · ') }}
+                            </span>
                         </div>
                     </template>
 

@@ -16,12 +16,15 @@
         "escalation": {
             "discount_limit_exceeded": "Rabatt über dem Limit",
             "quote_value_limit_exceeded": "Angebotswert über der Obergrenze",
-            "needs_human_review": "Kunde möchte einen Menschen",
+            "needs_human_review": "Prüfung durch einen Menschen nötig",
             "currency_mismatch": "Währung passt nicht",
             "not_configured": "Agent nicht konfiguriert",
             "model_unavailable": "Modell nicht erreichbar",
             "proposal_rejected": "Vorschlag abgelehnt",
-            "verification_failed": "Prüfung fehlgeschlagen"
+            "verification_failed": "Prüfung fehlgeschlagen",
+            "structural_change_requested": "Änderung am Angebotsinhalt gewünscht",
+            "non_price_term_requested": "Nicht-preisliche Bedingung gewünscht",
+            "unplaceable_ask": "Anliegen nicht zuordenbar"
         },
         "trigger": {
             "state_entered": "Angebot hat den Status gewechselt",
@@ -269,11 +272,14 @@
             "discount_limit_exceeded": "Der Kunde hat {asked} verlangt, mehr als Ihr Maximalrabatt von {cap}. Mehr als das Maximum zu gewähren, kann nur ein Mensch entscheiden.",
             "quote_value_limit_exceeded": "Dieses Angebot hat einen Wert von {value} und liegt über dem Maximalwert, den Sie für Verhandlungen festgelegt haben. Große Angebote werden unabhängig vom verlangten Rabatt übergeben.",
             "currency_mismatch": "Für {currency} ist kein Maximalwert konfiguriert, daher kann der Agent nicht feststellen, ob dieses Angebot innerhalb Ihrer Obergrenze liegt. Legen Sie einen Wert für diese Währung fest, damit verhandelt werden kann.",
-            "needs_human_review": "Der Kunde hat nach einem Menschen gefragt oder etwas außerhalb von Preis und Gültigkeit verlangt — eine Lieferbedingung, eine Zahlungsbedingung oder eine Änderung am Angebotsinhalt. Der Agent verhandelt ausschließlich den Preis.",
+            "needs_human_review": "Ein Mensch muss dieses Angebot direkt abschließen; keine speziellere Kategorie trifft zu. Falls das eigene Anliegen des Kunden erfasst wurde, steht es bei diesem Grund.",
             "not_configured": "Der Agent ist aktiviert, seine Konfiguration ist aber unvollständig oder ungültig. Er hat daher nichts geantwortet, statt zu raten. Die technischen Details unten nennen die Felder.",
-            "model_unavailable": "Das Modell war nicht erreichbar oder hat unbrauchbar geantwortet. Am Angebot wurde nichts geändert.",
+            "model_unavailable": "Das Modell war nicht erreichbar, hat unbrauchbar geantwortet oder das Angebot abgelehnt. Am Angebot wurde nichts geändert.",
             "proposal_rejected": "Das Modell hat Konditionen vorgeschlagen, die außerhalb der von Ihren Richtlinien erlaubten Befugnis liegen. Die Policy-Schicht hat sie abgelehnt, das Angebot blieb unverändert.",
-            "verification_failed": "Das Angebot wurde geändert, beim erneuten Lesen stimmte es aber nicht mit dem Autorisierten überein. Ein Mensch muss das prüfen, bevor der Kunde etwas erfährt."
+            "verification_failed": "Das Angebot wurde geändert, beim erneuten Lesen stimmte es aber nicht mit dem Autorisierten überein. Ein Mensch muss das prüfen, bevor der Kunde etwas erfährt.",
+            "structural_change_requested": "Der Kunde wollte etwas am Angebotsinhalt ändern — Menge, eine entfernte Position oder ein zusätzliches Produkt — statt am Preis. Der Agent verhandelt nur den Preis, diese Änderung muss ein Mensch vornehmen.",
+            "non_price_term_requested": "Der Kunde hat eine Liefer- oder Zahlungsbedingung verlangt. Der Agent verhandelt nur den Preis, und nichts hier kann eine solche Bedingung gewähren oder eintragen; diesen Teil muss ein Mensch beantworten.",
+            "unplaceable_ask": "Der Agent konnte nicht erkennen, welche Position oder was genau der Kommentar des Kunden meinte, und eine Rückfrage hat das nicht geklärt. Ein Mensch muss den Verlauf direkt lesen."
         },
         "write": {
             "claim": "Angebot in Prüfung gesetzt",

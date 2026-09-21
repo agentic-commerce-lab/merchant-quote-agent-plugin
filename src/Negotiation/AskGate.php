@@ -45,7 +45,7 @@ final class AskGate
             return $round->escalated(
                 $gateway,
                 $snapshot,
-                QuoteEscalationReason::NeedsHumanReview,
+                QuoteEscalationReason::StructuralChangeRequested,
                 $ask->promptHash,
                 null,
             );
@@ -71,7 +71,7 @@ final class AskGate
             return $round->escalated(
                 $gateway,
                 $snapshot,
-                QuoteEscalationReason::NeedsHumanReview,
+                QuoteEscalationReason::NonPriceTermRequested,
                 $ask->promptHash,
                 null,
             );

@@ -9,6 +9,7 @@ import {
     formatDate,
     formatDateShort,
     formatPercent,
+    humanReviewRequests,
     ORDER_PLACED_TERMINAL_STATE,
     outcomeLabel,
     outcomeVariant,
@@ -319,6 +320,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
         outcomeVariant,
         dispositionVariant,
         answeredTheBuyer,
+        humanReviewRequests,
 
         outcomeLabel(outcome) {
             return outcomeLabel(this, outcome);

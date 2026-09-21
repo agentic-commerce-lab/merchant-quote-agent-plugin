@@ -64,6 +64,10 @@ final class RecordedOutcomePathsTest extends TestCase
         self::assertCount(1, $harness->writer->drafts);
         self::assertSame('escalated', $harness->writer->drafts[0]->outcome);
         self::assertNotNull($harness->writer->drafts[0]->interpretedAsks);
+        self::assertSame(
+            QuoteEscalationReason::NonPriceTermRequested->value,
+            $harness->writer->drafts[0]->escalationReason,
+        );
     }
 
     public function testANoOfferProposedPassRecordsOneEscalatedRecord(): void
@@ -72,9 +76,11 @@ final class RecordedOutcomePathsTest extends TestCase
         // itself declines via {"action":"escalate"} rather than proposing
         // something OfferAuthorizer then rejects. Distinguished from that
         // other null-offer branch (authorization rejected) by the
-        // escalationReason recorded: NeedsHumanReview here, ProposalRejected
-        // there -- and by the call count: exactly extract + negotiate, since
-        // a null offer never reaches apply() or reply().
+        // escalationReason recorded: ModelUnavailable here (issue #169 --
+        // the model itself declining is one of that case's own three
+        // scenarios), ProposalRejected there -- and by the call count:
+        // exactly extract + negotiate, since a null offer never reaches
+        // apply() or reply().
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":5}}',
             '{"action":"escalate","escalationReason":"Cannot serve this buyer."}',
@@ -94,7 +100,7 @@ final class RecordedOutcomePathsTest extends TestCase
         self::assertCount(1, $harness->writer->drafts);
         self::assertSame('escalated', $harness->writer->drafts[0]->outcome);
         self::assertSame(
-            QuoteEscalationReason::NeedsHumanReview->value,
+            QuoteEscalationReason::ModelUnavailable->value,
             $harness->writer->drafts[0]->escalationReason,
             'Confirms the model-declined branch, not the authorization-rejected one.',
         );
@@ -130,6 +136,7 @@ final class RecordedOutcomePathsTest extends TestCase
 
         self::assertCount(1, $harness->writer->drafts);
         self::assertSame('escalated', $harness->writer->drafts[0]->outcome);
+        self::assertSame(QuoteEscalationReason::ProposalRejected->value, $harness->writer->drafts[0]->escalationReason);
     }
 
     public function testAThrownGatewayFailureStillWritesARecordAndRethrows(): void

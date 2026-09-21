@@ -21,16 +21,20 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  * and only CommentTargetMerger does — so it is null for exactly the
  * structured-ask quotes this exists for.
  *
- * A buyer has three ways to name a number and all three bind the agent: a
+ * A buyer has four ways to name a number and all four bind the agent: a
  * percentage in the conversation, the storefront's per-line "Requested price"
- * field, and a per-unit price typed in the conversation. The third one used to
- * fall through here — it lands in `structural.lineChanges` rather than on the
- * line, and NegotiationPipeline hands this class the ANCHORED snapshot, which
- * AskMirror's write-back does not reach — so the model was told the merchant's
- * whole band on exactly the asks QuoteDiscountApplier was already pricing at
- * the buyer's figure. Merging below closes that, and reuses the merger so the
- * cap is measured on the same targets the pricer prices against, including its
- * "structured field wins outside a renegotiation" precedence.
+ * field, a per-unit price typed in the conversation, and — #164 — an absolute
+ * price for the WHOLE quote typed in the conversation. The per-unit one used
+ * to fall through here — it lands in `structural.lineChanges` rather than on
+ * the line, and NegotiationPipeline hands this class the ANCHORED snapshot,
+ * which AskMirror's write-back does not reach — so the model was told the
+ * merchant's whole band on exactly the asks QuoteDiscountApplier was already
+ * pricing at the buyer's figure. Merging below closes that, and reuses the
+ * merger so the cap is measured on the same targets the pricer prices
+ * against, including its "structured field wins outside a renegotiation"
+ * precedence. The quote-level absolute target needs no merge — it names no
+ * line — so it is converted to its equivalent percent directly, off the same
+ * quoted total the merged snapshot still carries.
  */
 final class AskedDiscountCeiling
 {
@@ -55,15 +59,34 @@ final class AskedDiscountCeiling
         // the two that do. Safe in tax terms: AskInterpreter already ran
         // BuyerPriceSpace::toNet() over these, so they are net here, the same
         // space as `unitPriceNet`. A null interpretation merges nothing.
-        $snapshot = (new CommentTargetMerger())->merge($snapshot, $interpretation);
+        $merged = (new CommentTargetMerger())->merge($snapshot, $interpretation);
 
         // The prompt defines additionalDiscountPercent as being asked "on top
-        // of any requested prices already entered", so the two asks add rather
+        // of any requested prices already entered", so all three add rather
         // than compete. Summing can only raise the ceiling, never lower it
         // below what the buyer asked for.
-        $asked = self::fromRequestedLinePrices($snapshot) + ($interpretation?->price->additionalDiscountPercent ?? 0.0);
+        $asked =
+            self::fromRequestedLinePrices($merged)
+            + ($interpretation?->price->additionalDiscountPercent ?? 0.0)
+            + self::targetTotalPercent($snapshot, $interpretation?->price->targetTotal);
 
         return $asked > 0.0 ? $asked : null;
+    }
+
+    /**
+     * The buyer's absolute quote-level target (#164), as the discount percent
+     * it implies. Measured on the ORIGINAL quoted total, not a merged one —
+     * a quote-level figure names no line for merge() to apply it to — and
+     * capped at the quoted total itself, so a target above it (no discount at
+     * all) contributes nothing rather than a negative ask.
+     */
+    private static function targetTotalPercent(QuoteSnapshot $snapshot, ?float $targetTotal): float
+    {
+        if ($targetTotal === null || $snapshot->totalNet <= 0.0) {
+            return 0.0;
+        }
+
+        return (($snapshot->totalNet - min($targetTotal, $snapshot->totalNet)) / $snapshot->totalNet) * 100;
     }
 
     /**

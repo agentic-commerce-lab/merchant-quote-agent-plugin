@@ -62,6 +62,35 @@ final class CommentTargetMerger
         return $this->lineTargets->adoptedBy($snapshot, $this->lineTargets->extract($interpretation));
     }
 
+    /**
+     * The per-line unit prices a QUOTE-WIDE ask implies — a plain percentage
+     * or the absolute total from #164 — spread across every line in
+     * proportion to its current price.
+     *
+     * The mirror image of rescaledBuyerTarget() below: that method rolls
+     * per-line asks UP into one quote-level figure; this one pushes a
+     * quote-level figure back DOWN onto every line. AskMirror is the only
+     * caller — a quote-wide ask names no line, so adopted() has nothing to
+     * mirror, and the buyer's number still belongs on the quote.
+     *
+     * @return array<string, float> line item id => target unit price, net
+     */
+    public function distributedAcrossLines(QuoteSnapshot $snapshot, float $targetTotalNet): array
+    {
+        if ($snapshot->totalNet <= 0.0) {
+            return [];
+        }
+
+        $factor = $targetTotalNet / $snapshot->totalNet;
+        $targets = [];
+
+        foreach ($snapshot->lines as $line) {
+            $targets[$line->lineItemId()] = MoneyMath::roundMoney($line->unitPriceNet * $factor);
+        }
+
+        return $targets;
+    }
+
     /** @param list<QuoteLineSnapshot> $lines */
     private static function rescaledBuyerTarget(QuoteSnapshot $snapshot, array $lines): ?float
     {

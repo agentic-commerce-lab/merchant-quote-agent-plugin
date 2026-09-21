@@ -24,6 +24,7 @@ use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
 use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use MerchantQuoteAgentPlugin\Policy\QuoteBandDecider;
@@ -149,6 +150,11 @@ final class OfferRoundTest extends TestCase
             $logger->contextOf('no stored baseline'),
             'Escalated, but not via the missing-baseline guard — some other refusal fired instead.',
         );
+        // Issue #169: the model DID propose a per-line offer here; the system
+        // declines to apply it for want of a baseline to bound it against,
+        // which is a policy-layer refusal to authorize the proposal, not an
+        // unspecified "needs a human" catch-all.
+        self::assertSame(QuoteEscalationReason::ProposalRejected, $pass->escalationReason);
     }
 
     /** With a baseline present, round two is answered rather than handed to a human. */
