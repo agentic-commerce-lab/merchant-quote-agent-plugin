@@ -80,5 +80,15 @@
         </input-field>
     </card>
 
+    <card>
+        <title>Shopping assistant</title>
+        <input-field type="bool">
+            <name>assistantQuoteRequests</name>
+            <label>Let the shopping assistant request quotes</label>
+            <defaultValue>false</defaultValue>
+            <helpText>When enabled, and the shopping-assistant-starter-kit plugin is installed, the assistant can turn a shopper's cart into a quote request in that shopper's name. Off by default: this acts for the buyer, so it is opted into rather than switched on by installing two plugins.</helpText>
+        </input-field>
+    </card>
+
 </config>
 

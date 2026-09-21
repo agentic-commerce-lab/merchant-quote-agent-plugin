@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 use Doctrine\DBAL\Connection;
+use MerchantQuoteAgentPlugin\Assistant\AssistantAskStamp;
+use MerchantQuoteAgentPlugin\Assistant\AssistantAvailability;
+use MerchantQuoteAgentPlugin\Assistant\QuoteStatusToolFactory;
+use MerchantQuoteAgentPlugin\Assistant\RequestQuoteToolFactory;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
@@ -681,7 +685,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(CommercialQuoteLinePricing::class)->arg(
         '$quoteLineItemRoute',
         service(CommercialAvailability::QUOTE_LINE_ITEM_ROUTE)->nullOnInvalid(),
-    );
+    )->arg('$logger', service('logger'));
 
     $services
         ->set(SwagCommercialBuyerQuoteGateway::class)
@@ -695,6 +699,41 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         ->arg('$quoteOrderRoute', service(CommercialAvailability::QUOTE_ORDER_ROUTE)->nullOnInvalid());
 
     $services->alias(BuyerQuoteGatewayInterface::class, SwagCommercialBuyerQuoteGateway::class);
+
+    // The shopping assistant's two tools. Both gates matter: without the
+    // starter-kit bundle the tag has no collector and ToolFactoryInterface is
+    // not on the classpath at all, so registering the factory would fatal on
+    // autoload rather than degrade.
+    if (AssistantAvailability::isRegistered($container)) {
+        // Records who authored a proposed price ask (Task 5). Same
+        // ignoreOnInvalid() posture as every other QuoteGatewayInterface
+        // consumer above: the interface is always defined (factory-backed),
+        // and the stamp's own nullable $gateway handles an unlicensed shop.
+        $services->set(AssistantAskStamp::class)->args([
+            service('logger'),
+            service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+        ]);
+        $services
+            ->set(RequestQuoteToolFactory::class)
+            ->args([
+                service('request_stack'),
+                service(QuoteAgentSettingsReader::class),
+                service(AssistantAskStamp::class),
+                service(BuyerQuoteGatewayInterface::class)->nullOnInvalid(),
+            ])
+            ->autoconfigure(false)
+            ->tag('swag_assistant.tool_factory');
+
+        // The read side (Task 6): not gated on assistantQuoteRequests, and not
+        // sharing RequestQuoteToolFactory above — a merchant who turns
+        // request-writing off still lets a shopper ask what happened to a
+        // quote they already have.
+        $services
+            ->set(QuoteStatusToolFactory::class)
+            ->args([service('request_stack'), service(BuyerQuoteGatewayInterface::class)->nullOnInvalid()])
+            ->autoconfigure(false)
+            ->tag('swag_assistant.tool_factory');
+    }
 
     // Only the installed dev/test seeder can reach this narrow locator. The
     // gateway, resolver, transitioner and Commercial route remain private.

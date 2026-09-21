@@ -38,9 +38,9 @@ use Ucp\Sdk\Exception\ValidationException;
  *
  * @mago-expect lint:cyclomatic-complexity
  * The rule aggregates per class (threshold 10) and every branch here is real:
- * requestQuote() rejects an empty line-item list and a non-positive quantity
- * inline (both 422s) and branches on `$capabilities->draftBeforeSend` for the
- * send step, counterQuote() only touches pricing when line items were
+ * requestQuote() rejects a cart left empty by both the request and the
+ * additions it landed, and branches on `$capabilities->draftBeforeSend` for
+ * the send step, counterQuote() only touches pricing when line items were
  * actually sent, loadQuote() translates any commercial exception into
  * not-found so a foreign quote is indistinguishable from a missing one, and
  * hasCommercialRoutes() checks all six. None of that is incidental
@@ -97,50 +97,17 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         $customerId = $this->access->requireCustomerId($context);
         $this->access->assertCustomerHasQuoteFeature($customerId);
 
-        if ([] === $lineItems) {
-            throw new ValidationException('A quote request needs at least one line item.', [
-                '$.line_items must not be empty',
-            ]);
-        }
+        $lines = RequestedQuoteLines::from($lineItems, $this->linePricing);
+        $requestedPrices = $lines->requestedPrices;
 
-        $requestedPrices = [];
         /** @var list<LineItem> $items */
         $items = [];
-
-        foreach ($lineItems as $index => $lineItem) {
-            /**
-             * The agent-supplied line item may carry `quantity`/
-             * `requested_unit_price` too; `requireProductId()` only reads
-             * `product_id`/`product_number`, so the extra keys are why the
-             * parameter type looks like a mismatch.
-             *
-             * @mago-expect analysis:possibly-invalid-argument
-             */
-            $productId = $this->linePricing->requireProductId($lineItem, $index);
-            $quantity = $lineItem['quantity'] ?? null;
-
-            if (!\is_int($quantity) || $quantity < 1) {
-                throw new ValidationException('Line item quantity must be a positive integer.', [\sprintf(
-                    '$.line_items[%d].quantity must be >= 1',
-                    $index,
-                )]);
-            }
-
+        foreach ($lines->additions as $addition) {
             $items[] = $this->lineItemFactory->create([
                 'type' => LineItem::PRODUCT_LINE_ITEM_TYPE,
-                'referencedId' => $productId,
-                'quantity' => $quantity,
+                'referencedId' => $addition['product_id'],
+                'quantity' => $addition['quantity'],
             ], $context);
-
-            /** @mago-expect analysis:possibly-invalid-argument */
-            $requestedPrice = $this->linePricing->requestedPrice($lineItem, \sprintf(
-                '$.line_items[%d].requested_unit_price',
-                $index,
-            ));
-            if (null !== $requestedPrice) {
-                $this->linePricing->assertCanPriceLines();
-                $requestedPrices[$productId] = $requestedPrice;
-            }
         }
 
         // Deliberately through CartService rather than the item-add route directly:
@@ -149,7 +116,21 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         // the quote. CartService itself delegates to the Store API item-add route,
         // so the route boundary is still respected.
         $cart = $this->cartService->getCart($context->getToken(), $context);
-        $this->cartService->add($cart, $items, $context);
+        if ([] !== $items) {
+            $this->cartService->add($cart, $items, $context);
+        }
+
+        // The emptiness check moved here from the head of the method, because
+        // "did the buyer ask for anything?" is only answerable once the
+        // additions have landed. An assistant-sent request adds nothing and
+        // quotes a cart the buyer filled through the starter kit's
+        // `add_to_cart`; a UCP request adds everything and its old
+        // empty-array rejection now fails one step later, identically.
+        if (0 === $cart->getLineItems()->count()) {
+            throw new ValidationException('A quote request needs a line item or a cart.', [
+                '$.line_items must not be empty when the cart is empty',
+            ]);
+        }
 
         // A released SwagCommercial's request() has no second, send-stage
         // comment call — the comment must ride along with the draft itself, or

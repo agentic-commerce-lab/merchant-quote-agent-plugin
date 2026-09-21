@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Bridge;
 
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteLinePricing;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Ucp\Sdk\Exception\UnsupportedCapabilityException;
 use Ucp\Sdk\Exception\ValidationException;
@@ -85,6 +86,41 @@ final class CommercialQuoteLinePricingTest extends TestCase
         $this->expectException(UnsupportedCapabilityException::class);
 
         $this->pricing()->applyRequestedPrices(
+            'quote-1',
+            $quote,
+            ['prod-1' => 9.99],
+            $this->createMock(SalesChannelContext::class),
+        );
+    }
+
+    /**
+     * A price-only target naming a product that is not on the quote matches
+     * nothing in the loop and is silently dropped, by design (a cart
+     * processor may have dropped an unavailable line between the ask and
+     * this call). The drop must still be visible somewhere: as a warning
+     * naming the quote and the unmatched product ids.
+     */
+    public function testApplyRequestedPricesLogsAnUnmatchedProductId(): void
+    {
+        $quote = new class {
+            public function getLineItems(): array
+            {
+                return [];
+            }
+        };
+
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger
+            ->expects(self::once())
+            ->method('warning')
+            ->with(
+                self::isType('string'),
+                self::callback(static function (array $context): bool {
+                    return 'quote-1' === $context['quoteId'] && ['prod-1'] === $context['unmatchedProductIds'];
+                }),
+            );
+
+        (new CommercialQuoteLinePricing(new \stdClass(), $logger))->applyRequestedPrices(
             'quote-1',
             $quote,
             ['prod-1' => 9.99],

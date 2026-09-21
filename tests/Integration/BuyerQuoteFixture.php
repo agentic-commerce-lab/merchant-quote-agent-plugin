@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use Shopware\Core\Checkout\Cart\LineItem\LineItem;
+use Shopware\Core\Checkout\Cart\LineItemFactoryRegistry;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Uuid\Uuid;
+use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -178,6 +181,31 @@ final class BuyerQuoteFixture
         }
 
         return $id;
+    }
+
+    /**
+     * A product line item ready to hand to `CartService::add()`, built the
+     * same way the gateway itself builds one — through `LineItemFactoryRegistry`
+     * rather than `new LineItem(...)` directly, so a test cart is filled
+     * exactly the way the storefront's `add_to_cart` would fill it.
+     */
+    public static function lineItem(
+        ContainerInterface $container,
+        string $productId,
+        int $quantity,
+        SalesChannelContext $context,
+    ): LineItem {
+        $factory = $container->get(LineItemFactoryRegistry::class);
+
+        if (!$factory instanceof LineItemFactoryRegistry) {
+            throw new \RuntimeException('The container has no LineItemFactoryRegistry.');
+        }
+
+        return $factory->create([
+            'type' => LineItem::PRODUCT_LINE_ITEM_TYPE,
+            'referencedId' => $productId,
+            'quantity' => $quantity,
+        ], $context);
     }
 
     private static function connection(ContainerInterface $container): \Doctrine\DBAL\Connection

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ShipMonk\ComposerDependencyAnalyser\Config\Configuration;
+use ShipMonk\ComposerDependencyAnalyser\Config\ErrorType;
 
 // shipmonk/composer-dependency-analyser: detects unused + missing/shadow composer deps.
 // Backs the `quality:depcheck` task. Adjust the scanned paths to the project's layout.
@@ -21,7 +22,14 @@ $config = (new Configuration())
     // declared at the foot of the PSR-4 class file Loader/Configurator/
     // ContainerConfigurator.php, so the function symbol has no package to
     // attribute it to. A tool limitation, not an undeclared dependency.
-    ->ignoreUnknownFunctions(['Symfony\Component\DependencyInjection\Loader\Configurator\service']);
+    ->ignoreUnknownFunctions(['Symfony\Component\DependencyInjection\Loader\Configurator\service'])
+    // symfony/ai-agent supplies the #[AsTool] attribute the two assistant tools carry
+    // (src/Assistant/RequestQuoteTool.php, QuoteStatusTool.php). It stays in
+    // require-dev on purpose: the shopping-assistant-starter-kit is what actually
+    // provides this package at runtime, and the integration with it is optional —
+    // requiring it here would turn an optional integration into a hard dependency
+    // of every install, including shops that never install the starter kit.
+    ->ignoreErrorsOnPackage('symfony/ai-agent', [ErrorType::DEV_DEPENDENCY_IN_PROD]);
 
 // Scan tests as dev paths only when the directory exists (addPathToScan throws on a
 // missing path, which would break the gate on projects without a tests/ directory).
