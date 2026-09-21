@@ -158,7 +158,7 @@
             "technicalDetails": "Technical details",
             "strategyUsed": "Strategy used",
             "strategyVersion": "Version",
-            "strategyPrompt": "Prompt sent",
+            "strategyPrompt": "Strategy wording",
             "strategyUnavailable": "No longer available",
             "missingTitle": "Decision not found",
             "missingSubline": "This record could not be loaded. It may have been deleted.",

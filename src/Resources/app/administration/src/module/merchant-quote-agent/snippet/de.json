@@ -158,7 +158,7 @@
             "technicalDetails": "Technische Details",
             "strategyUsed": "Verwendete Strategie",
             "strategyVersion": "Version",
-            "strategyPrompt": "Gesendeter Prompt",
+            "strategyPrompt": "Wortlaut der Strategie",
             "strategyUnavailable": "Nicht mehr verfügbar",
             "missingTitle": "Entscheidung nicht gefunden",
             "missingSubline": "Dieser Datensatz konnte nicht geladen werden. Möglicherweise wurde er gelöscht.",
