@@ -159,6 +159,36 @@ final class NegotiationPipelineTest extends TestCase
         self::assertSame([], $harness->gateway->calls);
     }
 
+    public function testAnExtractionWithNoAskInAnyFieldEndsThePassAsNothingToDo(): void
+    {
+        // #177: quote 1039, a human merchant had already closed the
+        // negotiation. The buyer wrote "Nice, thanks!" and the extraction
+        // came back with every field null or empty -- no price ask, no
+        // structural ask, no negotiation ask, no clarification question, no
+        // human-review request. The pass still reached the band, landed in
+        // grant and made an unsolicited offer. It must stop here instead.
+        $harness = PipelineHarness::with(['{}']);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('Nice, thanks!', '2026-09-18 09:58:40'),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame(
+            1,
+            $harness->spy->calls,
+            'The extract call still happens -- the extractor is what found nothing; negotiate and reply must not.',
+        );
+        self::assertSame([], $harness->gateway->comments, 'An empty extraction must not become an unsolicited offer.');
+        self::assertSame([], $harness->gateway->calls);
+    }
+
     public function testAReplyPostedByADeadPassStillReachesReplied(): void
     {
         // #31: the reply is two writes — the comment, then the `sent`

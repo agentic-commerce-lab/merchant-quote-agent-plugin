@@ -8,7 +8,21 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
 use MerchantQuoteAgentPlugin\Policy\Data\InterpretedLineChange;
 
-/** What the buyer asked for, and the hash of the prompt that read it. */
+/**
+ * What the buyer asked for, and the hash of the prompt that read it.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10); `isStructural()` and
+ * `isLineChangeStructural()` alone already measure 8, with zero headroom.
+ * `hasNoAsk()` below has to compare every field `NegotiationPipeline` would
+ * otherwise read piecemeal -- #177's whole point is that missing even one of
+ * them (a `targetTotal`, a `humanReviewRequests` entry) turns a real ask back
+ * into a silent grant. Splitting it into a second method on this class saves
+ * nothing, since the rule counts the class as a whole; moving it to AskGate
+ * or NegotiationPipeline only relocates the same branches onto a class that
+ * is at or over its own documented ceiling already (see NegotiationPipeline's
+ * own class docblock).
+ */
 final readonly class InterpretedAsk
 {
     public function __construct(
@@ -90,5 +104,39 @@ final readonly class InterpretedAsk
     public function needsClarification(): bool
     {
         return $this->interpretation->clarificationQuestions !== [];
+    }
+
+    /**
+     * True when the extraction carries no ask anywhere: no price ask, no
+     * structural ask, no non-price ask, no clarification question and no
+     * human-review request. This is the #177 shape -- the buyer wrote "Nice,
+     * thanks!" to a quote a human merchant had already closed, the model ran
+     * and correctly found nothing, and still returned a fully-shaped (if
+     * empty) DTO rather than null. Reading `$ask !== null` alone as "there is
+     * an ask" let that empty extraction reach the band and become an
+     * unsolicited offer.
+     *
+     * ponytail: a lone `structural.validityUntilIsoDate` counts as an ask
+     * here (so this returns false), even though nothing downstream besides
+     * the admin decision display currently reads it. Narrowing "no ask"
+     * further than the extraction's own shape would be scope creep beyond
+     * #177, not a smaller diff.
+     */
+    public function hasNoAsk(): bool
+    {
+        $price = $this->interpretation->price;
+        $structural = $this->interpretation->structural;
+
+        return (
+            $price->bestPriceRequested !== true
+            && $price->additionalDiscountPercent === null
+            && $price->targetTotal === null
+            && $structural->lineChanges === []
+            && $structural->addProducts === []
+            && $structural->validityUntilIsoDate === null
+            && $this->interpretation->clarificationQuestions === []
+            && $this->interpretation->humanReviewRequests === []
+            && !$this->hasNonPriceAsk()
+        );
     }
 }

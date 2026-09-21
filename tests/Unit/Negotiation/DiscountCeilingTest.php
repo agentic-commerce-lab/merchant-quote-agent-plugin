@@ -49,7 +49,16 @@ final class DiscountCeilingTest extends TestCase
 
     public function testAQuoteWithNoStatedAskKeepsTheConfiguredCap(): void
     {
-        $harness = PipelineHarness::with(['{}', self::OFFER_5_PERCENT, 'Here you go.'], reReadTotalNet: 950.0);
+        // "Your best price" names no figure -- #177's empty-extraction gate
+        // is about an extraction with NO ask anywhere, not this one.
+        $harness = PipelineHarness::with(
+            [
+                '{"price":{"bestPriceRequested":true}}',
+                self::OFFER_5_PERCENT,
+                'Here you go.',
+            ],
+            reReadTotalNet: 950.0,
+        );
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('what can you do for us?', '2026-08-28 09:00:00'),
         ]);

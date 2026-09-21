@@ -182,10 +182,16 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         // read `requestedUnitPrice` directly — so the ask only ever failed to
         // reach it, which is what SnapshotAdapter's docblock already promises
         // it does.
-        if ($ask === null && !StructuredAsk::isUnmet($snapshot)) {
+        // #177: the interpreter can also return a non-null ask that carries
+        // NOTHING -- every field null or empty, the "Nice, thanks!" shape --
+        // when the extract call ran but correctly found no ask to place.
+        // `$ask === null` alone missed that case, because it only covers "no
+        // extract call happened at all" (no new buyer comment). Both are the
+        // same outcome once a structured ask isn't picking up the slack.
+        if (($ask === null || $ask->hasNoAsk()) && !StructuredAsk::isUnmet($snapshot)) {
             $this->round->finishStrandedReply($gateway, $snapshot, $conversation);
 
-            return new NegotiationPass(NegotiationOutcome::NothingToDo);
+            return new NegotiationPass(NegotiationOutcome::NothingToDo, extractHash: $ask?->promptHash);
         }
 
         // Before the gate on purpose: an escalated or clarified pass must
