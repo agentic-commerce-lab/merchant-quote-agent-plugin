@@ -131,7 +131,27 @@ final class AskInterpreterTest extends TestCase
             SnapshotAdapter::conversation($snapshot),
         );
 
-        self::assertSame(self::prompts()->extract()->hash, $result?->promptHash);
+        self::assertSame(self::prompts()->extract(NegotiationFixture::settings())->hash, $result?->promptHash);
+    }
+
+    public function testTheExtractPromptCarriesTheMerchantTone(): void
+    {
+        // Issue #171: AskInterpreter::interpret() already receives $settings
+        // as its first parameter -- the tone must reach the extract call
+        // through that existing parameter, not a widened signature.
+        $prompts = new PromptComposer('EXTRACT {{tone}} BASE', 'NEGOTIATE BASE', 'REPLY {{tone}}');
+        [$client, $spy] = ScriptedClient::spy(['{}']);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('hi', '2026-08-28 09:00:00'),
+        ]);
+
+        (new AskInterpreter($client, $prompts, self::recorder()))->interpret(
+            NegotiationFixture::settings(strategy: 'Act as a disciplined B2B seller.'),
+            $snapshot,
+            SnapshotAdapter::conversation($snapshot),
+        );
+
+        self::assertSame('EXTRACT Act as a disciplined B2B seller. BASE', $spy->systemPrompts[0]);
     }
 
     public function testAnUnusableResponsePropagates(): void

@@ -38,9 +38,21 @@ final readonly class PromptComposer
         private string $replyBase,
     ) {}
 
-    public function extract(): ComposedPrompt
+    /**
+     * Issue #171: the extract prompt's own tone slot covers only
+     * clarificationQuestions -- the buyer-facing field in its otherwise
+     * structured output -- and is filled from the same strategy field as
+     * reply(), via the same toneFrom(). A base prompt with no `{{tone}}`
+     * placeholder (e.g. in tests) is returned unchanged, same as reply()'s
+     * behaviour would be without its placeholder.
+     */
+    public function extract(QuoteAgentSettings $settings): ComposedPrompt
     {
-        return new ComposedPrompt($this->extractBase);
+        return new ComposedPrompt(str_replace(
+            self::TONE_PLACEHOLDER,
+            self::toneOrNeutral($settings),
+            $this->extractBase,
+        ));
     }
 
     public function negotiate(QuoteAgentSettings $settings): ComposedPrompt
@@ -66,10 +78,18 @@ final readonly class PromptComposer
         // instead if a figure moved or a new one appeared -- so a strategy
         // that talks about percentages cannot price anything from here, and
         // one that talks about extras cannot promise anything.
-        $strategy = $settings->strategyPrompt;
-        $tone = $strategy === null || trim($strategy) === '' ? self::NEUTRAL_TONE : self::toneFrom($strategy);
+        return new ComposedPrompt(str_replace(
+            self::TONE_PLACEHOLDER,
+            self::toneOrNeutral($settings),
+            $this->replyBase,
+        ));
+    }
 
-        return new ComposedPrompt(str_replace(self::TONE_PLACEHOLDER, $tone, $this->replyBase));
+    private static function toneOrNeutral(QuoteAgentSettings $settings): string
+    {
+        $strategy = $settings->strategyPrompt;
+
+        return $strategy === null || trim($strategy) === '' ? self::NEUTRAL_TONE : self::toneFrom($strategy);
     }
 
     /**

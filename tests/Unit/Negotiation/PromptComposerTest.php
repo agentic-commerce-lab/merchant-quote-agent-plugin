@@ -35,9 +35,34 @@ final class PromptComposerTest extends TestCase
         );
     }
 
-    public function testTheExtractPromptIsVerbatim(): void
+    public function testTheExtractPromptIsVerbatimWhenItHasNoToneSlot(): void
     {
-        self::assertSame('EXTRACT BASE', self::composer()->extract()->text);
+        self::assertSame('EXTRACT BASE', self::composer()->extract(self::settings())->text);
+    }
+
+    #[DataProvider('extractToneTestCases')]
+    public function testTheExtractPromptToneComesFromTheSameMerchantStrategyAsReply(
+        ?string $strategy,
+        string $expectedTone,
+    ): void {
+        // Issue #171: the extract prompt's tone slot is filled the same way
+        // reply()'s is, from the same strategy field -- no second setting.
+        $composer = new PromptComposer('EXTRACT {{tone}} BASE', 'NEGOTIATE BASE', 'REPLY BASE {{tone}} END');
+
+        $composed = $composer->extract(self::settings(strategy: $strategy))->text;
+
+        self::assertSame('EXTRACT ' . $expectedTone . ' BASE', $composed);
+        self::assertStringNotContainsString('{{tone}}', $composed);
+    }
+
+    /** @return array<string, array{0: ?string, 1: string}> */
+    public static function extractToneTestCases(): array
+    {
+        return [
+            'the strategy is the tone' => ['formal, never pushy', 'formal, never pushy'],
+            'no strategy gets neutral' => [null, 'neutral and professional'],
+            'a blank strategy gets neutral' => ['   ', 'neutral and professional'],
+        ];
     }
 
     public function testAMerchantStrategyIsAppendedInADelimitedSection(): void
@@ -155,10 +180,20 @@ final class PromptComposerTest extends TestCase
         $toneHashWarm = $composer->reply(self::settings(strategy: 'warm'))->hash;
 
         self::assertNotSame($toneHashFormal, $toneHashWarm);
+
+        // Issue #171: the extract prompt now carries the same per-merchant
+        // tone, so its hash varies too -- extract_prompt_hash was never relied
+        // on to be stable across merchants (negotiatePromptHash and
+        // replyPromptHash already are not).
+        $toneableExtractComposer = new PromptComposer('EXTRACT {{tone}} BASE', 'NEGOTIATE BASE', 'REPLY BASE');
+        $extractHashA = $toneableExtractComposer->extract(self::settings(strategy: 'formal'))->hash;
+        $extractHashB = $toneableExtractComposer->extract(self::settings(strategy: 'warm'))->hash;
+
+        self::assertNotSame($extractHashA, $extractHashB);
         self::assertSame(
-            $composer->extract()->hash,
-            $composer->extract()->hash,
-            'The extract prompt takes no merchant input, so its hash is constant per deploy.',
+            $toneableExtractComposer->extract(self::settings())->hash,
+            $toneableExtractComposer->extract(self::settings())->hash,
+            'Same settings, same composed text, same hash.',
         );
     }
 
@@ -177,6 +212,7 @@ final class PromptComposerTest extends TestCase
         self::assertStringStartsWith('You are a merchant\'s B2B sales agent', $composed);
         self::assertStringEndsWith("## Merchant strategy\n\nconcede in 1% steps", $composed);
         self::assertStringNotContainsString('{{tone}}', $composer->reply(self::settings(strategy: 'warm'))->text);
+        self::assertStringNotContainsString('{{tone}}', $composer->extract(self::settings(strategy: 'warm'))->text);
     }
 
     public function testAStrategyResolvedFromAVersionComposesLikeTypedTextDid(): void

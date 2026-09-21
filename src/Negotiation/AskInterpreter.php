@@ -41,7 +41,7 @@ final readonly class AskInterpreter
 
         $access = $settings->llm;
 
-        $prompt = $this->prompts->extract();
+        $prompt = $this->prompts->extract($settings);
         $interpretation = $this->platform->object(
             $access,
             $prompt->text,

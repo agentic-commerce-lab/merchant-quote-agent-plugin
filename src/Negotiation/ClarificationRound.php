@@ -28,13 +28,12 @@ use Psr\Log\LoggerInterface;
  * which internal state could be interpolated — which matters, because a quote
  * comment is customer-facing copy (see QuoteEscalator).
  *
- * No merchant tone reaches this text (issue #171 asked for it; #168 is where
- * PromptComposer::reply() grew a toneFrom() derived from the same strategy
- * setting). Threading it here would mean widening AskGate::refuse() and
- * AskInterpreter's extract() call — both outside this class — to carry
- * QuoteAgentSettings this far, for text that is already hard-bounded below.
- * That is a follow-up, not something a second model call should buy; shipping
- * the bound alone is the smaller, honest change.
+ * The merchant tone DOES reach this text now (issue #171), the same way
+ * PromptComposer::reply() grew one from the strategy setting in #168:
+ * AskInterpreter::interpret() already took QuoteAgentSettings as its first
+ * parameter, so PromptComposer::extract() reads it at that existing call site
+ * — no widened signature was needed. Only clarificationQuestions is styled;
+ * every other field the extract prompt fills stays structured data.
  */
 final class ClarificationRound
 {
