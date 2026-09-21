@@ -46,16 +46,25 @@ final class RequestQuoteToolTest extends TestCase
 
     public function testATargetPriceBecomesAPriceOnlyLine(): void
     {
-        $this->tool()->__invoke('98 each would work', [['product_id' => 'prod-1', 'unit_price' => 98.0]]);
+        $this->tool()->__invoke('98 each would work', ['prod-1'], [98.0]);
 
         self::assertSame([['product_id' => 'prod-1', 'requested_unit_price' => 98.0]], $this->lastLineItems);
     }
 
-    public function testAnInventedTargetSourceIsRejected(): void
+    /**
+     * A bad argument comes back as a result the model can act on, not as an
+     * exception. A thrown one becomes a ToolExecutionException and kills the
+     * shopper's chat turn — observed live on 2026-09-21, when a model sent the
+     * old nested `targets` shape and the shopper's turn died instead of the
+     * model being told to correct it.
+     */
+    public function testAnInventedTargetSourceIsRefusedRatherThanThrown(): void
     {
-        $this->expectException(ValidationException::class);
+        $result = $this->tool()->__invoke('cheaper please', [], [], 'model_decided');
 
-        $this->tool()->__invoke('cheaper please', [], 'model_decided');
+        self::assertSame('not_created', $result['state']);
+        self::assertSame('', $result['quote_number']);
+        self::assertStringContainsString('call this tool once more', $result['note']);
     }
 
     public function testTheCommentIsBounded(): void
@@ -72,22 +81,14 @@ final class RequestQuoteToolTest extends TestCase
      */
     public function testATargetStampsTheAssistantProposedSource(): void
     {
-        $this->tool()->__invoke(
-            '98 each would work',
-            [['product_id' => 'prod-1', 'unit_price' => 98.0]],
-            'assistant_proposed',
-        );
+        $this->tool()->__invoke('98 each would work', ['prod-1'], [98.0], 'assistant_proposed');
 
         self::assertSame([['quote-1', ['merchantQuoteAgentAssistantAsk' => 'assistant_proposed']]], $this->stampCalls);
     }
 
     public function testATargetStampsTheBuyerStatedSource(): void
     {
-        $this->tool()->__invoke(
-            '98 each would work',
-            [['product_id' => 'prod-1', 'unit_price' => 98.0]],
-            'buyer_stated',
-        );
+        $this->tool()->__invoke('98 each would work', ['prod-1'], [98.0], 'buyer_stated');
 
         self::assertSame([['quote-1', ['merchantQuoteAgentAssistantAsk' => 'buyer_stated']]], $this->stampCalls);
     }
@@ -107,7 +108,7 @@ final class RequestQuoteToolTest extends TestCase
      */
     public function testAssistantProposedWithNoTargetsStillStamps(): void
     {
-        $this->tool()->__invoke('the customer would like 15% off', [], 'assistant_proposed');
+        $this->tool()->__invoke('the customer would like 15% off', [], [], 'assistant_proposed');
 
         self::assertSame([['quote-1', ['merchantQuoteAgentAssistantAsk' => 'assistant_proposed']]], $this->stampCalls);
     }
@@ -119,9 +120,19 @@ final class RequestQuoteToolTest extends TestCase
      */
     public function testAMalformedTargetIsRejected(): void
     {
-        $this->expectException(ValidationException::class);
+        $result = $this->tool()->__invoke('cheaper please', [['product' => 'prod-1']], [98.0]);
 
-        $this->tool()->__invoke('cheaper please', [['product' => 'prod-1']]);
+        self::assertSame('not_created', $result['state']);
+        self::assertSame([], $this->lastLineItems ?? []);
+    }
+
+    /** Parallel lists can disagree in a way one list of pairs could not. */
+    public function testMismatchedTargetListLengthsAreRefused(): void
+    {
+        $result = $this->tool()->__invoke('98 each', ['prod-1', 'prod-2'], [98.0]);
+
+        self::assertSame('not_created', $result['state']);
+        self::assertStringContainsString('exactly one unit price', $result['note']);
     }
 
     /**

@@ -64,8 +64,10 @@ final class RequestQuoteTool
 
     /** What the model is told when the gateway refused the request outright, so no quote exists at all. */
     private const NOTE_NOT_CREATED_SUFFIX =
-        'No quote was created. Explain plainly to the shopper what is missing so they can fix it. Do not '
-            . 'say a quote exists or was requested, and do not predict what the shop would have offered.';
+        'No quote was created. If the problem is in the arguments you sent, correct them and call this '
+            . 'tool once more. Otherwise explain plainly to the shopper what is missing so they can fix '
+            . 'it. Do not say a quote exists or was requested, and do not predict what the shop would '
+            . 'have offered.';
 
     public function __construct(
         private readonly BuyerQuoteGatewayInterface $gateway,
@@ -74,23 +76,39 @@ final class RequestQuoteTool
     ) {}
 
     /**
-     * @param string $comment The shopper's own words about what they want, in one or two sentences.
-     * @param list<array{product_id: string, unit_price: float}> $targets Per-unit prices to ask for.
+     * Every description here is the model's only instruction for that
+     * argument, and each one is load-bearing — see
+     * {@see \MerchantQuoteAgentPlugin\Tests\Unit\Assistant\ToolSchemaTest},
+     * which pins them against the schema rather than against this source.
+     *
+     * The two target arguments are flat parallel lists rather than one list of
+     * objects because `symfony/property-info` cannot express a shape like
+     * `list<array{product_id: string, unit_price: float}>`: it renders a
+     * nested untyped array and silently discards the description with it,
+     * leaving the model an undocumented parameter it cannot use.
+     *
+     * @param string $comment A short message to the shop saying what the shopper is asking for, written as a request to them. Do not transcribe the shopper's instruction to you. If the shopper named a figure, repeat it exactly.
+     * @param list<string> $targetProductIds Product ids from the cart to ask a per-unit price for. Same length and order as targetUnitPrices.
+     * @param list<float> $targetUnitPrices The per-unit price to ask for each id in targetProductIds, in the same order.
      * @param string $targetSource Either `buyer_stated` or `assistant_proposed`.
      *
      * @return array{quote_number: string, state: string, note: string}
      */
-    public function __invoke(string $comment, array $targets = [], string $targetSource = 'buyer_stated'): array
-    {
-        if (!\in_array($targetSource, self::SOURCES, true)) {
-            throw new ValidationException('Unknown target source.', [
-                '$.target_source must be buyer_stated or assistant_proposed',
-            ]);
-        }
-
-        $lineItems = $this->lineItems($targets);
-
+    public function __invoke(
+        string $comment,
+        array $targetProductIds = [],
+        array $targetUnitPrices = [],
+        string $targetSource = 'buyer_stated',
+    ): array {
         try {
+            if (!\in_array($targetSource, self::SOURCES, true)) {
+                throw new ValidationException('Unknown target source.', [
+                    '$.target_source must be buyer_stated or assistant_proposed',
+                ]);
+            }
+
+            $lineItems = $this->lineItems($targetProductIds, $targetUnitPrices);
+
             $snapshot = $this->gateway->requestQuote(
                 $this->context,
                 $lineItems,
@@ -104,7 +122,7 @@ final class RequestQuoteTool
             ];
         }
 
-        if ([] !== $targets || 'assistant_proposed' === $targetSource) {
+        if ([] !== $targetProductIds || 'assistant_proposed' === $targetSource) {
             $this->askStamp->stamp($snapshot, $targetSource);
         }
 
@@ -116,37 +134,50 @@ final class RequestQuoteTool
     }
 
     /**
-     * `$targets` is untrusted model-supplied JSON, so each entry is `mixed`,
-     * not the `array{product_id: string, unit_price: float}` the public
-     * docblock advertises to the model — that narrower shape is the tool's
-     * schema contract, not a guarantee about what actually arrives here. The
-     * shape check below is real validation of a caller that can send
-     * anything; asserting the narrow shape in THIS docblock would make mago
-     * read it as already proven and flag the check as redundant.
+     * Both arguments are untrusted model-supplied JSON, so their entries are
+     * `mixed` rather than the `string`/`float` the public docblock advertises
+     * — that narrower shape is the tool's schema contract, not a guarantee
+     * about what arrives here. The checks below are real validation of a
+     * caller that can send anything; asserting the narrow shape in THIS
+     * docblock would make mago read it as already proven and flag them as
+     * redundant.
      *
-     * @param list<mixed> $targets
+     * The length check is what parallel lists cost: two arrays can disagree in
+     * a way one list of pairs could not. It is cheap, and the alternative —
+     * pairing whatever lines up and dropping the rest — would ask the shop for
+     * a price the shopper never named.
+     *
+     * @param list<mixed> $productIds
+     * @param list<mixed> $unitPrices
      *
      * @return list<array{product_id: string, requested_unit_price: float}>
      */
-    private function lineItems(array $targets): array
+    private function lineItems(array $productIds, array $unitPrices): array
     {
+        if (\count($productIds) !== \count($unitPrices)) {
+            throw new ValidationException('Each target product id needs exactly one unit price.', [
+                '$.targetProductIds and $.targetUnitPrices must have the same length',
+            ]);
+        }
+
         $lineItems = [];
 
-        foreach ($targets as $index => $target) {
-            if (
-                !\is_array($target)
-                || !\is_string($target['product_id'] ?? null)
-                || '' === $target['product_id']
-                || !is_numeric($target['unit_price'] ?? null)
-            ) {
+        foreach ($productIds as $index => $productId) {
+            $unitPrice = $unitPrices[$index] ?? null;
+
+            if (!\is_string($productId) || '' === $productId || !is_numeric($unitPrice)) {
                 throw new ValidationException('Each target needs a product id and a numeric unit price.', [
-                    \sprintf('$.targets[%d] must have a string product_id and a numeric unit_price', $index),
+                    \sprintf(
+                        '$.targetProductIds[%d] must be a non-empty string and $.targetUnitPrices[%d] a number',
+                        $index,
+                        $index,
+                    ),
                 ]);
             }
 
             $lineItems[] = [
-                'product_id' => $target['product_id'],
-                'requested_unit_price' => (float) $target['unit_price'],
+                'product_id' => $productId,
+                'requested_unit_price' => (float) $unitPrice,
             ];
         }
 

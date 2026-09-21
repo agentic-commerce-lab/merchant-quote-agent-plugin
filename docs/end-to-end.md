@@ -905,7 +905,7 @@ With it, this plugin contributes two tools to the storefront chat assistant:
 
 | Tool | Does | Returns |
 | --- | --- | --- |
-| `request_quote` | Turns the shopper's cart into an ordinary hand-made storefront quote — the same door SwagCommercial's own "request a quote" action uses, so everything from [§3](#3-claiming-the-pass) onward is unaware it came from a chat message. Takes the shopper's own words and, optionally, per-product target prices. | `quote_number`, `state`, and a note instructing the model what it may and may not say |
+| `request_quote` | Turns the shopper's cart into an ordinary hand-made storefront quote — the same door SwagCommercial's own "request a quote" action uses, so everything from [§3](#3-claiming-the-pass) onward is unaware it came from a chat message. Takes a short merchant-facing message — not a transcript of what the shopper typed at the assistant — and, optionally, two parallel lists of product ids and per-unit target prices. | `quote_number`, `state`, and a note instructing the model what it may and may not say |
 | `quote_status` | Looks up what happened to a quote the shopper already has, scoped to their own account — a number belonging to someone else, or a number nobody has, both come back `not_found`. | `state`, `total`, `valid_until`, and a note instructing the model how to state them |
 
 **`request_quote` waits on its own merchant toggle, `assistantQuoteRequests`,

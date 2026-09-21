@@ -120,7 +120,7 @@ outcome.
 
 | | |
 |---|---|
-| arguments | `comment` (the buyer's own sentence), optional `targets[]` of `{product_id, unit_price}`, `target_source` |
+| arguments | `comment` (a short message addressed to the shop, carrying any figure the shopper stated verbatim — **not** the shopper's instruction to the assistant), optional parallel `targetProductIds[]` / `targetUnitPrices[]`, `targetSource` |
 | effect | cart → quote in `open` |
 | returns | `{quote_number, state, note}` — **no prices** |
 
