@@ -609,5 +609,130 @@
       ],
       "validityDays": 14
     }
+  },
+  {
+    "description": "quote-level budget within the band -> auto_reply at the implied discount",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": {
+        "lineChanges": [],
+        "addProducts": [],
+        "clarificationQuestions": [],
+        "humanReviewRequests": [],
+        "targetTotal": 900
+      }
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 10.0,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 90.0
+        }
+      ],
+      "validityDays": 14
+    }
+  },
+  {
+    "description": "quote-level budget beyond the band -> escalate",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": {
+        "lineChanges": [],
+        "addProducts": [],
+        "clarificationQuestions": [],
+        "humanReviewRequests": [],
+        "targetTotal": 800
+      }
+    },
+    "expected": {
+      "kind": "escalate",
+      "reason": "discount_limit_exceeded",
+      "requestedDiscountPercent": 20.0
+    }
+  },
+  {
+    "description": "quote-level budget above the quoted total asks for nothing -> auto_reply at 0%",
+    "input": {
+      "snapshot": {
+        "quoteId": "q1",
+        "quoteNumber": "1000",
+        "stateTechnicalName": "open",
+        "currencyIso": "EUR",
+        "totalNet": 1000,
+        "lines": [
+          {
+            "lineItemId": "l1",
+            "quantity": 10,
+            "unitPriceNet": 100,
+            "totalNet": 1000
+          }
+        ]
+      },
+      "limits": {
+        "maxDiscountPercent": 10,
+        "maxQuoteValueNet": 50000,
+        "validityDays": 14
+      },
+      "interpretation": {
+        "lineChanges": [],
+        "addProducts": [],
+        "clarificationQuestions": [],
+        "humanReviewRequests": [],
+        "targetTotal": 1200
+      }
+    },
+    "expected": {
+      "kind": "auto_reply",
+      "discountPercent": 0.0,
+      "perLineAsks": false,
+      "lineUnitPricesNet": [
+        {
+          "lineItemId": "l1",
+          "unitPriceNet": 100.0
+        }
+      ],
+      "validityDays": 14
+    }
   }
 ]

@@ -30,6 +30,7 @@
         "ask": {
             "discount": "Gewünschter Rabatt",
             "bestPrice": "Bestpreis",
+            "targetTotal": "Gewünschtes Gesamtbudget",
             "targetPrice": "Ziel-Einzelpreis",
             "quantity": "Menge",
             "removeLine": "Position entfernen",

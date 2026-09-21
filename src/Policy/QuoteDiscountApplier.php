@@ -25,6 +25,15 @@ final class QuoteDiscountApplier
         $this->commentTargetMerger = $commentTargetMerger ?? new CommentTargetMerger();
     }
 
+    /**
+     * A budget named for the whole quote IS a quote-level target, so it lands
+     * on the one field the band decider and the uniform pricer already read:
+     * with no per-line asks on the snapshot, QuoteAutoReplyPricer scales every
+     * line by the resulting percentage, and nothing else has to know.
+     *
+     * The clamp itself is QuoteSnapshot::cappedAtBudget(), which states why it
+     * takes the deeper of the two asks.
+     */
     public function apply(
         QuoteSnapshot $snapshot,
         ?CommentInterpretation $interpretation,
@@ -36,8 +45,9 @@ final class QuoteDiscountApplier
 
         $merged = $this->commentTargetMerger->merge($snapshot, $interpretation);
         $extra = $interpretation?->price->additionalDiscountPercent;
+        $scaled = $extra ? $this->applyExtraPercent($merged, $extra) : $merged;
 
-        return $extra ? $this->applyExtraPercent($merged, $extra) : $merged;
+        return $scaled->cappedAtBudget($interpretation?->price->targetTotal);
     }
 
     private function applyBestPrice(QuoteSnapshot $snapshot, float $maxDiscountPercent): QuoteSnapshot

@@ -14,7 +14,9 @@ How to negotiate:
   the `lineItemId` shown for that line and the offered `unitPriceNet`. Do NOT
   answer a line-level ask with a quote-wide `terms.discountPercent`. Give the
   buyer's asked price when it is within your authority; otherwise counter with the
-  best unit price you may give on that line. Leave lines you are not moving out of
+  best unit price you may give on that line. A budget named for the WHOLE quote
+  ("max cost 2500", "keep it under 5k") is the opposite case: it is a quote-wide
+  ask, so answer it with `terms.discountPercent` and never by picking lines. Leave lines you are not moving out of
   `terms.linePricesNet`. Use `terms.discountPercent` only for a genuinely
   quote-wide concession, and NEVER both in the same answer.
 - You are shown YOUR OWN EARLIER OFFERS on this quote. Later rounds continue that

@@ -51,6 +51,34 @@ final readonly class QuoteSnapshot
         );
     }
 
+    /**
+     * The same snapshot with a budget the buyer named for the WHOLE quote
+     * applied to the quote-level target the band decider reads.
+     *
+     * Here rather than in QuoteDiscountApplier, which has no complexity left
+     * for it: a clamp against `totalNet` is this DTO's own arithmetic anyway.
+     * `min`, because two asks in one comment are both the buyer's and the
+     * deeper one is the one they meant — and because a budget at or above the
+     * quoted total then asks for nothing, which is the right answer for it.
+     */
+    public function cappedAtBudget(?float $budgetNet): self
+    {
+        // ponytail: the budget becomes a percentage of `totalNet`, which
+        // includes shipping, while QuoteAutoReplyPricer only scales the lines
+        // — so a quote with shipping on it lands a few euro ABOVE the budget.
+        // Make the percentage goods-only if a buyer ever disputes the
+        // difference.
+
+        // Returning `$this` untouched, not a target of `totalNet`, when no
+        // budget was named: a quote with no quote-level ask at all must keep a
+        // NULL target, or MoneyMath::requestedDiscount() starts answering 0.0
+        // where it answered null and every escalation record on a quote nobody
+        // made a price ask on reads as a 0% ask.
+        return $budgetNet === null
+            ? $this
+            : $this->withBuyerTargetNet(min($budgetNet, $this->buyerTargetNet ?? $this->totalNet));
+    }
+
     public function withBuyerTargetNet(?float $buyerTargetNet): self
     {
         return new self(
