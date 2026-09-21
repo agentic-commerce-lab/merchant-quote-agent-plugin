@@ -84,6 +84,32 @@ final class ConfigXmlSchemaTest extends TestCase
         self::assertSame('true', $default, 'An escalation the buyer is never told about reads as a dead shop.');
     }
 
+    /**
+     * The assistant acts in the buyer's name, so per spec §6 it is opted into
+     * rather than switched on the moment both plugins are installed. Nothing
+     * else pins this: `RequestQuoteToolFactoryTest` mocks
+     * `SystemConfigService::get()` to return a bool directly, so it would
+     * still pass green if the reader's `=== true` became `!== false`.
+     */
+    public function testConfigXmlDeclaresAssistantQuoteRequestsDefaultOff(): void
+    {
+        $configPath = __DIR__ . '/../../../src/Resources/config/config.xml';
+        $document = new DOMDocument();
+        self::assertTrue($document->load($configPath));
+
+        $xpath = new \DOMXPath($document);
+        $nodes = $xpath->query('//input-field[name="assistantQuoteRequests"]');
+        self::assertNotNull($nodes);
+        self::assertSame(1, $nodes->count());
+
+        $field = $nodes->item(0);
+        self::assertInstanceOf(\DOMElement::class, $field);
+        self::assertSame('bool', $field->getAttribute('type'));
+
+        $default = $xpath->query('defaultValue', $field)?->item(0)?->textContent;
+        self::assertSame('false', $default, 'The assistant acts for the buyer, so it must be opt-in.');
+    }
+
     public function testTheNegotiationStrategyCardUsesTheSelectorComponent(): void
     {
         $document = new DOMDocument();
