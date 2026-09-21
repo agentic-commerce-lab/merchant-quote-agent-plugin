@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS `merchant_quote_agent_strategy_assignment` (
     CONSTRAINT `fk.mqasa.sales_channel_id` FOREIGN KEY (`sales_channel_id`)
         REFERENCES `sales_channel` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT `ck.mqasa.kind` CHECK (
-        (`kind` = 'customer' AND `customer_id` IS NOT NULL AND `rule_id` IS NULL AND `weight` IS NULL)
+        (`kind` = 'pin'      AND `customer_id` IS NOT NULL AND `rule_id` IS NULL AND `weight` IS NULL)
      OR (`kind` = 'rule'     AND `rule_id`     IS NOT NULL AND `customer_id` IS NULL AND `weight` IS NULL)
      OR (`kind` = 'split'    AND `weight`      IS NOT NULL AND `customer_id` IS NULL AND `rule_id` IS NULL)
     )
@@ -176,6 +176,11 @@ Migration `Migration1789600000CreateStrategyAssignment`, hand-written like
 `Migration1789400000CreateQuoteAgentStrategy` — attribute entities carry no
 schema generator, so the table and the entity class must be kept in step by
 hand.
+
+**`kind` holds a `StrategyAssignmentSource` value** — `pin`, `rule`, `split`,
+never `config`, which is the absence of a row. The resolver reads and writes it
+through the enum rather than as a literal, so this column and the audit column
+it explains cannot drift apart.
 
 **An explicit `kind` rather than one derived from which column is non-null.**
 The derived version reads fine while you are writing it and is the thing
