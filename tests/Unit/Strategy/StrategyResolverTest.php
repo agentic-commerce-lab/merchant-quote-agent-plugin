@@ -14,6 +14,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 
 final class StrategyResolverTest extends TestCase
@@ -74,6 +75,47 @@ final class StrategyResolverTest extends TestCase
         self::assertCount(1, $sorting);
         self::assertSame('version', $sorting[0]->getField());
         self::assertSame(FieldSorting::DESCENDING, $sorting[0]->getDirection());
+    }
+
+    public function testItAsksOnlyForActiveVersions(): void
+    {
+        $captured = null;
+
+        $versions = $this->createMock(EntityRepository::class);
+        $versions
+            ->method('search')
+            ->willReturnCallback(function (Criteria $criteria, Context $context) use (&$captured): EntitySearchResult {
+                $captured = $criteria;
+
+                return new EntitySearchResult(
+                    'merchant_quote_agent_strategy_version',
+                    0,
+                    new EntityCollection([]),
+                    null,
+                    $criteria,
+                    $context,
+                );
+            });
+
+        $resolver = new StrategyResolver($this->repository([$this->liveStrategy()]), $versions);
+
+        try {
+            $resolver->resolve(self::STRATEGY_ID, Context::createDefaultContext());
+        } catch (UnknownStrategy) {
+            // No rows come back from the stub; the Criteria is what this test is about.
+        }
+
+        self::assertInstanceOf(Criteria::class, $captured);
+
+        $values = [];
+
+        foreach ($captured->getFilters() as $filter) {
+            if ($filter instanceof EqualsFilter) {
+                $values[$filter->getField()] = $filter->getValue();
+            }
+        }
+
+        self::assertSame('active', $values['status'] ?? null);
     }
 
     public function testAMissingStrategyIsRefused(): void
