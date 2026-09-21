@@ -113,7 +113,7 @@ final class DecisionRecorderTest extends TestCase
 
         $recorder->begin(NegotiationFixture::snapshot(totalNet: 1000.0), self::context());
         $recorder->recordApplied(
-            new AppliedOffer(true, [], NegotiationFixture::snapshot(totalNet: 950.0)),
+            new AppliedOffer(true, [], NegotiationFixture::snapshot(totalNet: 950.0), 1000.0),
             ['updateQuote'],
         );
         $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));

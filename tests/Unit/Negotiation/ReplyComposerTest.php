@@ -140,6 +140,26 @@ final class ReplyComposerTest extends TestCase
         );
     }
 
+    /**
+     * #175: a null reductionPercent is the hold shape. The template posted
+     * must be `ReplyTemplate::holds()`, not `compose()` floored at 0%.
+     */
+    public function testANullReductionPercentPostsTheHoldTemplate(): void
+    {
+        [$client] = ScriptedClient::spy(['a rewording that keeps none of the facts']);
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $after = self::after(totalNet: 1000.0);
+
+        self::composer($client)
+            ->reply($gateway, $after, NegotiationFixture::settings(), null, SnapshotAdapter::conversation($after));
+
+        self::assertSame(
+            'This quote stands at 1000.00 EUR. The offer remains valid until ' . NegotiationFixture::expires() . '.',
+            $gateway->comments[0],
+        );
+        self::assertStringNotContainsString('%', $gateway->comments[0]);
+    }
+
     public function testAnAlreadyAnsweredQuoteIsNotAnsweredTwice(): void
     {
         // Idempotency: the agent's reply is already newer than the buyer's ask,

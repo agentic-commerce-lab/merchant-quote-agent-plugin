@@ -17,6 +17,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
 use MerchantQuoteAgentPlugin\Policy\Data\VerifyOfferInput;
+use MerchantQuoteAgentPlugin\Policy\Epsilon;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
@@ -84,7 +85,44 @@ final readonly class OfferApplier
             now: new \DateTimeImmutable(),
         ));
 
-        $applied = new AppliedOffer($violations === [], $violations, $after);
+        // #174: the checks above bound the write against the BASELINE, by
+        // design -- #49 needs that anchor so a per-round discount cannot
+        // compound past maxDiscountPercent. They say nothing about the
+        // quote's CURRENT total, and an earlier round or a human can have
+        // moved that below the baseline already. Quote 1039: baseline
+        // 2114.56, current 1818.20, "5% off" prices the offer at 2008.83 --
+        // a legal discount against the baseline and a 190.63 INCREASE against
+        // what the buyer's quote showed a moment ago. That must never be
+        // REPORTED to the buyer as a concession.
+        //
+        // This is DETECTION, not prevention: by this point $after is already
+        // the database's own post-write read, so the raised total has already
+        // landed -- there is no rollback (see this class's own docblock), the
+        // same as any other verification violation. What this buys is that
+        // the pass is marked unverified and escalates to a human instead of
+        // reporting the raise to the buyer as a discount.
+        //
+        // Checked here, deterministically, rather than in OfferAuthorizer or
+        // OfferVerifier: $reference, fetched immediately above right before
+        // the write, is the only current total either of those ever sees --
+        // both work from the baseline-anchored snapshot. This is also the one
+        // place every write passes through, per-line or quote-wide alike, so
+        // one check here covers both instead of one per call site.
+        //
+        // Escalates like any other violation, and does NOT clamp: clamping
+        // the FIGURE REPORTED for the write to $reference's total would hide
+        // the very defect that produced it -- the offer was priced wrong
+        // upstream, and silently capping the number here means nobody ever
+        // finds out, while the raised total sits unfixed on the quote.
+        if ($after->totals->totalNet > ($reference->totals->totalNet + Epsilon::MONEY)) {
+            $violations[] = sprintf(
+                'the write raised the total from %.2f to %.2f, above what the quote showed before this pass',
+                $reference->totals->totalNet,
+                $after->totals->totalNet,
+            );
+        }
+
+        $applied = new AppliedOffer($violations === [], $violations, $after, $reference->totals->totalNet);
         $this->recorder->recordApplied($applied, $writes);
 
         return $applied;
