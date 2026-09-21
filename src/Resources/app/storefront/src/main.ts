@@ -34,15 +34,10 @@
  * the resolved class with real inheritance.
  */
 
-import { AGENT_ACTOR_NAME, isAgentEntry } from './agent-disclosure.ts';
+import { DELEGATE_TO_SUPER, resolveActor, suppressMerchantCommentMerge } from './agent-disclosure.ts';
+import type { HistoryActor } from './agent-disclosure.ts';
 
 type HistoryEntry = Record<string, unknown>;
-
-type HistoryActor = {
-    name: string,
-    initials: string,
-    isCustomer: boolean,
-};
 
 type HistoryItemPluginInstance = {
     getActor(entry: HistoryEntry): HistoryActor,
@@ -81,11 +76,29 @@ if (PLUGIN_NAME in PluginManager.getPluginList()) {
     // Read the currently-registered loader BEFORE override() replaces it.
     // override() deregisters the old registration and registers the new one
     // in its place (same name in, same name out), so this reference is the
-    // only way to still reach SwagCommercial's own class afterwards. This
-    // plugin's storefront bundle loads after SwagCommercial's QuoteManagement
-    // bundle (see var/plugins.json's bundle order), so SwagCommercial's own
-    // main.ts has always already registered B2bQuoteHistoryItemPlugin by the
-    // time this file runs.
+    // only way to still reach SwagCommercial's own class afterwards.
+    //
+    // This depends on SwagCommercial's own main.ts having already registered
+    // B2bQuoteHistoryItemPlugin by the time this file runs — and that is NOT
+    // guaranteed. Both plugins' `<script defer>` tags execute in document
+    // order (meta.html.twig), which follows ThemeFileResolver's unsorted walk
+    // of StorefrontPluginRegistry's collection, which in turn is built from
+    // KernelPluginLoader::getBundles() — DbalKernelPluginLoader orders that
+    // `ORDER BY installed_at`. On a shop where this plugin's installed_at
+    // precedes SwagCommercial's, this file runs first, the `in` check above is
+    // false, and the per-message label is silently absent — the registry is
+    // never touched, and the warning that would say so is deliberately
+    // suppressed just above. The Twig banner is unaffected: it reads
+    // page.quote.customFields directly and does not depend on script order.
+    //
+    // This is the same class of install-order dependency getTemplatePriority()
+    // exists to close for the Twig half (see
+    // MerchantQuoteAgentPlugin::getTemplatePriority()'s docblock) — but there
+    // is no JS analogue to that fix. Core's main.js registers its own
+    // DOMContentLoaded handler before plugin bundles run their own top-level
+    // code, so a listener added here would still fire after
+    // initializePlugins() has already resolved the (possibly still-original)
+    // loader. No clean fix is known; see the spec's Risks section.
     const originalLoader = PluginManager.getPlugin(PLUGIN_NAME)?.get('class') as
         HistoryItemPluginLoader | HistoryItemPluginClass | undefined;
 
@@ -104,56 +117,22 @@ if (PLUGIN_NAME in PluginManager.getPluginList()) {
                     ? originalLoader as HistoryItemPluginClass
                     : (await (originalLoader as HistoryItemPluginLoader)()).default;
 
+                // Wiring only. The actual logic - and the comments explaining why
+                // each override exists - lives in agent-disclosure.ts's
+                // resolveActor() and suppressMerchantCommentMerge(), which are pure
+                // and covered by agent-disclosure.check.mjs. Neither can be
+                // exercised here: this whole module touches window.PluginManager at
+                // top level, so it cannot be imported under
+                // `node --experimental-strip-types`.
                 class AgentDisclosureHistoryItemPlugin extends ParentPlugin {
-                    /**
-                     * Without this the buyer is told the MERCHANT wrote the agent's
-                     * messages: upstream resolves employee, then customer, then
-                     * createdBy, and falls through to the 'merchantComment' snippet -
-                     * "Merchant" - when an entry has none of the three, which is
-                     * exactly an agent entry.
-                     */
                     getActor(entry: HistoryEntry): HistoryActor {
-                        if (!isAgentEntry(entry)) {
-                            return super.getActor(entry);
-                        }
+                        const resolved = resolveActor(entry, (name) => this.getInitials(name));
 
-                        return {
-                            name: AGENT_ACTOR_NAME,
-                            initials: this.getInitials(AGENT_ACTOR_NAME),
-                            isCustomer: false,
-                        };
+                        return resolved === DELEGATE_TO_SUPER ? super.getActor(entry) : resolved;
                     }
 
-                    /**
-                     * Stops an agent message being merged into a merchant one.
-                     *
-                     * Upstream's predicate is `isCommentOnlyEntry() && !isCustomerOrEmployeeHistory()`,
-                     * and an agent entry satisfies both - "no author at all" is not "customer
-                     * or employee". mergeMerchantCommentHistories() would then fold it into
-                     * any merchant entry within HISTORY_MERGE_WINDOW_MS (15s), and
-                     * mergeCommentIntoHistoryEntry() builds {...target, comment: <agent text>,
-                     * createdById: target.createdById ?? ...}. The merged entry carries the
-                     * merchant's createdById and the agent's words, so getActor() above never
-                     * sees the signal - it is destroyed before render.
-                     *
-                     * In practice: a merchant editing the quote in the administration within
-                     * 15s of an agent reply would see the agent's text under a named human,
-                     * with no disclosure at all.
-                     *
-                     * The cost is a slightly longer timeline - an agent pass that both changes
-                     * the quote and comments now renders two articles instead of one. Worth it
-                     * for a signal that cannot be silently lost.
-                     *
-                     * The other merge path, mergeAddedStatusCommentHistories(), is gated on
-                     * action === 'request', which an agent comment never is. It needs no
-                     * override.
-                     */
                     isMerchantCommentOnlyEntry(entry: HistoryEntry): boolean {
-                        if (isAgentEntry(entry)) {
-                            return false;
-                        }
-
-                        return super.isMerchantCommentOnlyEntry(entry);
+                        return suppressMerchantCommentMerge(entry, super.isMerchantCommentOnlyEntry(entry));
                     }
                 }
 

@@ -11,7 +11,13 @@
  */
 
 import assert from 'node:assert/strict';
-import { AGENT_ACTOR_NAME, isAgentEntry } from './agent-disclosure.ts';
+import {
+    AGENT_ACTOR_NAME,
+    DELEGATE_TO_SUPER,
+    isAgentEntry,
+    resolveActor,
+    suppressMerchantCommentMerge,
+} from './agent-disclosure.ts';
 
 const buyer = { comment: 'Can you do better?', customerId: 'c1' };
 const employee = { comment: 'Approving this', employeeId: 'e1' };
@@ -57,7 +63,78 @@ assert.equal(
     'once merged the signal is gone - which is why the merge is suppressed upstream of this',
 );
 
+// An author column can also arrive present-but-empty: null (no value bound)
+// or '' (bound, empty). Both already behave correctly through isPresent()'s
+// generic Boolean() fallback; these pin the shapes rather than change them.
+assert.equal(
+    isAgentEntry({ comment: 'hi', customerId: null, createdById: null }),
+    true,
+    'a null author column is absent, not present',
+);
+assert.equal(
+    isAgentEntry({ comment: 'hi', createdById: '' }),
+    true,
+    'an empty-string author column is absent, not present',
+);
+
 assert.equal(typeof AGENT_ACTOR_NAME, 'string');
 assert.ok(AGENT_ACTOR_NAME.length > 0, 'the actor needs a name to render');
+
+// resolveActor() and suppressMerchantCommentMerge() are the pure bodies of
+// main.ts's two PluginManager overrides (moved here so they can be exercised
+// without a browser or window.PluginManager). The spec requires both cases:
+// an agent comment standing alone, and one 5 seconds after a merchant detail
+// change - the merge case - asserting the agent actor survives either way.
+const getInitials = (name) => name.split(' ').map((part) => part[0]).join('');
+
+// Case 1: an agent comment standing alone resolves to the agent actor.
+const standaloneAgentComment = { comment: 'We can offer 12% off', sentAt: '2026-09-21T10:00:00Z' };
+const standaloneActor = resolveActor(standaloneAgentComment, getInitials);
+assert.notEqual(standaloneActor, DELEGATE_TO_SUPER, 'a standalone agent comment must not delegate to super');
+assert.deepEqual(
+    standaloneActor,
+    { name: AGENT_ACTOR_NAME, initials: getInitials(AGENT_ACTOR_NAME), isCustomer: false },
+    'a standalone agent comment resolves to the agent actor',
+);
+
+// A non-agent entry delegates instead of being resolved here.
+assert.equal(
+    resolveActor(merchant, getInitials),
+    DELEGATE_TO_SUPER,
+    'a merchant entry delegates to the parent getActor()',
+);
+
+// Case 2: an agent comment 5 seconds after a merchant detail change. Upstream
+// would normally merge it (superResult: true, i.e. isCommentOnlyEntry() &&
+// !isCustomerOrEmployeeHistory() both held) - suppressMerchantCommentMerge()
+// must refuse that merge so the entry passed to resolveActor() afterwards is
+// still the untouched agent comment, and the agent actor survives.
+const agentCommentAfterMerchantChange = {
+    comment: 'We can offer 12% off',
+    sentAt: '2026-09-21T10:00:05Z',
+};
+assert.equal(
+    suppressMerchantCommentMerge(agentCommentAfterMerchantChange, true),
+    false,
+    'an agent comment inside the merge window must not be merged into the merchant entry',
+);
+assert.deepEqual(
+    resolveActor(agentCommentAfterMerchantChange, getInitials),
+    { name: AGENT_ACTOR_NAME, initials: getInitials(AGENT_ACTOR_NAME), isCustomer: false },
+    'unmerged, the agent comment still resolves to the agent actor',
+);
+
+// A merchant entry within the same window is unaffected: the merge decision
+// passes through to upstream's own result.
+assert.equal(
+    suppressMerchantCommentMerge(merchant, true),
+    true,
+    'a merchant entry is still eligible for merging, per upstream',
+);
+assert.equal(
+    suppressMerchantCommentMerge(merchant, false),
+    false,
+    'suppressMerchantCommentMerge never turns a merchant entry INTO a merge candidate',
+);
 
 console.log('agent-disclosure.check.mjs: all assertions passed');

@@ -39,7 +39,8 @@
         "phauthentic/cognitive-code-analysis": "^1.11",
         "phpunit/phpunit": "^11.5",
         "shipmonk/composer-dependency-analyser": "^1.0",
-        "symfony/cache": "^7.4"
+        "symfony/cache": "^7.4",
+        "twig/twig": "^3.28"
     },
     "autoload": {
         "psr-4": {

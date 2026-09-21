@@ -63,16 +63,4 @@ final class AgentDisclosureTest extends TestCase
 
         self::assertEqualsCanonicalizing(NegotiationOutcome::cases(), $covered);
     }
-
-    public function testAQuoteWithoutTheMarkerIsNotHandled(): void
-    {
-        self::assertFalse(AgentDisclosure::handled(ServicingHandlerFixture::snapshot()));
-    }
-
-    public function testAQuoteCarryingTheMarkerIsHandled(): void
-    {
-        $snapshot = ServicingHandlerFixture::snapshot([AgentDisclosure::MARKER_KEY => true]);
-
-        self::assertTrue(AgentDisclosure::handled($snapshot));
-    }
 }

@@ -187,9 +187,9 @@ a `main.ts` and a webpack entry, whose only job is to override
 Two methods are overridden. Both are required; either alone is insufficient.
 
 **`getActor(entry)`** — when the entry carries no `customer`, no `employee`, no
-`customerId`, no `employeeId` and no `createdById`, return an agent actor
-(disclosure name from a snippet, its own initials, `isCustomer: false`) instead
-of falling through to `merchantComment`. Otherwise delegate to the parent.
+`customerId`, no `employeeId` and no `createdById`, return an agent actor (a
+hardcoded English name, its own initials, `isCustomer: false`) instead of
+falling through to `merchantComment`. Otherwise delegate to the parent.
 
 **`isMerchantCommentOnlyEntry(entry)`** — return `false` for an entry with no
 author of any kind, so an agent comment is never chosen as a merge source.
@@ -239,6 +239,14 @@ exist.
   the modern lane, because that is derived rather than stored.
 - **No change to the reply text itself.** Disclosure is presentational; the
   audit record's `replyToBuyer` stays exactly what the agent composed.
+- **The two disclosure surfaces name the agent differently.** The banner's copy
+  is snippet-driven and merchant-overridable
+  (`merchantQuoteAgent.disclosure.banner.*`). The per-message label is not: the
+  actor name (`AGENT_ACTOR_NAME` in `agent-disclosure.ts`) is a hardcoded
+  English constant, matching the existing bar for buyer-facing copy in this
+  plugin (see the no-translation-beyond-en-GB gap above) rather than raising it
+  for one string. A merchant who overrides the banner snippet will not see that
+  wording reflected in the per-message label.
 
 ## Testing
 
@@ -282,6 +290,34 @@ exist.
 - **`HISTORY_MERGE_WINDOW_MS` is upstream's constant.** If it grows, the merge
   suppression still holds, because we suppress by predicate rather than by
   timing.
+- **The per-message override depends on plugin install order, and there is no
+  fix.** `main.ts` only reaches SwagCommercial's `B2bQuoteHistoryItemPlugin` by
+  capturing its registered loader before calling `override()`, which requires
+  SwagCommercial's own storefront bundle to have run first. `<script defer>`
+  tags execute in document order (`meta.html.twig`), which follows
+  `ThemeFileResolver`'s unsorted walk of `StorefrontPluginRegistry`'s
+  collection, itself built from `KernelPluginLoader::getBundles()` —
+  `DbalKernelPluginLoader` orders that `ORDER BY installed_at`. On a shop where
+  this plugin was installed before SwagCommercial, this file runs first, the
+  registry lookup is false, and the per-message label is silently absent — the
+  Twig banner is unaffected. This is the same class of defect
+  `getTemplatePriority()` closes for the Twig half (see
+  `MerchantQuoteAgentPlugin::getTemplatePriority()`), but there is no JS
+  analogue: core's `main.js` registers its `DOMContentLoaded` handler before
+  plugin bundles run their own top-level code, so a listener added here would
+  still fire too late. No clean fix is known.
+- **`getMerchantActor()` bypasses `getActor()` entirely.**
+  `SwagCommercial/src/B2B/QuoteManagement/Resources/app/storefront/src/plugin/quote/quote-history-item.plugin.ts:1258`,
+  reached from `:450` via `render()` at `:115`, hardcodes the `merchantComment`
+  snippet for the quote's offer *summary article* and never calls the
+  overridden `getActor()`. An agent-authored state change to a merchant-sent
+  status satisfies `shouldRenderMerchantSentArticle`, so that summary article
+  still renders under "Merchant" even though an agent produced it. It carries
+  no agent text — the comment is a separate history row, and merging is now
+  suppressed — so the per-message commitment still holds, but the visible
+  result is a "Merchant" offer article immediately followed by an "AI Agent"
+  message from the same pass. Recorded so the next reader does not rediscover
+  it as a bug.
 
 ## Follow-up, not in this change
 

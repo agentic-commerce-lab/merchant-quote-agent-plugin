@@ -58,23 +58,33 @@ final class AgentDisclosureServicingTest extends TestCase
         yield 'nothing to do' => [NegotiationOutcome::NothingToDo, false];
     }
 
-    /** @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions */
+    /**
+     * @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions
+     *
+     * The two neighbouring markers are released by a pass that did not act.
+     * This one must survive exactly that pass, or a quote already marked
+     * handled stops disclosing the moment the agent has nothing further to do
+     * on it. HandedOver is the outcome to seed this with, not Offered: a
+     * quote is only ever already marked while an outcome that itself
+     * discloses (Offered included) would stamp the key back in regardless,
+     * which is what made the previous version of this test pass no matter
+     * what stampFor() returned.
+     *
+     * The real invariant is "already marked + a non-acting outcome ⇒ the key
+     * is OMITTED from the fragment, not nulled" — QuoteWriter's shallow merge
+     * means an omitted key leaves the existing customField untouched, while a
+     * present-but-null one would clear it.
+     */
     public function testTheDisclosureMarkerIsNeverCleared(): void
     {
-        // The two neighbouring markers are released by a pass that answered.
-        // This one must survive exactly that pass, or a quote stops disclosing
-        // the moment the agent succeeds on it.
         $gateway = new FakeQuoteGateway([
             ServicingHandlerFixture::snapshot([AgentDisclosure::MARKER_KEY => true]),
         ]);
-        $pipeline = ServicingHandlerFixture::countingPipeline(NegotiationOutcome::Offered);
+        $pipeline = ServicingHandlerFixture::countingPipeline(NegotiationOutcome::HandedOver);
 
         ServicingHandlerFixture::handler($gateway, $pipeline)(ServicingHandlerFixture::message());
 
         $stamp = ServicingHandlerFixture::lastCustomFieldWrite($gateway);
-        self::assertArrayNotHasKey(AgentDisclosure::MARKER_KEY, array_filter(
-            $stamp,
-            static fn(mixed $value): bool => $value === null,
-        ));
+        self::assertArrayNotHasKey(AgentDisclosure::MARKER_KEY, $stamp);
     }
 }

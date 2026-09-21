@@ -26,12 +26,13 @@
    it, and the disclosure outlives the state the quote was in at the time. #}
 {% block page_account_quotes_details %}
     {% if page.quote.customFields.merchant_quote_agent_handled is defined and page.quote.customFields.merchant_quote_agent_handled %}
-        {% sw_include '@Storefront/storefront/utilities/alert.html.twig' with {
-            type: "info",
-            heading: "merchantQuoteAgent.disclosure.banner.headline"|trans|sw_sanitize,
-            content: "merchantQuoteAgent.disclosure.banner.body"|trans|sw_sanitize,
-            class: " my-3"
-        } %}
+        <div class="my-3">
+            {% sw_include '@Storefront/storefront/utilities/alert.html.twig' with {
+                type: "info",
+                heading: "merchantQuoteAgent.disclosure.banner.headline"|trans|sw_sanitize,
+                content: "merchantQuoteAgent.disclosure.banner.body"|trans|sw_sanitize
+            } %}
+        </div>
     {% endif %}
 
     {{ parent() }}

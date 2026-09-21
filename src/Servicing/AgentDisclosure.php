@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Servicing;
 
-use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 
 /**
@@ -62,10 +61,5 @@ final class AgentDisclosure
                 => [self::MARKER_KEY => true],
             NegotiationOutcome::HandedOver, NegotiationOutcome::NothingToDo => [],
         };
-    }
-
-    public static function handled(QuoteSnapshot $snapshot): bool
-    {
-        return ($snapshot->lifecycle->customFields[self::MARKER_KEY] ?? null) === true;
     }
 }
