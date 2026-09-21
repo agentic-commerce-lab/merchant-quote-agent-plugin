@@ -41,7 +41,8 @@
         "phpunit/phpunit": "^11.5",
         "shipmonk/composer-dependency-analyser": "^1.0",
         "symfony/ai-agent": "0.13.*",
-        "symfony/cache": "^7.4"
+        "symfony/cache": "^7.4",
+        "twig/twig": "^3.28"
     },
     "autoload": {
         "psr-4": {
@@ -74,7 +75,7 @@
         "lint:fix": "mago lint --fix src tests",
         "typecheck": "mago analyze",
         "quality:filesize": "php scripts/check_file_length.php src",
-        "quality:admin": "node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/decision.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/measures.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/strategy.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/strategy-measures.check.mjs",
+        "quality:admin": "node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/decision.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/measures.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/strategy.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/strategy-measures.check.mjs && node --experimental-strip-types src/Resources/app/storefront/src/agent-disclosure.check.mjs",
         "quality:admin:shop": "scripts/check-administration.sh",
         "quality:bench": "node --experimental-strip-types scripts/bench-score.check.mjs",
         "quality:dupes": "jscpd",

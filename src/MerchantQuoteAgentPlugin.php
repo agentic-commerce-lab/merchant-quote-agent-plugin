@@ -36,6 +36,19 @@ use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
  * Symfony's Bundle declares $container/$name as typed properties without
  * defaults and initialises them outside a constructor (setContainer, getName).
  * Shopware's Plugin sets $path via its own constructor. Nothing for us to add.
+ *
+ * @mago-expect lint:too-many-methods
+ * Six of the eleven are framework hooks Shopware calls on the Plugin instance
+ * itself — executeComposerCommands, getTemplatePriority, configureRoutes,
+ * activate, update, uninstall — so none of them can move off this class
+ * without ceasing to be called. The other five are private helpers for two
+ * lifecycle jobs: uninstall cleanup (dropPluginTables,
+ * deleteSeededMailAndFlow, deleteSigningKey) and signing-key generation
+ * (generateSigningKey, logKeyGenerationFailure). Those five ARE a cohesion
+ * smell and the right fix is to extract them into their own collaborators;
+ * that is a refactor of lifecycle code this change does not otherwise touch,
+ * so it is deliberately not bundled here. Revisit when either lifecycle job
+ * grows again.
  */
 class MerchantQuoteAgentPlugin extends Plugin
 {
@@ -68,6 +81,24 @@ class MerchantQuoteAgentPlugin extends Plugin
     public function executeComposerCommands(): bool
     {
         return true;
+    }
+
+    /**
+     * Wins the Twig namespace hierarchy against SwagCommercial, whose
+     * quote detail page this plugin's storefront banner extends.
+     *
+     * Lower is higher precedence. Both plugins would otherwise sit at the
+     * default 0, and BundleHierarchyBuilder's stable sort would break that tie
+     * on bundle registration order — which DbalKernelPluginLoader takes from
+     * `ORDER BY installed_at`. That makes the banner's visibility depend on
+     * which plugin the merchant happened to install first. -1 is the smallest
+     * value that removes the shop's install history from the answer while
+     * still leaving room for a theme or a later extension to outrank us.
+     */
+    #[Override]
+    public function getTemplatePriority(): int
+    {
+        return -1;
     }
 
     /**

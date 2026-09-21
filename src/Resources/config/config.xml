@@ -10,6 +10,12 @@
             <defaultValue>false</defaultValue>
             <helpText>Off by default. While off the agent is completely silent: it queues nothing and writes nothing.</helpText>
         </input-field>
+        <input-field type="text">
+            <name>agentDisplayName</name>
+            <label>Name shown to buyers</label>
+            <defaultValue>AI Agent</defaultValue>
+            <helpText>What the buyer sees above the agent's messages in their quote conversation, instead of "Merchant". Give your agent a name if you prefer, e.g. "Peter the AI". One name for all languages. Leave empty to fall back to "AI Agent" — a blank name would render the buyer's messages unattributed.</helpText>
+        </input-field>
     </card>
 
     <card>

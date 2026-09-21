@@ -8,6 +8,12 @@
             "deny": "Deny",
             "expiry": "This request can only be answered once, and expires %minutes% minutes after the agent asked.",
             "expired": "This authorization link has expired or has already been used. Ask the agent for a new one."
+        },
+        "disclosure": {
+            "banner": {
+                "headline": "Handled by an AI agent",
+                "body": "An automated assistant has been working on this quote on our behalf. You can reply here at any time, and a member of our team can take over."
+            }
         }
     }
 }
