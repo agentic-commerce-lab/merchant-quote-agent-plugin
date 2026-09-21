@@ -81,16 +81,39 @@ export const DELEGATE_TO_SUPER = Symbol('agent-disclosure:delegate-to-super');
 export function resolveActor(
     entry: Record<string, unknown>,
     getInitials: (name: string) => string,
+    configuredName?: string,
 ): HistoryActor | typeof DELEGATE_TO_SUPER {
     if (!isAgentEntry(entry)) {
         return DELEGATE_TO_SUPER;
     }
 
+    const name = displayName(configuredName);
+
     return {
-        name: AGENT_ACTOR_NAME,
-        initials: getInitials(AGENT_ACTOR_NAME),
+        name,
+        initials: getInitials(name),
         isCustomer: false,
     };
+}
+
+/**
+ * The merchant's own name for their agent, or AGENT_ACTOR_NAME when they have
+ * not set one.
+ *
+ * Both fallback cases are real rather than defensive. `undefined` is every
+ * page our Twig template did not render, since that template is what carries
+ * the value into the DOM. The empty string is a merchant who opened the config
+ * field and cleared it - and an empty name is worse than a default one,
+ * because upstream assigns it straight to `textContent` and the buyer would
+ * see an unattributed message with a blank avatar rather than a labelled one.
+ *
+ * Trimmed because leading or trailing space in a text field is a typo, never
+ * an intention, and it would show up in the rendered initials.
+ */
+function displayName(configured?: string): string {
+    const trimmed = configured?.trim() ?? '';
+
+    return trimmed === '' ? AGENT_ACTOR_NAME : trimmed;
 }
 
 /**

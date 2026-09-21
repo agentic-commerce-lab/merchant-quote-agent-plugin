@@ -187,9 +187,30 @@ a `main.ts` and a webpack entry, whose only job is to override
 Two methods are overridden. Both are required; either alone is insufficient.
 
 **`getActor(entry)`** — when the entry carries no `customer`, no `employee`, no
-`customerId`, no `employeeId` and no `createdById`, return an agent actor (a
-hardcoded English name, its own initials, `isCustomer: false`) instead of
+`customerId`, no `employeeId` and no `createdById`, return an agent actor (the
+merchant's configured name, its own initials, `isCustomer: false`) instead of
 falling through to `merchantComment`. Otherwise delegate to the parent.
+
+The name comes from the `agentDisplayName` plugin config field, so a merchant
+can call their agent "Peter the AI". Storefront JS cannot read `system_config`,
+so the quote-detail template renders it into a `data-` attribute and `main.ts`
+reads it back — emitted unconditionally, outside the marker check, because a
+quote handled before this feature shipped has no marker and no banner but does
+still get the per-message label; gating the attribute on the marker would show
+the same buyer two different agent names on two quotes.
+
+An empty or whitespace-only value falls back to `AGENT_ACTOR_NAME`. That is not
+defensive padding: a merchant who clears the field would otherwise leave every
+agent message unattributed, because upstream assigns the name straight to
+`textContent`.
+
+That template is the one place in the plugin reading `system_config` directly
+rather than through `Config\QuoteAgentSettingsReader`, against the rule in
+`AGENTS.md`. Approved explicitly, because honouring the rule would mean a Twig
+extension whose only job is to forward one string. Nothing else follows it, and
+the field is deliberately absent from the reader's `KEYS`: it is a presentation
+value, not part of the validated `QuoteAgentSettings` the negotiation policy
+reads.
 
 **`isMerchantCommentOnlyEntry(entry)`** — return `false` for an entry with no
 author of any kind, so an agent comment is never chosen as a merge source.
@@ -239,14 +260,19 @@ exist.
   the modern lane, because that is derived rather than stored.
 - **No change to the reply text itself.** Disclosure is presentational; the
   audit record's `replyToBuyer` stays exactly what the agent composed.
-- **The two disclosure surfaces name the agent differently.** The banner's copy
-  is snippet-driven and merchant-overridable
-  (`merchantQuoteAgent.disclosure.banner.*`). The per-message label is not: the
-  actor name (`AGENT_ACTOR_NAME` in `agent-disclosure.ts`) is a hardcoded
-  English constant, matching the existing bar for buyer-facing copy in this
-  plugin (see the no-translation-beyond-en-GB gap above) rather than raising it
-  for one string. A merchant who overrides the banner snippet will not see that
-  wording reflected in the per-message label.
+- **The two disclosure surfaces are configured in different places.** The
+  per-message label comes from the `agentDisplayName` config field; the banner's
+  copy (`merchantQuoteAgent.disclosure.banner.*`) remains snippets. A merchant
+  who names their agent "Peter the AI" gets that on every message, while the
+  banner still reads "Handled by an AI agent" until they also override the
+  snippet. Renaming the *entity* and rewriting the *sentence* are different
+  jobs, and folding the name into the banner's prose would make that copy
+  untranslatable in exactly the way the config field already is.
+- **The configured name is one value for all languages.** A config field has no
+  per-language dimension, unlike a snippet. A shop serving two languages shows
+  the same agent name in both. Accepted deliberately in exchange for the field
+  being discoverable beside the plugin's other agent settings, where a merchant
+  configuring the agent will actually find it.
 
 ## Testing
 

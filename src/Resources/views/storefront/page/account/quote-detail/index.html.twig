@@ -25,6 +25,31 @@
    Deliberately not gated on quoteState: an agent that handled a quote handled
    it, and the disclosure outlives the state the quote was in at the time. #}
 {% block page_account_quotes_details %}
+    {# The merchant's own name for their agent, carried into the DOM for
+       main.ts -- storefront JS cannot read system_config or snippets itself.
+
+       Emitted UNCONDITIONALLY, deliberately outside the marker check below.
+       A quote the agent handled before this feature shipped carries no marker
+       and so gets no banner, but its agent messages still get the per-message
+       label (see the spec). Hanging this attribute inside the marker check
+       would leave exactly those quotes falling back to "AI Agent" while newer
+       ones showed the configured name -- the same buyer, two names, on two
+       quotes, for no reason they could see.
+
+       This is the one place in the plugin that reads system_config directly
+       rather than through Config\\QuoteAgentSettingsReader, against the rule in
+       AGENTS.md. Deliberate and approved: the reader is a PHP service and this
+       is a template, so respecting it would mean a Twig extension whose only
+       job is to forward one string. Nothing else here may follow this example.
+
+       Blank is not handled here: resolveActor() in agent-disclosure.ts owns the
+       fallback for both an empty value and a missing attribute, where
+       agent-disclosure.check.mjs covers it. #}
+    <div
+        data-merchant-quote-agent-name="{{ config('MerchantQuoteAgentPlugin.config.agentDisplayName') }}"
+        hidden
+    ></div>
+
     {% if page.quote.customFields.merchant_quote_agent_handled is defined and page.quote.customFields.merchant_quote_agent_handled %}
         <div class="my-3">
             {% sw_include '@Storefront/storefront/utilities/alert.html.twig' with {

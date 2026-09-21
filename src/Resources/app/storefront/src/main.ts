@@ -35,6 +35,25 @@
  */
 
 import { DELEGATE_TO_SUPER, resolveActor, suppressMerchantCommentMerge } from './agent-disclosure.ts';
+
+/**
+ * The merchant's configured name for their agent, rendered into the DOM by
+ * this plugin's quote-detail template because storefront JS cannot read
+ * system_config itself.
+ *
+ * Read per call rather than cached at module scope: this module is evaluated
+ * once per page load, but the quote history is re-rendered in place after an
+ * AJAX partial reload, and reading at module scope would bind whatever the DOM
+ * held before the override was ever registered.
+ *
+ * Returns undefined when the element is absent, which is every page our
+ * template did not render. resolveActor() owns the fallback.
+ */
+function configuredAgentName(): string | undefined {
+    return document
+        .querySelector<HTMLElement>('[data-merchant-quote-agent-name]')
+        ?.dataset.merchantQuoteAgentName;
+}
 import type { HistoryActor } from './agent-disclosure.ts';
 
 type HistoryEntry = Record<string, unknown>;
@@ -126,7 +145,11 @@ if (PLUGIN_NAME in PluginManager.getPluginList()) {
                 // `node --experimental-strip-types`.
                 class AgentDisclosureHistoryItemPlugin extends ParentPlugin {
                     getActor(entry: HistoryEntry): HistoryActor {
-                        const resolved = resolveActor(entry, (name) => this.getInitials(name));
+                        const resolved = resolveActor(
+                            entry,
+                            (name) => this.getInitials(name),
+                            configuredAgentName(),
+                        );
 
                         return resolved === DELEGATE_TO_SUPER ? super.getActor(entry) : resolved;
                     }

@@ -124,6 +124,37 @@ assert.deepEqual(
     'unmerged, the agent comment still resolves to the agent actor',
 );
 
+// The merchant-configured display name. The merchant types it into the
+// plugin's config (Agent activation card), Twig renders it into a data
+// attribute, and main.ts hands it to resolveActor(). The fallback cases below
+// are the ones that actually occur in production: a shop that never set the
+// field, and a merchant who cleared it.
+const named = resolveActor(standaloneAgentComment, getInitials, 'Peter the AI');
+assert.deepEqual(
+    named,
+    { name: 'Peter the AI', initials: getInitials('Peter the AI'), isCustomer: false },
+    'a configured display name replaces the default, initials included',
+);
+
+for (const [blank, why] of [
+    [undefined, 'the attribute is absent on a page our template did not render'],
+    ['', 'the merchant saved the field empty'],
+    ['   ', 'the merchant typed only whitespace'],
+]) {
+    assert.deepEqual(
+        resolveActor(standaloneAgentComment, getInitials, blank),
+        { name: AGENT_ACTOR_NAME, initials: getInitials(AGENT_ACTOR_NAME), isCustomer: false },
+        `falls back to the default name when ${why}`,
+    );
+}
+
+// Surrounding whitespace is the merchant's typo, not their intent.
+assert.equal(
+    resolveActor(standaloneAgentComment, getInitials, '  Peter the AI  ').name,
+    'Peter the AI',
+    'a configured name is trimmed before display',
+);
+
 // A merchant entry within the same window is unaffected: the merge decision
 // passes through to upstream's own result.
 assert.equal(
