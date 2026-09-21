@@ -93,6 +93,7 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
 use MerchantQuoteAgentPlugin\Improvement\ImprovementRun;
+use MerchantQuoteAgentPlugin\Improvement\ImprovementSettingsReader;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
@@ -423,6 +424,18 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // DAL-generated from the #[Entity] attribute and named explicitly by
     // later tasks that need it (Task 11's writer, Task 13's admin listing).
     $services->set(ImprovementRun::class);
+
+    // The merchant-facing configuration for the nightly loop (Task 5): cadence,
+    // sample size, candidate count and the optional model override. Registered
+    // unconditionally, like QuoteAgentSettingsReader below it depends on --
+    // reading configuration needs neither SwagCommercial nor a UCP surface.
+    // `$agent` is typed against the interface rather than the concrete reader
+    // so a caller can never depend on more than "resolve settings for a
+    // channel", the same seam ServicingPreflight already depends through.
+    $services->set(ImprovementSettingsReader::class)->args([
+        service(SystemConfigService::class),
+        service(QuoteAgentSettingsSource::class),
+    ]);
 
     // Resolves a strategy id to its newest version's prompt (Task 6). The
     // repositories are DAL-generated from the #[Entity] attributes above, so
