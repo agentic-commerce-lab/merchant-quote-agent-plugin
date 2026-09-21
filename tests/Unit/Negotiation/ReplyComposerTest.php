@@ -271,6 +271,45 @@ final class ReplyComposerTest extends TestCase
     }
 
     /**
+     * Issue #168's open question, settled by test before anything was
+     * changed: the merchant's whole strategy landed in the reply prompt's
+     * tone slot, and the model answered a buyer's price request with "No."
+     * Did that reach the buyer verbatim because RewordingGuard was bypassed,
+     * or from somewhere outside this plugin?
+     *
+     * It did not reach the buyer through this path. "No." carries none of the
+     * three facts the template states, so it fails the guard's "it dropped
+     * ..." check the same way any other figure-less rewording would -- the
+     * guard held, and the buyer-facing comment is the template, not "No.".
+     * That makes the tone-into-posture seam the only defect this issue's
+     * fix needs to close; the guard is not a second hole.
+     */
+    public function testALiteralNoFromIssue168NeverReachesTheBuyer(): void
+    {
+        [$client] = ScriptedClient::spy(['No.']);
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $after = self::after();
+
+        $hash = self::composer($client)
+            ->reply(
+                $gateway,
+                $after,
+                NegotiationFixture::settings(strategy: 'Act as a disciplined B2B seller. Protect margin.'),
+                5.0,
+                SnapshotAdapter::conversation($after),
+            );
+
+        self::assertNull($hash, 'A rejected rewording must be reported as template-authored.');
+        self::assertSame(
+            'We can bring this quote down by 5% to 950.00 EUR. The offer is valid until '
+            . NegotiationFixture::expires()
+            . '.',
+            $gateway->comments[0],
+            'The guard must fall back to the template; "No." must never reach the buyer.',
+        );
+    }
+
+    /**
      * StrategyCannotBypassGuardrailsTest pins that no strategy can move a cap,
      * because the band gate is deterministic code ahead of the model. This is
      * the same claim one stage later: the strategy reaches the reply prompt's

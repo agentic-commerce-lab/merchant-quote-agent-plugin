@@ -175,6 +175,17 @@ final class RewordingGuardTest extends TestCase
             // str_contains() guard demanded too, so this is not new strictness.
             'We can bring this quote down by 5% to 950.00 EUR. The offer is valid until 11.09.2026.',
         ];
+        // Issue #168's open question: a strategy read as a tone got a model to
+        // answer a buyer's price request with "No." -- a figure-less refusal
+        // that carries none of the three facts. These pin that
+        // unsafeBecause() already rejects that shape on its own, through the
+        // ordinary "it dropped ..." branch: no figures at all is the extreme
+        // case of dropping every figure. If any of these three ever start
+        // passing, the rude reply from #168 would reach a buyer verbatim, and
+        // the tone-seam fix alone would not have been enough.
+        yield 'the literal reply from issue #168' => ['No.'];
+        yield 'a bare refusal with no figures at all' => ['No, that will not be possible.'];
+        yield 'an apology that drops every fact' => ['Sorry, we cannot help with that request.'];
     }
 
     #[DataProvider('acceptableReasonings')]
