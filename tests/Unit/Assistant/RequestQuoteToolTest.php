@@ -15,6 +15,12 @@ use Psr\Log\NullLogger;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Ucp\Sdk\Exception\ValidationException;
 
+/**
+ * @mago-expect lint:too-many-methods
+ * Ten cases plus two private helpers (the tool builder and a snapshot
+ * fixture) shared across them, including the malformed-target shape check,
+ * the comment-only provenance stamp, and the gateway-refusal fix wave.
+ */
 final class RequestQuoteToolTest extends TestCase
 {
     private ?array $lastLineItems = null;
@@ -91,6 +97,63 @@ final class RequestQuoteToolTest extends TestCase
         $this->tool()->__invoke('Can you do better on these?');
 
         self::assertSame([], $this->stampCalls);
+    }
+
+    /**
+     * The comment is itself an ask channel: `Negotiation\AskInterpreter`
+     * mines free text for price asks, and the model writes this comment when
+     * it proposed the figure. So the stamp must fire on `assistant_proposed`
+     * alone, even with no `targets` at all.
+     */
+    public function testAssistantProposedWithNoTargetsStillStamps(): void
+    {
+        $this->tool()->__invoke('the customer would like 15% off', [], 'assistant_proposed');
+
+        self::assertSame([['quote-1', ['merchantQuoteAgentAssistantAsk' => 'assistant_proposed']]], $this->stampCalls);
+    }
+
+    /**
+     * A malformed target from the model — missing a product id, or a
+     * non-numeric price — must be a clean 422, not an undefined-array-key
+     * warning that Shopware's debug handler promotes to a fatal error.
+     */
+    public function testAMalformedTargetIsRejected(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->tool()->__invoke('cheaper please', [['product' => 'prod-1']]);
+    }
+
+    /**
+     * The mundane real path: an empty cart, or any other gateway refusal,
+     * must not surface as a broken chat turn. It comes back as a structured
+     * result the model can explain, with the same key set and no prices —
+     * exactly what `QuoteStatusTool` already does for `not_found`.
+     */
+    public function testAGatewayRefusalBecomesAStructuredNotCreatedResult(): void
+    {
+        $gateway = $this->createMock(BuyerQuoteGatewayInterface::class);
+        $gateway->method('isAvailable')->willReturn(true);
+        $gateway
+            ->method('requestQuote')
+            ->willThrowException(
+                new ValidationException('A quote request needs a line item or a cart.', [
+                    '$.line_items must not be empty when the cart is empty',
+                ]),
+            );
+
+        $tool = new RequestQuoteTool(
+            $gateway,
+            $this->createMock(SalesChannelContext::class),
+            new AssistantAskStamp(new NullLogger()),
+        );
+
+        $result = $tool->__invoke('can I get a discount?');
+
+        self::assertSame(['quote_number', 'state', 'note'], array_keys($result));
+        self::assertSame('not_created', $result['state']);
+        self::assertSame('', $result['quote_number']);
+        self::assertStringContainsString('A quote request needs a line item or a cart.', $result['note']);
     }
 
     private function tool(): RequestQuoteTool

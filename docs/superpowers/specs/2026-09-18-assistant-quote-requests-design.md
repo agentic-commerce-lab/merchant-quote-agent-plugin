@@ -36,7 +36,9 @@ storefront chat turn (buyer's own session)
   └─ AssistantAgentFactory collects swag_assistant.tool_factory
        └─ RequestQuoteToolFactory  (ours — a normal DI service)
             ├─ returns null if: no SalesChannelContext, no logged-in customer,
-            │                   no quote feature, or merchant toggle off
+            │                   or merchant toggle off (see §5.2's amendment:
+            │                   the per-customer quote feature is NOT checked
+            │                   here — it surfaces as a gateway refusal instead)
             └─ RequestQuoteTool / QuoteStatusTool  (#[AsTool])
                  └─ BuyerQuoteGatewayInterface   ← the seam that already exists
                       └─ SwagCommercial CartToQuote → quote in `open`
@@ -170,8 +172,18 @@ Written in this order.
 1. **Gateway guard** — empty `$lineItems` with a non-empty cart succeeds; an
    empty cart still throws; a price-only line records the ask and adds no cart
    line.
-2. **Factory gating** — `null` for each of: guest, customer without the quote
-   feature, toggle off, no storefront context.
+2. **Factory gating** — `null` for each of: guest, toggle off, no storefront
+   context. **Amendment:** the per-customer "quote feature" check is NOT one
+   of the factory's null-return cases. It lives in
+   `CommercialQuoteAccess::assertCustomerHasQuoteFeature()`, called from
+   inside `SwagCommercialBuyerQuoteGateway::requestQuote()`, and it is not
+   exposed on `BuyerQuoteGatewayInterface` — adding an interface method just
+   to move this one check into the factory is a larger change than this
+   feature warrants. So a customer without the quote feature IS offered the
+   tool; calling it raises the gateway's `ValidationException`, which
+   `RequestQuoteTool` catches and turns into a structured `not_created`
+   refusal rather than a broken chat turn. Recorded as the decision, not a
+   gap.
 3. **Tool arguments** — rejects a `target_source` the model invented; bounds the
    comment length.
 4. **Provenance** — an `assistant_proposed` target reaches the quote's

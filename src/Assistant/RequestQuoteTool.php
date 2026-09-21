@@ -13,6 +13,28 @@ use Ucp\Sdk\Exception\ValidationException;
  * Turns the shopper's cart into an ordinary hand-made storefront quote. The
  * merchant's negotiation agent replies to it minutes later, asynchronously —
  * this tool never sees a price back.
+ *
+ * The free-text `comment` is itself an ask channel, not just a note:
+ * `Negotiation\AskInterpreter` mines it for price asks downstream, and the
+ * MODEL writes this comment when `targetSource` is `assistant_proposed`. So
+ * provenance is stamped whenever the source is `assistant_proposed`, even
+ * with an empty `$targets` — "the customer would like 15% off" typed by the
+ * model into `comment` puts a model-authored figure in front of the policy
+ * engine exactly like a `targets` entry would.
+ *
+ * A `ValidationException` from the gateway (empty cart, an unsupported
+ * per-line ask, a customer without the quote feature) is caught and turned
+ * into a structured `not_created` result instead of a broken chat turn —
+ * the same posture {@see QuoteStatusTool} documents for `not_found`.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10) and every branch here is a
+ * real case at the trust boundary a model-supplied argument crosses: an
+ * invented `target_source` is a 422, a target missing a shape-valid product
+ * id or unit price is a 422 rather than an undefined-array-key warning, a
+ * `ValidationException` from the gateway becomes a structured refusal rather
+ * than a broken chat turn, and the stamp fires on either an `assistant_proposed`
+ * source or a non-empty `$targets`. None of that is incidental complexity.
  */
 #[AsTool(
     name: 'request_quote',
@@ -40,6 +62,11 @@ final class RequestQuoteTool
             . 'secured, do not predict what the shop will offer, and do not state any price or '
             . 'percentage for this quote.';
 
+    /** What the model is told when the gateway refused the request outright, so no quote exists at all. */
+    private const NOTE_NOT_CREATED_SUFFIX =
+        'No quote was created. Explain plainly to the shopper what is missing so they can fix it. Do not '
+            . 'say a quote exists or was requested, and do not predict what the shop would have offered.';
+
     public function __construct(
         private readonly BuyerQuoteGatewayInterface $gateway,
         private readonly SalesChannelContext $context,
@@ -61,18 +88,23 @@ final class RequestQuoteTool
             ]);
         }
 
-        $lineItems = array_map(static fn(array $target): array => [
-            'product_id' => $target['product_id'],
-            'requested_unit_price' => $target['unit_price'],
-        ], $targets);
+        $lineItems = $this->lineItems($targets);
 
-        $snapshot = $this->gateway->requestQuote(
-            $this->context,
-            $lineItems,
-            mb_substr(trim($comment), 0, self::MAX_COMMENT),
-        );
+        try {
+            $snapshot = $this->gateway->requestQuote(
+                $this->context,
+                $lineItems,
+                mb_substr(trim($comment), 0, self::MAX_COMMENT),
+            );
+        } catch (ValidationException $error) {
+            return [
+                'quote_number' => '',
+                'state' => 'not_created',
+                'note' => $error->getMessage() . ' ' . self::NOTE_NOT_CREATED_SUFFIX,
+            ];
+        }
 
-        if ([] !== $targets) {
+        if ([] !== $targets || 'assistant_proposed' === $targetSource) {
             $this->askStamp->stamp($snapshot, $targetSource);
         }
 
@@ -81,5 +113,43 @@ final class RequestQuoteTool
             'state' => $snapshot->state ?? 'open',
             'note' => self::NOTE,
         ];
+    }
+
+    /**
+     * `$targets` is untrusted model-supplied JSON, so each entry is `mixed`,
+     * not the `array{product_id: string, unit_price: float}` the public
+     * docblock advertises to the model — that narrower shape is the tool's
+     * schema contract, not a guarantee about what actually arrives here. The
+     * shape check below is real validation of a caller that can send
+     * anything; asserting the narrow shape in THIS docblock would make mago
+     * read it as already proven and flag the check as redundant.
+     *
+     * @param list<mixed> $targets
+     *
+     * @return list<array{product_id: string, requested_unit_price: float}>
+     */
+    private function lineItems(array $targets): array
+    {
+        $lineItems = [];
+
+        foreach ($targets as $index => $target) {
+            if (
+                !\is_array($target)
+                || !\is_string($target['product_id'] ?? null)
+                || '' === $target['product_id']
+                || !is_numeric($target['unit_price'] ?? null)
+            ) {
+                throw new ValidationException('Each target needs a product id and a numeric unit price.', [
+                    \sprintf('$.targets[%d] must have a string product_id and a numeric unit_price', $index),
+                ]);
+            }
+
+            $lineItems[] = [
+                'product_id' => $target['product_id'],
+                'requested_unit_price' => (float) $target['unit_price'],
+            ];
+        }
+
+        return $lineItems;
     }
 }
