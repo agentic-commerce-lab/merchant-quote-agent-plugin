@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin;
 
 use Doctrine\DBAL\Connection;
+use MerchantQuoteAgentPlugin\Migration\Migration1789500001SeedEscalationMailAndFlow as EscalationMailSeed;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Ucp\AgentFacingRoutes;
 use MerchantQuoteAgentPlugin\Ucp\UcpAvailability;
@@ -157,11 +158,18 @@ class MerchantQuoteAgentPlugin extends Plugin
             return;
         }
 
-        // Independent of one another: neither may skip because the other's
-        // service failed to resolve. A merchant who asked to wipe data must
-        // not keep a live private key in system_config just because the
-        // table drop below could not fetch a Connection, or vice versa.
-        $this->dropPluginTables();
+        // The key is deleted independently of the two SQL steps: a merchant
+        // who asked to wipe data must not keep a live private key in
+        // system_config just because the container could not hand back a
+        // Connection. The two SQL steps share one, because neither can run
+        // without it and a second lookup would only be a second way to
+        // disagree about that.
+        $connection = $this->container?->get(Connection::class);
+        if ($connection instanceof Connection) {
+            $this->dropPluginTables($connection);
+            $this->deleteSeededMailAndFlow($connection);
+        }
+
         $this->deleteSigningKey();
     }
 
@@ -192,13 +200,8 @@ class MerchantQuoteAgentPlugin extends Plugin
      *
      * @throws \Doctrine\DBAL\Exception
      */
-    private function dropPluginTables(): void
+    private function dropPluginTables(Connection $connection): void
     {
-        $connection = $this->container?->get(Connection::class);
-        if (!$connection instanceof Connection) {
-            return;
-        }
-
         foreach ([
             'merchant_quote_agent_a2cn_receipt',
             'merchant_quote_agent_a2cn_violation',
@@ -210,6 +213,85 @@ class MerchantQuoteAgentPlugin extends Plugin
         ] as $table) {
             $connection->executeStatement(\sprintf('DROP TABLE IF EXISTS `%s`', $table));
         }
+    }
+
+    /**
+     * The row-level counterpart to dropPluginTables(), for the four rows
+     * Migration1789500001SeedEscalationMailAndFlow seeds into core's shared
+     * `flow` / `mail_template` tables (#170).
+     *
+     * Those tables are the shop's, not ours, so there is nothing to DROP. Left
+     * alone, though, the seeded rows outlive a "remove all data" uninstall: a
+     * flow listed in Flow Builder wired to an event name that can no longer
+     * fire, and a mail template in Settings whose plugin is gone. No buyer or
+     * merchant data is in them (static Twig markup only), so this is
+     * untidiness rather than the #59 class of problem — but "remove all data"
+     * should still mean it, and only this plugin knows those ids.
+     *
+     * Two rules make deleting in a shared table safe, and both are why this
+     * cannot just mirror dropPluginTables()' unconditional DROP:
+     *
+     * 1. **Only a row the merchant never touched.** `updated_at IS NULL` is
+     *    the whole test. The seed writes `created_at` and nothing else, and
+     *    every write through the DAL — renaming the flow, editing the
+     *    template, or just flipping the flow's toggle on in the list — sets
+     *    `updated_at`. So a merchant who so much as enabled the flow keeps it:
+     *    it stopped being our seeded default and became their configuration
+     *    the moment they adopted it, and a stale row they can delete in two
+     *    clicks is a smaller harm than silently deleting work they did. A
+     *    column we misread only ever leaves a row behind, never removes one.
+     *
+     * 2. **Never a row something else still points at.** The FKs make this
+     *    load-bearing, not defensive: `flow_sequence.flow_id` and
+     *    `mail_template_translation.mail_template_id` are ON DELETE CASCADE
+     *    (so those rows need no statement of their own, and neither do the
+     *    two `*_translation` tables or `mail_template_sales_channel`), but
+     *    `mail_template.mail_template_type_id` is ON DELETE **SET NULL** —
+     *    dropping the type out from under a template a merchant built on it
+     *    would quietly untype their template instead of failing. Hence the
+     *    NOT EXISTS guards, and hence the order: the flow goes first, so that
+     *    by the time the template is considered, the only `flow_sequence`
+     *    rows still naming it are ones we are not entitled to break.
+     *
+     * The net effect on an untouched install is all four rows gone; on an
+     * edited one, exactly the edited parts survive.
+     *
+     * @throws \Doctrine\DBAL\Exception
+     */
+    private function deleteSeededMailAndFlow(Connection $connection): void
+    {
+        // Cascades the seeded flow_sequence row with it.
+        $connection->executeStatement('DELETE FROM `flow` WHERE `id` = :id AND `updated_at` IS NULL', [
+            'id' => hex2bin(EscalationMailSeed::FLOW_ID),
+        ]);
+
+        // LIKE, not JSON_SEARCH: `config` is only CHECK-constrained to valid
+        // JSON, and JSON_SEARCH raises on a row that slipped past that, which
+        // would abort the whole uninstall over someone else's malformed flow.
+        // A 32-char hex id gives a substring match nothing else plausibly
+        // hits, and a false positive only keeps the template — the safe way
+        // to be wrong.
+        $connection->executeStatement('DELETE FROM `mail_template`
+              WHERE `id` = :id
+                AND `updated_at` IS NULL
+                AND NOT EXISTS (
+                    SELECT 1 FROM `flow_sequence` WHERE `config` LIKE :reference
+                )', [
+            'id' => hex2bin(EscalationMailSeed::MAIL_TEMPLATE_ID),
+            'reference' => '%' . EscalationMailSeed::MAIL_TEMPLATE_ID . '%',
+        ]);
+
+        // Two names for one value: a repeated `:id` would lean on DBAL's
+        // duplicate-placeholder expansion for no gain.
+        $connection->executeStatement('DELETE FROM `mail_template_type`
+              WHERE `id` = :id
+                AND `updated_at` IS NULL
+                AND NOT EXISTS (
+                    SELECT 1 FROM `mail_template` WHERE `mail_template_type_id` = :typeId
+                )', [
+            'id' => hex2bin(EscalationMailSeed::MAIL_TEMPLATE_TYPE_ID),
+            'typeId' => hex2bin(EscalationMailSeed::MAIL_TEMPLATE_TYPE_ID),
+        ]);
     }
 
     /**
