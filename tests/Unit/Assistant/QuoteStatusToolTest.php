@@ -62,6 +62,19 @@ final class QuoteStatusToolTest extends TestCase
     }
 
     /**
+     * Only the most recent PAGE_SIZE (25) quotes are read, so a miss is not
+     * proof the number belongs to someone else — it may just be older than
+     * that page. The note must say so rather than making that false claim.
+     */
+    public function testTheNotFoundNoteDoesNotClaimTheQuoteBelongsToSomeoneElse(): void
+    {
+        $result = $this->tool([self::snapshot('Q1002')])->__invoke('Q9999');
+
+        self::assertStringContainsString('most recent 25', $result['note']);
+        self::assertStringNotContainsString('belongs to this shopper', $result['note']);
+    }
+
+    /**
      * Every money value leaves as a formatted string. A float in this array is
      * a number the model may re-round, and a re-rounded price shown to a
      * shopper is a wrong price.

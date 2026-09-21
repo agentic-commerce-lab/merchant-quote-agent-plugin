@@ -13,9 +13,11 @@ use Symfony\AI\Agent\Toolbox\Attribute\AsTool;
  * What happened to a quote the shopper asked for.
  *
  * Reads only the buyer's own quotes — the gateway scopes every listing to the
- * authenticated customer, so a quote number belonging to someone else is
- * simply not in the page and comes back `not_found`, which is also the honest
- * answer for a number a model invented.
+ * authenticated customer — but only the most recent PAGE_SIZE (25) of them.
+ * A miss is `not_found`, but that is NOT proof the number belongs to someone
+ * else: it may simply be older than the shopper's 25 most recent quotes, and
+ * NOTE_NOT_FOUND says exactly that rather than the false "belongs to someone
+ * else" a naive reading of the miss would suggest.
  */
 #[AsTool(
     name: 'quote_status',
@@ -33,8 +35,9 @@ final class QuoteStatusTool
             . 'percentage.';
 
     private const NOTE_NOT_FOUND =
-        'No quote with that number belongs to this shopper. Say so plainly and offer to look again '
-            . 'or to request a new quote. Do not guess a number.';
+        'That quote number is not among the shopper\'s most recent 25 quotes. Say so plainly, mention that '
+            . 'older quotes are visible in their account, and offer to look again or to request a new quote. '
+            . 'Do not guess a number.';
 
     public function __construct(
         private readonly BuyerQuoteGatewayInterface $gateway,
