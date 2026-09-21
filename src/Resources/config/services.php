@@ -685,7 +685,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(CommercialQuoteLinePricing::class)->arg(
         '$quoteLineItemRoute',
         service(CommercialAvailability::QUOTE_LINE_ITEM_ROUTE)->nullOnInvalid(),
-    );
+    )->arg('$logger', service('logger'));
 
     $services
         ->set(SwagCommercialBuyerQuoteGateway::class)
