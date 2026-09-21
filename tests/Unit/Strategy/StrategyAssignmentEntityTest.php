@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Migration\Migration1789600000CreateStrategyAssignme
 use MerchantQuoteAgentPlugin\Strategy\StrategyAssignment;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\DataAbstractionLayer\Attribute\Entity;
+use Shopware\Core\Framework\DataAbstractionLayer\Attribute\Field;
 
 /**
  * Attribute entities carry no schema generator, so the class and the DDL are
@@ -47,9 +48,17 @@ final class StrategyAssignmentEntityTest extends TestCase
 
     public function testNoFieldDeclaresMaxLength(): void
     {
-        $source = file_get_contents(__DIR__ . '/../../../src/Strategy/StrategyAssignment.php');
-        self::assertIsString($source);
-
-        self::assertStringNotContainsString('maxLength', $source);
+        foreach ((new \ReflectionClass(StrategyAssignment::class))->getProperties() as $property) {
+            foreach ($property->getAttributes(Field::class, \ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
+                self::assertArrayNotHasKey(
+                    'maxLength',
+                    $attribute->getArguments(),
+                    StrategyAssignment::class
+                    . '::$'
+                    . $property->getName()
+                    . ' uses maxLength, which the support floor lacks.',
+                );
+            }
+        }
     }
 }

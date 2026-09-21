@@ -26,8 +26,8 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity as EntityStruct;
  * there. The database-level foreign keys in the migration are what enforce
  * referential integrity.
  *
- * `kind` carries no length-limiting Field argument -- that argument does not
- * exist at the 6.7.1.0 support floor. The column width lives in the migration.
+ * No `maxLength:` on `kind` -- the argument does not exist at the 6.7.1.0
+ * support floor. The width lives in the migration.
  *
  * Like Strategy and unlike QuoteDecisionRecord, this carries no Protection
  * attribute: the administration writes these rows through the admin API on the
