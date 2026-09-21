@@ -70,6 +70,24 @@ class MerchantQuoteAgentPlugin extends Plugin
     }
 
     /**
+     * Wins the Twig namespace hierarchy against SwagCommercial, whose
+     * quote detail page this plugin's storefront banner extends.
+     *
+     * Lower is higher precedence. Both plugins would otherwise sit at the
+     * default 0, and BundleHierarchyBuilder's stable sort would break that tie
+     * on bundle registration order — which DbalKernelPluginLoader takes from
+     * `ORDER BY installed_at`. That makes the banner's visibility depend on
+     * which plugin the merchant happened to install first. -1 is the smallest
+     * value that removes the shop's install history from the answer while
+     * still leaving room for a theme or a later extension to outrank us.
+     */
+    #[Override]
+    public function getTemplatePriority(): int
+    {
+        return -1;
+    }
+
+    /**
      * `logger` is a private alias in the compiled container, so services.php
      * re-exposes it under this public id — the only way a lifecycle hook,
      * which runs outside any request and holds nothing but the container, can
