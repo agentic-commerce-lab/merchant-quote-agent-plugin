@@ -123,8 +123,8 @@ final class QuoteAgentSettingsStrategyTest extends TestCase
     private static function settings(): QuoteAgentSettings
     {
         return new QuoteAgentSettings(
-            self::createStub(NegotiationPolicy::class),
-            self::createStub(ModelAccess::class),
+            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 5.0)),
+            new ModelAccess('sk-test', 'https://api.openai.com/v1', 'gpt-4o-mini'),
             'be nice',
             true,
             '0000000000000000000000000000bbbb',
@@ -134,7 +134,10 @@ final class QuoteAgentSettingsStrategyTest extends TestCase
 }
 ```
 
-If `NegotiationPolicy` or `ModelAccess` is `final` and cannot be stubbed, build a real one the way `tests/Unit/Config/QuoteAgentSettingsFactoryTest.php` already does, and copy that construction verbatim rather than inventing one.
+`NegotiationPolicy` and `ModelAccess` are both `final readonly` and cannot be stubbed; the
+construction above is copied verbatim from `tests/Unit/Servicing/ServicingSettingsFixture::settings()`,
+which is this codebase's one definition of a valid configuration. Import
+`MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits` alongside the other two.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -299,6 +302,13 @@ final class StrategyAssignmentEntityTest extends TestCase
         self::assertIsString($ddl);
 
         foreach ((new \ReflectionClass(StrategyAssignment::class))->getProperties() as $property) {
+            // Declared properties only. The DAL's Entity base contributes
+            // _uniqueIdentifier, versionId, translated, _entityName,
+            // _fieldVisibility and extensions, none of which are columns here.
+            if ($property->getDeclaringClass()->getName() !== StrategyAssignment::class) {
+                continue;
+            }
+
             $column = strtolower((string) preg_replace('/([a-z])([A-Z])/', '$1_$2', $property->getName()));
 
             self::assertStringContainsString('`' . $column . '`', $ddl, $property->getName());
@@ -879,8 +889,13 @@ use Shopware\Core\System\SalesChannel\SalesChannelContext;
  * The extra quote read is unavoidable: restoreByQuote() loads the quote
  * internally but does not hand it back, and convertToCart() throws unless
  * lineItems, transactions and deliveries are all loaded.
+ *
+ * Deliberately not `final`, like StrategyResolver and unlike almost everything
+ * else here: StrategyAssignmentResolverTest doubles it, and PHPUnit cannot
+ * double a final class. An interface is not the alternative -- there is one
+ * implementation, and a class is just as good a seam.
  */
-final readonly class QuoteRuleScopeFactory
+readonly class QuoteRuleScopeFactory
 {
     public function __construct(
         private object $contextRestorer,
@@ -1339,15 +1354,24 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
  * dangling row is configuration the merchant made in our own UI, and silently
  * negotiating with a different posture than they configured is the failure
  * QuoteAgentSettingsReader exists to refuse.
+ *
+ * Neither `final` nor `readonly` at class level, unlike almost everything else
+ * here, and for one reason each. Not final: ServicingSettingsFixture extends it
+ * with a counting double, and PHPUnit cannot double a final class. Not readonly
+ * at class level: PHP forbids a non-readonly child of a readonly class, and a
+ * readonly child could not hold the mutable call counter that double exists
+ * for. Every property below is still `readonly` individually, so instances are
+ * as immutable as they would have been. StrategyResolver makes the same trade
+ * and its docblock says so.
  */
-final readonly class StrategyAssignmentResolver
+class StrategyAssignmentResolver
 {
     public function __construct(
-        private EntityRepository $assignments,
-        private EntityRepository $rules,
-        private StrategyResolver $strategies,
-        private QuoteRuleScopeFactory $scopes,
-        private LoggerInterface $logger,
+        private readonly EntityRepository $assignments,
+        private readonly EntityRepository $rules,
+        private readonly StrategyResolver $strategies,
+        private readonly QuoteRuleScopeFactory $scopes,
+        private readonly LoggerInterface $logger,
     ) {}
 
     /** @throws UnknownStrategy */
@@ -1553,72 +1577,169 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `src/Servicing/ServicingPreflight.php:56-110`
 - Modify: `src/Resources/config/services.php:761-766`
-- Test: `tests/Unit/Servicing/ServicingPreflightTest.php` (extend the existing file; create it only if it does not exist)
+- Modify: `tests/Unit/Servicing/ServicingSettingsFixture.php` (the shared preflight builder)
+- Test: `tests/Unit/Servicing/ServicingPreflightTest.php` (extend the existing file)
 
 **Interfaces:**
 - Consumes: `StrategyAssignmentResolver::assign()` and `AssignedStrategy` (Task 5), `QuoteAgentSettings::withStrategy()` (Task 1).
 - Produces: no new public API. `ServicingPreflight::check()` keeps its existing signature and return type `?QuoteAgentSettings`.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Extend the shared fixture**
 
-Add to `tests/Unit/Servicing/ServicingPreflightTest.php` (match the existing file's fixture helpers; do not invent new ones):
+`tests/Unit/Servicing/ServicingSettingsFixture::preflight()` builds every `ServicingPreflight`
+these tests use. Give it a fourth optional parameter so the ladder can be driven, and default
+it to a resolver that assigns nothing — which is what every existing test expects:
+
+```php
+    /** @param \Closure(): ?QuoteAgentSettings $outcome what the config source does when asked */
+    public static function preflight(
+        \Closure $outcome,
+        ?QuoteEscalator $escalator = null,
+        ?DecisionRecordWriterInterface $writer = null,
+        ?StrategyAssignmentResolver $assignments = null,
+    ): ServicingPreflight {
+```
+
+and pass `$assignments ?? self::assigning(null)` as the new last argument to the
+`new ServicingPreflight(...)` call at the end of the method. Add beside it:
+
+```php
+    /**
+     * A resolver that always answers the same way. `$outcome` is the
+     * AssignedStrategy to return, or a Closure that throws -- the ladder's two
+     * observable behaviours from the preflight's side.
+     *
+     * A hand-written double rather than createMock(): StrategyAssignmentResolver
+     * is `final readonly`, and this also counts its calls, which is how
+     * ServicingPreflightTest proves a paused agent never pays for the ladder.
+     */
+    public static function assigning(AssignedStrategy|\Closure|null $outcome): StrategyAssignmentResolver
+    {
+        return new class($outcome) extends StrategyAssignmentResolver {
+            public int $calls = 0;
+
+            public function __construct(
+                private readonly AssignedStrategy|\Closure|null $outcome,
+            ) {}
+
+            #[\Override]
+            public function assign(
+                string $quoteId,
+                string $customerId,
+                string $salesChannelId,
+                Context $context,
+            ): ?AssignedStrategy {
+                $this->calls++;
+
+                if ($this->outcome instanceof \Closure) {
+                    ($this->outcome)();
+                }
+
+                return $this->outcome instanceof AssignedStrategy ? $this->outcome : null;
+            }
+        };
+    }
+```
+
+The double works because Task 5 declares `StrategyAssignmentResolver` neither `final` nor
+`readonly` at class level, for exactly these two reasons — see its docblock. The anonymous
+subclass deliberately does not call `parent::__construct()`: it overrides the only method
+anyone calls, so the parent's collaborators are never touched.
+
+- [ ] **Step 2: Write the failing tests**
+
+Add to `tests/Unit/Servicing/ServicingPreflightTest.php`, matching the file's existing style:
 
 ```php
     public function testAnAssignedStrategyReplacesTheConfiguredOne(): void
     {
-        // Build the preflight with an assignment resolver returning
-        // new AssignedStrategy(new ResolvedStrategy('cafe...', 'hold firm'), StrategyAssignmentSource::Split)
-        // and a settings source returning settings whose strategyPrompt is 'be nice'.
-        $settings = $preflight->check($gateway, $snapshot, $context);
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+        $settings = ServicingSettingsFixture::settings();
 
-        self::assertNotNull($settings);
-        self::assertSame('hold firm', $settings->strategyPrompt);
-        self::assertSame(StrategyAssignmentSource::Split, $settings->strategyAssignmentSource);
+        $result = ServicingSettingsFixture::preflight(
+            static fn(): ?QuoteAgentSettings => $settings,
+            assignments: ServicingSettingsFixture::assigning(new AssignedStrategy(
+                new ResolvedStrategy('cafecafecafecafecafecafecafecafe', 'hold firm'),
+                StrategyAssignmentSource::Split,
+            )),
+        )->check($gateway, QuoteSnapshotFixture::snapshot(), ServicingSettingsFixture::context());
+
+        self::assertNotNull($result);
+        self::assertSame('hold firm', $result->strategyPrompt);
+        self::assertSame('cafecafecafecafecafecafecafecafe', $result->strategyVersionId);
+        self::assertSame(StrategyAssignmentSource::Split, $result->strategyAssignmentSource);
     }
 
     public function testNoAssignmentLeavesTheConfiguredStrategyAlone(): void
     {
-        // Same, with the resolver returning null.
-        $settings = $preflight->check($gateway, $snapshot, $context);
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+        $settings = ServicingSettingsFixture::settings();
 
-        self::assertNotNull($settings);
-        self::assertSame('be nice', $settings->strategyPrompt);
-        self::assertSame(StrategyAssignmentSource::Config, $settings->strategyAssignmentSource);
+        $result = ServicingSettingsFixture::preflight(
+            static fn(): ?QuoteAgentSettings => $settings,
+        )->check($gateway, QuoteSnapshotFixture::snapshot(), ServicingSettingsFixture::context());
+
+        self::assertSame($settings, $result, 'An empty ladder must not clone the settings at all.');
     }
 
     /**
-     * A dangling assignment is a misconfiguration the merchant made in our own
-     * UI, so it takes the path a dangling config key already takes: escalate,
-     * do not negotiate with a posture nobody chose.
+     * A dangling assignment is configuration the merchant made in our own UI,
+     * so it takes the path a dangling config key already takes. Negotiating
+     * with a posture nobody chose is the failure this refuses.
      */
-    public function testADanglingAssignmentEscalates(): void
+    public function testADanglingAssignmentEscalatesLikeADanglingConfigKey(): void
     {
-        // Resolver throws UnknownStrategy::archived(...).
-        $settings = $preflight->check($gateway, $snapshot, $context);
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
 
-        self::assertNull($settings);
-        self::assertSame([QuoteEscalationReason::NotConfigured], $escalator->reasons);
+        $result = ServicingSettingsFixture::preflight(
+            static fn(): ?QuoteAgentSettings => ServicingSettingsFixture::settings(),
+            assignments: ServicingSettingsFixture::assigning(static function (): never {
+                throw UnknownStrategy::archived('0123456789abcdef0123456789abcdef');
+            }),
+        )->check($gateway, QuoteSnapshotFixture::snapshot(), ServicingSettingsFixture::context());
+
+        self::assertNull($result);
+        self::assertSame(
+            [QuoteEscalator::MARKER_KEY => 'not_configured'],
+            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
+        );
     }
 
-    public function testTheAgentBeingOffSkipsTheLadderEntirely(): void
+    /**
+     * The ladder runs AFTER the off-switch. A paused agent must not pay for a
+     * quote read, a context restore and a cart conversion.
+     */
+    public function testAPausedAgentNeverWalksTheLadder(): void
     {
-        // Settings source returns null. The resolver must not be called: a
-        // paused agent must not pay for a quote read and a cart conversion.
-        $settings = $preflight->check($gateway, $snapshot, $context);
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+        $assignments = ServicingSettingsFixture::assigning(null);
 
-        self::assertNull($settings);
-        self::assertSame(0, $resolver->calls);
+        $result = ServicingSettingsFixture::preflight(
+            static fn(): ?QuoteAgentSettings => null,
+            assignments: $assignments,
+        )->check($gateway, QuoteSnapshotFixture::snapshot(), ServicingSettingsFixture::context());
+
+        self::assertNull($result);
+        self::assertSame(0, $assignments->calls);
     }
 ```
 
-Replace each comment with the concrete construction the existing test file already uses for its other cases. If the file has no existing fixtures, build the preflight directly with `createMock()` doubles for `QuoteAgentSettingsSource`, `QuoteEscalator`, `DecisionRecorder` and `StrategyAssignmentResolver`, a `NullLogger`, and the `QuoteSnapshot` fixture from `tests/Unit/Bridge/` if one exists there.
+`assigning()` returns the anonymous class, so `$assignments->calls` is only reachable when the
+variable is held before being passed — that is why the last test binds it first. If PHPStan or
+mago rejects reading `->calls` off the declared `StrategyAssignmentResolver` return type, widen
+`assigning()`'s return type to `StrategyAssignmentResolver` and add a local
+`\assert($assignments instanceof StrategyAssignmentResolver)` — or drop the return type
+annotation entirely, which the fixture's other helpers also do where the anonymous type matters.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+Imports to add to the test file: `MerchantQuoteAgentPlugin\Strategy\AssignedStrategy`,
+`ResolvedStrategy`, `StrategyAssignmentSource`, `UnknownStrategy`.
+
+- [ ] **Step 3: Run the tests to verify they fail**
 
 Run: `composer test -- --filter ServicingPreflightTest`
 Expected: FAIL — the constructor takes four arguments, not five.
 
-- [ ] **Step 3: Add the collaborator and the call**
+- [ ] **Step 4: Add the collaborator and the call**
 
 In `src/Servicing/ServicingPreflight.php`, add the constructor parameter last:
 
@@ -1669,7 +1790,7 @@ Add imports for `MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentResolver`, 
 
 Extend the class docblock with one paragraph: the preflight now also answers *which strategy*, not only *whether and with what settings*, and the ladder is consulted after the off-switch so a paused agent pays nothing for it.
 
-- [ ] **Step 4: Register the new argument**
+- [ ] **Step 5: Register the new argument**
 
 In `src/Resources/config/services.php`, add to the `ServicingPreflight::class` args list at line 761, last:
 
@@ -1677,21 +1798,21 @@ In `src/Resources/config/services.php`, add to the `ServicingPreflight::class` a
         service(StrategyAssignmentResolver::class),
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `composer test -- --filter 'ServicingPreflightTest|StrategyAssignmentResolverTest'`
 Expected: PASS.
 
-- [ ] **Step 6: Run the whole unit suite**
+- [ ] **Step 7: Run the whole unit suite**
 
 Run: `composer test`
 Expected: PASS. Any failure here is a collaborator whose constructor changed — fix the call site, not the test's intent.
 
-- [ ] **Step 7: Quality gate and commit**
+- [ ] **Step 8: Quality gate and commit**
 
 ```bash
 composer format && composer lint && composer typecheck
-git add src/Servicing/ServicingPreflight.php src/Resources/config/services.php tests/Unit/Servicing/ServicingPreflightTest.php
+git add src/Servicing/ServicingPreflight.php src/Resources/config/services.php tests/Unit/Servicing/ServicingPreflightTest.php tests/Unit/Servicing/ServicingSettingsFixture.php
 git commit -m "feat(servicing): resolve the strategy per quote, not per channel
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
