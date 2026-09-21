@@ -11,11 +11,13 @@ namespace MerchantQuoteAgentPlugin\Improvement;
  * privacy boundary of the nightly loop -- see ImprovementJudge's own docblock
  * for what the system prompt does with it.
  *
- * describe() reads exactly six of HarvestedDecision's ten properties: `band`,
- * `outcome`, `escalationReason` and `terminalState` (four closed vocabularies
- * -- an enum's wire value, never a sentence) and `discountPercentGranted` /
+ * describe() reads exactly five of HarvestedDecision's ten properties: `band`,
+ * `escalationReason` and `terminalState` (three closed vocabularies -- an
+ * enum's wire value, never a sentence) and `discountPercentGranted` /
  * `maxDiscountPercent` (two numbers). It never reads `decisionId`, `quoteId`,
- * `interpretedAsks` or `extractPromptHash` -- those four exist on
+ * `outcome`, `interpretedAsks` or `extractPromptHash` -- `outcome` is left out
+ * because `band` already carries the shape of the pass and the brief did not
+ * ask for a second tally saying the same thing; the other four exist on
  * HarvestedDecision only for the replay harness (Task 11) to re-run a decision
  * inside this process, and none of them is prose a buyer could have written,
  * but they are shop-identifying or free-form enough that this class does not
