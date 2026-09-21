@@ -152,6 +152,61 @@ final class DiscountCeilingTest extends TestCase
         );
     }
 
+    public function testAQuoteLevelBudgetCapsTheModelToo(): void
+    {
+        // "Max cost should be 2500" on a 1000 fixture quote: 900 against a
+        // 1000 total is a 10% ask. Nothing lands on a line here — the buyer
+        // named one number for the whole quote — so the cap can only come
+        // from the budget itself.
+        $harness = PipelineHarness::with(
+            ['{"price":{"targetTotal":900.0}}', self::OFFER_5_PERCENT, 'Here you go.'],
+            reReadTotalNet: 950.0,
+        );
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('max cost should be 900 for everything', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(maxDiscountPercent: 15.0),
+            NegotiationFixture::context(),
+        );
+
+        self::assertStringContainsString(
+            'maximum discount you may grant: 10.00%',
+            $harness->spy->userPrompts[1],
+            'A budget for the whole quote is an ask like any other, and must cap the model.',
+        );
+    }
+
+    public function testAGrossQuoteLevelBudgetIsCappedInNetSpace(): void
+    {
+        // The same hazard as the per-unit case, one level up: 900 gross on a
+        // quote whose 1000 gross is 800 net is a 720 net target — a 10% ask,
+        // not the 12.5% the number as typed implies.
+        $harness = PipelineHarness::with(
+            ['{"price":{"targetTotal":900.0}}', self::OFFER_5_PERCENT, 'Here you go.'],
+            reReadTotalNet: 760.0,
+        );
+        $snapshot = NegotiationFixture::grossSnapshot([
+            NegotiationFixture::buyerComment('max cost should be 900 all in', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(maxDiscountPercent: 15.0),
+            NegotiationFixture::context(),
+        );
+
+        self::assertStringContainsString(
+            'maximum discount you may grant: 10.00%',
+            $harness->spy->userPrompts[1],
+            'A gross budget must cap the model on its net value, not on the number as typed.',
+        );
+    }
+
     public function testAGrossPriceTypedInACommentIsCappedInNetSpace(): void
     {
         // The hazard that could have justified leaving comment targets out:

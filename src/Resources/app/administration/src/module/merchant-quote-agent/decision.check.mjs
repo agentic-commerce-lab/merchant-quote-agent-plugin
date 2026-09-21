@@ -77,6 +77,12 @@ assert.deepEqual(askItems(vm, { price: { bestPriceRequested: true } }), [
     { label: 'bestPrice', value: 'requested' },
 ]);
 
+// A budget named for the whole quote sits on no line, so the chip is the only
+// place it shows before the offer that answers it.
+assert.deepEqual(askItems(vm, { price: { targetTotal: 2500 } }), [
+    { label: 'targetTotal', value: '2500.00 EUR' },
+]);
+
 // A null/absent block must not throw its way out of a table cell.
 assert.deepEqual(askItems(vm, null), []);
 assert.deepEqual(askItems(vm, {}), []);
