@@ -6,10 +6,17 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Config;
 
 use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Validator\Validation;
 
+/**
+ * @mago-expect lint:too-many-methods
+ * Nine cases plus the shared `build()` fixture builder and the
+ * `invalidConfigurations()` data provider, covering every branch of a
+ * factory that maps a whole flat config array onto validated settings.
+ */
 final class QuoteAgentSettingsFactoryTest extends TestCase
 {
     /**
@@ -158,5 +165,30 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         $settingsOff = self::build(['notifyBuyerOnEscalation' => false]);
         self::assertNotNull($settingsOff);
         self::assertFalse($settingsOff->notifyBuyerOnEscalation);
+    }
+
+    public function testFactoryNamesTheConfigRungWhenAVersionIdIsSet(): void
+    {
+        $settings = self::build(['negotiationStrategyVersionId' => '0000000000000000000000000000bbbb']);
+
+        self::assertNotNull($settings);
+        self::assertSame(StrategyAssignmentSource::Config, $settings->strategyAssignmentSource);
+    }
+
+    public function testFactoryLeavesTheAssignmentSourceNullWithoutAVersionId(): void
+    {
+        // Absent entirely: an untouched install never configured a strategy,
+        // so no rung gets credit for choosing one.
+        $settingsAbsent = self::build();
+        self::assertNotNull($settingsAbsent);
+        self::assertNull($settingsAbsent->strategyAssignmentSource);
+
+        // Present but blank: RawConfigValue::string() treats a whitespace-only
+        // value the same as absent, and this must not read as `config` either
+        // -- otherwise a shop with the agent on but nothing configured would
+        // claim the bottom rung chose a strategy it never sent.
+        $settingsBlank = self::build(['negotiationStrategyVersionId' => '   ']);
+        self::assertNotNull($settingsBlank);
+        self::assertNull($settingsBlank->strategyAssignmentSource);
     }
 }
