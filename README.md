@@ -104,6 +104,20 @@ The database is seeded from a dump of the previous shop; ask a colleague for
 | State | `~/.cache/merchant-quote-shop/` (`MQ_SHOP_HOME`): `.env`, `plugins/`, `seed/` — never committed |
 | Shipping probe | `scripts/shop-check-shipping.sh` |
 
+**Mail transport (#170).** This docker shop already has one: `MAILER_DSN`
+points at the `mailcatcher` container, which is what lets the `in_review` and
+`replied` flows show up at the "Caught mail" URL above. A shop built any other
+way — a bare `bin/console system:install`, a manual dev VM, a hand-rolled test
+shop — defaults to no transport at all (`mailer.dsn: 'null://null'` unless
+something sets it), and mail sent there vanishes silently: no error, no
+bounce, nothing in a log unless the sender happens to catch and report it.
+`ShopwareEscalationNotifier`'s Administration notification does not depend on
+mail and always works; the escalation flow this plugin ships
+(`Migration1789500001SeedEscalationMailAndFlow`, disabled by default — enable
+it in Flow Builder) does, so before concluding an escalation email is broken,
+confirm `MAILER_DSN`/`mailer.dsn` actually points somewhere on the shop under
+test.
+
 Every integration test runs inside a rolled-back transaction, so the seed stays
 as it was.
 
