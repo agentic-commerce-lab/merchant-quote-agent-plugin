@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 use MerchantQuoteAgentPlugin\Servicing\AgentDisclosure;
 use Shopware\Core\Framework\Adapter\Twig\NamespaceHierarchy\NamespaceHierarchyBuilder;
 use Shopware\Storefront\Theme\Twig\ThemeNamespaceHierarchyBuilder;
+use Twig\Environment;
 
 /**
  * The banner is the only disclosure surface that reaches the released
@@ -45,6 +46,35 @@ final class StorefrontDisclosureBannerTest extends IntegrationTestCase
             $theirs,
             $ours,
             'SwagCommercial resolves first, so its quote detail page wins and the banner never renders.',
+        );
+    }
+
+    public function testTheExtendedBlockExistsOnSwagCommercialsResolvedTemplate(): void
+    {
+        // The previous version of this template extended
+        // page_account_quote_details_banner, a block that only exists on
+        // SwagCommercial trunk -- every released version this plugin
+        // supports (v6.7.2.0 through v6.7.12.0) has no such block, and Twig
+        // silently no-ops an override of a block the parent never declares:
+        // no error, no warning, no render. Nothing in the previous test
+        // suite would have caught that, because none of it loaded the real
+        // parent template source.
+        //
+        // Resolving '@QuoteManagement/...' through the actual Twig loader,
+        // the same way `sw_extends` resolves it at render time, is what
+        // would have caught it: it reads whatever SwagCommercial this shop
+        // has installed, not a path this plugin assumes.
+        $parentSource = static::getContainer()
+            ->get(Environment::class)
+            ->getLoader()
+            ->getSourceContext('@QuoteManagement/storefront/page/account/quote-detail/index.html.twig')
+            ->getCode();
+
+        self::assertStringContainsString(
+            'block page_account_quotes_details ',
+            $parentSource,
+            'SwagCommercial no longer declares page_account_quotes_details; '
+            . 'this plugin extends a block that does not exist and its banner silently stops rendering.',
         );
     }
 

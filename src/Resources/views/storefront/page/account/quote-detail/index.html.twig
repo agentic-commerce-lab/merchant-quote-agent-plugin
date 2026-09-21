@@ -1,18 +1,30 @@
 {% sw_extends '@QuoteManagement/storefront/page/account/quote-detail/index.html.twig' %}
 
-{# The buyer disclosure. Appended to SwagCommercial's own banner block rather
-   than given a block of its own, so it sits with the other page-level notices
-   and inherits their spacing.
+{# The buyer disclosure.
+
+   Deliberately targets `page_account_quotes_details`, NOT the more specific
+   `page_account_quote_details_banner` its name suggests. That banner block
+   only exists on trunk (added by SwagCommercial#2371) -- every released
+   version we support, v6.7.2.0 through v6.7.12.0, has no such block, and Twig
+   silently no-ops a block override the parent never declares. This is the one
+   disclosure surface meant to reach the released lane too, so it has to
+   extend a block that has existed since v6.7.2.0. Do not "tidy" this back to
+   the narrower block; it would compile, run, and simply never render there.
+
+   `page_account_quotes_details` wraps the whole quote body and sits inside
+   SwagCommercial's own `getLicense(...) and customerHasFeature(...)` gate, so
+   the banner correctly inherits that gate instead of bypassing it -- and
+   `page.quote` is already in scope there. Emitted before parent() rather than
+   given a block of its own, so it lands at the top of the quote body ahead of
+   SwagCommercial's own content.
 
    The key is AgentDisclosure::MARKER_KEY, which Twig cannot import;
-   AgentDisclosureTest pins the literal on the PHP side so the two cannot
-   drift apart silently.
+   StorefrontDisclosureBannerTest pins the literal on the PHP side so the two
+   cannot drift apart silently.
 
    Deliberately not gated on quoteState: an agent that handled a quote handled
    it, and the disclosure outlives the state the quote was in at the time. #}
-{% block page_account_quote_details_banner %}
-    {{ parent() }}
-
+{% block page_account_quotes_details %}
     {% if page.quote.customFields.merchant_quote_agent_handled is defined and page.quote.customFields.merchant_quote_agent_handled %}
         {% sw_include '@Storefront/storefront/utilities/alert.html.twig' with {
             type: "info",
@@ -21,4 +33,6 @@
             class: " my-3"
         } %}
     {% endif %}
+
+    {{ parent() }}
 {% endblock %}
