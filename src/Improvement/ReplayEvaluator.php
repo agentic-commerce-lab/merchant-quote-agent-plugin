@@ -17,6 +17,8 @@ use MerchantQuoteAgentPlugin\Negotiation\QuoteBaseline;
 use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
 use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationProposal;
+use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
+use MerchantQuoteAgentPlugin\Policy\MoneyMath;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
@@ -115,11 +117,36 @@ final readonly class ReplayEvaluator
             return ReplayArm::modelRefused();
         }
 
-        // OfferedTotal, not $answer->offer->orderTotalNet: that field is the
-        // BEFORE total the proposer was handed, carried through unchanged --
-        // see OfferedTotal's docblock for why it cannot stand in for "after".
-        $after = OfferedTotal::of($policySnapshot->totalNet, $answer->offer->price) ?? $policySnapshot->totalNet;
+        return ReplayArm::offered(self::grantedPercent($policySnapshot->totalNet, $answer->offer->price));
+    }
 
-        return ReplayArm::offered(GrantedDiscount::of($policySnapshot->totalNet, $after));
+    /**
+     * Null for a per-line concession -- deliberately, not an omission.
+     *
+     * A per-line offer's own `discountPercent` is null (OfferLevelMirror
+     * clears it on purpose, #47), and the only trustworthy "after" total for
+     * one is what OfferApplier's write, `$gateway->recalculate()`, and a
+     * database re-read produce -- GrantedDiscount::of()'s own docblock says
+     * so ("measured on the same two database totals ... never on the offer
+     * we asked for"), and ReplyTemplate::reduction() rests on the same rule.
+     * A replay may never take that step, so reconstructing the total
+     * client-side would show a merchant a figure production never verified.
+     * "Granted, but not measurable offline" is the honest answer; see
+     * ReplayArm::offered()'s own null case.
+     *
+     * A quote-wide offer needs none of that: `$totalNetBefore * (1 -
+     * discount/100)` is the one multiplication OfferApplier itself performs
+     * (via the DiscountType::Percentage write), so GrantedDiscount::of() can
+     * be fed it honestly, without a database round-trip.
+     */
+    private static function grantedPercent(float $totalNetBefore, OfferedPrice $price): ?float
+    {
+        if ($price->discountPercent === null) {
+            return null;
+        }
+
+        $after = MoneyMath::roundMoney($totalNetBefore * (1 - ($price->discountPercent / 100)));
+
+        return GrantedDiscount::of($totalNetBefore, $after);
     }
 }

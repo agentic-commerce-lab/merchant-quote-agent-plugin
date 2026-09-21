@@ -57,6 +57,34 @@ final class ReplayEvaluatorTest extends TestCase
         self::assertSame(10.0, $arm->grantedPercent);
     }
 
+    /**
+     * The buyer itemised the ask (a requested price on the line), so
+     * OfferLevelMirror converts the model's quote-wide reply into a per-line
+     * offer -- see OfferProposerTest::testAQuoteWideAnswerToAPerLineAskComesBackAsALinePrice()
+     * for the same conversion in the live path. That offer's own
+     * `discountPercent` is then null, and the only trustworthy "after" total
+     * for a per-line concession is a database re-read a replay may never
+     * perform (ReplayEvaluator::grantedPercent()'s docblock) -- so this must
+     * come back as an offer with nothing measured, never as an escalation and
+     * never as a guessed number.
+     */
+    public function testAPerLineOfferIsOfferedButNotMeasured(): void
+    {
+        $recorder = new DecisionRecorder(new TallyingDecisionWriter());
+        $evaluator = $this->evaluator($this->platformOffering(900.0, $recorder), $recorder);
+
+        $arm = $evaluator->replay(
+            $this->settings(maxDiscountPercent: 20.0),
+            $this->snapshot(totalNet: 1000.0, requestedUnitPrice: 95.0),
+            $this->ask(10.0),
+        );
+
+        self::assertFalse($arm->escalated);
+        self::assertFalse($arm->modelRefused);
+        self::assertFalse($arm->failed);
+        self::assertNull($arm->grantedPercent);
+    }
+
     public function testItWritesNoDecisionRecord(): void
     {
         $writer = new TallyingDecisionWriter();
@@ -85,9 +113,9 @@ final class ReplayEvaluatorTest extends TestCase
         return NegotiationFixture::settings(maxDiscountPercent: $maxDiscountPercent, counterOfferMaxPercent: 0.0);
     }
 
-    private function snapshot(float $totalNet = 1000.0): QuoteSnapshot
+    private function snapshot(float $totalNet = 1000.0, ?float $requestedUnitPrice = null): QuoteSnapshot
     {
-        return NegotiationFixture::snapshot(totalNet: $totalNet);
+        return NegotiationFixture::snapshot(totalNet: $totalNet, requestedUnitPrice: $requestedUnitPrice);
     }
 
     private function ask(float $percent): InterpretedAsk
