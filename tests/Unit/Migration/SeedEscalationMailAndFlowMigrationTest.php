@@ -79,7 +79,7 @@ final class SeedEscalationMailAndFlowMigrationTest extends TestCase
     {
         $source = self::source();
 
-        self::assertSame(1, preg_match("/private const MAIL_TEMPLATE_ID = '([0-9a-f]{32})';/", $source, $matches));
+        self::assertSame(1, preg_match("/public const MAIL_TEMPLATE_ID = '([0-9a-f]{32})';/", $source, $matches));
 
         self::assertStringContainsString("'mailTemplateId' => self::MAIL_TEMPLATE_ID", $source);
         self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $matches[1]);

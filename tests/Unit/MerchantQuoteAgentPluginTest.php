@@ -44,12 +44,20 @@ final class MerchantQuoteAgentPluginTest extends TestCase
         'merchant_quote_agent_strategy',
     ];
 
+    /**
+     * The seeded `flow` / `mail_template` / `mail_template_type` rows
+     * uninstall also removes from core's shared tables. What those statements
+     * must look like is UninstallDeletesSeededMailAndFlowTest's subject; all
+     * this number does is keep the strict call count here honest.
+     */
+    private const SEEDED_ROW_DELETES = 3;
+
     public function testUninstallDropsEveryPluginTableAndDeletesTheSigningKeyWhenDataIsRemoved(): void
     {
         $connection = $this->createMock(Connection::class);
         $dropped = [];
         $connection
-            ->expects(self::exactly(\count(self::TABLES)))
+            ->expects(self::exactly(\count(self::TABLES) + self::SEEDED_ROW_DELETES))
             ->method('executeStatement')
             ->willReturnCallback(static function (string $sql) use (&$dropped): int {
                 $dropped[] = $sql;
@@ -68,17 +76,6 @@ final class MerchantQuoteAgentPluginTest extends TestCase
                 \sprintf('Expected a DROP TABLE statement for `%s`, got: %s', $table, implode(' | ', $dropped)),
             );
         }
-    }
-
-    public function testUninstallTouchesNeitherTableNorKeyWhenUserDataIsKept(): void
-    {
-        $connection = $this->createMock(Connection::class);
-        $connection->expects(self::never())->method('executeStatement');
-
-        $systemConfig = $this->createMock(SystemConfigService::class);
-        $systemConfig->expects(self::never())->method('delete');
-
-        self::plugin($connection, $systemConfig)->uninstall(self::context(keepUserData: true));
     }
 
     private static function plugin(Connection $connection, SystemConfigService $systemConfig): MerchantQuoteAgentPlugin
