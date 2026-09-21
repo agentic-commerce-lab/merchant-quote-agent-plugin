@@ -73,6 +73,7 @@
         "quality:filesize": "php scripts/check_file_length.php src",
         "quality:admin": "node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/decision.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/measures.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/strategy.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/strategy-measures.check.mjs",
         "quality:admin:shop": "scripts/check-administration.sh",
+        "quality:bench": "node --experimental-strip-types scripts/bench-score.check.mjs",
         "quality:dupes": "jscpd",
         "quality:boundaries": "mago guard",
         "quality:depcheck": "composer-dependency-analyser",
@@ -83,6 +84,7 @@
             "@typecheck",
             "@quality:filesize",
             "@quality:admin",
+            "@quality:bench",
             "@quality:dupes",
             "@quality:depcheck",
             "@quality:security"

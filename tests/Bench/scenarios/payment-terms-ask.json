@@ -1,0 +1,11 @@
+{
+    "id": "payment-terms-ask",
+    "description": "A payment-terms ask the agent has no mandate over. Escalates before the negotiate call, same as a bundle ask.",
+    "lines": [
+        {"productRef": "any-purchasable", "quantity": 3}
+    ],
+    "openingAsk": "Could we get net 60 payment terms on this order?",
+    "persona": "scripted:moderate",
+    "maxRounds": 2,
+    "expectedBand": "escalate"
+}

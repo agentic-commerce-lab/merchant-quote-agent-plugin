@@ -1,0 +1,11 @@
+{
+    "id": "exactly-at-the-ceiling",
+    "description": "A gross ask that, once converted to a cent-rounded net baseline, lands a hair above the discount cap by float noise alone -- Epsilon::RATE is what keeps this a grant instead of an escalation.",
+    "lines": [
+        {"productRef": "any-purchasable", "quantity": 1}
+    ],
+    "openingAsk": "106.68 including tax and we have a deal.",
+    "persona": "scripted:precise",
+    "maxRounds": 2,
+    "expectedBand": "auto"
+}
