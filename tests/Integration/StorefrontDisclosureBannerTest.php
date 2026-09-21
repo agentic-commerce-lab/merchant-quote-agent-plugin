@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Servicing\AgentDisclosure;
 use Shopware\Core\Framework\Adapter\Twig\NamespaceHierarchy\NamespaceHierarchyBuilder;
+use Shopware\Storefront\Theme\Twig\ThemeNamespaceHierarchyBuilder;
 
 /**
  * The banner is the only disclosure surface that reaches the released
@@ -18,6 +19,20 @@ final class StorefrontDisclosureBannerTest extends IntegrationTestCase
 {
     public function testThisPluginResolvesAheadOfSwagCommercialInTheTemplateHierarchy(): void
     {
+        // ThemeNamespaceHierarchyBuilder is one link in the same chain
+        // NamespaceHierarchyBuilder::buildHierarchy() folds. It caches which
+        // theme is active in a plain property, set from KernelEvents::REQUEST,
+        // and cleared only on kernel.terminate. A prior test in this same
+        // process that dispatched a real HTTP request (->handle() without a
+        // matching ->terminate()) leaves that cache populated, and once it is
+        // non-empty buildNamespaceHierarchy() stops doing the priority-based
+        // fold entirely and rebuilds the hierarchy via theme inheritance
+        // instead -- a different algorithm this plugin does not control.
+        // Resetting it here is what keeps this assertion about
+        // getTemplatePriority(), regardless of what ran before it in the
+        // suite.
+        static::getContainer()->get(ThemeNamespaceHierarchyBuilder::class)->reset();
+
         $hierarchy = static::getContainer()->get(NamespaceHierarchyBuilder::class)->buildHierarchy();
 
         $namespaces = array_keys($hierarchy);
