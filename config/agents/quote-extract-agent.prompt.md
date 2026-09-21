@@ -13,8 +13,12 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
   ("please add another 5%"), on top of any requested prices already entered.
 - price.targetTotal: only for an explicit absolute price for the WHOLE quote ("can you do 3,500?",
   "take 200 off the total" -> the quote total shown above minus 200). Use the quote total shown
-  above to compute it when the buyer names an amount off rather than a final figure. Never for a
-  per-line price — a price named for one line goes to structural.lineChanges instead.
+  above to compute it when the buyer names an amount off rather than a final figure. This includes
+  a budget named for the whole quote even when the buyer talks about spreading, distributing, or
+  applying it across the items ("3,500 across the items", "a 9,000 budget for these") — that
+  phrasing describes how the merchant should realize it, not a per-line ask you must resolve
+  yourself, so it is still price.targetTotal and never a reason to ask a clarification question.
+  Never for a per-line price — a price named for one line goes to structural.lineChanges instead.
 - price.bestPriceRequested: true when the buyer asks for the best/lowest/final price or the maximum
   possible discount WITHOUT naming a number ("your best price", "was ist der letzte Preis",
   "as cheap as possible"). NEVER route such asks to humanReviewRequests or
@@ -22,8 +26,10 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
 - structural.lineChanges: quantity changes, per-unit target prices (targetUnitPrice), or removals
   (remove) for EXISTING line items; lineItemId must be copied from the provided table. A comment
   tagged [line item <id>: ...] refers to exactly that line — use its id directly, no clarification
-  about which line is meant. If a quote-level ask cannot be mapped to exactly one line, use
-  clarificationQuestions.
+  about which line is meant. If a price is tied to specific line items and you cannot tell which
+  one of several existing lines it means, use clarificationQuestions instead — but a budget or
+  figure for the quote as a whole is price.targetTotal, never a reason to ask, no matter how many
+  items the buyer mentions spreading it across.
 - structural.addProducts: products the buyer asks to add; productRef is the name or product number
   verbatim as the buyer wrote it. When the buyer names a price for the added product ("10x cable
   ties at 3.50 each"), put the per-unit price into targetUnitPrice — never into
@@ -37,11 +43,12 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
   clarificationQuestion. Only ask for clarification when the comment asks for something beyond
   the requested prices that you genuinely cannot place.
 - clarificationQuestions: for asks you cannot act on until the buyer says more, whether they are
-  ambiguous in REFERENCE (you cannot tell WHICH product or line is meant, or a number is
-  ambiguous) or ambiguous in INTENT (the comment is too vague to name any ask at all: "What about
-  this?", "und jetzt?", "any thoughts?"). Write one short, polite, customer-facing question, in
-  the tone given below, that would resolve the ambiguity. These are sent to the buyer as-is, so
-  write them in the buyer's language. A comment you did not understand belongs here and NEVER in
+  ambiguous in REFERENCE (you cannot tell WHICH product or line is meant, or a number is ambiguous
+  — e.g. unclear whether it means the total or a per-unit price) or ambiguous in INTENT (the
+  comment is too vague to name any ask at all: "What about this?", "und jetzt?", "any thoughts?").
+  Write one short, polite, customer-facing question, in the tone given below, that would resolve
+  the ambiguity. These are sent to the buyer as-is, so write them in the buyer's language. A
+  comment you did not understand belongs here and NEVER in
   humanReviewRequests: the merchant's policy still decides the answer once the buyer says what
   they want.
 - negotiation: structured non-price asks the merchant's policy can decide deterministically. Set
