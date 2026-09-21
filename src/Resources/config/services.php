@@ -427,12 +427,16 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
 
     // Enforces the two invariants #[Protection] was deliberately left off of:
     // a version row is never updated or deleted, and a built-in strategy row
-    // is never updated or deleted. Registered unconditionally and outside the
-    // SwagCommercial guard below, like the entities themselves -- an admin API
-    // token bypasses the administration, so the rule has to hold server-side
-    // on any shop where these tables exist. autoconfigure() picks up
-    // EventSubscriberInterface, so no explicit tag.
-    $services->set(StrategyWriteGuard::class);
+    // is never updated or deleted -- plus the one narrow transition Task 3
+    // admits (a proposal becoming accepted or rejected). Registered
+    // unconditionally and outside the SwagCommercial guard below, like the
+    // entities themselves -- an admin API token bypasses the administration,
+    // so the rule has to hold server-side on any shop where these tables
+    // exist. autoconfigure() picks up EventSubscriberInterface, so no
+    // explicit tag; the Connection is named because the guard reads the
+    // current status of the rows a write touches in one query rather than
+    // trusting the payload's claim about its own starting state.
+    $services->set(StrategyWriteGuard::class)->args([service(Connection::class)]);
 
     // The repositories are created by the DAL from the #[Entity] attributes;
     // they are not autowirable by type, so name them.

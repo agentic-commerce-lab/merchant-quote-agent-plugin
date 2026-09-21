@@ -25,4 +25,10 @@ final class ImmutableStrategy extends \RuntimeException
             . 'editable copy of it.',
         );
     }
+
+    public static function versionTransition(): self
+    {
+        return new self('A strategy version may only be accepted or rejected while it is a proposal, '
+        . 'and its prompt can never change.');
+    }
 }
