@@ -60,21 +60,46 @@ final class StorefrontDisclosureBannerTest extends IntegrationTestCase
         // suite would have caught that, because none of it loaded the real
         // parent template source.
         //
+        // The block name is read out of OUR template rather than typed a
+        // second time here, the same way testTheMarkerKeyMatchesTheLiteralInTheTemplate
+        // below derives the marker key instead of restating it: a literal
+        // typed independently in this file would not notice if the .twig's
+        // own {% block %} line changed (e.g. back to the trunk-only name) --
+        // it would just keep confirming that some block by that old name
+        // still exists on the parent, which is not the question this test
+        // exists to answer.
+        $template = file_get_contents(
+            \dirname(__DIR__, 2) . '/src/Resources/views/storefront/page/account/quote-detail/index.html.twig',
+        );
+        self::assertIsString($template);
+
+        $matched = preg_match('/\{%-?\s*block\s+(\w+)/', $template, $matches);
+        self::assertSame(1, $matched, 'This template declares no Twig block; nothing to check against the parent.');
+        $blockName = $matches[1];
+
         // Resolving '@QuoteManagement/...' through the actual Twig loader,
         // the same way `sw_extends` resolves it at render time, is what
-        // would have caught it: it reads whatever SwagCommercial this shop
-        // has installed, not a path this plugin assumes.
+        // would have caught the original defect: it reads whatever
+        // SwagCommercial this shop has installed, not a path this plugin
+        // assumes.
         $parentSource = static::getContainer()
             ->get(Environment::class)
             ->getLoader()
             ->getSourceContext('@QuoteManagement/storefront/page/account/quote-detail/index.html.twig')
             ->getCode();
 
-        self::assertStringContainsString(
-            'block page_account_quotes_details ',
+        // \b rather than a hardcoded trailing space: tolerant of a harmless
+        // upstream reformat (extra whitespace, a `-%}` whitespace-control
+        // tag) while still refusing to match a longer block name that merely
+        // starts with the same identifier.
+        self::assertMatchesRegularExpression(
+            '/\{%-?\s*block\s+' . preg_quote($blockName, '/') . '\b/',
             $parentSource,
-            'SwagCommercial no longer declares page_account_quotes_details; '
-            . 'this plugin extends a block that does not exist and its banner silently stops rendering.',
+            \sprintf(
+                "SwagCommercial no longer declares '%s'; this plugin extends a block that does not exist "
+                . 'and its banner silently stops rendering.',
+                $blockName,
+            ),
         );
     }
 
