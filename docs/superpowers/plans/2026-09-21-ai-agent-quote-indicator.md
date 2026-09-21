@@ -963,3 +963,37 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ## Follow-up, not in this plan
 
 The spec records one item deliberately left out: the current `Merchant` attribution of agent comments is a defect in its own right, and on the released lane this plan does not fix it. It should get its own issue rather than being buried here.
+
+---
+
+## Corrections made during implementation
+
+Three technical claims in this plan were wrong and were corrected while
+executing it. The code is right; these sections of the plan are not. Recorded
+here rather than rewritten, so the shape of the mistakes stays visible.
+
+1. **`TemplateNamespaceHierarchyBuilder` does not exist** (Task 2, Step 7). The
+   real service is `NamespaceHierarchyBuilder::buildHierarchy()`.
+
+2. **`page_account_quote_details_banner` exists only on SwagCommercial trunk
+   (7.13)** (Task 2, Step 6). It was introduced by `0360c14e47`. Extending it
+   would have left the banner silently dead on every released version — the
+   exact lane the Twig approach was chosen to reach. The code extends
+   `page_account_quotes_details`, present v6.7.2.0 through trunk. The
+   `class: " my-3"` argument in that same include was also dead: core's
+   `alert.html.twig` never reads a `class` variable.
+
+3. **The `main.ts` override code could not work** (Task 4, Step 1). `$super`
+   does not exist in the Shopware storefront plugin system — it is an
+   Administration/Vue convention — and `PluginManager.override()` takes
+   `(name, pluginClass, selector, options)`, rejecting a plain object and
+   needing the selector to find the existing registration. The plan's version
+   would have failed with a `console.warn` and never attached. The code uses an
+   async-loader subclass with the explicit selector
+   `[data-b2b-quote-history-item-plugin]`.
+
+All three share one cause: an API or structure asserted from memory instead of
+read from vendor source. Each produced a silent failure — no exception, no
+failing test, nothing a buyer or merchant would see — which is why the
+verification steps that execute code, rather than inspect it, are the ones that
+earned their place in this plan.
