@@ -121,20 +121,33 @@ difference is why it is a second key rather than a reuse of the first.
 stamp that spreads owner-supplied fragments into one `updateQuote`
 (`src/Servicing/ServiceQuoteHandler.php:197`, alongside
 `QuoteEscalator::releaseFor()` and `ClarificationMarker::releaseFor()`).
-`AgentDisclosure::stamp()` slots in there as a third spread. No new write, no
-new call site, and it is reached on every completed pass including one that
-escalated.
+`AgentDisclosure::stampFor($outcome)` slots in there as a third spread. No new
+write, no new call site, and it is reached on every completed pass including one
+that escalated.
 
-**It is written unconditionally, not gated on the outcome.** A completed pass
-means the agent read the buyer's ask and decided what to do with it; that is AI
-handling and it is what we are disclosing. Gating on
-`$outcome->answeredTheBuyer()` would leave a quote the agent silently declined
-to answer with no banner, and would also miss an escalation on a sales channel
-where the buyer notice is switched off — both cases where an agent did handle
-the quote and the buyer would be told nothing. The narrower reading is
-defensible and is the main thing to push back on in review; this spec picks the
-wider one because under an obligation framing, under-disclosing is the worse
-failure.
+**It is gated on the outcome — the agent must have acted on the quote.**
+Stamped for `Offered`, `Countered`, `Clarified` and `Escalated`; not for
+`HandedOver` or `NothingToDo`.
+
+An earlier draft of this spec stamped unconditionally, on the reasoning that a
+completed pass means the agent read the ask and decided. Reading
+`NegotiationOutcome` kills that: `HandedOver` is defined as a pass that *found a
+human merchant already on the quote and wrote nothing*. Stamping it would tell
+the buyer an AI agent handled a quote that a human handled — a false statement
+to the buyer, which is a worse failure than the under-disclosure the wider rule
+was guarding against. `NothingToDo` is the same shape with nothing happening at
+all.
+
+The gate is deliberately wider than `answeredTheBuyer()`, which covers only
+`Offered` and `Countered`. `Clarified` put an agent-written question in front of
+the buyer. `Escalated` is included even on a sales channel where the buyer
+notice is switched off and the buyer therefore sees no agent message: the agent
+still made a determination about their quote, and that determination is the
+thing being disclosed.
+
+So the rule is "the agent acted on this quote", not "a pass completed" and not
+"the buyer got a reply". The banner copy must match that and not promise a
+reply the buyer may not find in the thread.
 
 One gap follows from the placement: if the pipeline writes a comment and *then*
 throws, the pass exits at
@@ -231,13 +244,22 @@ exist.
 
 - `QuoteCommentTest` already pins the null-author discriminator; extend it only
   if the predicate moves.
-- Unit: the marker is written by a completed pass whatever the outcome —
-  replied, clarified, escalated, and silent — and is not cleared by a later
-  pass, including one that clears the escalation or clarification markers.
+- Unit: the marker is written for `Offered`, `Countered`, `Clarified` and
+  `Escalated`, and withheld for `HandedOver` and `NothingToDo` — covered per
+  enum case, so a case added later fails the test rather than silently
+  inheriting a default. It is not cleared by a later pass, including one that
+  clears the escalation or clarification markers.
 - Integration: `getTemplatePriority()` resolves this plugin ahead of
   SwagCommercial in the namespace hierarchy — asserted against the container,
-  not by eyeballing a rendered page.
-- Integration: a quote with the marker renders the banner; one without does not.
+  not by eyeballing a rendered page. Plus an assertion that the marker key
+  constant and the literal in the Twig template still agree, since Twig cannot
+  import the constant.
+- Manual, against the test shop: a quote with the marker renders the banner and
+  one without does not. Deliberately not automated — a full storefront page
+  render needs a logged-in buyer and a quote fixture, and the two automated
+  assertions above already cover the parts that fail silently (precedence and
+  the key literal). What is left for the eye is whether the alert renders,
+  which does not fail silently.
 - Administration-style assert checks (`composer run quality:admin`) for the two
   JS overrides, matching how the existing admin module is checked — there is no
   JS test runner in this project. Both cases must be covered: an agent comment
