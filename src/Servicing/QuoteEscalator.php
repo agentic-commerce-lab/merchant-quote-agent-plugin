@@ -23,9 +23,16 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
  * the buyer↔merchant conversation, and there is no private half of it.
  *
  * SO EVERYTHING WRITTEN HERE IS CUSTOMER-FACING COPY. No reason value, no
- * problem list, no field names, no mention of an agent — and no constraint or
- * mapping message, several of which echo the offending value rather than just
- * the field. Internal detail belongs in the log.
+ * problem list, no field names — and no constraint or mapping message, several
+ * of which echo the offending value rather than just the field. Internal
+ * detail belongs in the log.
+ *
+ * The FACT that an agent is involved is no longer internal: since the buyer
+ * disclosure (see AgentDisclosure and the storefront banner) the buyer is told
+ * an AI agent handled this quote, always and on every sales channel. That is a
+ * deliberate narrowing of the rule above, not an exception to it — the agent's
+ * reasons, policy, violations and model internals stay internal exactly as
+ * before. Do not widen it further by putting WHY into this copy.
  *
  * Which is why the comment is a fixed constant and escalate() takes no text
  * from its caller, by design. A caller-supplied detail string was the leak:

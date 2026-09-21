@@ -194,6 +194,13 @@ final readonly class ServiceQuoteHandler
         // Two markers are released here, each by its owner's rule: a pass that
         // escalated keeps the escalation marker it just wrote, and a pass that
         // asked a clarification keeps that one.
+        //
+        // The disclosure marker is the one here that is never released: the two
+        // above record a state the quote can leave, this one records that an
+        // agent acted on it, which stays true. It has its own outcome gate
+        // (not every completed pass is an agent acting - see AgentDisclosure),
+        // and it is spread last so a future release fragment cannot null it by
+        // accident.
         $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
             ServicingFingerprint::MARKER_KEY => ServicingFingerprint::stamp(
                 $snapshot,
@@ -202,6 +209,7 @@ final readonly class ServiceQuoteHandler
             self::ATTEMPTS_KEY => null,
             ...QuoteEscalator::releaseFor($outcome),
             ...ClarificationMarker::releaseFor($outcome),
+            ...AgentDisclosure::stampFor($outcome),
         ]));
     }
 
