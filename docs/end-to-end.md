@@ -887,3 +887,81 @@ published either.
 
 Installing SwagAgenticCommerce later needs nothing from this plugin but a cache
 clear: the container is rebuilt and the surface appears.
+
+---
+
+## 12. The shopping assistant
+
+A third door onto the same servicing loop, gated on a **second, independent**
+optional plugin: the shopping-assistant-starter-kit
+(`swag/assistant-starter-kit`). `Assistant\AssistantAvailability::isRegistered()`
+gates it exactly the way `Ucp\UcpAvailability` gates Agentic Commerce — on
+whether `SwagAssistantStarterKit` is in `kernel.bundles`, for the same reason
+[§1](#1-what-has-to-be-in-place) gives at length. Without it, nothing below is
+registered, and a quote requested by hand in the storefront or over UCP is
+serviced exactly as before.
+
+With it, this plugin contributes two tools to the storefront chat assistant:
+
+| Tool | Does | Returns |
+| --- | --- | --- |
+| `request_quote` | Turns the shopper's cart into an ordinary hand-made storefront quote — the same door SwagCommercial's own "request a quote" action uses, so everything from [§3](#3-claiming-the-pass) onward is unaware it came from a chat message. Takes a short merchant-facing message — not a transcript of what the shopper typed at the assistant — and, optionally, two parallel lists of product ids and per-unit target prices. | `quote_number`, `state`, and a note instructing the model what it may and may not say |
+| `quote_status` | Looks up what happened to a quote the shopper already has, scoped to their own account — a number belonging to someone else, or a number nobody has, both come back `not_found`. | `state`, `total`, `valid_until`, and a note instructing the model how to state them |
+
+**`request_quote` waits on its own merchant toggle, `assistantQuoteRequests`,
+default off; `quote_status` does not.** Requesting a quote acts *in the
+buyer's name* — it writes to their account without them clicking anything —
+so a merchant opts in before a shopper can create one by chatting rather than
+filling in a form. Reading what already happened to a quote the shopper
+themselves asked for is not a new act on their behalf either way, so it stays
+available whenever the tools are registered at all. The two switch
+independently because they are wired from two separate factories
+(`RequestQuoteToolFactory`, `QuoteStatusToolFactory`): a merchant can let a
+shopper ask about an existing quote in chat while keeping the quote-through-chat
+door itself shut.
+
+**Neither tool ever states a price, for two different reasons.** `quote_status`
+states a total, but only one the shop already committed to: the figure is
+formatted server-side and its note tells the model to repeat it verbatim,
+never to recalculate, round, or convert it, and never to state a discount
+percentage next to it. `request_quote` states no figure at all, because none
+exists yet to state — the merchant's negotiation agent replies minutes later,
+asynchronously, and at the moment the tool returns nobody has looked at the
+quote. The only figure the tool ever has on hand is the buyer's own ask,
+echoed back — and a model handed that figure and no instruction otherwise
+narrates an outcome anyway, turning an echo into "I got you 12% off." That is
+not a guess about model behaviour, it is why the
+starter kit's own `EscalateTool` needed the identical prohibition spelled out,
+after a live model claimed a handover had already happened in six runs out of
+six with no instruction that it should. `RequestQuoteTool`'s note tells the
+model plainly not to say a discount was granted, approved, applied or secured,
+not to predict what the shop will offer, and not to state any price or
+percentage for this quote — the only honest thing to say is that the request
+is with the shop and a reply is coming.
+
+**The provenance stamp.** A shopper can hand `request_quote` a target price two
+ways: their own words, or a figure the assistant itself proposed that the
+shopper then agreed to. Both reach the policy engine as the identical number,
+so without a record the decision log would read "the buyer asked for X%" about
+a figure a model wrote. `AssistantAskStamp` records which one happened, in the
+quote's own `merchantQuoteAgentAssistantAsk` custom field
+(`buyer_stated` or `assistant_proposed`) — a deliberately unregistered custom
+field, so it will not show in the admin; read it back through the API or the
+database. **`Negotiation\CappedAuthority` deliberately does not read it.** An
+assistant-proposed figure caps exactly like a typed one today; narrowing the
+cap for a model-authored ask is a policy decision for its own spec, not a side
+effect of recording provenance. The stamp exists only to make the distinction
+visible, so that decision can be made on evidence instead of a guess.
+
+**This path leaves no A2CN evidence trail.** The whole layer in
+[§5](#the-a2cn-act-when-there-is-a-session) exists to mirror a signed act chain
+between this shop and a counterparty *agent* — a buyer's own agent negotiating
+over UCP, the door [§2](#2-how-a-quote-reaches-the-agent) describes. A shopper
+chatting with the storefront assistant has no counterparty: the assistant runs
+inside the buyer's own browser session, acting on the buyer's own behalf, the
+same as if they had filled in the quote form themselves. There is no mandate,
+no session id, no act for `SellerActEmitter` to counter-sign — a quote
+requested this way never carries an `a2cn_session` custom field, so nothing
+here overlaps [§11](#11-without-agentic-commerce): that section is a shop
+without the Agentic Commerce plugin at all, while this is a shop that has it,
+talking with a party the protocol was never asked to cover.

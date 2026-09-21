@@ -34,3 +34,7 @@ scripts/__pycache__/
 
 # Unreleased AC QA build, shared for local testing only - never commit.
 SwagAgenticCommerce-*.zip
+
+# The matrix driver's JSONL readout per bench run (BenchRunTest) -- run
+# output, never source.
+/var/

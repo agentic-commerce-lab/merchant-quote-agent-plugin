@@ -5,6 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "ext-mbstring": "*",
         "ext-openssl": "*",
         "cuyz/valinor": "^2.6",
         "doctrine/dbal": "~4.4.0",
@@ -30,15 +31,16 @@
         "ucp-php-sdk/symfony-bundle": ">=0.0.6 <0.1.0"
     },
     "require-dev": {
-        "captainhook/captainhook": "^5.25",
-        "captainhook/hook-installer": "^1.0",
-        "carthage-software/mago": "^1.30",
         "ext-dom": "*",
         "ext-libxml": "*",
         "ext-pdo": "*",
+        "captainhook/captainhook": "^5.25",
+        "captainhook/hook-installer": "^1.0",
+        "carthage-software/mago": "^1.30",
         "phauthentic/cognitive-code-analysis": "^1.11",
         "phpunit/phpunit": "^11.5",
         "shipmonk/composer-dependency-analyser": "^1.0",
+        "symfony/ai-agent": "0.13.*",
         "symfony/cache": "^7.4",
         "twig/twig": "^3.28"
     },
@@ -49,7 +51,8 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "MerchantQuoteAgentPlugin\\Tests\\": "tests/"
+            "MerchantQuoteAgentPlugin\\Tests\\": "tests/",
+            "Swag\\AssistantStarterKit\\": "tests/Stub/SwagAssistantStarterKit/"
         }
     },
     "config": {
@@ -74,6 +77,7 @@
         "quality:filesize": "php scripts/check_file_length.php src",
         "quality:admin": "node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/decision.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/measures.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/strategy.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/strategy-measures.check.mjs && node --experimental-strip-types src/Resources/app/storefront/src/agent-disclosure.check.mjs",
         "quality:admin:shop": "scripts/check-administration.sh",
+        "quality:bench": "node --experimental-strip-types scripts/bench-score.check.mjs",
         "quality:dupes": "jscpd",
         "quality:boundaries": "mago guard",
         "quality:depcheck": "composer-dependency-analyser",
@@ -84,6 +88,7 @@
             "@typecheck",
             "@quality:filesize",
             "@quality:admin",
+            "@quality:bench",
             "@quality:dupes",
             "@quality:depcheck",
             "@quality:security"

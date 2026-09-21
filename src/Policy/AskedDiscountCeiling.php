@@ -21,11 +21,12 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  * and only CommentTargetMerger does — so it is null for exactly the
  * structured-ask quotes this exists for.
  *
- * A buyer has three ways to name a number and all three bind the agent: a
+ * A buyer has four ways to name a number and all four bind the agent: a
  * percentage in the conversation, the storefront's per-line "Requested price"
- * field, and a per-unit price typed in the conversation. The third one used to
- * fall through here — it lands in `structural.lineChanges` rather than on the
- * line, and NegotiationPipeline hands this class the ANCHORED snapshot, which
+ * field, a per-unit price typed in the conversation, and a budget named for the
+ * whole quote ("max cost 2500"). The third one used to fall through here — it
+ * lands in `structural.lineChanges` rather than on the line, and
+ * NegotiationPipeline hands this class the ANCHORED snapshot, which
  * AskMirror's write-back does not reach — so the model was told the merchant's
  * whole band on exactly the asks QuoteDiscountApplier was already pricing at
  * the buyer's figure. Merging below closes that, and reuses the merger so the
@@ -63,7 +64,26 @@ final class AskedDiscountCeiling
         // below what the buyer asked for.
         $asked = self::fromRequestedLinePrices($snapshot) + ($interpretation?->price->additionalDiscountPercent ?? 0.0);
 
+        // A quote-level budget is the fourth way to name a number, and the
+        // only one that binds the whole quote at once. Measured against the
+        // ANCHORED total this class is handed, so a budget repeated in a later
+        // round still means the same money it did in the first — which is
+        // exactly what an absolute figure, unlike a percentage, should do.
+        // `max` rather than `+`: a budget already covers the lines it pays
+        // for, so adding it to the per-line asks would double-count them.
+        $asked = max($asked, self::fromTargetTotal($snapshot, $interpretation?->price->targetTotal));
+
         return $asked > 0.0 ? $asked : null;
+    }
+
+    /** Zero when the buyer named no budget, or named one at or above the quoted total. */
+    private static function fromTargetTotal(QuoteSnapshot $snapshot, ?float $targetTotal): float
+    {
+        if ($targetTotal === null || $snapshot->totalNet <= 0.0) {
+            return 0.0;
+        }
+
+        return (($snapshot->totalNet - min($targetTotal, $snapshot->totalNet)) / $snapshot->totalNet) * 100;
     }
 
     /**

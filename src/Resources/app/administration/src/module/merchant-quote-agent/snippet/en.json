@@ -30,6 +30,7 @@
         "ask": {
             "discount": "Discount asked",
             "bestPrice": "Best price",
+            "targetTotal": "Total budget asked",
             "targetPrice": "Target unit price",
             "quantity": "Quantity",
             "removeLine": "Remove line",

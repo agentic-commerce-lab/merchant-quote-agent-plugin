@@ -87,7 +87,7 @@ final class UninstallDropsEveryTableTest extends TestCase
         $source = file_get_contents($file);
         self::assertIsString($source);
 
-        $body = preg_split('/private function dropPluginTables\(\)/', $source);
+        $body = preg_split('/private function dropPluginTables\(/', $source);
         self::assertIsArray($body);
         self::assertCount(2, $body, 'dropPluginTables() not found — was it renamed?');
 

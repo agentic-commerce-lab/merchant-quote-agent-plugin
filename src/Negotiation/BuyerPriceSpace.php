@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
 use MerchantQuoteAgentPlugin\Policy\Data\InterpretedLineChange;
+use MerchantQuoteAgentPlugin\Policy\Data\PriceAsk;
 use MerchantQuoteAgentPlugin\Policy\Data\StructuralAsks;
 use MerchantQuoteAgentPlugin\Policy\MoneyMath;
 
@@ -47,8 +48,9 @@ final class BuyerPriceSpace
     }
 
     /**
-     * The same interpretation with every per-line target price moved out of the
-     * buyer's space and into the net one.
+     * The same interpretation with every price the buyer named — the per-line
+     * targets and the quote-level budget — moved out of the buyer's space and
+     * into the net one.
      *
      * `addProducts` targets are deliberately left alone: an added product makes
      * the pass structural (InterpretedAsk::isStructural()), so its price is
@@ -57,17 +59,13 @@ final class BuyerPriceSpace
      */
     public static function toNet(CommentInterpretation $interpretation, QuoteSnapshot $snapshot): CommentInterpretation
     {
-        if ($interpretation->structural->lineChanges === []) {
-            return $interpretation;
-        }
-
         $ratios = [];
         foreach ($snapshot->content->lines as $line) {
             $ratios[$line->identity->lineItemId] = $line->netRatio;
         }
 
         return new CommentInterpretation(
-            price: $interpretation->price,
+            price: self::priceToNet($interpretation->price, $snapshot),
             structural: new StructuralAsks(
                 lineChanges: array_map(static fn(InterpretedLineChange $c): InterpretedLineChange => self::lineToNet(
                     $c,
@@ -79,6 +77,28 @@ final class BuyerPriceSpace
             clarificationQuestions: $interpretation->clarificationQuestions,
             humanReviewRequests: $interpretation->humanReviewRequests,
             negotiation: $interpretation->negotiation,
+        );
+    }
+
+    /**
+     * The quote-level budget, converted on the quote's own blended ratio
+     * rather than a line's: a total the buyer names covers whatever the quote
+     * covers, including shipping, and no single line's `netRatio` describes
+     * that mix. `buyerFacingTotal()` is the figure the buyer was shown, which
+     * is the space they typed their number in.
+     */
+    private static function priceToNet(PriceAsk $price, QuoteSnapshot $snapshot): PriceAsk
+    {
+        $gross = $snapshot->totals->buyerFacingTotal();
+
+        if ($price->targetTotal === null || $gross <= 0.0 || $gross === $snapshot->totals->totalNet) {
+            return $price;
+        }
+
+        return new PriceAsk(
+            additionalDiscountPercent: $price->additionalDiscountPercent,
+            bestPriceRequested: $price->bestPriceRequested,
+            targetTotal: MoneyMath::roundMoney($price->targetTotal * ($snapshot->totals->totalNet / $gross)),
         );
     }
 
