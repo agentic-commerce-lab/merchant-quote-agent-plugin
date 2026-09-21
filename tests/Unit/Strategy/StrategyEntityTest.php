@@ -30,7 +30,10 @@ final class StrategyEntityTest extends TestCase
 
     public function testTheVersionDeclaresItsColumns(): void
     {
-        self::assertSame(['id', 'strategyId', 'version', 'prompt'], self::fieldNames(StrategyVersion::class));
+        self::assertSame(
+            ['id', 'strategyId', 'version', 'prompt', 'status', 'runId', 'evaluation', 'rationale', 'decidedAt'],
+            self::fieldNames(StrategyVersion::class),
+        );
     }
 
     public function testNoFieldUsesMaxLength(): void
