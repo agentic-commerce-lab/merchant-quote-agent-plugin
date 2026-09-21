@@ -69,7 +69,15 @@ const PluginManager = window.PluginManager;
 // warns to the console when the name isn't registered, and on the released
 // SwagCommercial lane it never is - every storefront page load on that lane
 // would otherwise print a benign-but-permanent warning.
-if ([...PluginManager.getPluginList()].includes(PLUGIN_NAME)) {
+//
+// getPluginList() is NOT spreadable: PluginRegistry.keys() (vendor
+// shopware/storefront's plugin.registry.js) reduces its internal Map into a
+// plain `{}` rather than returning the Map itself, so it has no
+// Symbol.iterator. `[...PluginManager.getPluginList()]` throws
+// "is not iterable" - at module top level, on every storefront page load,
+// before the override below ever runs. `in` reads a plain object's own and
+// inherited keys, which is exactly what's needed here.
+if (PLUGIN_NAME in PluginManager.getPluginList()) {
     // Read the currently-registered loader BEFORE override() replaces it.
     // override() deregisters the old registration and registers the new one
     // in its place (same name in, same name out), so this reference is the
