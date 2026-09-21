@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Config;
 
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 /**
@@ -62,6 +63,9 @@ final readonly class QuoteAgentSettingsFactory
             strategyPrompt: RawConfigValue::string($raw, 'negotiationStrategy'),
             notifyBuyerOnEscalation: RawConfigValue::bool($raw, 'notifyBuyerOnEscalation') !== false,
             strategyVersionId: RawConfigValue::string($raw, 'negotiationStrategyVersionId'),
+            strategyAssignmentSource: RawConfigValue::string($raw, 'negotiationStrategyVersionId') === null
+                ? null
+                : StrategyAssignmentSource::Config,
         );
     }
 }
