@@ -92,6 +92,7 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\RequestRuntimeConfigurationR
 use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
+use MerchantQuoteAgentPlugin\Improvement\ImprovementRun;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
@@ -416,6 +417,12 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(Strategy::class);
     $services->set(StrategyVersion::class);
     $services->set(StrategyAssignment::class);
+
+    // One row per nightly self-improvement run, per sales channel (Task 4).
+    // Registered unconditionally like the entities above; the repository is
+    // DAL-generated from the #[Entity] attribute and named explicitly by
+    // later tasks that need it (Task 11's writer, Task 13's admin listing).
+    $services->set(ImprovementRun::class);
 
     // Resolves a strategy id to its newest version's prompt (Task 6). The
     // repositories are DAL-generated from the #[Entity] attributes above, so
