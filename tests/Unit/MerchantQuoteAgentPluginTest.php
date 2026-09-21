@@ -40,6 +40,7 @@ final class MerchantQuoteAgentPluginTest extends TestCase
         'merchant_quote_agent_a2cn_act',
         'merchant_quote_agent_decision',
         'merchant_quote_agent_pending_authorization',
+        'merchant_quote_agent_strategy_assignment',
         'merchant_quote_agent_strategy_version',
         'merchant_quote_agent_strategy',
     ];

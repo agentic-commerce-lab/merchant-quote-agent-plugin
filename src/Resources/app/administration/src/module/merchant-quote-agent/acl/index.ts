@@ -22,6 +22,9 @@ export const privileges = {
             //
             // The strategy library. The config page's selector and the
             // decision detail's "which prompt was sent" both read these.
+            //
+            // The assignment ladder's rows, which the strategies page reads to
+            // show which customers and rules point at each strategy.
             privileges: [
                 'merchant_quote_agent_decision:read',
                 'quote:read',
@@ -29,6 +32,7 @@ export const privileges = {
                 'quote_comment:read',
                 'merchant_quote_agent_strategy:read',
                 'merchant_quote_agent_strategy_version:read',
+                'merchant_quote_agent_strategy_assignment:read',
             ],
             dependencies: [],
         },

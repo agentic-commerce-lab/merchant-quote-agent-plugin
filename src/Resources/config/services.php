@@ -137,6 +137,7 @@ use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
 use MerchantQuoteAgentPlugin\Strategy\Strategy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignment;
 use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
 use MerchantQuoteAgentPlugin\Strategy\StrategyVersion;
 use MerchantQuoteAgentPlugin\Strategy\StrategyWriteGuard;
@@ -367,6 +368,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // reads the #[Entity] attributes and adds the `shopware.entity` tag.
     $services->set(Strategy::class);
     $services->set(StrategyVersion::class);
+    $services->set(StrategyAssignment::class);
 
     // Resolves a strategy id to its newest version's prompt (Task 6). The
     // repositories are DAL-generated from the #[Entity] attributes above, so
