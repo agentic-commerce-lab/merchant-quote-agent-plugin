@@ -4,12 +4,23 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Policy\Data;
 
+/**
+ * The asks that are not about price: delivery and payment terms.
+ *
+ * A volume ask ("better price if we take 10?") deliberately does NOT live
+ * here. It used to, as `BundleAsk::$requested`, and that put a pure price ask
+ * on the escalating side of AskGate: quote 1053 asked "Can we get some better
+ * price, as we take 10?", the extraction set `bestPriceRequested` AND the
+ * bundle flag, and the flag escalated a round the pricing policy could answer
+ * on its own. Volume/bulk/tiered asks are `price.bestPriceRequested` now, and
+ * the extract prompt routes them there; a buyer asking for a free EXTRA
+ * product is `structural.addProducts`, which escalates on its own merits.
+ */
 final readonly class NegotiationAsks
 {
     public function __construct(
         public ?DeliveryAsk $delivery = null,
         public ?PaymentAsk $payment = null,
-        public ?BundleAsk $bundle = null,
     ) {}
 
     /**
@@ -28,7 +39,7 @@ final readonly class NegotiationAsks
     {
         $stated = static fn(mixed $v): bool => $v !== null && $v !== false;
 
-        foreach ([$this->delivery, $this->payment, $this->bundle] as $ask) {
+        foreach ([$this->delivery, $this->payment] as $ask) {
             if ($ask !== null && array_filter(get_object_vars($ask), $stated) !== []) {
                 return true;
             }

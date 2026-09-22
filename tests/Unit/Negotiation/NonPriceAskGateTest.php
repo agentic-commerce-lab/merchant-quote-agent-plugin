@@ -54,7 +54,7 @@ final class NonPriceAskGateTest extends TestCase
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":5},"negotiation":{"delivery":{"freeShipping":false,'
                 . '"expedited":false,"requestedLeadTimeDays":null},"payment":{"requestedTerm":null,'
-                . '"requestedNetDays":null,"requestedDepositPercent":null},"bundle":{"requested":false}}}',
+                . '"requestedNetDays":null,"requestedDepositPercent":null}}}',
             '{"action":"offer","message":"5% it is.","terms":{"discountPercent":5}}',
             'Five percent off.',
         ]);

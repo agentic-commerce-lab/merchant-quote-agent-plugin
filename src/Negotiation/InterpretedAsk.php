@@ -85,10 +85,13 @@ final readonly class InterpretedAsk
     }
 
     /**
-     * True when the buyer asked for something other than a price — shipping,
-     * payment terms, a bundle. Nothing carries these past the interpreter:
+     * True when the buyer asked for something other than a price — shipping or
+     * payment terms. Nothing carries these past the interpreter:
      * NegotiationPipeline composes only `price` into the proposal, and the
      * gateway has no way to write a delivery or payment term onto a quote.
+     *
+     * A volume ask is NOT one of these; see NegotiationAsks on why it stopped
+     * being one.
      */
     public function hasNonPriceAsk(): bool
     {
