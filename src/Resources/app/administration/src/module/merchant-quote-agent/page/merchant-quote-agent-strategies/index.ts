@@ -51,6 +51,14 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             nameModalIntent: 'create',
             pendingArchive: null,
             error: null,
+            // Which tab is showing, kept in sync by the template's
+            // @new-item-active handler on <sw-tabs> (that component owns its
+            // own active-tab state internally via default-item; this mirrors
+            // it for anything that needs to read which tab is current).
+            // 'library' was the whole page before the assignment ladder
+            // existed, so it stays the default.
+            activeTab: 'library',
+            assignments: [],
         };
     },
 
@@ -65,6 +73,10 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
 
         versionRepository() {
             return this.repositoryFactory.create('merchant_quote_agent_strategy_version');
+        },
+
+        assignmentRepository() {
+            return this.repositoryFactory.create('merchant_quote_agent_strategy_assignment');
         },
 
         selectedIsBuiltIn() {
@@ -95,6 +107,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
 
     created() {
         this.load();
+        this.loadAssignments();
     },
 
     methods: {
@@ -135,6 +148,23 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 this.error = this.messageFor(error);
             } finally {
                 this.isLoading = false;
+            }
+        },
+
+        /**
+         * Unlike strategies, assignment rows carry no archival flag -- the
+         * design deliberately gives them none, since no decision references
+         * one -- so this reads every row rather than filtering one out.
+         */
+        async loadAssignments() {
+            try {
+                const criteria = new Shopware.Data.Criteria(1, 100);
+
+                const result = await this.assignmentRepository.search(criteria, Shopware.Context.api);
+
+                this.assignments = [...result];
+            } catch (error) {
+                this.error = this.messageFor(error);
             }
         },
 

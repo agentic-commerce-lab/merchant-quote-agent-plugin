@@ -261,6 +261,12 @@
                 }
             }
         },
+        "assignment": {
+            "tabLibrary": "Bibliothek",
+            "tabAssignments": "Zuordnungen",
+            "cardTitle": "Strategiezuordnungen",
+            "intro": "Diese Zeilen legen fest, welche Strategie ein Angebot erhält: Zuerst wird ein fest zugeordneter Kunde geprüft, dann eine passende Regel, dann ein gewichteter Split — in dieser Reihenfolge, bevor die Standardstrategie des Verkaufskanals greift."
+        },
         "disposition": {
             "needsReview": "Prüfung nötig",
             "answered": "Beantwortet",

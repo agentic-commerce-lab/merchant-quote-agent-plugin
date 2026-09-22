@@ -25,6 +25,11 @@ export const privileges = {
             //
             // The assignment ladder's rows, which the strategies page reads to
             // show which customers and rules point at each strategy.
+            //
+            // `rule:read` because the rules grid reads rule names and
+            // priorities to display beside each assignment row. Without it
+            // that read 403s and the grid cannot show which rule an
+            // assignment names.
             privileges: [
                 'merchant_quote_agent_decision:read',
                 'quote:read',
@@ -33,6 +38,7 @@ export const privileges = {
                 'merchant_quote_agent_strategy:read',
                 'merchant_quote_agent_strategy_version:read',
                 'merchant_quote_agent_strategy_assignment:read',
+                'rule:read',
             ],
             dependencies: [],
         },
@@ -40,15 +46,25 @@ export const privileges = {
             privileges: ['merchant_quote_agent_decision:delete'],
             dependencies: ['merchant_quote_agent.viewer'],
         },
-        // No delete on either entity, deliberately: removing a strategy is
-        // archival (an update), because a decision must keep resolving the
-        // version it used. Version rows are append-only, so create but never
-        // update -- StrategyWriteGuard enforces both server-side.
+        // No delete on the strategy or version entities, deliberately:
+        // removing a strategy is archival (an update), because a decision
+        // must keep resolving the version it used. Version rows are
+        // append-only, so create but never update -- StrategyWriteGuard
+        // enforces both server-side.
+        //
+        // Assignments are different, and genuinely get `delete`: no decision
+        // record references an assignment row the way it references a
+        // strategy version, so removing a pin or a split arm destroys no
+        // history. This is not an oversight left over from the line above --
+        // an assignment is disposable in a way a strategy is not.
         editor: {
             privileges: [
                 'merchant_quote_agent_strategy:create',
                 'merchant_quote_agent_strategy:update',
                 'merchant_quote_agent_strategy_version:create',
+                'merchant_quote_agent_strategy_assignment:create',
+                'merchant_quote_agent_strategy_assignment:update',
+                'merchant_quote_agent_strategy_assignment:delete',
             ],
             dependencies: ['merchant_quote_agent.viewer'],
         },
