@@ -139,6 +139,7 @@ use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
 use MerchantQuoteAgentPlugin\Strategy\Strategy;
 use MerchantQuoteAgentPlugin\Strategy\StrategyAssignment;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentResolver;
 use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
 use MerchantQuoteAgentPlugin\Strategy\StrategyVersion;
 use MerchantQuoteAgentPlugin\Strategy\StrategyWriteGuard;
@@ -643,6 +644,13 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service(CommercialAvailability::CONTEXT_RESTORER)->ignoreOnInvalid(),
         service(CommercialAvailability::QUOTE_TO_CART_CONVERTER)->ignoreOnInvalid(),
         service('quote.repository'),
+    ]);
+    $services->set(StrategyAssignmentResolver::class)->args([
+        service('merchant_quote_agent_strategy_assignment.repository'),
+        service('rule.repository'),
+        service(StrategyResolver::class),
+        service(QuoteRuleScopeFactory::class),
+        service('logger'),
     ]);
 
     // The guard sits in front of the commercial adder: QuoteManipulation
