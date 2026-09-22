@@ -27,6 +27,15 @@ use Shopware\Core\Framework\Migration\MigrationStep;
  * offers no hook to refuse from; the choice is a cascade or a row that
  * silently never matches again.
  *
+ * The CHECK says nothing about `rule_id`, which is not an oversight: MySQL
+ * 8.0.16+ refuses (SQLSTATE 3823) any CHECK naming a column that carries a
+ * foreign key referential action, and `rule_id` carries the cascade above. The
+ * cascade wins, because losing it means core's rule builder erroring out on a
+ * delete the merchant is entitled to make. What the CHECK can no longer forbid
+ * is a `kind = 'rule'` row with a NULL `rule_id`; such a row is inert -- the
+ * resolver skips rows without a rule id, exactly as it skips a pin whose
+ * customer is gone.
+ *
  * `sales_channel_id` also cascades: deleting a sales channel should remove the
  * assignment rows scoped to it, because the alternative is configuration that
  * is unreachable in the admin -- there is no channel left to edit it from --
@@ -68,9 +77,9 @@ class Migration1789600000CreateStrategyAssignment extends MigrationStep
                     CONSTRAINT `fk.mqasa.sales_channel_id` FOREIGN KEY (`sales_channel_id`)
                         REFERENCES `sales_channel` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
                     CONSTRAINT `ck.mqasa.kind` CHECK (
-                        (`kind` = 'pin'      AND `customer_id` IS NOT NULL AND `rule_id` IS NULL AND `weight` IS NULL)
-                     OR (`kind` = 'rule'     AND `rule_id`     IS NOT NULL AND `customer_id` IS NULL AND `weight` IS NULL)
-                     OR (`kind` = 'split'    AND `weight`      IS NOT NULL AND `customer_id` IS NULL AND `rule_id` IS NULL)
+                        (`kind` = 'pin'      AND `customer_id` IS NOT NULL AND `weight` IS NULL)
+                     OR (`kind` = 'rule'     AND `customer_id` IS NULL     AND `weight` IS NULL)
+                     OR (`kind` = 'split'    AND `customer_id` IS NULL     AND `weight` IS NOT NULL)
                     )
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             SQL);
