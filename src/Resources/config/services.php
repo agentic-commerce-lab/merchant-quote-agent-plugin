@@ -644,6 +644,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service(CommercialAvailability::CONTEXT_RESTORER)->ignoreOnInvalid(),
         service(CommercialAvailability::QUOTE_TO_CART_CONVERTER)->ignoreOnInvalid(),
         service('quote.repository'),
+        service(CommercialCapabilities::class),
     ]);
     $services->set(StrategyAssignmentResolver::class)->args([
         service('merchant_quote_agent_strategy_assignment.repository'),

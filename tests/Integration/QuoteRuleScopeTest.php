@@ -110,6 +110,36 @@ final class QuoteRuleScopeTest extends IntegrationTestCase
     }
 
     /**
+     * Guards the delivery half of the same claim `testAQuoteBuildsACartRuleScopeCarryingItsOwnLineItems()`
+     * makes for line items. Before `deliveries.shippingMethod` and
+     * `deliveries.positions.quoteLineItem` were loaded, neither association
+     * autoloaded, `QuoteDeliveryTransformer::transformToDeliveries()` drops
+     * any delivery whose `getShippingMethod()` or `getPositions()` is null,
+     * and every delivery on a real quote fell into that gap -- so the cart
+     * always had zero deliveries and every delivery-derived condition
+     * (`CartShippingCostRule`, `CartDeliveryTaxRule`, ...) matched or missed
+     * however "no deliveries" happens to read, silently, with no exception to
+     * point at the cause. This only proves the collection is non-empty, not
+     * any particular condition's outcome -- the fixture's shipping cost is
+     * not asserted anywhere else in this file, so pinning a `CartShippingCostRule`
+     * threshold here would be a guess this test cannot verify against a real
+     * shop.
+     */
+    public function testAQuoteBuildsACartRuleScopeCarryingItsOwnDeliveries(): void
+    {
+        $context = Context::createDefaultContext();
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), $context);
+        $scope = $this->scopeFor($quoteId, $context);
+
+        self::assertGreaterThan(
+            0,
+            $scope->getCart()->getDeliveries()->count(),
+            'The cart QuoteRuleScopeFactory built has no deliveries at all, so every delivery-derived '
+            . 'rule condition would evaluate against an empty collection instead of the quote\'s real one.',
+        );
+    }
+
+    /**
      * The load-bearing assertion for the whole plan: a real core condition,
      * `GoodsPriceRule`, evaluated against the scope this factory built.
      *
