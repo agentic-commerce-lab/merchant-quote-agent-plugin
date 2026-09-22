@@ -54,12 +54,11 @@ use Shopware\Core\Framework\Rule\Rule;
  *
  * @mago-expect lint:cyclomatic-complexity
  * @mago-expect lint:kan-defect
- * Both rules aggregate per class against a threshold of 10. Each rung
- * re-filters and re-sorts its own rows in PHP rather than trusting that a
- * Criteria was applied exactly as asked -- a wrong winner on any rung is a
- * wrong negotiating posture for a real quote -- and that one guard clause per
- * invariant, repeated across three independent rungs, is what pushes the
- * class over the threshold.
+ * Both rules aggregate per class against a threshold of 10. Four independent
+ * rungs, each with its own guard clauses, plus the rule rung's own
+ * try/catch around an external boundary (QuoteRuleScopeFactory), add up to
+ * more branches than any one of them has alone. No method here is
+ * individually complex; the count is the sum across the ladder.
  */
 class StrategyAssignmentResolver
 {
@@ -103,15 +102,13 @@ class StrategyAssignmentResolver
      * MySQL treats NULLs as distinct in a unique index, so two GLOBAL pins for
      * one customer are accepted by the schema (see the migration's own note on
      * this). Sorting a non-null sales channel first makes the channel-specific
-     * pin win; the earliest `createdAt` breaks the remaining tie -- two GLOBAL
-     * pins, or two pins for the same channel -- deterministically rather than
-     * by whatever order the repository happens to return them in.
-     *
-     * The Criteria filters are also re-checked in PHP against every row the
-     * repository hands back, rather than trusting `->first()` on a criteria
-     * the repository claims to have applied: this is the customer's pin, a
-     * wrong one is a wrong negotiating posture on the merchant's behalf, and
-     * that is worth one extra loop over what is at most a handful of rows.
+     * pin win -- DESCENDING on a nullable column puts non-nulls first in
+     * MySQL -- and the earliest `createdAt` breaks the remaining tie
+     * deterministically rather than by whatever order the repository happens
+     * to return rows in. Both are expressed in the Criteria, not re-derived
+     * in PHP: the query is the one source of truth for what "wins" means
+     * here, and CriteriaFilter (see StrategyAssignmentResolverTest) is what
+     * lets a unit test prove that without a real database.
      */
     private function pinned(string $customerId, string $salesChannelId, Context $context): ?string
     {
@@ -121,45 +118,15 @@ class StrategyAssignmentResolver
 
         $criteria = $this->scoped(StrategyAssignmentSource::Pin->value, $salesChannelId);
         $criteria->addFilter(new EqualsFilter('customerId', $customerId));
+        $criteria->addSorting(new FieldSorting('salesChannelId', FieldSorting::DESCENDING));
+        $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::ASCENDING));
+        $criteria->setLimit(1);
 
-        /** @var list<StrategyAssignment> $candidates */
-        $candidates = [];
+        $row = $this->assignments->search($criteria, $context)->first();
 
-        foreach ($this->assignments->search($criteria, $context)->getElements() as $row) {
-            if (
-                $row instanceof StrategyAssignment
-                && $row->kind === StrategyAssignmentSource::Pin->value
-                && $row->customerId === $customerId
-                && ($row->salesChannelId === null || $row->salesChannelId === $salesChannelId)
-            ) {
-                $candidates[] = $row;
-            }
-        }
-
-        if ($candidates === []) {
-            return null;
-        }
-
-        usort($candidates, static function (StrategyAssignment $a, StrategyAssignment $b): int {
-            $byChannel = ($a->salesChannelId === null ? 1 : 0) <=> ($b->salesChannelId === null ? 1 : 0);
-
-            if ($byChannel !== 0) {
-                return $byChannel;
-            }
-
-            return ($a->getCreatedAt()?->getTimestamp() ?? 0) <=> ($b->getCreatedAt()?->getTimestamp() ?? 0);
-        });
-
-        return $candidates[0]->strategyId;
+        return $row instanceof StrategyAssignment ? $row->strategyId : null;
     }
 
-    /**
-     * Rows are re-filtered by kind in PHP for the same reason as `pinned()`,
-     * and the matching rules are re-sorted by priority in PHP rather than
-     * trusting the order the repository returns them in: a wrong winner here
-     * is a wrong negotiating posture for every quote a matching customer
-     * raises, not just this one.
-     */
     private function ruled(string $quoteId, string $salesChannelId, Context $context): ?string
     {
         $rows = $this->assignments
@@ -170,12 +137,7 @@ class StrategyAssignmentResolver
         $byRule = [];
 
         foreach ($rows as $row) {
-            if (
-                $row instanceof StrategyAssignment
-                && $row->kind === StrategyAssignmentSource::Rule->value
-                && $row->ruleId !== null
-                && ($row->salesChannelId === null || $row->salesChannelId === $salesChannelId)
-            ) {
+            if ($row instanceof StrategyAssignment && $row->ruleId !== null) {
                 $byRule[$row->ruleId] = $row->strategyId;
             }
         }
@@ -200,18 +162,14 @@ class StrategyAssignmentResolver
         $criteria = new Criteria(array_keys($byRule));
         $criteria->addSorting(new FieldSorting('priority', FieldSorting::DESCENDING));
 
-        /** @var list<RuleEntity> $rules */
-        $rules = [];
-
         foreach ($this->rules->search($criteria, $context)->getElements() as $rule) {
-            if ($rule instanceof RuleEntity) {
-                $rules[] = $rule;
+            if (!$rule instanceof RuleEntity) {
+                continue;
             }
-        }
 
-        usort($rules, static fn(RuleEntity $a, RuleEntity $b): int => $b->getPriority() <=> $a->getPriority());
-
-        foreach ($rules as $rule) {
+            // getPayload(): Rule|string|null -- a serialized-but-not-yet-
+            // hydrated payload is a real possibility in core's own type, not
+            // a row this ladder needs to filter out itself.
             $payload = $rule->getPayload();
 
             if ($payload instanceof Rule && $payload->match($scope) === true) {
@@ -241,13 +199,11 @@ class StrategyAssignmentResolver
         $total = 0;
 
         foreach ($this->assignments->search($criteria, $context)->getElements() as $row) {
-            if (
-                $row instanceof StrategyAssignment
-                && $row->kind === StrategyAssignmentSource::Split->value
-                && ($row->salesChannelId === null || $row->salesChannelId === $salesChannelId)
-                && $row->weight !== null
-                && $row->weight > 0
-            ) {
+            // weight > 0 is domain logic, not a re-filter of what the
+            // Criteria already scoped: a configured zero-weight arm is a
+            // live row (kind, channel and all) that this rung must still
+            // never pick, per the brief.
+            if ($row instanceof StrategyAssignment && $row->weight !== null && $row->weight > 0) {
                 $arms[] = $row;
                 $total += $row->weight;
             }
@@ -257,9 +213,17 @@ class StrategyAssignmentResolver
             return null;
         }
 
-        usort($arms, static fn(StrategyAssignment $a, StrategyAssignment $b): int => $a->strategyId <=> $b->strategyId);
-
-        $target = (int) ((SplitBucket::of($customerId, $salesChannelId) * $total) / 10000);
+        /**
+         * @mago-expect analysis:unhandled-thrown-type
+         * @mago-expect analysis:unhandled-thrown-type
+         * intdiv() can throw DivisionByZeroError for a zero divisor or
+         * ArithmeticError for PHP_INT_MIN / -1; neither is reachable here.
+         * The divisor is the literal 10000. The dividend is
+         * SplitBucket::of()'s contractually-bounded [0, 9999] result times
+         * $total (guarded non-zero just above), which cannot approach
+         * PHP_INT_MIN on any platform this plugin runs on.
+         */
+        $target = intdiv(SplitBucket::of($customerId, $salesChannelId) * $total, 10000);
         $seen = 0;
         $last = null;
 

@@ -284,22 +284,34 @@ final class StrategyAssignmentResolverTest extends TestCase
         return $rule;
     }
 
-    /** @param list<object> $entities */
+    /**
+     * A repository double that actually applies the Criteria it is handed --
+     * see CriteriaFilter's docblock for why the codebase's usual
+     * ignore-everything mock would let a wrong `scoped()` or a wrong
+     * `FieldSorting` direction pass unnoticed.
+     *
+     * @param list<object> $entities
+     */
     private function repository(array $entities, string $definition): EntityRepository
     {
         $repository = $this->createMock(EntityRepository::class);
         $repository
             ->method('search')
-            ->willReturnCallback(
-                static fn(Criteria $criteria, Context $context): EntitySearchResult => new EntitySearchResult(
+            ->willReturnCallback(static function (Criteria $criteria, Context $context) use (
+                $entities,
+                $definition,
+            ): EntitySearchResult {
+                $matched = CriteriaFilter::apply($entities, $criteria);
+
+                return new EntitySearchResult(
                     $definition,
-                    \count($entities),
-                    $definition === 'rule' ? new RuleCollection($entities) : new EntityCollection($entities),
+                    \count($matched),
+                    $definition === 'rule' ? new RuleCollection($matched) : new EntityCollection($matched),
                     null,
                     $criteria,
                     $context,
-                ),
-            );
+                );
+            });
 
         return $repository;
     }
