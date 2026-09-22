@@ -39,6 +39,12 @@ final readonly class AskInterpreter
             return null;
         }
 
+        // Before the model call, not after: an extraction that fails, and one
+        // that correctly finds nothing, must both leave the buyer's question
+        // on the record. Since #177 the second of those ends the pass in
+        // silence, and this is what makes that decision reviewable.
+        $this->recorder->recordBuyerAsk($conversation->newestBuyerText());
+
         $access = $settings->llm;
 
         $prompt = $this->prompts->extract($settings);

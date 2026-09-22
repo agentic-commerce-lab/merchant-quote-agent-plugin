@@ -100,7 +100,7 @@ final class AnonymizedDecision
     public const RESHAPED = ['interpretedAsks', 'historyReads', 'errorChain'];
 
     /** Exported only under --include-comments. @var list<string> */
-    public const FREE_TEXT = ['rawProposal', 'replyToBuyer', 'violations'];
+    public const FREE_TEXT = ['rawProposal', 'buyerAsk', 'replyToBuyer', 'violations'];
 
     /** A document number a human reads, printed on the buyer's quote. Nothing cross-shop needs it. @var list<string> */
     public const DROPPED = ['quoteNumber'];
@@ -159,6 +159,7 @@ final class AnonymizedDecision
         return [
             ...$row,
             'rawProposal' => $record->rawProposal,
+            'buyerAsk' => $record->buyerAsk,
             'replyToBuyer' => $record->replyToBuyer,
             'violations' => $record->violations,
         ];
@@ -179,7 +180,7 @@ final class AnonymizedDecision
      *
      * @return array<string, mixed>|null
      */
-    private static function asks(?array $asks, bool $freeText): ?array
+    public static function asks(?array $asks, bool $freeText): ?array
     {
         if ($asks === null || $freeText) {
             return $asks;
@@ -198,7 +199,7 @@ final class AnonymizedDecision
      *
      * @return array<string, mixed>|null
      */
-    private static function history(?array $reads): ?array
+    public static function history(?array $reads): ?array
     {
         if ($reads === null) {
             return null;
@@ -222,7 +223,7 @@ final class AnonymizedDecision
      *
      * @return list<array<string, string>>|null
      */
-    private static function errors(?array $chain, bool $freeText): ?array
+    public static function errors(?array $chain, bool $freeText): ?array
     {
         if ($chain === null || $freeText) {
             return $chain;

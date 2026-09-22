@@ -127,6 +127,26 @@ final class DecisionRecorder
         HistoryRecord::roundTo($this->draft, $request, $result);
     }
 
+    /**
+     * The buyer's comment this pass is about to read, recorded BEFORE the
+     * extract call so a model that fails, or one that finds nothing, still
+     * leaves the question behind.
+     *
+     * That ordering is the point of the column. Since #177 an extraction empty
+     * in every field ends the pass as `NothingToDo`, and the servicing
+     * fingerprint is stamped whatever the outcome — so a mis-read question is
+     * answered with silence, and `interpreted_asks` records the emptiness that
+     * caused it, not the words that were passed over.
+     */
+    public function recordBuyerAsk(string $comment): void
+    {
+        if ($this->draft === null) {
+            return;
+        }
+
+        $this->draft->buyerAsk = $comment;
+    }
+
     public function recordAsk(InterpretedAsk $ask): void
     {
         if ($this->draft === null) {

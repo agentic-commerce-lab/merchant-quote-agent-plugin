@@ -99,6 +99,9 @@ final class DecisionDraft
     /** @var list<array<string, string>>|null */
     public ?array $errorChain = null;
 
+    /** The buyer's own words, as this pass read them — see DecisionRecorder::recordBuyerAsk(). */
+    public ?string $buyerAsk = null;
+
     /** The agent's message TO the buyer — see DecisionRecorder::recordReply(). */
     public ?string $replyToBuyer = null;
 

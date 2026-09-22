@@ -675,14 +675,38 @@ export function terminalExplanation(vm: any, state: string | null): string | nul
  * and `terminalAt` are stamped together, but a row carrying only the state
  * still describes the end of the negotiation, not its beginning.
  */
+/**
+ * The buyer's asks as the PASSES recorded them, for a page that cannot read
+ * the quote's own comments: SwagCommercial absent or unlicensed, a role
+ * without `quote_comment:read`, or a quote that no longer exists.
+ *
+ * A fallback, never an addition — the quote is the better source when it can
+ * be read, and merging both would print every ask twice. Silent when nothing
+ * was recorded, which is also what a pass answering a structured per-line ask
+ * leaves behind: no comment was read, so there is nothing to show.
+ */
+function recordedAsks(runs: any[]): any[] {
+    return runs
+        .filter((run) => typeof run.raw?.buyerAsk === 'string' && run.raw.buyerAsk.trim() !== '')
+        .map((run) => ({
+            id: `ask-${run.id}`,
+            text: run.raw.buyerAsk.trim(),
+            fromAgent: false,
+            fromMerchant: false,
+            createdAt: run.raw.createdAt ?? null,
+            lineItemId: null,
+        }));
+}
+
 export function mergeStream(
     messages: any[],
     runs: any[],
     terminal: { state: string | null; at: string | null } | null,
 ): any[] {
+    const heard = messages.filter((message) => !message.fromAgent);
+
     const entries: any[] = [
-        ...messages
-            .filter((message) => !message.fromAgent)
+        ...(heard.length > 0 ? heard : recordedAsks(runs))
             .map((message) => ({ kind: 'message', key: message.id, at: message.createdAt, variant: 'neutral', message })),
         ...runs.map((run) => ({ kind: 'pass', key: run.id, at: run.raw.createdAt, variant: run.outcomeVariant, run })),
     ];

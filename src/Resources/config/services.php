@@ -7,6 +7,8 @@ use MerchantQuoteAgentPlugin\Assistant\AssistantAskStamp;
 use MerchantQuoteAgentPlugin\Assistant\AssistantAvailability;
 use MerchantQuoteAgentPlugin\Assistant\QuoteStatusToolFactory;
 use MerchantQuoteAgentPlugin\Assistant\RequestQuoteToolFactory;
+use MerchantQuoteAgentPlugin\Audit\DecisionEraser;
+use MerchantQuoteAgentPlugin\Audit\DecisionEraserInterface;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
@@ -53,6 +55,7 @@ use MerchantQuoteAgentPlugin\Bridge\SwagCommercialBuyerQuoteGateway;
 use MerchantQuoteAgentPlugin\Command\AgentGrantsCommand;
 use MerchantQuoteAgentPlugin\Command\AllowAnyAgentCommand;
 use MerchantQuoteAgentPlugin\Command\DecisionExportCommand;
+use MerchantQuoteAgentPlugin\Command\DecisionForgetCommand;
 use MerchantQuoteAgentPlugin\Config\BuyerNotificationPreference;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
@@ -410,6 +413,15 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     ]);
     $services->set(DecisionExportCommand::class)->tag('console.command');
     $services->set(DecisionExportController::class)->tag('controller.service_arguments');
+
+    // The other direction: one buyer's words out of the same table, for an
+    // erasure request. Also never scheduled and never automatic -- nothing
+    // subscribes to customer deletion, because keeping a decision explainable
+    // and answering a person's request are two different decisions and only
+    // the merchant can make the second one.
+    $services->set(DecisionEraser::class)->args([service('merchant_quote_agent_decision.repository')]);
+    $services->alias(DecisionEraserInterface::class, DecisionEraser::class);
+    $services->set(DecisionForgetCommand::class)->tag('console.command');
 
     // The outcome half of the audit trail (#33): a subscriber on the core
     // quote state machine stamps terminal_state / terminal_at onto the newest

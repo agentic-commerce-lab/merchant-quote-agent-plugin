@@ -454,6 +454,48 @@ assert.ok(!stream.some((entry) => entry.key === 'c2'), 'The agent is not quoted 
 // A quote still in flight has no closing entry.
 assert.deepEqual(mergeStream([], [], null), []);
 
+// No readable quote comments -- Commercial absent, or a role without
+// `quote_comment:read` -- falls back to what the passes recorded, so a
+// `nothing_to_do` row still says WHICH question the agent passed over (#177).
+const fallback = mergeStream(
+    [],
+    [{
+        id: 'r1',
+        outcomeVariant: 'neutral',
+        raw: { createdAt: '2026-09-18T09:58:51+00:00', buyerAsk: 'Nice, thanks!' },
+    }],
+    null,
+);
+assert.deepEqual(fallback.map((entry) => entry.kind), ['message', 'pass']);
+assert.equal(fallback[0].message.text, 'Nice, thanks!');
+assert.equal(fallback[0].message.fromAgent, false, 'A recorded ask is the buyer speaking.');
+
+// The quote wins whenever it can be read: merging both would print the same
+// ask twice, once off the quote and once off the record that consumed it.
+const both = mergeStream(
+    [{ id: 'c1', text: 'Nice, thanks!', fromAgent: false, createdAt: '2026-09-18T09:58:40+00:00' }],
+    [{
+        id: 'r1',
+        outcomeVariant: 'neutral',
+        raw: { createdAt: '2026-09-18T09:58:51+00:00', buyerAsk: 'Nice, thanks!' },
+    }],
+    null,
+);
+assert.deepEqual(both.map((entry) => entry.key), ['c1', 'r1']);
+
+// A pass that read no comment at all -- a structured per-line ask -- records
+// nothing, and an empty string is not an entry either.
+assert.deepEqual(
+    mergeStream([], [{ id: 'r1', outcomeVariant: 'neutral', raw: { createdAt: '2026-09-18T09:00:00+00:00' } }], null)
+        .map((entry) => entry.kind),
+    ['pass'],
+);
+assert.deepEqual(
+    mergeStream([], [{ id: 'r1', outcomeVariant: 'neutral', raw: { createdAt: '2026-09-18T09:00:00+00:00', buyerAsk: '  ' } }], null)
+        .map((entry) => entry.kind),
+    ['pass'],
+);
+
 // A terminal state stamped without a timestamp still closes the rail.
 assert.deepEqual(
     mergeStream([], [{ id: 'r1', outcomeVariant: 'neutral', raw: { createdAt: '2026-09-08T09:00:00+00:00' } }], {

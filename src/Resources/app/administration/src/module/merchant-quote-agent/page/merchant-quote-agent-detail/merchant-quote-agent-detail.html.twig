@@ -100,12 +100,12 @@
                card boundary. Merged, a buyer's ask is followed by the pass
                that answered it. See `mergeStream()`.
 
-               Buyer comments are read off the quote and never out of the
-               decision table: their own words are deliberately not recorded
-               there, only the interpreted ask. So when the quote cannot be
-               read — Commercial absent, or the role without
-               `quote_comment:read` — those entries are simply missing and the
-               passes still carry everything they recorded. #}
+               Buyer comments are read off the quote, which holds every
+               comment whether or not a pass ever read it. When the quote
+               cannot be read — Commercial absent, or the role without
+               `quote_comment:read` — the passes' own `buyerAsk` stands in, so
+               a pass that decided a comment held no ask still says which
+               comment that was (#177). Never both: see `recordedAsks()`. #}
             {% block merchant_quote_agent_detail_history %}
             <sw-card
                 v-if="record"

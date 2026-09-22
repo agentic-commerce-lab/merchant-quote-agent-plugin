@@ -368,15 +368,20 @@ link on purpose.
 and company names — the agent's record does not hold them to begin with. The
 quote number. The details behind a history lookup: which past quotes and orders
 the agent read, their numbers, products and prices, and which product it asked
-about. And the customer's own message, which is not stored in this record in the
-first place — only the agent's reading of it.
+about.
 
 **The comments are the part to decide about, and the two ways round differ.** The
-agent's replies, the model's raw answers, the reasons it gave for escalating, the
-questions it raised and the full text of any error messages are the most useful
-part of the data and the most sensitive: the model is shown the customer's
-message, so anything the customer typed — a signature, a phone number, an order
-reference — can come back in the model's own words.
+customer's own message, the agent's replies, the model's raw answers, the reasons
+it gave for escalating, the questions it raised and the full text of any error
+messages are the most useful part of the data and the most sensitive. The
+customer's message is stored word for word, and anything they typed — a
+signature, a phone number, an order reference — is in it, and can come back a
+second time in the model's own words.
+
+The agent keeps that message so that a decision can be explained afterwards:
+when it reads a comment and concludes there was nothing to answer, the record of
+what it read is the only way to check that it was right. Nothing shows it to
+anyone outside your shop unless you export it.
 
 The dashboard's **Export** includes them. To leave them out, use **Export without
 comments** in the menu beside that button.
@@ -384,6 +389,19 @@ comments** in the menu beside that button.
 The command leaves them out, and `--include-comments` puts them in. It prints
 which of the two you just produced on every run, so a redirected export is never
 ambiguous about what is in the file.
+
+**Reading one kind of decision.** `--outcome` narrows the file to a single kind,
+and the run says so on screen. The one worth looking at now and then is
+
+```
+bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 \
+    --outcome=nothing_to_do --include-comments
+```
+
+which gives you every pass that read a customer's message and decided it asked
+for nothing — a "thanks, that works" needs no answer, so most of them are
+correct. If any of them read like a real question, the agent's reading of
+comments is what needs adjusting, and that is worth telling us about.
 
 **One oddity you will see and should not report as a bug.** The `modelHost`
 field sometimes reads `unparsable-host`. That means the AI base URL in your
@@ -443,9 +461,12 @@ Stated plainly, so nothing here is a surprise later:
   a policy. A cap above 100, for instance, escalates everything and logs why.
 - It **never places an order** and never touches a quote that is already
   accepted, declined, expired or cancelled.
-- The customer's own words are **not** stored in the audit record. What they
-  asked for is stored in structured form; the conversation itself stays on the
-  quote where it always was.
+- The customer's own words **are** stored in the audit record, alongside what the
+  agent understood them to be asking for — so a decision can still be explained
+  when the agent read a message and concluded there was nothing to answer. They
+  stay in your shop unless you export them with `--include-comments`, and the
+  whole record is deleted if you uninstall the extension without keeping its
+  data.
 
 ---
 
