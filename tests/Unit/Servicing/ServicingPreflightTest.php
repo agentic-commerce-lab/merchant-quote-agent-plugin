@@ -7,9 +7,20 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Strategy\AssignedStrategy;
+use MerchantQuoteAgentPlugin\Strategy\ResolvedStrategy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
+use MerchantQuoteAgentPlugin\Strategy\UnknownStrategy;
 use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * @mago-expect lint:too-many-methods
+ * One class per collaborator ServicingPreflight::check() can refuse or defer
+ * to -- the terminal-state guard, the settings source, the escalator, the
+ * recorder, and now the assignment ladder -- so splitting it would scatter
+ * one method's worth of coverage per file rather than remove any of it.
+ */
 final class ServicingPreflightTest extends TestCase
 {
     public function testAnEnabledValidChannelReturnsItsSettingsAndWritesNothing(): void
@@ -153,5 +164,81 @@ final class ServicingPreflightTest extends TestCase
             ServicingHandlerFixture::lastCustomFieldWrite($gateway),
             'The escalation must stand even when its record does not.',
         );
+    }
+
+    public function testAnAssignedStrategyReplacesTheConfiguredOne(): void
+    {
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+        $settings = ServicingSettingsFixture::settings();
+
+        $result = ServicingSettingsFixture::preflight(
+            static fn(): ?QuoteAgentSettings => $settings,
+            assignments: ServicingSettingsFixture::assigning(
+                new AssignedStrategy(
+                    new ResolvedStrategy('cafecafecafecafecafecafecafecafe', 'hold firm'),
+                    StrategyAssignmentSource::Split,
+                ),
+            ),
+        )->check($gateway, QuoteSnapshotFixture::snapshot(), ServicingSettingsFixture::context());
+
+        self::assertNotNull($result);
+        self::assertSame('hold firm', $result->strategyPrompt);
+        self::assertSame('cafecafecafecafecafecafecafecafe', $result->strategyVersionId);
+        self::assertSame(StrategyAssignmentSource::Split, $result->strategyAssignmentSource);
+    }
+
+    public function testNoAssignmentLeavesTheConfiguredStrategyAlone(): void
+    {
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+        $settings = ServicingSettingsFixture::settings();
+
+        $result = ServicingSettingsFixture::preflight(static fn(): ?QuoteAgentSettings => $settings)->check(
+            $gateway,
+            QuoteSnapshotFixture::snapshot(),
+            ServicingSettingsFixture::context(),
+        );
+
+        self::assertSame($settings, $result, 'An empty ladder must not clone the settings at all.');
+    }
+
+    /**
+     * A dangling assignment is configuration the merchant made in our own UI,
+     * so it takes the path a dangling config key already takes. Negotiating
+     * with a posture nobody chose is the failure this refuses.
+     */
+    public function testADanglingAssignmentEscalatesLikeADanglingConfigKey(): void
+    {
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+
+        $result = ServicingSettingsFixture::preflight(
+            static fn(): ?QuoteAgentSettings => ServicingSettingsFixture::settings(),
+            assignments: ServicingSettingsFixture::assigning(static function (): never {
+                throw UnknownStrategy::archived('0123456789abcdef0123456789abcdef');
+            }),
+        )->check($gateway, QuoteSnapshotFixture::snapshot(), ServicingSettingsFixture::context());
+
+        self::assertNull($result);
+        self::assertSame(
+            [QuoteEscalator::MARKER_KEY => 'not_configured'],
+            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
+        );
+    }
+
+    /**
+     * The ladder runs AFTER the off-switch. A paused agent must not pay for a
+     * quote read, a context restore and a cart conversion.
+     */
+    public function testAPausedAgentNeverWalksTheLadder(): void
+    {
+        $gateway = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot()]);
+        $assignments = ServicingSettingsFixture::assigning(null);
+
+        $result = ServicingSettingsFixture::preflight(
+            static fn(): ?QuoteAgentSettings => null,
+            assignments: $assignments,
+        )->check($gateway, QuoteSnapshotFixture::snapshot(), ServicingSettingsFixture::context());
+
+        self::assertNull($result);
+        self::assertSame(0, $assignments->calls);
     }
 }
