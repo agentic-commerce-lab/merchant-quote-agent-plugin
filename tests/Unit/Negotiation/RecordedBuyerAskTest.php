@@ -8,7 +8,7 @@ use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The buyer's own words on the pass that read them.
+ * What a pass leaves behind when it answers a buyer with silence.
  *
  * #177 ends a pass whose extraction is empty in every field as `NothingToDo`,
  * and `ServiceQuoteHandler` stamps the servicing fingerprint whatever the
@@ -16,6 +16,10 @@ use PHPUnit\Framework\TestCase;
  * once. That trade-off was accepted on the condition that those rows can be
  * reviewed, and until this column existed the row held the ask only in
  * `interpreted_asks`, which is exactly null on them.
+ *
+ * Two pieces of evidence, for two different readers: the record explains one
+ * quote to someone already looking at it, and the log line is what makes the
+ * RATE of these visible to someone who is not.
  */
 final class RecordedBuyerAskTest extends TestCase
 {
@@ -44,6 +48,61 @@ final class RecordedBuyerAskTest extends TestCase
             $harness->writer->drafts[0]->interpretedAsks['price']['additionalDiscountPercent'] ?? null,
             'The extraction is empty on exactly these rows -- which is why the raw comment has to be here.',
         );
+    }
+
+    public function testAPassThatAnsweredACommentWithSilenceSaysSoInTheLog(): void
+    {
+        // The audit row explains one quote to someone already looking at it.
+        // Nothing counted how OFTEN the agent decides a comment holds no ask,
+        // and that count is the only early warning there is: an over-escalating
+        // agent is loud, a silent one is not, so an extract prompt that
+        // regresses (#22 changes the prompt by design) shows up as quotes
+        // quietly going unanswered and nothing else.
+        $harness = PipelineHarness::with(['{}']);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('Nice, thanks!', '2026-09-18 09:58:40'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        $context = $harness->logger->contextOf('Nothing to answer on this quote');
+        self::assertNotNull($context, 'The silent path must announce itself; nothing else does.');
+        self::assertTrue(
+            $context['commentRead'] ?? null,
+            'A human wrote something and the agent said nothing. That is the case worth alerting on, '
+            . 'and it has to be distinguishable from an ordinary duplicate trigger.',
+        );
+        self::assertArrayNotHasKey(
+            'comment',
+            $context,
+            'The buyer\'s words belong in the audit record, not in the shop\'s log files.',
+        );
+    }
+
+    public function testADuplicateTriggerIsTheSameLineWithTheFlagDown(): void
+    {
+        // Same message, `commentRead` false: no comment was read at all, so
+        // this is the re-trigger the fingerprint usually stops earlier, and it
+        // must not inflate the count that matters.
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% please', '2026-08-28 09:00:00'),
+            NegotiationFixture::agentComment('here is 5%', '2026-08-28 09:30:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertFalse($harness->logger->contextOf('Nothing to answer on this quote')['commentRead'] ?? null);
     }
 
     public function testAModelFailureStillCarriesTheQuestionItFailedOn(): void

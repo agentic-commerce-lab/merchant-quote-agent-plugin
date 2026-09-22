@@ -58,8 +58,16 @@ final class DecisionExportCommand extends Command
             'include-comments',
             null,
             InputOption::VALUE_NONE,
-            'Also export free text: the agent\'s replies, the model\'s raw answers and questions, escalation prose'
-            . ' and error messages. Withheld by default because a model can repeat whatever the buyer typed.',
+            'Also export free text: the buyer\'s own comments, the agent\'s replies, the model\'s raw answers and'
+            . ' questions, escalation prose and error messages. Withheld by default: these are the buyer\'s'
+            . ' words, verbatim or repeated back by a model.',
+        );
+        $this->addOption(
+            'outcome',
+            null,
+            InputOption::VALUE_REQUIRED,
+            'Only records with this outcome (e.g. nothing_to_do, escalated, offered, countered, clarified).'
+            . ' An unknown value exports nothing.',
         );
     }
 
@@ -102,7 +110,9 @@ final class DecisionExportCommand extends Command
         }
 
         $freeText = (bool) $input->getOption('include-comments');
-        $written = $this->write($io, $start, $end, $freeText);
+        // Cast rather than checked: Symfony hands back the string or null,
+        // and the stream reads an empty filter as no filter at all.
+        $written = $this->write($io, $start, $end, $freeText, (string) $input->getOption('outcome'));
 
         $this->report($io, $written, $freeText);
 
@@ -110,9 +120,14 @@ final class DecisionExportCommand extends Command
     }
 
     /** @throws \Random\RandomException */
-    private function write(SymfonyStyle $io, \DateTimeImmutable $from, \DateTimeImmutable $to, bool $freeText): int
-    {
-        $lines = $this->export->lines($from, $to, $freeText);
+    private function write(
+        SymfonyStyle $io,
+        \DateTimeImmutable $from,
+        \DateTimeImmutable $to,
+        bool $freeText,
+        string $outcome,
+    ): int {
+        $lines = $this->export->lines($from, $to, $freeText, null, $outcome);
         $written = 0;
 
         foreach ($lines as $line) {
@@ -130,6 +145,10 @@ final class DecisionExportCommand extends Command
     /** Notices go to stderr so a redirect of stdout captures only JSONL. */
     private function report(SymfonyStyle $io, int $written, bool $freeText): void
     {
+        // The notice that a filter applied comes back from the stream with the
+        // records, alongside the ones for records it could not encode: both
+        // describe the file that was just written, and neither is this
+        // method's to compose.
         $errors = $io->getErrorStyle();
         $errors->writeln(\sprintf(
             '%d record(s). Customer, quote, channel, revision and strategy ids are pseudonymized with this shop\'s'
@@ -139,10 +158,11 @@ final class DecisionExportCommand extends Command
 
         $errors->writeln(
             $freeText
-                ? 'Free text IS included (--include-comments): the agent\'s replies, the model\'s raw answers and'
-                . ' questions, escalation prose and error messages. These can repeat whatever the buyer typed.'
-                : 'Free text is excluded: the agent\'s replies, the model\'s raw answers and questions, escalation prose'
-                . ' and error messages. Pass --include-comments to include them.',
+                ? 'Free text IS included (--include-comments): the buyer\'s own comments, exactly as they were'
+                . ' written, the agent\'s replies, the model\'s raw answers and questions, escalation prose and'
+                . ' error messages.'
+                : 'Free text is excluded: the buyer\'s own comments, the agent\'s replies, the model\'s raw answers and'
+                . ' questions, escalation prose and error messages. Pass --include-comments to include them.',
         );
     }
 }

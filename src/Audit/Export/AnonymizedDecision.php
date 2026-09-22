@@ -180,7 +180,7 @@ final class AnonymizedDecision
      *
      * @return array<string, mixed>|null
      */
-    private static function asks(?array $asks, bool $freeText): ?array
+    public static function asks(?array $asks, bool $freeText): ?array
     {
         if ($asks === null || $freeText) {
             return $asks;
@@ -199,7 +199,7 @@ final class AnonymizedDecision
      *
      * @return array<string, mixed>|null
      */
-    private static function history(?array $reads): ?array
+    public static function history(?array $reads): ?array
     {
         if ($reads === null) {
             return null;
@@ -223,7 +223,7 @@ final class AnonymizedDecision
      *
      * @return list<array<string, string>>|null
      */
-    private static function errors(?array $chain, bool $freeText): ?array
+    public static function errors(?array $chain, bool $freeText): ?array
     {
         if ($chain === null || $freeText) {
             return $chain;

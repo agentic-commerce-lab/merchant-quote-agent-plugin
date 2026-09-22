@@ -9,6 +9,7 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Dbal\Common\RepositoryIterator;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\RangeFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
@@ -38,10 +39,13 @@ final readonly class DecisionExportStream
     /**
      * One JSONL line per record, in creation order.
      *
-     * The generator's RETURN value is the list of records it could not encode,
-     * which the console caller reports to stderr. Yielding those as lines would
-     * put prose into the JSONL stream, and swallowing them would let a record
-     * vanish from a file a merchant believes is complete.
+     * The generator's RETURN value is what the caller has to say about the
+     * file rather than about a record in it: the records it could not encode,
+     * and whether a filter narrowed what it holds. The console caller reports
+     * both to stderr. Yielding them as lines would put prose into the JSONL
+     * stream, and swallowing them would let a record vanish from a file a
+     * merchant believes is complete — or let a filtered file pass for a whole
+     * one.
      *
      * @return \Generator<int, string, null, list<string>>
      *
@@ -52,14 +56,20 @@ final readonly class DecisionExportStream
         \DateTimeImmutable $to,
         bool $freeText,
         ?Context $context = null,
+        string $outcome = '',
     ): \Generator {
         $pseudonym = ExportPseudonym::forShop($this->systemConfig);
         $iterator = new RepositoryIterator(
             $this->decisions,
             $context ?? Context::createDefaultContext(),
-            self::criteria($from, $to),
+            self::criteria($from, $to, $outcome),
         );
-        $skipped = [];
+        // A filtered file looks exactly like an unfiltered one, and a
+        // merchant who does not know a filter applied reads "0 records" as
+        // "the agent did nothing" rather than "no pass ended that way". Same
+        // stderr channel as the encoding notices below, and for the same
+        // reason: it describes the file, not a record in it.
+        $skipped = $outcome === '' ? [] : [\sprintf('Only records whose outcome is "%s" were exported.', $outcome)];
 
         while (($result = $iterator->fetch()) !== null) {
             foreach ($result->getEntities() as $record) {
@@ -96,13 +106,26 @@ final readonly class DecisionExportStream
         return $skipped;
     }
 
-    private static function criteria(\DateTimeImmutable $from, \DateTimeImmutable $to): Criteria
+    private static function criteria(\DateTimeImmutable $from, \DateTimeImmutable $to, string $outcome): Criteria
     {
         $criteria = new Criteria();
         $criteria->addFilter(new RangeFilter('createdAt', [
             RangeFilter::GTE => $from->format(\DateTimeInterface::ATOM),
             RangeFilter::LT => $to->format(\DateTimeInterface::ATOM),
         ]));
+
+        // One outcome at a time, because the question this answers is about
+        // one: #177's gate answers a comment it reads as empty with silence,
+        // and settling whether that is right means reading the
+        // `nothing_to_do` rows and their buyer comments — which is this
+        // export, filtered, and was a row-by-row hunt through every outcome
+        // before. Unvalidated on purpose: an unknown value returns nothing,
+        // which is a truthful answer, and a list of outcomes here would be a
+        // second copy of NegotiationOutcome to keep in step.
+        if ($outcome !== '') {
+            $criteria->addFilter(new EqualsFilter('outcome', $outcome));
+        }
+
         $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::ASCENDING));
         $criteria->setLimit(500);
 

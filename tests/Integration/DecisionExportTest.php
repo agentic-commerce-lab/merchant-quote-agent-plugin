@@ -40,10 +40,11 @@ use Symfony\Component\Console\Tester\CommandTester;
  * wide range would hand firstRow() a foreign record.
  *
  * @mago-expect lint:too-many-methods
- * Seven cases (the four Done-when guarantees above plus the two stderr-notice
- * cases Task 3 could not cover, plus the JSONL-stream sanity check) share four
- * small private helpers -- seed, export, runExport and firstRow -- rather
- * than duplicating fixture and command-invocation code across files.
+ * Nine cases (the four Done-when guarantees above, the two stderr-notice cases
+ * Task 3 could not cover, the JSONL-stream sanity check, and the two for the
+ * --outcome filter #177 needs to review its silent passes) share five small
+ * private helpers -- seed, seedSilentPass, export, runExport and firstRow --
+ * rather than duplicating fixture and command-invocation code across files.
  */
 final class DecisionExportTest extends IntegrationTestCase
 {
@@ -146,6 +147,77 @@ final class DecisionExportTest extends IntegrationTestCase
         self::assertStringContainsString('free text', strtolower($tester->getErrorOutput()));
     }
 
+    public function testTheOutcomeFilterNarrowsTheFileAndSaysSo(): void
+    {
+        // The review #177 asks for: read the passes that decided a customer's
+        // comment held no ask, and check they were all pleasantries. Before
+        // `--outcome` that meant exporting everything and grepping; before
+        // `buyer_ask` the comment was not in the file at all.
+        $this->seed(Uuid::randomHex());
+        $this->seedSilentPass();
+
+        $tester = $this->runExport(freeText: true, outcome: 'nothing_to_do');
+        $rows = array_map(static fn(string $line): array => json_decode(
+            $line,
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        ), array_filter(explode("\n", trim($tester->getDisplay()))));
+
+        self::assertNotSame([], $rows, 'Nothing was exported, so the filter below proves nothing.');
+
+        // Every row, not just the first, and no count: other agents run this
+        // suite against the same shop and seed this same day, so the honest
+        // assertion is that the `offered` row above cannot be among these.
+        foreach ($rows as $row) {
+            self::assertSame('nothing_to_do', $row['outcome']);
+        }
+
+        self::assertContains(
+            'Nice, thanks!',
+            array_column($rows, 'buyerAsk'),
+            'The comment the pass passed over is the point of reading these rows at all.',
+        );
+
+        // A filtered file is indistinguishable from an unfiltered one, so the
+        // run has to say which it produced -- the same reason the free-text
+        // notice is not optional.
+        self::assertStringContainsString('nothing_to_do', $tester->getErrorOutput());
+    }
+
+    public function testTheBuyerCommentStaysBehindWithoutIncludeComments(): void
+    {
+        $this->seedSilentPass();
+
+        $row = $this->firstRow($this->export(outcome: 'nothing_to_do'));
+
+        self::assertSame('nothing_to_do', $row['outcome']);
+        self::assertArrayNotHasKey(
+            'buyerAsk',
+            $row,
+            'The buyer\'s own words are free text: they leave only when a merchant asks for free text.',
+        );
+    }
+
+    /** A pass that read a comment, found no ask in it and answered with silence (#177). */
+    private function seedSilentPass(): void
+    {
+        $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
+        self::assertInstanceOf(EntityRepository::class, $repository);
+
+        $repository->create([[
+            'id' => Uuid::randomHex(),
+            'quoteId' => Uuid::randomHex(),
+            'customerId' => Uuid::randomHex(),
+            'salesChannelId' => Uuid::randomHex(),
+            'currencyIso' => 'EUR',
+            'triggerReason' => 'comment_written',
+            'attempt' => 0,
+            'outcome' => 'nothing_to_do',
+            'createdAt' => self::CREATED_AT,
+            'buyerAsk' => 'Nice, thanks!',
+        ]], Context::createDefaultContext());
+    }
+
     private function seed(string $customerId): void
     {
         $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
@@ -204,12 +276,12 @@ final class DecisionExportTest extends IntegrationTestCase
         );
     }
 
-    private function export(bool $freeText = false): string
+    private function export(bool $freeText = false, ?string $outcome = null): string
     {
-        return $this->runExport($freeText)->getDisplay();
+        return $this->runExport($freeText, $outcome)->getDisplay();
     }
 
-    private function runExport(bool $freeText = false): CommandTester
+    private function runExport(bool $freeText = false, ?string $outcome = null): CommandTester
     {
         // The container's own instance, not Application::find(): FrameworkBundle's
         // console Application is not a dependency of this plugin, and the
@@ -220,6 +292,10 @@ final class DecisionExportTest extends IntegrationTestCase
 
         if ($freeText) {
             $options['--include-comments'] = true;
+        }
+
+        if ($outcome !== null) {
+            $options['--outcome'] = $outcome;
         }
 
         $tester->execute($options, ['capture_stderr_separately' => true]);
