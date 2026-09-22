@@ -100,7 +100,7 @@ final class AnonymizedDecision
     public const RESHAPED = ['interpretedAsks', 'historyReads', 'errorChain'];
 
     /** Exported only under --include-comments. @var list<string> */
-    public const FREE_TEXT = ['rawProposal', 'replyToBuyer', 'violations'];
+    public const FREE_TEXT = ['rawProposal', 'buyerAsk', 'replyToBuyer', 'violations'];
 
     /** A document number a human reads, printed on the buyer's quote. Nothing cross-shop needs it. @var list<string> */
     public const DROPPED = ['quoteNumber'];
@@ -159,6 +159,7 @@ final class AnonymizedDecision
         return [
             ...$row,
             'rawProposal' => $record->rawProposal,
+            'buyerAsk' => $record->buyerAsk,
             'replyToBuyer' => $record->replyToBuyer,
             'violations' => $record->violations,
         ];

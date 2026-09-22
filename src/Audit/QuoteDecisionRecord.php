@@ -228,10 +228,34 @@ class QuoteDecisionRecord extends EntityStruct
     public ?array $errorChain = null;
 
     /**
+     * The buyer's own words: the one comment this pass read, stored verbatim
+     * and written by DecisionRecorder::recordBuyerAsk() alone.
+     *
+     * Null for a pass that read no comment — a structured-only per-line ask, a
+     * re-trigger with nothing new, a preflight refusal — which is the same
+     * "no extract call happened" the null `extract_prompt_hash` beside it says.
+     *
+     * Here because of #177's trade-off: an extraction empty in every field now
+     * ends the pass as `NothingToDo` and consumes the comment, so a model that
+     * mis-reads a real question as empty answers it with silence. That is
+     * acceptable only while a merchant can SEE what was passed over, and until
+     * this column existed a `nothing_to_do` row held the buyer's ask in
+     * `interpreted_asks` — which is precisely null on those rows — and nowhere
+     * else. Reviewing them meant opening each quote and matching by timestamp.
+     *
+     * Deliberately NOT named `buyer_comment`: that column existed until
+     * 2026-09-04 holding the agent's reply, and a name that once meant the
+     * opposite is not one to reuse on an audit table anyone reads historically.
+     */
+    #[Field(type: FieldType::TEXT, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?string $buyerAsk = null;
+
+    /**
      * The agent's message TO the buyer, written by
      * DecisionRecorder::recordReply() and by nothing else. Named `buyer_comment`
      * until 2026-09-04, which read as the buyer speaking; the buyer's own words
-     * are not recorded here at all, only their interpreted ask.
+     * are in `buyer_ask` above, and were nowhere at all until 2026-09-22.
      */
     #[Field(type: FieldType::TEXT, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]

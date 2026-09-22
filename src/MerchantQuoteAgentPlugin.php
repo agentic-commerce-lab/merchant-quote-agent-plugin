@@ -214,9 +214,9 @@ class MerchantQuoteAgentPlugin extends Plugin
      *
      * #59: only the three A2CN tables were dropped, leaving the decision table
      * behind. That table is the reason the issue is filed as a data-protection
-     * problem rather than untidiness -- it holds `buyer_comment`,
-     * `reply_to_buyer`, `interpreted_asks` and `customer_id`, all tied to an
-     * identifiable buyer. A merchant who ticks "remove all data permanently"
+     * problem rather than untidiness -- it holds `buyer_ask` (the buyer's own
+     * words, verbatim, since #177), `reply_to_buyer`, `interpreted_asks` and
+     * `customer_id`, all tied to an identifiable buyer. A merchant who ticks "remove all data permanently"
      * and silently keeps a negotiation history has been told something untrue,
      * and stops treating it as data they hold. Partial deletion is worse than
      * none, because it is invisible.

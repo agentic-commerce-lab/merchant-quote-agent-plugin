@@ -397,9 +397,9 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 escalationDetail: round.escalationReason && Array.isArray(round.violations) && round.violations.length > 0
                     ? round.violations.join('; ')
                     : null,
-                // The buyer's own words are not recorded anywhere; their ask
-                // survives only as `interpretedAsks`, rendered above. The
-                // conversation card reads them off the quote instead.
+                // The buyer's own words come off the QUOTE, which is the
+                // better source whenever it can be read; `buyerAsk` on the
+                // record is the fallback when it cannot. See recordedAsks().
                 reply: round.replyToBuyer || null,
                 technical: this.technical(round),
                 // null when the pass ran with no strategy configured -- a
