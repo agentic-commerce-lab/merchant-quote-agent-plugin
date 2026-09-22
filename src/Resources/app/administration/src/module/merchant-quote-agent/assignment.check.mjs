@@ -1,11 +1,25 @@
+/**
+ * Self-check for assignment.ts. No test runner: the project has no JS
+ * toolchain, and these helpers do not justify adding one.
+ *
+ *     node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/assignment.check.mjs
+ *
+ * ASSIGNMENT_SOURCES and ASSIGNMENT_KINDS are asserted against
+ * `src/Strategy/StrategyAssignmentSource.php` itself -- read here by regex,
+ * not against a third literal copy declared in this file. Pinning against a
+ * copy declared here would only prove assignment.ts agrees with this file,
+ * not with the PHP source of truth: if the PHP enum ever changed, a matching
+ * hardcoded copy here would still pass. Admin vocabulary drifting from a
+ * backend enum has shipped twice in this project.
+ */
+
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ASSIGNMENT_KINDS, ASSIGNMENT_SOURCES, isSavable, splitShares, spreadLabel } from './assignment.ts';
 
 /**
- * The vocabulary is read out of the PHP enum, not out of a copy declared here.
- * A copy would only prove assignment.ts agrees with this file. Admin
- * vocabulary drifting from a backend enum has shipped twice in this project.
+ * Extracts the PHP enum's case values, in declaration order, straight from
+ * the source file rather than from a second copy declared in this check.
  */
 function phpEnumValues() {
     const source = readFileSync(
@@ -37,6 +51,14 @@ assert.equal(isSavable({ kind: 'split', customerId: null, ruleId: null, weight: 
 assert.equal(isSavable({ kind: 'split', customerId: null, ruleId: null, weight: 1, strategyId: null, salesChannelId: null }), false,
     'every row must name a strategy');
 
+// An empty string is not hypothetical: an sw-entity-single-select that has
+// been opened and cleared hands back '' rather than null in some Shopware
+// builds, which is exactly the path that would create the invisible dead
+// binding isSavable exists to prevent.
+assert.equal(isSavable({ kind: 'pin', customerId: '', ruleId: null, weight: null, strategyId: 's', salesChannelId: null }), false);
+assert.equal(isSavable({ kind: 'rule', customerId: null, ruleId: '', weight: null, strategyId: 's', salesChannelId: null }), false);
+assert.equal(isSavable({ kind: 'split', customerId: null, ruleId: null, weight: 1, strategyId: '', salesChannelId: null }), false);
+
 // splitShares: percent of the arms' OWN sum, so 1 and 4 read as 20% and 80%.
 assert.deepEqual(splitShares([{ weight: 1 }, { weight: 4 }]).map((s) => s.percent), [20, 80]);
 assert.deepEqual(splitShares([{ weight: 20 }, { weight: 80 }]).map((s) => s.percent), [20, 80]);
@@ -46,6 +68,8 @@ assert.deepEqual(splitShares([]).map((s) => s.percent), []);
 assert.deepEqual(splitShares([{ weight: 0 }, { weight: 0 }]).map((s) => s.percent), [0, 0],
     'a zero total must not divide by zero');
 assert.deepEqual(splitShares([{ weight: null }, { weight: 4 }]).map((s) => s.percent), [0, 100]);
+assert.deepEqual(splitShares([{ weight: -5 }, { weight: 5 }]).map((s) => s.percent), [0, 100],
+    'a negative weight is floored to zero for display; unfloored it would make the total 0 and divide by zero');
 
 // spreadLabel: how a decision row's assignment sources are summarised.
 assert.deepEqual(spreadLabel(['rule', 'rule', 'config']), [{ source: 'rule', count: 2 }, { source: 'config', count: 1 }]);
