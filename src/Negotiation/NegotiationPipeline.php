@@ -272,7 +272,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             $snapshot,
             CappedAuthority::forRound($settings, $policySnapshot, $ask),
             $decision,
-            $ask?->promptHash,
+            $ask,
         );
     }
 }

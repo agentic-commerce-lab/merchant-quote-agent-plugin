@@ -40,13 +40,18 @@ final readonly class OfferRound
         QuoteSnapshot $snapshot,
         QuoteAgentSettings $settings,
         NegotiationDecision $decision,
-        ?string $extractHash,
+        ?InterpretedAsk $ask,
     ): NegotiationPass {
+        // The ask itself rather than only its prompt hash: the negotiate
+        // prompt needs the total the buyer named, in the net space it prices
+        // in. sw-ag.dev quote 1055 is why — see NegotiationContext.
+        $extractHash = $ask?->promptHash;
         $context = new NegotiationContext(
             $snapshot->identity->customerId,
             $snapshot->identity->quoteId,
             SnapshotAdapter::conversation($snapshot),
             QuoteBaseline::read($snapshot),
+            $ask?->interpretation->price->targetTotal,
         );
         if ($context->customerId === '') {
             $this->logger->warning('The quote carries no customer id; negotiating without account history.', [
