@@ -163,6 +163,61 @@ final class StrategyAssignmentResolverTest extends TestCase
         self::assertContains($assigned->strategy->versionId, [self::ARM_ONE, self::ARM_TWO]);
     }
 
+    /**
+     * SplitBucket::of(CUSTOMER, CHANNEL) is 939, computed from the class's own
+     * constants (not searched for). ARM_ONE gets weight 939 and ARM_TWO gets
+     * 9061, so the two weights total 10000 and `$target =
+     * intdiv(939 * 10000, 10000) = 939`. Arms are sorted by strategyId
+     * ascending, and ARM_ONE's id ('...cccc') sorts before ARM_TWO's
+     * ('...dddd'), so ARM_ONE is the first -- and only -- arm the cumulative
+     * walk passes before reaching this boundary: the running sum after
+     * ARM_ONE is exactly 939 too, the same value as `$target`.
+     *
+     * `$target < $seen` (939 < 939, false) must skip ARM_ONE and land on
+     * ARM_TWO. `$target <= $seen` would wrongly keep ARM_ONE instead. This
+     * boundary is otherwise invisible: every other split test either has one
+     * live arm or leaves slack away from the edge, so `<` and `<=` are
+     * indistinguishable to them.
+     */
+    public function testACompanySittingExactlyOnAnArmBoundaryFallsToTheNextArm(): void
+    {
+        $assigned = $this->resolver([
+            $this->row('split', self::ARM_ONE, weight: 939),
+            $this->row('split', self::ARM_TWO, weight: 9061),
+        ])->assign(self::QUOTE, self::CUSTOMER, self::CHANNEL, Context::createDefaultContext());
+
+        self::assertNotNull($assigned);
+        self::assertSame(self::ARM_TWO, $assigned->strategy->versionId);
+    }
+
+    /**
+     * A zero-weight arm can never be selected arithmetically -- it never
+     * advances the cumulative sum, so it cannot pin the `> 0` half of the
+     * `weight !== null && weight > 0` guard (a `!== null` check alone would
+     * already exclude nothing a zero does). A negative weight can: the
+     * column is a plain INT with no sign constraint, and if the guard
+     * degraded to `!== null` a negative arm would still enter `$total`.
+     *
+     * Chosen to cancel exactly (-100 against +100) so `$total` becomes 0 if
+     * the negative arm were counted. With the guard intact, ARM_ONE is
+     * excluded before `$total` is ever computed, so this reduces to exactly
+     * the single-positive-arm case -- ARM_TWO is chosen the same way it
+     * would be if ARM_ONE did not exist at all. If the guard's `> 0` half
+     * were removed, `$total` would be 0 and `split()` would return null
+     * instead: the negative arm would not just fail to win, it would take
+     * the correct winner down with it.
+     */
+    public function testANegativeWeightArmDoesNotSkewTheTotal(): void
+    {
+        $assigned = $this->resolver([
+            $this->row('split', self::ARM_ONE, weight: -100),
+            $this->row('split', self::ARM_TWO, weight: 100),
+        ])->assign(self::QUOTE, self::CUSTOMER, self::CHANNEL, Context::createDefaultContext());
+
+        self::assertNotNull($assigned);
+        self::assertSame(self::ARM_TWO, $assigned->strategy->versionId);
+    }
+
     public function testNoRowsAtAllMeansNoAssignment(): void
     {
         $assigned = $this->resolver([])->assign(
