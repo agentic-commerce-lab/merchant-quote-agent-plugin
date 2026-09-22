@@ -18,6 +18,13 @@ use PHPUnit\Framework\TestCase;
  * sentence -- but it costs it EVERY time, silently, with every gate still
  * green, which is how a guard turns a feature off without anyone noticing.
  * So the accepting table below is as load-bearing as the rejecting one.
+ *
+ * @mago-expect lint:too-many-methods
+ * Two data-provider tables plus one pinned fact per edge case the tables
+ * cannot express (the restated-figure hole, grouped thousands, the reason
+ * text, the zero-percent template, and #175's null-reductionPercent hold
+ * shape) -- splitting the class would separate a table from the edge cases
+ * that document its limits.
  */
 final class RewordingGuardTest extends TestCase
 {
@@ -294,5 +301,46 @@ final class RewordingGuardTest extends TestCase
         $template = ReplyTemplate::compose(0.0, 950.0, 'EUR', self::validUntil());
 
         self::assertNull(RewordingGuard::unsafeBecause($template, 0.0, 950.0, self::validUntil()));
+    }
+
+    /**
+     * #175: a null reductionPercent is the hold shape -- `holds()`'s own
+     * sentence, with no percentage in it at all, must still accept itself.
+     */
+    public function testTheHoldTemplateAcceptsItself(): void
+    {
+        $template = ReplyTemplate::holds(950.0, 'EUR', self::validUntil());
+
+        self::assertNull(RewordingGuard::unsafeBecause($template, null, 950.0, self::validUntil()));
+    }
+
+    /**
+     * A rewording of a hold that invents a percentage must be rejected: null
+     * means no reduction figure is authorised at all, not that any number
+     * happens to be free to use.
+     */
+    public function testAHoldRewordingThatInventsAPercentageIsRejected(): void
+    {
+        $reason = RewordingGuard::unsafeBecause(
+            'We are happy to hold this quote at 0% additional discount, total 950.00 EUR, ' . 'valid until 2026-09-11.',
+            null,
+            950.0,
+            self::validUntil(),
+        );
+
+        self::assertNotNull($reason, 'A hold reply must not gain a reduction figure nobody authorised.');
+    }
+
+    /** A hold rewording that drops the total is rejected the same way a reduction one would be. */
+    public function testAHoldRewordingThatDropsTheTotalIsRejected(): void
+    {
+        $reason = RewordingGuard::unsafeBecause(
+            'This quote stands. The offer remains valid until 2026-09-11.',
+            null,
+            950.0,
+            self::validUntil(),
+        );
+
+        self::assertNotNull($reason);
     }
 }

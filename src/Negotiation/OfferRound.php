@@ -10,6 +10,7 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
+use MerchantQuoteAgentPlugin\Policy\Epsilon;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use Psr\Log\LoggerInterface;
@@ -79,7 +80,18 @@ final readonly class OfferRound
                 'quoteId' => $snapshot->identity->quoteId,
             ]);
 
-            return $this->escalated($gateway, $snapshot, null, $extractHash, $answer->promptHash);
+            // Issue #169: the model DID propose a per-line offer ($answer->offer
+            // is non-null here); the system declines to authorize applying it
+            // for want of a baseline to bound it against. That is a policy-layer
+            // refusal of a real proposal, the same family ProposalRejected
+            // already names below — not an unspecified "needs a human".
+            return $this->escalated(
+                $gateway,
+                $snapshot,
+                QuoteEscalationReason::ProposalRejected,
+                $extractHash,
+                $answer->promptHash,
+            );
         }
 
         $applied = $this->applier->apply($gateway, $snapshot, $settings, $answer->offer);
@@ -108,20 +120,68 @@ final readonly class OfferRound
         // 3.81 EUR away from it and nobody could tell. The baseline is the
         // quote as the buyer first saw it, which is the only total they can
         // check a percentage against.
+        //
+        // #174/#175: only when this pass actually wrote something.
+        // $applied->beforeNet is OfferApplier's own pre-write read — never the
+        // baseline — so this compares what THIS pass started at against what
+        // it ended at. A pass that changed nothing (the band allowed a
+        // concession and the model, or the rules, held) is a real outcome,
+        // not a 0% discount, and gets its own sentence below instead of a
+        // baseline percentage describing movement this pass did not make.
+        // For a pass that DID write, OfferApplier's never-raise check has
+        // already stopped any write above $applied->beforeNet from being
+        // accepted as verified, so the baseline figure below can no longer
+        // describe an increase as a discount the way it did for quotes 1039
+        // and 1048 -- and on the rare case it still disagrees (a stale
+        // pass-start baseline race; see ReductionForPass), that class turns
+        // it into an escalation instead of letting the exception reach here.
+        $grantedThisPass = abs($applied->after->totals->totalNet - $applied->beforeNet) > Epsilon::MONEY;
+        [$reductionPercent, $disagreedWithTheWrite] = ReductionForPass::of(
+            // Not $context->baseline?->totalNet: that baseline was read from
+            // the PASS-START snapshot, whose custom fields predate
+            // claimAttempt()'s extension for a line added this pass (#54) —
+            // the exact staleness anchor() exists to compensate for.
+            // anchored() re-extends in memory from $snapshot's own lines, so
+            // it is correct even though the stored fragment is stale.
+            SnapshotAdapter::anchored($snapshot)->totalNet,
+            $applied->after->totals->totalNet,
+            $grantedThisPass,
+        );
+
+        if ($disagreedWithTheWrite) {
+            // The never-raise check above only escalates a write BEFORE
+            // $applied->verified is trusted; it cannot un-write one that
+            // already landed (OfferApplier never rolls back — see its own
+            // docblock). Reaching here means that check did not catch an
+            // increase and the bad write already landed on the quote. This
+            // must escalate rather than let ReductionForPass's caught
+            // NegativeReduction have propagated: that exception is not
+            // ModelUnavailable|CrossCustomerRead, so uncaught it would leave
+            // NegotiationPipeline::run() unhandled, and ServiceQuoteHandler
+            // rethrows after clearing the attempt counter — Messenger would
+            // redeliver against a quote that still carries the write, with no
+            // reply ever reaching the buyer. Escalating instead routes it
+            // through the exact same funnel a verification failure already
+            // uses: a human sees that the database disagrees with what this
+            // pass applied.
+            $this->logger->error('The figure to report disagreed with the write that already landed; escalating instead of replying.', [
+                'quoteId' => $snapshot->identity->quoteId,
+            ]);
+
+            return $this->escalated(
+                $gateway,
+                $applied->after,
+                QuoteEscalationReason::VerificationFailed,
+                $extractHash,
+                $answer->promptHash,
+            );
+        }
+
         $replyHash = $this->reply->reply(
             $gateway,
             $applied->after,
             $settings,
-            ReplyTemplate::reduction(
-                // Not $context->baseline?->totalNet: that baseline was read
-                // from the PASS-START snapshot, whose custom fields predate
-                // claimAttempt()'s extension for a line added this pass (#54)
-                // — the exact staleness anchor() exists to compensate for.
-                // anchored() re-extends in memory from $snapshot's own lines,
-                // so it is correct even though the stored fragment is stale.
-                SnapshotAdapter::anchored($snapshot)->totalNet,
-                $applied->after->totals->totalNet,
-            ),
+            $reductionPercent,
             $context->conversation,
         );
 
@@ -191,6 +251,11 @@ final readonly class OfferRound
         ?string $extractHash,
         ?string $negotiateHash,
     ): NegotiationPass {
+        // Defensive default only: every caller of escalated() now passes an
+        // explicit reason (issue #169 moved the last implicit-null caller to
+        // ProposalRejected), so this should never actually fire. Left as
+        // NeedsHumanReview rather than removed, because $reason stays
+        // nullable for callers this class does not control.
         $reason ??= QuoteEscalationReason::NeedsHumanReview;
         $this->escalator->escalate($gateway, $snapshot, $reason);
 

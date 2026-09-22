@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
+use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
@@ -74,8 +75,15 @@ final class NegotiationPipelineTest extends TestCase
         // but the reason degrades to needs_human_review — and QuoteEscalator
         // keys its once-per-quote marker on the reason, so the buyer's
         // de-duplication and the merchant's log both change.
+        //
+        // The mirror write comes first: a quote-wide 40% ask has no line of
+        // its own, so AskMirror distributes it across the fixture's one line
+        // (100.00 * 0.6 = 60.00) before the gate ever runs (#165).
         self::assertSame(
-            [[QuoteEscalator::MARKER_KEY => QuoteEscalationReason::DiscountLimitExceeded->value]],
+            [
+                [MirroredAsks::KEY => ['line-1' => 60.0]],
+                [QuoteEscalator::MARKER_KEY => QuoteEscalationReason::DiscountLimitExceeded->value],
+            ],
             $harness->gateway->customFieldWrites,
             'The band gate must escalate with the price reason, not a generic one.',
         );
@@ -151,6 +159,36 @@ final class NegotiationPipelineTest extends TestCase
         self::assertSame([], $harness->gateway->calls);
     }
 
+    public function testAnExtractionWithNoAskInAnyFieldEndsThePassAsNothingToDo(): void
+    {
+        // #177: quote 1039, a human merchant had already closed the
+        // negotiation. The buyer wrote "Nice, thanks!" and the extraction
+        // came back with every field null or empty -- no price ask, no
+        // structural ask, no negotiation ask, no clarification question, no
+        // human-review request. The pass still reached the band, landed in
+        // grant and made an unsolicited offer. It must stop here instead.
+        $harness = PipelineHarness::with(['{}']);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('Nice, thanks!', '2026-09-18 09:58:40'),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame(
+            1,
+            $harness->spy->calls,
+            'The extract call still happens -- the extractor is what found nothing; negotiate and reply must not.',
+        );
+        self::assertSame([], $harness->gateway->comments, 'An empty extraction must not become an unsolicited offer.');
+        self::assertSame([], $harness->gateway->calls);
+    }
+
     public function testAReplyPostedByADeadPassStillReachesReplied(): void
     {
         // #31: the reply is two writes — the comment, then the `sent`
@@ -221,6 +259,10 @@ final class NegotiationPipelineTest extends TestCase
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertSame(1, $harness->spy->calls, 'A structural ask must not reach the negotiate call.');
+        self::assertSame(
+            QuoteEscalationReason::StructuralChangeRequested->value,
+            $harness->writer->drafts[0]->escalationReason,
+        );
     }
 
     public function testAPerLineTargetPriceIsNotStructuralAndStillNegotiates(): void

@@ -10,6 +10,8 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Policy\CommentTargetMerger;
+use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot as PolicyQuoteSnapshot;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -22,6 +24,11 @@ use Psr\Log\LoggerInterface;
  * and a buyer who types the same number in the conversation left none: the
  * target reached CommentTargetMerger, priced the offer, and evaporated. Same
  * ask, same quote, two different documents.
+ *
+ * A QUOTE-WIDE ask — a plain percentage, or the absolute total from #164 —
+ * names no line at all, so it has nothing for `adopted()` to find either.
+ * Distributed across every line, proportionally to its current price, rather
+ * than left unmirrored: see quoteWideTargets() (#165).
  *
  * Deliberately BEFORE the ask gate and the decision, so an escalation and a
  * clarification carry the record too — an escalation is precisely when a human
@@ -70,12 +77,23 @@ final class AskMirror
         // Nullable because a structured-only ask reaches the pipeline with no
         // interpretation at all — the buyer typed nothing, so there is nothing
         // to mirror and the field they filled in already says it.
-        //
+        $policySnapshot = SnapshotAdapter::toPolicy($snapshot);
+        $merger = new CommentTargetMerger();
+
         // The merger's own verdict, not the raw extraction: on a line where a
         // stale structured ask wins, the comment's target is never priced
         // against, and displaying a number the agent ignored is worse than
         // displaying none. See CommentTargetMerger::adopted().
-        $adopted = (new CommentTargetMerger())->adopted(SnapshotAdapter::toPolicy($snapshot), $ask?->interpretation);
+        $adopted = $merger->adopted($policySnapshot, $ask?->interpretation);
+
+        // A quote-wide ask (a percentage, or #164's absolute total) names no
+        // line, so adopted() above is empty — not because nothing was asked,
+        // but because nothing was asked PER LINE. Distributed across every
+        // line instead of dropped, or the quote and its conversation stop
+        // agreeing on what was asked at all (#165).
+        if ($adopted === [] && $ask !== null) {
+            $adopted = self::quoteWideTargets($merger, $policySnapshot, $ask->interpretation);
+        }
 
         if ($adopted === []) {
             return;
@@ -101,9 +119,52 @@ final class AskMirror
             array_keys($adopted),
         ));
 
-        $logger->info('The buyer\'s per-line ask was mirrored onto the quote.', [
-            'quoteId' => $quoteId,
-            'requestedUnitPricesNet' => $adopted,
-        ]);
+        try {
+            $logger->info('The buyer\'s per-line ask was mirrored onto the quote.', [
+                'quoteId' => $quoteId,
+                'requestedUnitPricesNet' => $adopted,
+            ]);
+        } catch (\Throwable) {
+            // @mago-expect lint:no-empty-catch-clause
+            // ponytail: swallowed rather than routed anywhere. The gateway
+            // writes above already landed; a broken logger must not turn that
+            // successful mirror into a failed pass, same reasoning as
+            // NegotiationPipeline::record()'s own guard around its
+            // pass-outcome log line. This call started firing on nearly
+            // every price ask once #165 taught it to mirror a quote-wide one
+            // too, so it needs the same guard. Upgrade together if a broken
+            // logger here ever needs its own reporting path.
+        }
+    }
+
+    /**
+     * @return array<string, float> line item id => target unit price, net
+     */
+    private static function quoteWideTargets(
+        CommentTargetMerger $merger,
+        PolicyQuoteSnapshot $snapshot,
+        CommentInterpretation $interpretation,
+    ): array {
+        $target = self::quoteWideTargetTotal($snapshot, $interpretation);
+
+        return $target === null ? [] : $merger->distributedAcrossLines($snapshot, $target);
+    }
+
+    /**
+     * The absolute target wins outright when the buyer named one; otherwise a
+     * plain percentage becomes the total it implies. Both are already net —
+     * BuyerPriceSpace::toNet() ran before AskInterpreter ever returned.
+     */
+    private static function quoteWideTargetTotal(
+        PolicyQuoteSnapshot $snapshot,
+        CommentInterpretation $interpretation,
+    ): ?float {
+        if ($interpretation->price->targetTotal !== null) {
+            return $interpretation->price->targetTotal;
+        }
+
+        $percent = $interpretation->price->additionalDiscountPercent;
+
+        return $percent === null ? null : $snapshot->totalNet * (1 - ($percent / 100));
     }
 }

@@ -14,7 +14,8 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
   ("please add another 5%"), on top of any requested prices already entered.
 - price.targetTotal: a budget or price ceiling the buyer names for the WHOLE quote ("max cost
   should be 2500", "keep it under 5k", "our budget is 2500 in total"). Give the number as the buyer
-  wrote it.
+  wrote it. An amount OFF rather than a final figure ("take 200 off the total") is this field
+  too: subtract it from the quote total shown above.
 - WHICH LEVEL a bare number belongs to is your call, and you can make it — the quote total and
   every line are in front of you. Compare the number with them: near the quote total (or
   plausibly a few percent to a third below it) it is a quote-level budget → price.targetTotal.
@@ -33,8 +34,10 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
 - structural.lineChanges: quantity changes, per-unit target prices (targetUnitPrice), or removals
   (remove) for EXISTING line items; lineItemId must be copied from the provided table. A comment
   tagged [line item <id>: ...] refers to exactly that line — use its id directly, no clarification
-  about which line is meant. If a quote-level ask cannot be mapped to exactly one line, use
-  clarificationQuestions.
+  about which line is meant. If a price is tied to specific line items and you cannot tell which
+  one of several existing lines it means, use clarificationQuestions instead — but a budget or
+  figure for the quote as a whole is price.targetTotal, never a reason to ask, no matter how many
+  items the buyer mentions spreading it across.
 - structural.addProducts: products the buyer asks to add; productRef is the name or product number
   verbatim as the buyer wrote it. When the buyer names a price for the added product ("10x cable
   ties at 3.50 each"), put the per-unit price into targetUnitPrice — never into
@@ -51,7 +54,7 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
   ambiguous in REFERENCE (you cannot tell WHICH product or line is meant, or a number is
   ambiguous — but a number you CAN place at a level is not ambiguous, see the level rule above)
   or ambiguous in INTENT (the comment is too vague to name any ask at all: "What about
-  this?", "und jetzt?", "any thoughts?"). Write one short, polite, customer-facing question that
+  this?", "und jetzt?", "any thoughts?"). Write one short, polite, customer-facing question, in the tone given below, that
   would resolve the ambiguity. These are sent to the buyer as-is, so write them in the buyer's
   language. A comment you did not understand belongs here and NEVER in humanReviewRequests: the
   merchant's policy still decides the answer once the buyer says what they want.
@@ -80,3 +83,7 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
 
 Earlier [merchant] comments in the thread are the agent's own previous replies/questions — use
 them as context (e.g. the buyer may be answering a clarification question), never as buyer asks.
+
+Tone instructions from the merchant, for clarificationQuestions only: {{tone}}
+Every other field above is structured data for the application, not prose for the buyer — do not
+restyle it, translate it, or add words to it because of this tone.

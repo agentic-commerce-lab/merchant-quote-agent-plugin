@@ -19,6 +19,12 @@ use PHPUnit\Framework\TestCase;
  * mirror exactly the targets the policy layer will price against — never the
  * raw extraction. A number displayed on the line that the agent did not price
  * against is worse than no number at all.
+ *
+ * @mago-expect lint:too-many-methods
+ * `distributedAcrossLines()` (#165's quote-wide mirror) is a second public
+ * behaviour on this class, and it earns its own cases the same way `merge()`
+ * and `adopted()` already did — the count tracks the class's own surface, not
+ * unrelated concerns that belong elsewhere.
  */
 final class CommentTargetMergerTest extends TestCase
 {
@@ -97,6 +103,36 @@ final class CommentTargetMergerTest extends TestCase
 
         self::assertSame(15.0, $merged->lines[0]->requestedUnitPrice, 'the stale ask still stands');
         self::assertSame(15.0, $merged->buyerTargetNet);
+    }
+
+    /**
+     * The mirror's need (#165): a quote-wide ask names no line, so it has
+     * nothing for adopted() to answer, yet AskMirror still has to write
+     * something onto every line. 15.00 target on a 19.99 line is a ~24.96%
+     * cut, applied uniformly since there is only one line to apply it to.
+     */
+    public function testDistributedAcrossLinesScalesEveryLineByTheSameFactor(): void
+    {
+        $targets = (new CommentTargetMerger())->distributedAcrossLines(self::snapshot('open', null), 15.0);
+
+        self::assertSame(['line-1' => 15.0], $targets);
+    }
+
+    public function testDistributedAcrossLinesIsANoOpOnAZeroTotal(): void
+    {
+        $snapshot = new QuoteSnapshot(
+            currencyIso: 'EUR',
+            totalNet: 0.0,
+            lines: [new QuoteLineSnapshot(
+                identity: new QuoteLineIdentity('line-1', 'Widget'),
+                quantity: 1,
+                unitPriceNet: 0.0,
+                totalNet: 0.0,
+            )],
+            lifecycle: new QuoteLifecycle(stateTechnicalName: 'open'),
+        );
+
+        self::assertSame([], (new CommentTargetMerger())->distributedAcrossLines($snapshot, 10.0));
     }
 
     private static function interpretationAsking(float $target): CommentInterpretation

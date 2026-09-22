@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -36,6 +37,10 @@ final class AskGateTest extends TestCase
 
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertSame(1, $harness->spy->calls, 'A non-price ask must not reach the negotiate call.');
+        self::assertSame(
+            QuoteEscalationReason::NonPriceTermRequested->value,
+            $harness->writer->drafts[0]->escalationReason,
+        );
     }
 
     public function testAnEmptyNonPriceShapeIsNotAnAskAndStillNegotiates(): void
@@ -67,7 +72,7 @@ final class AskGateTest extends TestCase
     {
         // Re-reading the whole history re-extracts round one's "another 5%"
         // and applies it a second time to a total that already came down by it.
-        // The negotiate call is shown the agent's earlier replies instead —
+        // The negotiate call is shown round one's figures instead (#166) —
         // which is what its prompt claims it is given.
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":2}}',
@@ -76,7 +81,10 @@ final class AskGateTest extends TestCase
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('please add another 5%', '2026-08-28 09:00:00'),
-            NegotiationFixture::agentComment('We can bring this quote down by 5%.', '2026-08-28 09:30:00'),
+            NegotiationFixture::agentComment(
+                'We can bring this quote down by 5% to 950.00 EUR. The offer is valid until 2026-09-11.',
+                '2026-08-28 09:30:00',
+            ),
             NegotiationFixture::buyerComment('can you do a little better?', '2026-08-28 10:00:00'),
         ]);
 
@@ -90,9 +98,9 @@ final class AskGateTest extends TestCase
         self::assertStringContainsString('can you do a little better?', $harness->spy->userPrompts[0]);
         self::assertStringNotContainsString('another 5%', $harness->spy->userPrompts[0]);
         self::assertStringContainsString(
-            'We can bring this quote down by 5%.',
+            'buyer asked (unstated) -> you offered 950.00',
             $harness->spy->userPrompts[1],
-            'The negotiate prompt states the agent is shown its own earlier offers, so it must be.',
+            'The negotiate prompt states the agent is shown its own earlier rounds, so it must be.',
         );
     }
 }

@@ -29,6 +29,12 @@ final readonly class NegotiationFailure
         $message = 'The model was unavailable, so this quote goes to a human.';
 
         if ($error instanceof CrossCustomerRead) {
+            // Issue #169: kept as NeedsHumanReview rather than a new case.
+            // CrossCustomerRead's own docblock says this "should be
+            // unreachable" -- a security guard against a bug, not a customer
+            // ask -- so there is no honest customer-facing name for it beyond
+            // the generic "a human was needed, cause not recorded" this case
+            // now carries.
             $reason = QuoteEscalationReason::NeedsHumanReview;
             $message = 'An account history read was refused; this quote goes to a human.';
             $this->recorder->recordProposal(null, ProposedAnswer::escalate($reason, $error->getMessage(), null));

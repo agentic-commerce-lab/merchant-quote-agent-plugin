@@ -45,6 +45,53 @@ final class ClarificationRoundTest extends TestCase
         self::assertSame([ClarificationMarker::MARKER_KEY => true], $harness->gateway->customFieldWrites[0] ?? null);
     }
 
+    public function testItCapsTheNumberOfQuestionsPosted(): void
+    {
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::snapshot();
+
+        $pass = ClarificationRound::handle(
+            $harness->gateway,
+            $snapshot,
+            $this->ask([
+                'Which line did you mean?',
+                'By when do you need it?',
+                'What quantity works for you?',
+                'Should we ship to the billing address?',
+            ]),
+            $harness->round,
+            $harness->logger,
+        );
+
+        self::assertSame(NegotiationOutcome::Clarified, $pass->outcome);
+        self::assertCount(1, $harness->gateway->comments);
+        self::assertSame(
+            "Which line did you mean?\nBy when do you need it?\nWhat quantity works for you?",
+            $harness->gateway->comments[0],
+            'A runaway extraction cannot make the buyer read an unbounded list; the 4th question is dropped.',
+        );
+    }
+
+    public function testItCapsAnExcessivelyLongQuestion(): void
+    {
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::snapshot();
+        $tooLong = 'Which line did you mean, ' . str_repeat('the one with the widgets or ', 20) . 'or something else?';
+
+        $pass = ClarificationRound::handle(
+            $harness->gateway,
+            $snapshot,
+            $this->ask([$tooLong]),
+            $harness->round,
+            $harness->logger,
+        );
+
+        self::assertSame(NegotiationOutcome::Clarified, $pass->outcome);
+        $posted = $harness->gateway->comments[0];
+        self::assertLessThanOrEqual(241, mb_strlen($posted), 'Capped at 240 characters plus the ellipsis mark.');
+        self::assertStringEndsWith('…', $posted);
+    }
+
     public function testItEscalatesWhenTheQuoteWasAlreadyAsked(): void
     {
         $harness = PipelineHarness::with([]);
@@ -64,7 +111,7 @@ final class ClarificationRoundTest extends TestCase
         );
 
         self::assertSame(NegotiationOutcome::Escalated, $pass->outcome);
-        self::assertSame(QuoteEscalationReason::NeedsHumanReview, $pass->escalationReason);
+        self::assertSame(QuoteEscalationReason::UnplaceableAsk, $pass->escalationReason);
         self::assertSame('extract-hash', $pass->extractHash);
         self::assertNull($pass->negotiateHash);
 

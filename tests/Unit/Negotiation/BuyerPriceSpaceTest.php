@@ -127,4 +127,58 @@ final class BuyerPriceSpaceTest extends TestCase
 
         self::assertSame(90.0, $result?->interpretation->structural->lineChanges[0]->targetUnitPrice);
     }
+
+    /** #164: the quote total precedes the line table, in the same buyer-facing space. */
+    public function testTheUserPromptCarriesTheQuoteTotalInTheBuyersSpace(): void
+    {
+        [$client, $spy] = ScriptedClient::spy(['{}']);
+        $snapshot = NegotiationFixture::grossSnapshot([
+            NegotiationFixture::buyerComment('can you do 900 total?', '2026-08-28 09:00:00'),
+        ]);
+
+        (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
+            NegotiationFixture::settings(),
+            $snapshot,
+            SnapshotAdapter::conversation($snapshot),
+        );
+
+        self::assertStringContainsString('Quote total: 1000.00', $spy->userPrompts[0]);
+    }
+
+    /**
+     * The #164 twin of testAGrossTargetPriceComesBackNet: a quote-LEVEL
+     * absolute target moves out of the buyer's gross space the same way, off
+     * the quote's own ratio (800 net / 1000 gross) rather than a line's.
+     */
+    public function testAGrossQuoteLevelTargetComesBackNet(): void
+    {
+        [$client] = ScriptedClient::spy(['{"price":{"targetTotal":900.0}}']);
+        $snapshot = NegotiationFixture::grossSnapshot([
+            NegotiationFixture::buyerComment('900 for everything please', '2026-08-28 09:00:00'),
+        ]);
+
+        $result = (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
+            NegotiationFixture::settings(),
+            $snapshot,
+            SnapshotAdapter::conversation($snapshot),
+        );
+
+        self::assertSame(720.0, $result?->interpretation->price->targetTotal);
+    }
+
+    public function testANetQuoteLeavesTheAbsoluteTargetAlone(): void
+    {
+        [$client] = ScriptedClient::spy(['{"price":{"targetTotal":900.0}}']);
+        $snapshot = NegotiationFixture::snapshot([
+            NegotiationFixture::buyerComment('900 for everything please', '2026-08-28 09:00:00'),
+        ]);
+
+        $result = (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
+            NegotiationFixture::settings(),
+            $snapshot,
+            SnapshotAdapter::conversation($snapshot),
+        );
+
+        self::assertSame(900.0, $result?->interpretation->price->targetTotal);
+    }
 }

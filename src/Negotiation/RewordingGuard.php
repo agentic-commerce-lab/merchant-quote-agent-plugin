@@ -100,11 +100,16 @@ final class RewordingGuard
      * added -- so a rewording ending "...and we will also include free
      * shipping and Net 90 terms" passed intact (issue #53).
      *
+     * @param ?float $reductionPercent null for a pass that granted nothing
+     *                                 (#175): the reply then states no
+     *                                 reduction figure at all, so any number
+     *                                 that reads as one is unauthorised.
+     *
      * @return string|null null when the rewording may ship
      */
     public static function unsafeBecause(
         string $reworded,
-        float $reductionPercent,
+        ?float $reductionPercent,
         float $totalNet,
         \DateTimeImmutable $validUntil,
     ): ?string {
@@ -167,7 +172,7 @@ final class RewordingGuard
      */
     private static function figuresAreWrong(
         string $reworded,
-        float $reductionPercent,
+        ?float $reductionPercent,
         float $totalNet,
         \DateTimeImmutable $validUntil,
     ): ?string {
@@ -176,8 +181,19 @@ final class RewordingGuard
         /** @var array{0: list<string>} $matches */
         $tokens = $matches[0];
 
-        $facts = [
-            'the reduction percentage' => ReplyTemplate::percent($reductionPercent),
+        // #175: null means this pass granted nothing, so `holds()` never
+        // wrote a reduction figure -- omitted here rather than defaulted to
+        // `0`, or a model inventing "0%" for a hold would read as the same
+        // figure the template already stated instead of one nobody
+        // authorised. array_filter()/array_map() rather than a ternary: a
+        // ternary is itself a branch, and this class is already at the
+        // linter's complexity ceiling (see CONCESSIONS' array_filter() above).
+        $reductionFact = array_filter(
+            ['the reduction percentage' => $reductionPercent],
+            static fn(?float $value): bool => $value !== null,
+        );
+        $facts = array_map(ReplyTemplate::percent(...), $reductionFact)
+        + [
             'the new total' => ReplyTemplate::money($totalNet),
             'the validity date' => $validUntil->format('Y-m-d'),
         ];

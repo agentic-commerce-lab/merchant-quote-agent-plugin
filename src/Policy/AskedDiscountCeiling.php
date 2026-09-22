@@ -56,13 +56,13 @@ final class AskedDiscountCeiling
         // the two that do. Safe in tax terms: AskInterpreter already ran
         // BuyerPriceSpace::toNet() over these, so they are net here, the same
         // space as `unitPriceNet`. A null interpretation merges nothing.
-        $snapshot = (new CommentTargetMerger())->merge($snapshot, $interpretation);
+        $merged = (new CommentTargetMerger())->merge($snapshot, $interpretation);
 
         // The prompt defines additionalDiscountPercent as being asked "on top
-        // of any requested prices already entered", so the two asks add rather
+        // of any requested prices already entered", so all three add rather
         // than compete. Summing can only raise the ceiling, never lower it
         // below what the buyer asked for.
-        $asked = self::fromRequestedLinePrices($snapshot) + ($interpretation?->price->additionalDiscountPercent ?? 0.0);
+        $asked = self::fromRequestedLinePrices($merged) + ($interpretation?->price->additionalDiscountPercent ?? 0.0);
 
         // A quote-level budget is the fourth way to name a number, and the
         // only one that binds the whole quote at once. Measured against the

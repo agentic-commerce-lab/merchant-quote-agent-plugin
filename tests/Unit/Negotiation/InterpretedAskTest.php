@@ -7,7 +7,9 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 use MerchantQuoteAgentPlugin\Negotiation\InterpretedAsk;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
+use MerchantQuoteAgentPlugin\Policy\Data\DeliveryAsk;
 use MerchantQuoteAgentPlugin\Policy\Data\InterpretedLineChange;
+use MerchantQuoteAgentPlugin\Policy\Data\NegotiationAsks;
 use MerchantQuoteAgentPlugin\Policy\Data\PriceAsk;
 use MerchantQuoteAgentPlugin\Policy\Data\StructuralAsks;
 use PHPUnit\Framework\TestCase;
@@ -97,6 +99,58 @@ final class InterpretedAskTest extends TestCase
         ])), 'hash');
 
         self::assertTrue($ask->isStructural());
+    }
+
+    public function testAFullyEmptyInterpretationHasNoAsk(): void
+    {
+        // #177's exact shape: every field null or empty -- the buyer said
+        // "Nice, thanks!" and the extraction found nothing.
+        self::assertTrue((new InterpretedAsk(new CommentInterpretation(), 'hash'))->hasNoAsk());
+        // An empty clarificationQuestions list is not an ask on its own either.
+        self::assertTrue($this->ask([])->hasNoAsk());
+    }
+
+    /**
+     * Each of these, alone, is enough to make `hasNoAsk()` false -- the
+     * boundary #177 is careful about: `bestPriceRequested` and `targetTotal`
+     * are asks even with no specific figure attached to the other one, a
+     * non-empty clarification question is already something to answer, a
+     * human-review request and a non-price (delivery/payment/bundle) ask are
+     * asks nothing here may treat as silence, and a structural line change is
+     * an ask even with no comment-level price attached.
+     */
+    public function testAnyPopulatedFieldMeansThereIsAnAsk(): void
+    {
+        self::assertFalse(
+            (new InterpretedAsk(
+                new CommentInterpretation(price: new PriceAsk(bestPriceRequested: true)),
+                'hash',
+            ))->hasNoAsk(),
+        );
+        self::assertFalse(
+            (new InterpretedAsk(
+                new CommentInterpretation(price: new PriceAsk(targetTotal: 3500.0)),
+                'hash',
+            ))->hasNoAsk(),
+        );
+        self::assertFalse($this->ask(['which line do you mean?'])->hasNoAsk());
+        self::assertFalse(
+            (new InterpretedAsk(
+                new CommentInterpretation(humanReviewRequests: ['talk to a person']),
+                'hash',
+            ))->hasNoAsk(),
+        );
+        self::assertFalse(
+            (new InterpretedAsk(
+                new CommentInterpretation(
+                    negotiation: new NegotiationAsks(delivery: new DeliveryAsk(freeShipping: true)),
+                ),
+                'hash',
+            ))->hasNoAsk(),
+        );
+        self::assertFalse((new InterpretedAsk(new CommentInterpretation(structural: new StructuralAsks(lineChanges: [
+            new InterpretedLineChange(lineItemId: 'line-1', targetUnitPrice: 95.0),
+        ])), 'hash'))->hasNoAsk());
     }
 
     /** @param list<string> $questions */

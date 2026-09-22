@@ -44,6 +44,18 @@ final class QuoteDiscountApplier
         }
 
         $merged = $this->commentTargetMerger->merge($snapshot, $interpretation);
+
+        // The absolute quote-level target from #164, honoured the same place
+        // a per-line comment target is: before additionalDiscountPercent
+        // stacks on top of it, exactly as the prompt states that field is "on
+        // top of any requested prices already entered". An explicit total
+        // wins outright over whatever merge() rescaled off the lines, since
+        // naming a total is more specific than naming a line.
+        $targetTotal = $interpretation?->price->targetTotal;
+        if ($targetTotal !== null) {
+            $merged = $merged->withBuyerTargetNet(MoneyMath::roundMoney($targetTotal));
+        }
+
         $extra = $interpretation?->price->additionalDiscountPercent;
         $scaled = $extra ? $this->applyExtraPercent($merged, $extra) : $merged;
 

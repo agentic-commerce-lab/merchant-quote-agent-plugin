@@ -31,9 +31,11 @@ final readonly class ReplyComposer
     ) {}
 
     /**
-     * @param float $reductionPercent how much the quote came down, measured on
-     *                                the totals the database reports — the offer's own
-     *                                `discountPercent` is null for a per-line concession
+     * @param ?float $reductionPercent how much the quote came down, measured on
+     *                                 the totals the database reports — the offer's own
+     *                                 `discountPercent` is null for a per-line concession.
+     *                                 Null when this pass granted nothing (#175): the reply
+     *                                 then states the hold, not a 0% reduction.
      *
      * @return string|null the reply prompt's hash, or null when the template wrote it
      */
@@ -41,7 +43,7 @@ final readonly class ReplyComposer
         QuoteGatewayInterface $gateway,
         QuoteSnapshot $after,
         QuoteAgentSettings $settings,
-        float $reductionPercent,
+        ?float $reductionPercent,
         BuyerConversation $conversation,
     ): ?string {
         if (!$conversation->hasNewBuyerAsk() && $conversation->agent !== []) {
@@ -58,7 +60,9 @@ final readonly class ReplyComposer
         // next to it where the two figures are equal.
         $total = $after->totals->buyerFacingTotal();
         $validUntil = $after->lifecycle->expiresAt ?? new \DateTimeImmutable('+14 days');
-        $template = ReplyTemplate::compose($reductionPercent, $total, $after->identity->currencyIso, $validUntil);
+        $template = $reductionPercent === null
+            ? ReplyTemplate::holds($total, $after->identity->currencyIso, $validUntil)
+            : ReplyTemplate::compose($reductionPercent, $total, $after->identity->currencyIso, $validUntil);
 
         [$text, $hash] = $this->reword($settings, $template, $reductionPercent, $total, $validUntil);
 
@@ -73,7 +77,7 @@ final readonly class ReplyComposer
     private function reword(
         QuoteAgentSettings $settings,
         string $template,
-        float $reductionPercent,
+        ?float $reductionPercent,
         float $total,
         \DateTimeImmutable $validUntil,
     ): array {

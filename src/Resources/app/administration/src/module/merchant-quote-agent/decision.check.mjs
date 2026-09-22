@@ -25,6 +25,7 @@ import {
     foldToQuotes,
     formatDuration,
     formatPercent,
+    humanReviewRequests,
     mergeStream,
     outcomeVariant,
     passNotes,
@@ -91,6 +92,19 @@ assert.deepEqual(askItems(vm, { negotiation: null, structural: null, price: null
 assert.equal(askSummary(vm, null), '–');
 assert.equal(askSummary(vm, current), 'discount: 8.0% · leadTime: 14 days');
 assert.equal(askSummary(vm, legacy), 'discount: 5.0% · targetPrice #1: 760.00 EUR +1');
+
+// Issue #169: the escalation surface a merchant scans (the list page's badge
+// cell) reads this directly, not only askItems()'s drawer row -- so it has
+// its own self-check independent of the ask-facts list above.
+assert.deepEqual(humanReviewRequests(null), []);
+assert.deepEqual(humanReviewRequests({}), []);
+assert.deepEqual(humanReviewRequests({ humanReviewRequests: [] }), [], 'Empty for every reason but the genuine one.');
+assert.deepEqual(
+    humanReviewRequests({ humanReviewRequests: ['wants to speak to a person', 'asked about a custom install'] }),
+    ['wants to speak to a person', 'asked about a custom install'],
+);
+// Non-string and empty entries are dropped rather than rendered as blanks.
+assert.deepEqual(humanReviewRequests({ humanReviewRequests: ['ok', '', null, 42] }), ['ok']);
 
 // The vocabulary the backend actually writes, plus the value it used to.
 assert.equal(outcomeVariant('offered'), 'positive');

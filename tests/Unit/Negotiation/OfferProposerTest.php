@@ -165,6 +165,57 @@ final class OfferProposerTest extends TestCase
             $spy->userPrompts[0],
             'The cap must be stated to the model.',
         );
+        // The round-1 prompt has nothing to remember yet, so the transcript
+        // section must not appear at all rather than as an empty, noisy header.
+        self::assertStringNotContainsString('Earlier rounds of this negotiation', $spy->userPrompts[0]);
+    }
+
+    /**
+     * #166, and its acceptance gate: given a thread, an offer may never
+     * concede more than the buyer's own latest ask. Reproduces the measured
+     * session — buyer asks 800, agent offers 820, buyer softens to 815 — and
+     * pins that this round's prompt actually carries the earlier round's
+     * figures, which is the memory that lets a merchant's strategy (and,
+     * deterministically, OfferAuthorizer) hold the line at 815 rather than
+     * re-deriving a fresh concession from the anchored baseline alone. The
+     * band/authorizer check itself is untouched by this issue: this pins the
+     * PROMPT'S input to it.
+     */
+    public function testTheNegotiatePromptCarriesEarlierRoundsAndNeverLosesTheBuyersLatestAsk(): void
+    {
+        [$client, $spy] = ScriptedClient::spy(['{"action":"offer","message":"ok","terms":{"discountPercent":8}}']);
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('Could you do 800?', '2026-09-18 09:00:00'),
+            NegotiationFixture::agentComment(
+                'We can bring this quote down by 8% to 820.00 EUR. The offer is valid until 2026-10-02.',
+                '2026-09-18 10:00:00',
+            ),
+            NegotiationFixture::buyerComment('815 would work too.', '2026-09-18 11:00:00'),
+        ]);
+
+        self::proposer($client)
+            ->propose(
+                NegotiationFixture::settings(),
+                SnapshotAdapter::toPolicy($snapshot),
+                self::grantDecision(),
+                new NegotiationContext(
+                    $snapshot->identity->customerId,
+                    $snapshot->identity->quoteId,
+                    SnapshotAdapter::conversation($snapshot),
+                ),
+            );
+
+        // The buyer's own latest ask this round (815) and last round's offer
+        // (820.00) both reach the model, in figures — the fact a prompt with
+        // no memory of itself cannot state at all.
+        self::assertStringContainsString(
+            "Earlier rounds of this negotiation (buyer's ask -> your offer, oldest first):\n"
+            . 'buyer asked 800 -> you offered 820.00',
+            $spy->userPrompts[0],
+        );
+        // The newest buyer comment is THIS round's ask, not a completed
+        // round: it must not appear inside the transcript block, only after it.
+        self::assertStringContainsString("Buyer's latest comment:\n815 would work too.", $spy->userPrompts[0]);
     }
 
     public function testAProposalOutsideAuthorityIsRejected(): void
@@ -210,7 +261,7 @@ final class OfferProposerTest extends TestCase
             );
 
         self::assertNull($answer->offer);
-        self::assertSame(QuoteEscalationReason::NeedsHumanReview, $answer->escalation);
+        self::assertSame(QuoteEscalationReason::ModelUnavailable, $answer->escalation);
         self::assertStringContainsString('term I cannot offer', $answer->escalationDetail);
     }
 }

@@ -17,6 +17,13 @@ use PHPUnit\Framework\TestCase;
  *
  * Mirrored for EVERY outcome, not just an offer — an escalation is exactly
  * when a human opens the quote and needs to see what was asked for.
+ *
+ * @mago-expect lint:too-many-methods
+ * One test per ask shape the mirror has to answer for (per-line, quote-wide
+ * percent, quote-wide absolute total, best price, a stale target it must not
+ * adopt) plus the marker semantics that keep the agent from reading its own
+ * write back as a fresh ask — a count that grows with #165's scope, not with
+ * unrelated concerns that belong in a separate class.
  */
 final class AskMirrorTest extends TestCase
 {
@@ -92,7 +99,13 @@ final class AskMirrorTest extends TestCase
         );
     }
 
-    public function testAnAskWithNoPerLineTargetMirrorsNothing(): void
+    /**
+     * #165: a quote-wide ask names no line, so CommentTargetMerger::adopted()
+     * has nothing to answer — that used to mean nothing was mirrored at all,
+     * even though the buyer's number was right there in the comment.
+     * Distributed across the fixture's one line instead: 100.00 * 95% = 95.00.
+     */
+    public function testAQuoteWidePercentAskIsDistributedAcrossLines(): void
     {
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":5}}',
@@ -102,9 +115,46 @@ final class AskMirrorTest extends TestCase
 
         $this->serviceWith($harness, '5% please');
 
+        self::assertSame([95.0], self::mirroredPrices($harness));
+        self::assertContains([MirroredAsks::KEY => ['line-1' => 95.0]], $harness->gateway->customFieldWrites);
+        self::assertSame([PipelineHarness::rewordedReply()], $harness->gateway->comments);
+    }
+
+    /**
+     * The #164 twin: an absolute quote-level total distributes the same way a
+     * percentage does, off the ratio between the target and the quote's
+     * current total (900 / 1000 = 90% of every line stands).
+     */
+    public function testAQuoteLevelAbsoluteTargetIsDistributedAcrossLines(): void
+    {
+        $harness = PipelineHarness::with(
+            [
+                '{"price":{"targetTotal":900}}',
+                '{"action":"offer","message":"900.00 total, valid until 2026-09-11.","terms":{"discountPercent":10}}',
+                PipelineHarness::rewordedReply(),
+            ],
+            reReadTotalNet: 900.0,
+        );
+
+        $this->serviceWith($harness, 'can you do 900 total?');
+
+        self::assertSame([90.0], self::mirroredPrices($harness));
+        self::assertContains([MirroredAsks::KEY => ['line-1' => 90.0]], $harness->gateway->customFieldWrites);
+    }
+
+    /** "your best price" names no number at all, so there is nothing yet to mirror. */
+    public function testABestPriceAskStillMirrorsNothing(): void
+    {
+        $harness = PipelineHarness::with([
+            '{"price":{"bestPriceRequested":true}}',
+            '{"action":"offer","message":"5% off, valid until 2026-09-11.","terms":{"discountPercent":5}}',
+            PipelineHarness::rewordedReply(),
+        ]);
+
+        $this->serviceWith($harness, 'your best price please');
+
         self::assertSame([], self::mirroredPrices($harness));
         self::assertSame([], self::markerWrites($harness));
-        self::assertSame([PipelineHarness::rewordedReply()], $harness->gateway->comments);
     }
 
     /**

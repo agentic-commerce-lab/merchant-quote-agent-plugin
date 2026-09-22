@@ -32,6 +32,13 @@ final class HumanReviewEscalation
 
         $withoutBand = $this->discountApplier->apply($snapshot, $interpretation);
 
+        // Issue #169: this is the one call site where NeedsHumanReview is
+        // literally true — the buyer asked for a person, or asked for
+        // something the structural/non-price/unplaceable-ask cases above
+        // don't cover. $interpretation->humanReviewRequests carries the
+        // buyer's own words for it, which is what makes the specific claim
+        // safe to show a merchant even though the enum value alone no longer
+        // is (existing rows share it with eight other, unrelated causes).
         return QuoteDecision::escalate(new QuoteEscalationDetails(
             reason: QuoteEscalationReason::NeedsHumanReview,
             requestedDiscountPercent: MoneyMath::requestedDiscount($withoutBand),

@@ -64,7 +64,7 @@ final class HistoryLoopTest extends TestCase
         ]);
         $answer = $h->propose();
         self::assertNull($answer->offer);
-        self::assertSame(QuoteEscalationReason::NeedsHumanReview, $answer->escalation);
+        self::assertSame(QuoteEscalationReason::ModelUnavailable, $answer->escalation);
         self::assertSame(3, $h->spy->calls);
         self::assertSame(2, $h->history->quoteCalls);
         self::assertSame([], $h->history->products);
