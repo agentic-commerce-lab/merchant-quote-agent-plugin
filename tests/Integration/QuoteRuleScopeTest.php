@@ -13,7 +13,9 @@ use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
 use Shopware\Core\Checkout\Cart\LineItem\LineItemCollection;
 use Shopware\Core\Checkout\Cart\Rule\CartRuleScope;
 use Shopware\Core\Checkout\Cart\Rule\GoodsPriceRule;
+use Shopware\Core\Content\Rule\RuleEntity;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\Rule\Rule;
 use Shopware\Core\Framework\Uuid\Uuid;
 
@@ -39,6 +41,17 @@ use Shopware\Core\Framework\Uuid\Uuid;
  * RuleScopeUnavailable's docblock). Inventing a second fixture here would
  * only re-test that precondition instead of trusting the one test file that
  * already depends on it holding.
+ *
+ * One thing that reuse does NOT inherit: AddProductAndRecalculateTest's own
+ * docblock documents a SIGSEGV in SwagCommercial's `QuoteManipulation::addProduct`
+ * for a quote whose line references a variant product, and
+ * `QuoteFixture::anyQuoteId()` applies no filter that would exclude such a
+ * quote from the ones it can return. Every test here reaches SwagCommercial
+ * through a different call (`QuoteToCartConverter::convertToCart()`, not
+ * `QuoteManipulation::addProduct()`), so whether that crash reproduces on
+ * this path is genuinely unknown -- not ruled out, and not expected either.
+ * Worth knowing before staring at a run that died mid-suite with no PHPUnit
+ * failure to read: a SIGSEGV kills the whole process, not just a test.
  */
 final class QuoteRuleScopeTest extends IntegrationTestCase
 {
@@ -207,16 +220,24 @@ final class QuoteRuleScopeTest extends IntegrationTestCase
                 self::ruleAssignmentRow($highPriorityRuleId, BuiltInStrategies::FAST_CLOSE),
             ], $context);
 
+        // Proven independently of assign(), against each rule's own hydrated
+        // payload, and before the resolver ever runs: if hydration silently
+        // failed for one of the two rows, or its condition simply did not
+        // apply to this particular quote, `assign()` would still return the
+        // OTHER rule's strategy and the assertion below would fail with a
+        // message blaming `priority DESC` for a fixture problem that has
+        // nothing to do with sort order. These two calls turn that
+        // misdiagnosis into an accurate one, pointing at the rule id that
+        // actually failed to match.
+        self::assertRuleMatches($lowPriorityRuleId, $scope, $context);
+        self::assertRuleMatches($highPriorityRuleId, $scope, $context);
+
         $resolver = static::getContainer()->get(StrategyAssignmentResolver::class);
         self::assertInstanceOf(StrategyAssignmentResolver::class, $resolver);
 
         $assigned = $resolver->assign($quoteId, Uuid::randomHex(), Uuid::randomHex(), $context);
 
-        self::assertNotNull(
-            $assigned,
-            'Neither seeded rule matched, so this run cannot prove which one the ladder would have '
-            . 'picked between.',
-        );
+        self::assertNotNull($assigned, 'assign() found no rule, although both seeded rules were just proven to match.');
         self::assertSame(StrategyAssignmentSource::Rule, $assigned->source);
 
         $strategies = static::getContainer()->get(StrategyResolver::class);
@@ -227,6 +248,40 @@ final class QuoteRuleScopeTest extends IntegrationTestCase
             $assigned->strategy->versionId,
             'The lower-priority rule\'s strategy won, so `priority DESC` is not what the resolver ran '
             . 'against the real database.',
+        );
+    }
+
+    /**
+     * Reads a just-seeded rule back through the same repository
+     * StrategyAssignmentResolver uses and confirms its hydrated payload
+     * matches the scope on its own -- independent of the ladder, so a
+     * failure here can never be mistaken for a sort-order bug.
+     */
+    private static function assertRuleMatches(string $ruleId, CartRuleScope $scope, Context $context): void
+    {
+        $rule = static::repository(static::getContainer(), 'rule.repository')
+            ->search(new Criteria([$ruleId]), $context)
+            ->first();
+
+        self::assertInstanceOf(RuleEntity::class, $rule, 'Rule ' . $ruleId . ' was not found after being seeded.');
+
+        $payload = $rule->getPayload();
+
+        self::assertInstanceOf(
+            Rule::class,
+            $payload,
+            'Rule '
+            . $ruleId
+            . ' has no matchable payload after being seeded. This is a fixture problem '
+            . '(hydration did not build a payload), not a priority-sort problem.',
+        );
+        self::assertTrue(
+            $payload->match($scope),
+            'Rule '
+            . $ruleId
+            . ' does not match the scope even though it was seeded with a GoodsPriceRule '
+            . 'condition below the quote\'s own goods total. This is a fixture problem, not a priority-sort '
+            . 'problem.',
         );
     }
 
