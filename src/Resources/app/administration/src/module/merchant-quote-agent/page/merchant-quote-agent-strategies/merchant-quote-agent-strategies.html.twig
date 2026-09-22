@@ -246,6 +246,84 @@
                         {% block merchant_quote_agent_assignments_intro %}
                         <p class="mqa-assignment__intro">{{ $tc('merchant-quote-agent.assignment.intro') }}</p>
                         {% endblock %}
+
+                        {# Rung 1. Rules and the split (Tasks 4-5) are their own sections
+                           below this one, in ladder order -- see the intro above. #}
+                        {% block merchant_quote_agent_assignments_pins %}
+                        <div class="mqa-assignment__section">
+                            <mt-banner v-if="assignmentError" variant="critical">
+                                {{ assignmentError }}
+                            </mt-banner>
+
+                            <div class="mqa-assignment__section-header">
+                                <h3>{{ $tc('merchant-quote-agent.assignment.pinsTitle') }}</h3>
+                                <mt-button v-if="canEdit" size="small" variant="secondary" @click="addPin">
+                                    {{ $tc('merchant-quote-agent.assignment.addPin') }}
+                                </mt-button>
+                            </div>
+
+                            <p class="mqa-assignment__section-intro">{{ $tc('merchant-quote-agent.assignment.pinsIntro') }}</p>
+
+                            <sw-data-grid
+                                v-if="pins.length"
+                                :data-source="pins"
+                                :columns="pinColumns"
+                                :show-selection="false"
+                                :show-settings="false"
+                                :show-actions="canEdit"
+                                :allow-column-edit="false"
+                                :plain-appearance="true"
+                            >
+                                {# The company note lives on the field's help text rather than only in
+                                   prose above the grid -- QuoteIdentity's own docblock says the id is
+                                   the company, and a merchant who expects per-person targeting here
+                                   would be wrong in a way nothing else on this page corrects. #}
+                                <template #column-customerId="{ item }">
+                                    <sw-entity-single-select
+                                        :value="item.customerId"
+                                        entity="customer"
+                                        :label-callback="customerLabel"
+                                        size="small"
+                                        show-clearable-button
+                                        :disabled="!canEdit"
+                                        :help-text="$tc('merchant-quote-agent.assignment.customerIsCompany')"
+                                        @update:value="(value) => { item.customerId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #column-strategyId="{ item }">
+                                    <merchant-quote-agent-strategy-select
+                                        :value="item.strategyId"
+                                        @update:value="(value) => { item.strategyId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #column-salesChannelId="{ item }">
+                                    <sw-entity-single-select
+                                        :value="item.salesChannelId"
+                                        entity="sales_channel"
+                                        size="small"
+                                        show-clearable-button
+                                        :disabled="!canEdit"
+                                        :placeholder="$tc('merchant-quote-agent.assignment.anyChannel')"
+                                        @update:value="(value) => { item.salesChannelId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #actions="{ item }">
+                                    <sw-context-menu-item variant="danger" @click="removeAssignment(item)">
+                                        {{ $tc('merchant-quote-agent.assignment.remove') }}
+                                    </sw-context-menu-item>
+                                </template>
+                            </sw-data-grid>
+
+                            <sw-empty-state
+                                v-else
+                                :absolute="false"
+                                :title="$tc('merchant-quote-agent.assignment.pinsTitle')"
+                            />
+                        </div>
+                        {% endblock %}
                     </mt-card>
                     {% endblock %}
                 </template>

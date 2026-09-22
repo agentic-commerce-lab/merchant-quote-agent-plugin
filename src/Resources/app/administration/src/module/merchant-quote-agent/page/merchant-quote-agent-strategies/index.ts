@@ -8,6 +8,7 @@ import {
     VERSIONED_AGGREGATION,
     type StrategyLike,
 } from '../../strategy.ts';
+import { isSavable } from '../../assignment.ts';
 
 /**
  * Settings -> Negotiation strategies. The library's CRUD.
@@ -59,6 +60,12 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             // existed, so it stays the default.
             activeTab: 'library',
             assignments: [],
+            // Its own field rather than reusing `error`: the library tab's
+            // load() and this tab's loadAssignments() both run un-awaited from
+            // created(), so sharing one field let a failure surface under the
+            // wrong tab, or get overwritten before anyone saw it, because the
+            // Assignments tab had no banner of its own to show it in.
+            assignmentError: null,
         };
     },
 
@@ -77,6 +84,19 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
 
         assignmentRepository() {
             return this.repositoryFactory.create('merchant_quote_agent_strategy_assignment');
+        },
+
+        /** Rung 1 of the ladder. Rules and split arms are Tasks 4-5's own filters over the same array. */
+        pins() {
+            return this.assignments.filter((row) => row.kind === 'pin');
+        },
+
+        pinColumns() {
+            return [
+                { property: 'customerId', label: this.$tc('merchant-quote-agent.assignment.columnCustomer') },
+                { property: 'strategyId', label: this.$tc('merchant-quote-agent.assignment.columnStrategy') },
+                { property: 'salesChannelId', label: this.$tc('merchant-quote-agent.assignment.columnSalesChannel') },
+            ];
         },
 
         selectedIsBuiltIn() {
@@ -157,6 +177,8 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          * one -- so this reads every row rather than filtering one out.
          */
         async loadAssignments() {
+            this.assignmentError = null;
+
             try {
                 const criteria = new Shopware.Data.Criteria(1, 100);
 
@@ -164,8 +186,77 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
 
                 this.assignments = [...result];
             } catch (error) {
-                this.error = this.messageFor(error);
+                this.assignmentError = this.messageFor(error);
             }
+        },
+
+        /**
+         * `company` is nullable and blank on every seeded customer in the test
+         * shop -- verified live, not assumed -- because a private account
+         * (SwagCommercial's default) never fills it in. `label-property`
+         * alone would then render every option in the pin's customer select
+         * as empty text. This is `sw-entity-single-select`'s `label-callback`
+         * prop, so the row still names someone even before a merchant has a
+         * real company account to pin.
+         *
+         * The null guard is not defensive-programming filler: the select
+         * calls this with no argument for its own empty selection before a
+         * customer is chosen, and skipping the guard threw in the console on
+         * the very first render of an empty pin row.
+         */
+        customerLabel(customer) {
+            if (!customer) {
+                return '';
+            }
+
+            return customer.company || `${customer.firstName} ${customer.lastName}`.trim();
+        },
+
+        /** A blank pin row. Left unsaved until saveAssignment() sees a customer AND a strategy. */
+        addPin() {
+            const row = this.assignmentRepository.create(Shopware.Context.api);
+            row.kind = 'pin';
+            row.customerId = null;
+            row.ruleId = null;
+            row.weight = null;
+            row.strategyId = null;
+            row.salesChannelId = null;
+            this.assignments.push(row);
+        },
+
+        /**
+         * Shared by all three grids -- Tasks 4 and 5 call this by name, so it
+         * stays generic rather than pin-specific. isSavable is the ONLY
+         * validity check: it already treats '' the same as null, which is
+         * what a cleared sw-entity-single-select can hand back, so a second,
+         * looser check here would only create a place for the two to disagree.
+         */
+        async saveAssignment(row) {
+            if (!isSavable(row)) {
+                this.assignmentError = this.$tc('merchant-quote-agent.assignment.incomplete');
+
+                return;
+            }
+
+            this.assignmentError = null;
+            await this.assignmentRepository.save(row, Shopware.Context.api);
+            await this.loadAssignments();
+        },
+
+        /**
+         * Shared by all three grids, same reason as saveAssignment(). A row
+         * added by addPin()/addRule()/addSplitArm() and removed again before
+         * ever being saved has no server-side counterpart to delete --
+         * isNew() (not an `_isNew` property: this build's Entity marks itself
+         * via EntityFactory#create -> markAsNew(), read back through the
+         * isNew() method) is what tells the two cases apart.
+         */
+        async removeAssignment(row) {
+            if (row.id !== undefined && !row.isNew()) {
+                await this.assignmentRepository.delete(row.id, Shopware.Context.api);
+            }
+
+            await this.loadAssignments();
         },
 
         /**

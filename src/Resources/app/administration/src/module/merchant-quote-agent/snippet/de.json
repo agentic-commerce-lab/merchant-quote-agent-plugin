@@ -265,7 +265,17 @@
             "tabLibrary": "Bibliothek",
             "tabAssignments": "Zuordnungen",
             "cardTitle": "Strategiezuordnungen",
-            "intro": "Diese Zeilen legen fest, welche Strategie ein Angebot erhält: Zuerst wird ein fest zugeordneter Kunde geprüft, dann eine passende Regel, dann ein gewichteter Split — in dieser Reihenfolge, bevor die Standardstrategie des Verkaufskanals greift."
+            "intro": "Diese Zeilen legen fest, welche Strategie ein Angebot erhält: Zuerst wird ein fest zugeordneter Kunde geprüft, dann eine passende Regel, dann ein gewichteter Split — in dieser Reihenfolge, bevor die Standardstrategie des Verkaufskanals greift.",
+            "pinsTitle": "Angeheftete Kunden",
+            "pinsIntro": "Eine Anheftung gewinnt immer: Der genannte Kunde erhält diese Strategie, bevor eine Regel oder ein Split geprüft wird.",
+            "columnCustomer": "Kunde",
+            "columnStrategy": "Strategie",
+            "columnSalesChannel": "Verkaufskanal",
+            "customerIsCompany": "In einem B2B-Shop ist dies das Firmenkonto: Die Anheftung gilt für alle Mitarbeiterinnen, Mitarbeiter und Organisationseinheiten darunter, nicht nur für eine einzelne Person.",
+            "anyChannel": "Alle Verkaufskanäle",
+            "addPin": "Kunden anheften",
+            "incomplete": "Wählen Sie einen Kunden und eine Strategie aus, damit diese Zeile gespeichert werden kann.",
+            "remove": "Entfernen"
         },
         "disposition": {
             "needsReview": "Prüfung nötig",

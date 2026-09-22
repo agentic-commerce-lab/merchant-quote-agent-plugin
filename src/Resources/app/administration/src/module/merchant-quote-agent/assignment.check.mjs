@@ -78,4 +78,12 @@ assert.deepEqual(spreadLabel([null, null]), [], 'rows written before the column 
 assert.deepEqual(spreadLabel(['config', 'pin', 'config']), [{ source: 'config', count: 2 }, { source: 'pin', count: 1 }],
     'ordered by count descending so the dominant source reads first');
 
+// A pin row straight from addPin() must not be savable until it names both a
+// customer and a strategy -- the grid's Save button is bound to this.
+assert.equal(isSavable({ kind: 'pin', customerId: null, ruleId: null, weight: null, strategyId: null, salesChannelId: null }), false);
+assert.equal(isSavable({ kind: 'pin', customerId: 'c', ruleId: null, weight: null, strategyId: null, salesChannelId: null }), false);
+assert.equal(isSavable({ kind: 'pin', customerId: 'c', ruleId: null, weight: null, strategyId: 's', salesChannelId: null }), true);
+assert.equal(isSavable({ kind: 'pin', customerId: 'c', ruleId: null, weight: null, strategyId: 's', salesChannelId: 'ch' }), true,
+    'a channel-scoped pin is as valid as a global one');
+
 console.log('assignment.check.mjs OK');

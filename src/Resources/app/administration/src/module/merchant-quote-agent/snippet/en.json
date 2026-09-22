@@ -265,7 +265,17 @@
             "tabLibrary": "Library",
             "tabAssignments": "Assignments",
             "cardTitle": "Strategy assignments",
-            "intro": "These rows decide which strategy a quote gets: a pinned customer, then a matching rule, then a weighted split are tried in that order, before the sales channel's default strategy applies."
+            "intro": "These rows decide which strategy a quote gets: a pinned customer, then a matching rule, then a weighted split are tried in that order, before the sales channel's default strategy applies.",
+            "pinsTitle": "Pinned customers",
+            "pinsIntro": "A pin always wins: the named customer gets this strategy before any rule or split is tried.",
+            "columnCustomer": "Customer",
+            "columnStrategy": "Strategy",
+            "columnSalesChannel": "Sales channel",
+            "customerIsCompany": "On a B2B shop this is the company account: the pin covers every employee and organization unit under it, not a single person.",
+            "anyChannel": "Every sales channel",
+            "addPin": "Pin a customer",
+            "incomplete": "Choose a customer and a strategy before this row can be saved.",
+            "remove": "Remove"
         },
         "disposition": {
             "needsReview": "Needs review",
