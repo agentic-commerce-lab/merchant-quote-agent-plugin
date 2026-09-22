@@ -364,4 +364,76 @@ final class ReplyComposerTest extends TestCase
         self::assertNull($hash);
         self::assertStringNotContainsString('delivery', $gateway->comments[0]);
     }
+
+    /**
+     * Live quote 1054: the buyer wrote "Can we get a discount, my max budget
+     * is 9k" and was answered "We have reduced the quote by 15% to 9885.58
+     * EUR. This offer is valid until 2026-10-07." — factually right, and it
+     * reads like a form letter, because the reply model was handed the
+     * template and nothing else. It could not acknowledge a target it had
+     * never been shown.
+     *
+     * The ask goes in as context for the WORDING only. The guard is unchanged
+     * and still decides what a buyer reads, which is what keeps this safe:
+     * see the test below for what happens when the model borrows a figure
+     * from it.
+     */
+    public function testTheBuyersOwnWordsReachTheReplyModel(): void
+    {
+        $reworded =
+            'We can bring this quote down by 5% to 950.00 EUR, valid until ' . NegotiationFixture::expires() . '.';
+        [$client, $spy] = ScriptedClient::spy([$reworded]);
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $after = NegotiationFixture::snapshot(
+            comments: [NegotiationFixture::buyerComment(
+                'Can we get a discount, my max budget is 9k',
+                '2026-08-28 09:00:00',
+            )],
+            state: 'in_review',
+            totalNet: 950.0,
+        );
+
+        self::composer($client)
+            ->reply($gateway, $after, NegotiationFixture::settings(), 5.0, SnapshotAdapter::conversation($after));
+
+        self::assertStringContainsString('my max budget is 9k', $spy->userPrompts[0]);
+        self::assertStringContainsString(ReplyComposer::TEMPLATE_HEADING, $spy->userPrompts[0]);
+        self::assertStringContainsString('down by 5% to 950.00 EUR', $spy->userPrompts[0]);
+        self::assertSame($reworded, $gateway->comments[0]);
+    }
+
+    /**
+     * The other half of the change above. The buyer's ask is the one piece of
+     * untrusted text now in the reply prompt, and every figure in it is a
+     * figure nobody authorised — so a rewording that quotes the buyer's own
+     * target back at them is rejected exactly like an invented one, and the
+     * template ships. `9k` would be caught too: the guard tokenises the `9`.
+     */
+    public function testAFigureBorrowedFromTheBuyersAskFallsBackToTheTemplate(): void
+    {
+        [$client] = ScriptedClient::spy([
+            'We could not quite reach your 9000 EUR target, but we can bring this quote down by 5% '
+                . 'to 950.00 EUR. The offer is valid until '
+                . NegotiationFixture::expires()
+                . '.',
+        ]);
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $after = NegotiationFixture::snapshot(
+            comments: [NegotiationFixture::buyerComment('our budget is 9000 EUR', '2026-08-28 09:00:00')],
+            state: 'in_review',
+            totalNet: 950.0,
+        );
+
+        $hash = self::composer($client)
+            ->reply($gateway, $after, NegotiationFixture::settings(), 5.0, SnapshotAdapter::conversation($after));
+
+        self::assertNull($hash, 'A rejected rewording must be reported as template-authored.');
+        self::assertStringNotContainsString('9000', $gateway->comments[0]);
+        self::assertSame(
+            'We can bring this quote down by 5% to 950.00 EUR. The offer is valid until '
+            . NegotiationFixture::expires()
+            . '.',
+            $gateway->comments[0],
+        );
+    }
 }
