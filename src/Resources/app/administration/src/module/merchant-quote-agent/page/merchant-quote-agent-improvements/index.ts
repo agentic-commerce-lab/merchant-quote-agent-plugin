@@ -27,6 +27,14 @@ const PROPOSAL_LIMIT = 20;
  * Runs table itself is exact, since every row already carries its own real
  * `salesChannelId`.
  *
+ * The trade-off this scope choice makes: a shop that enabled the feature on
+ * only ONE channel (never the global scope) reads `enabled = false` here --
+ * a channel override does NOT inherit upward to the global value this page
+ * reads. `runsEmptyState()` covers for that: it only ever returns `disabled`
+ * when `runs` is also empty, and a run row is proof the feature is on
+ * somewhere, so an enabled-per-channel shop with any run history still sees
+ * that history rather than a wrong "turned off" banner.
+ *
  * Accepting or rejecting never needs a confirmation modal the way archiving a
  * strategy does: this page IS the confirmation -- a human reads the findings
  * and the A/B numbers before clicking a button labelled exactly what it does.
@@ -188,16 +196,6 @@ Shopware.Component.register('merchant-quote-agent-improvements', {
             return this.activeVersions[strategyId]?.version ?? null;
         },
 
-        /**
-         * Where a finding's evidence ids link to. Each id is one
-         * `merchant_quote_agent_decision` row; the list page has no
-         * multi-id filter to link into, so evidence links open the same
-         * detail route the list's own rows use, one per id.
-         */
-        evidenceRoute(decisionId) {
-            return { name: 'merchant.quote.agent.detail', params: { id: decisionId } };
-        },
-
         async load() {
             this.error = null;
             this.isLoading = true;
@@ -211,11 +209,14 @@ Shopware.Component.register('merchant-quote-agent-improvements', {
         },
 
         /**
-         * `getValues` inherits from the global default the same way
-         * `_action/system-config` does elsewhere in this module, so a
-         * channel-specific override does not make this page read a stale
-         * "off" for a shop that only enabled the feature on one channel --
-         * see this component's own docblock for the scope this trades away.
+         * `getValues('MerchantQuoteAgentPlugin.config')` with no sales-channel
+         * id reads the GLOBAL config, not a merge with any channel override --
+         * Shopware's own config semantics run the other way (a channel falls
+         * back to the global value, never the reverse). So a shop that only
+         * enabled the feature on ONE channel reads `enabled = false` here;
+         * see this component's own docblock for why `runsEmptyState()` is
+         * what keeps that from showing a wrong "turned off" banner over real
+         * run history.
          */
         async loadConfig() {
             try {

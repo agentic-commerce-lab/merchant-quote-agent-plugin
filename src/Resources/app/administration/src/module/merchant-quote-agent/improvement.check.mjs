@@ -164,11 +164,20 @@ assert.deepEqual(nextRunDueAt('2026-09-01T00:00:00.000Z', 'weekly'), new Date('2
 
 const now = new Date('2026-09-10T00:00:00.000Z');
 
-// Disabled wins regardless of what the runs say.
+// Disabled with no run history at all: the feature really has never run.
 assert.equal(runsEmptyState(false, [], 'daily', now), 'disabled');
+
+// I5: `enabled` is read at GLOBAL config scope only (see index.ts's own
+// docblock), so a shop that enabled the feature on ONE channel reads
+// `enabled = false` here even though real runs exist. A run row is proof
+// the feature is on somewhere, so `disabled` must NOT override it.
 assert.equal(
-    runsEmptyState(false, [{ status: 'completed', finishedAt: now.toISOString() }], 'daily', now),
-    'disabled',
+    runsEmptyState(false, [{ status: 'completed', finishedAt: '2026-08-01T00:00:00.000Z' }], 'daily', now),
+    null,
+);
+assert.equal(
+    runsEmptyState(false, [{ status: 'no_data', finishedAt: now.toISOString() }], 'daily', now),
+    'noData',
 );
 
 // Enabled, never ticked: no worker, not "quiet".

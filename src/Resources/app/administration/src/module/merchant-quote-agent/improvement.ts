@@ -123,6 +123,13 @@ export type RunsEmptyState = 'disabled' | 'noWorker' | 'noData' | 'notDueYet';
  * `runs` must be newest first. Returns null once there is something worth
  * rendering as a table instead -- the caller shows that.
  *
+ * `enabled` is read at GLOBAL config scope by this page's caller (see
+ * index.ts), so it can read false for a shop that only turned the feature on
+ * for ONE sales channel -- a channel override does not inherit upward. A run
+ * row is proof the feature is on somewhere, so `disabled` is only ever
+ * returned alongside an EMPTY `runs`; any row present is read for what it
+ * says instead, regardless of what `enabled` claims.
+ *
  * `noWorker` and `disabled` are the only two states reachable with an empty
  * `runs`: ImprovementWindow::due() always returns a window immediately when
  * no completed run exists yet, so an enabled feature with zero rows can only
@@ -137,12 +144,8 @@ export function runsEmptyState(
     cadence: string | null | undefined,
     now: Date,
 ): RunsEmptyState | null {
-    if (!enabled) {
-        return 'disabled';
-    }
-
     if (runs.length === 0) {
-        return 'noWorker';
+        return enabled ? 'noWorker' : 'disabled';
     }
 
     if (runs[0].status === 'no_data') {

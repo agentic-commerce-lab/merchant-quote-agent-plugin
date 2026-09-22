@@ -99,15 +99,9 @@
                         <span class="mqa-finding__count">
                             {{ $t('merchant-quote-agent.improvement.findingCount', { count: finding.count }) }}
                         </span>
-                        <span class="mqa-finding__evidence">
-                            <router-link
-                                v-for="(decisionId, index) in finding.evidence"
-                                :key="decisionId"
-                                :to="evidenceRoute(decisionId)"
-                            >
-                                {{ $t('merchant-quote-agent.improvement.evidenceLink', { index: index + 1 }) }}
-                            </router-link>
-                        </span>
+                        <ul v-if="finding.evidence.length" class="mqa-finding__evidence">
+                            <li v-for="(item, index) in finding.evidence" :key="index">{{ item }}</li>
+                        </ul>
                     </li>
                 </ul>
                 <p v-else-if="!isLoading">
