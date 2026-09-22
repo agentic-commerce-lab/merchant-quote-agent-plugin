@@ -36,10 +36,10 @@ final class AnonymizedDecisionTest extends TestCase
     }
 
     /**
-     * Unlike every other entry in the same rename map, this one is not a shop
-     * identifier -- it is one of StrategyAssignmentSource's four fixed words
-     * describing plugin configuration. Salting it would only make it
-     * unreadable, not anonymous, so it survives the pseudonymizer untouched.
+     * A closed vocabulary of four words describing plugin configuration, not
+     * a shop identifier -- VERBATIM, alongside band and outcome, the same
+     * shape. The property name is also the export key: VERBATIM is a plain
+     * list, not a rename map, so there is nothing to rename.
      */
     public function testTheAssignmentSourceLeavesTheShopUnpseudonymized(): void
     {

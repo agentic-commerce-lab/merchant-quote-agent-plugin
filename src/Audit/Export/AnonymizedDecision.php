@@ -47,12 +47,6 @@ final class AnonymizedDecision
      * they are salted rather than dropped. Renamed on the way out because the
      * exported string is a pseudonym, not the id the name would promise.
      *
-     * `strategyAssignmentSource` rides in this same property => export-key map
-     * for the rename machinery, but of() below deliberately skips the
-     * pseudonymizer for it: it is not a shop identifier at all, just one of
-     * StrategyAssignmentSource's four fixed words, so salting it would only
-     * make it unreadable while anonymizing nothing.
-     *
      * @var array<string, string> entity property => export key
      */
     public const PSEUDONYMIZED = [
@@ -62,7 +56,6 @@ final class AnonymizedDecision
         'salesChannelId' => 'salesChannel',
         'revisionVersionId' => 'revision',
         'strategyVersionId' => 'strategyVersion',
-        'strategyAssignmentSource' => 'strategyAssignmentSource',
     ];
 
     /**
@@ -79,6 +72,7 @@ final class AnonymizedDecision
         'band',
         'outcome',
         'escalationReason',
+        'strategyAssignmentSource',
         'discountPercentGranted',
         'maxDiscountPercent',
         'totalNetBefore',
@@ -123,12 +117,6 @@ final class AnonymizedDecision
             'salesChannel' => $pseudonym->of($record->salesChannelId),
             'revision' => $pseudonym->of($record->revisionVersionId),
             'strategyVersion' => $pseudonym->of($record->strategyVersionId),
-            // Not routed through $pseudonym->of(): the value is one of four
-            // fixed words describing plugin configuration, not a shop
-            // identifier, and pseudonymizing it would destroy the only thing
-            // it is for (telling a merchant which rung chose) while
-            // protecting nothing.
-            'strategyAssignmentSource' => $record->strategyAssignmentSource,
             'createdAt' => self::at($record->getCreatedAt()),
             'currencyIso' => $record->currencyIso,
             'triggerReason' => $record->triggerReason,
@@ -137,6 +125,7 @@ final class AnonymizedDecision
             'band' => $record->band,
             'outcome' => $record->outcome,
             'escalationReason' => $record->escalationReason,
+            'strategyAssignmentSource' => $record->strategyAssignmentSource,
             'discountPercentGranted' => $record->discountPercentGranted,
             'maxDiscountPercent' => $record->maxDiscountPercent,
             'totalNetBefore' => $record->totalNetBefore,
