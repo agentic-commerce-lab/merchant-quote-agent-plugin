@@ -34,7 +34,14 @@
 | --- | --- |
 | `…/merchant-quote-agent/assignment.ts` | Every non-trivial decision this feature makes: the `kind` vocabulary, the weight-to-percentage maths, and the validity predicate each grid saves through. Pure — no Vue, no repository. |
 | `…/merchant-quote-agent/assignment.check.mjs` | Self-check for the above, pinning the vocabulary against the PHP enum. |
-| `…/page/merchant-quote-agent-strategies/assignments.html.twig` | The second tab's markup: three grids. |
+
+**A note on the template, learned in Task 2.** An earlier draft of this plan
+put the tab's markup in its own `assignments.html.twig`. That does not work: a
+Shopware administration component has exactly one template file, and there is no
+cross-file include for an arbitrary non-component twig. Everything lives in
+`merchant-quote-agent-strategies.html.twig`, inside the
+`{% block merchant_quote_agent_assignments %}` Task 2 created, and Tasks 3-5
+append sections to that block.
 
 **Modified:** `…/page/merchant-quote-agent-strategies/index.ts` and `…-strategies.html.twig` (tab shell + grid state), `…/acl/index.ts`, `…/snippet/en.json`, `…/snippet/de.json`, `…/merchant-quote-agent.scss`, `…/strategy-measures.ts` and the list page's template (assignment spread), `composer.json` (`quality:admin`).
 
@@ -263,12 +270,11 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Modify: `…/acl/index.ts`
 - Modify: `…/page/merchant-quote-agent-strategies/merchant-quote-agent-strategies.html.twig`
 - Modify: `…/page/merchant-quote-agent-strategies/index.ts`
-- Create: `…/page/merchant-quote-agent-strategies/assignments.html.twig`
 - Modify: `…/snippet/en.json`, `…/snippet/de.json`
 
 **Interfaces:**
 - Consumes: nothing from Task 1 yet.
-- Produces: an `activeTab` data property on the strategies page (`'library' | 'assignments'`); an `assignmentRepository` computed returning `repositoryFactory.create('merchant_quote_agent_strategy_assignment')`; an `assignments` data array loaded on mount; a `canEdit` computed that already exists. The three grids in Tasks 3-5 render inside `assignments.html.twig`.
+- Produces: an `activeTab` data property on the strategies page (`'library' | 'assignments'`); an `assignmentRepository` computed returning `repositoryFactory.create('merchant_quote_agent_strategy_assignment')`; an `assignments` data array loaded on mount; a `canEdit` computed that already exists. The three grids in Tasks 3-5 append sections inside the `{% block merchant_quote_agent_assignments %}` this task creates in the page's own template.
 
 - [ ] **Step 1: Extend the ACL**
 
@@ -303,7 +309,7 @@ Use core's `sw-tabs`. Verify the component and its prop names against the instal
 
             <template #content="{ active }">
                 <template v-if="active === 'library'">{# existing library blocks, unchanged #}</template>
-                <template v-else>{% sw_include '...assignments.html.twig' %}</template>
+                <template v-else>{# the merchant_quote_agent_assignments block, below #}</template>
             </template>
         </sw-tabs>
 ```
@@ -312,7 +318,7 @@ The existing library UI keeps its current `{% block %}` names and its markup unt
 
 If `sw-tabs` turns out to be unavailable or deprecated in this build, **do not invent a replacement**: fall back to rendering the assignments as a second `mt-card` stacked below the library card on the same page, which needs no new idiom and is what the page already does. Report which you used and why. The spec asks for a tab; a working card beats a broken tab, and the choice is visible either way.
 
-Create `…/assignments.html.twig` with just a card and an empty state for now:
+Add a `{% block merchant_quote_agent_assignments %}` to the page's own template, holding just a card and an empty state for now. It goes in this file, not a separate one: an administration component has exactly one template, and there is no cross-file include for an arbitrary non-component twig.
 
 ```twig
 {% block merchant_quote_agent_assignments %}
@@ -357,7 +363,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ### Task 3: The pinned-customers grid
 
 **Files:**
-- Modify: `…/page/merchant-quote-agent-strategies/assignments.html.twig`
+- Modify: `…/page/merchant-quote-agent-strategies/merchant-quote-agent-strategies.html.twig`, inside the `{% block merchant_quote_agent_assignments %}` Task 2 created
 - Modify: `…/page/merchant-quote-agent-strategies/index.ts`
 - Modify: `…/snippet/en.json`, `…/snippet/de.json`
 - Modify: `…/merchant-quote-agent.scss` (only if the grid needs a class the file does not already provide)
@@ -368,7 +374,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Add the grid**
 
-In `assignments.html.twig`, add a first section: a heading, a `sw-data-grid` (or the Meteor equivalent the codebase already uses — grep the strategies page's existing grid and copy its component and prop shape) bound to a `pins` computed, with columns for customer, strategy, sales channel, and a delete action.
+In the page template's `merchant_quote_agent_assignments` block, add a first section: a heading, a `sw-data-grid` (or the Meteor equivalent the codebase already uses — grep the strategies page's existing grid and copy its component and prop shape) bound to a `pins` computed, with columns for customer, strategy, sales channel, and a delete action.
 
 Cells:
 - **Customer** — `sw-entity-single-select` on `customer`, bound to `row.customerId`. Add the snippet help text explaining that on a B2B shop this is the company account, so the pin covers every employee and organization unit of it. That is not a UI nicety: `QuoteIdentity`'s own docblock says the id is the company, and a merchant expecting per-person targeting would be wrong.
@@ -458,7 +464,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ### Task 4: The rules grid
 
 **Files:**
-- Modify: `…/page/merchant-quote-agent-strategies/assignments.html.twig`
+- Modify: `…/page/merchant-quote-agent-strategies/merchant-quote-agent-strategies.html.twig`, inside the `{% block merchant_quote_agent_assignments %}` Task 2 created
 - Modify: `…/page/merchant-quote-agent-strategies/index.ts`
 - Modify: `…/assignment.check.mjs`
 - Modify: `…/snippet/en.json`, `…/snippet/de.json`
@@ -471,7 +477,7 @@ This grid is the one with real hazards. Read the spec's "What we verified before
 
 - [ ] **Step 1: Add the grid**
 
-A second section in `assignments.html.twig`: rule, strategy, sales channel, a **read-only priority** column, and delete.
+A second section in that same block: rule, strategy, sales channel, a **read-only priority** column, and delete.
 
 - **Rule** — `sw-entity-single-select` on `rule`, bound to `row.ruleId`.
 - **Priority** — read-only, sourced from the selected rule, not editable here. It is core's `rule.priority` and it is what orders the rung; showing it saves the merchant a trip to the rule builder to understand why one rule won.
@@ -528,7 +534,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ### Task 5: The split grid
 
 **Files:**
-- Modify: `…/page/merchant-quote-agent-strategies/assignments.html.twig`
+- Modify: `…/page/merchant-quote-agent-strategies/merchant-quote-agent-strategies.html.twig`, inside the `{% block merchant_quote_agent_assignments %}` Task 2 created
 - Modify: `…/page/merchant-quote-agent-strategies/index.ts`
 - Modify: `…/snippet/en.json`, `…/snippet/de.json`
 
