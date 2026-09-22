@@ -28,17 +28,19 @@ use PHPUnit\Framework\TestCase;
 final class RecorderOwnershipTest extends TestCase
 {
     /**
-     * Two owners, not one, since #22's nightly replay: ReplayEvaluator opens
-     * and closes a draft the same way NegotiationPipeline does, for the same
-     * reason -- bracketing a sequence of model calls so their tokens land on
-     * one row -- and this is the reviewed edit this test's own docblock
-     * anticipates for exactly that case. It stays safe under the invariant
-     * below ("exactly one record per pass is provable in one place") because
-     * a replay's draft is handed to TallyingDecisionWriter, which persists
-     * nothing: a second owner that cannot write a row does not weaken a
-     * guarantee about what gets written.
+     * Three owners, not one, since #22's nightly replay: ReplayEvaluator and
+     * ImprovementJudge each open and close a draft the same way
+     * NegotiationPipeline does, for the same reason -- bracketing a model
+     * call so its tokens land on one row -- and this is the reviewed edit
+     * this test's own docblock anticipates for exactly that case. It stays
+     * safe under the invariant below ("exactly one record per pass is
+     * provable in one place") because both nightly-loop drafts are handed to
+     * TallyingDecisionWriter, which persists nothing: a second or third owner
+     * that cannot write a row does not weaken a guarantee about what gets
+     * written.
      */
     private const OWNERS = [
+        'Improvement/ImprovementJudge.php',
         'Improvement/ReplayEvaluator.php',
         'Negotiation/NegotiationPipeline.php',
     ];

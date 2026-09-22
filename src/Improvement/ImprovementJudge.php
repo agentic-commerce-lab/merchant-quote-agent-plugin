@@ -4,9 +4,18 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Improvement;
 
+use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteIdentity;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLifecycle;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
+use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
+use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 
 /**
  * One model call over a whole period, reading DayPicture's aggregates and the
@@ -32,6 +41,24 @@ use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
  * when every candidate's prompt is blank. A candidate with a blank prompt is
  * dropped individually first; only a list that is empty AFTER that drop
  * counts as "no usable answer".
+ *
+ * $platform and $recorder are the run's PRIVATE pair (`merchant_quote_agent.
+ * improvement.model_platform` / `...recorder` in services.php), the same ones
+ * ReplayHarness's replay uses -- never the container's shared ModelPlatform::class,
+ * whose recorder has no open draft outside a live servicing pass and would
+ * silently drop this call's tokens (recordModelCall() no-ops on a null draft).
+ * begin()/finish() bracket the ONE call the same way ReplayEvaluator brackets
+ * each replayed decision -- see that class's own docblock -- with a nominal
+ * QuoteSnapshot rather than a real one: there is no quote behind a period-level
+ * judge call, and TallyingDecisionWriter reads only the token counts, so a
+ * nominal snapshot is honest rather than a guess dressed up as data.
+ * RecorderOwnershipTest is the scan that keeps this the only other class
+ * allowed to open one.
+ *
+ * ImprovementRunner reads the resulting token delta off ReplayHarness's own
+ * tally (ReplayHarness::tokensSoFar()) rather than this class returning it:
+ * JudgeAnswer IS the model's JSON response schema (see its own docblock), so
+ * it may carry nothing the model itself did not answer with.
  */
 final readonly class ImprovementJudge
 {
@@ -59,10 +86,13 @@ final readonly class ImprovementJudge
 
     public function __construct(
         private ModelPlatform $platform,
+        private DecisionRecorder $recorder,
     ) {}
 
     public function assess(ModelAccess $llm, DayPicture $picture, string $currentPrompt, int $candidates): ?JudgeAnswer
     {
+        $this->recorder->begin(self::nominalSnapshot(), new PassContext(ServicingTriggerReason::CommentWritten, 0));
+
         try {
             $answer = $this->platform->object(
                 $llm,
@@ -72,6 +102,11 @@ final readonly class ImprovementJudge
             );
         } catch (ModelUnavailable) {
             return null;
+        } finally {
+            // No NegotiationPass ever existed for this call -- finish(null)
+            // still hands whatever tokens were recorded to the writer, which
+            // is the point: see this class's own docblock.
+            $this->recorder->finish(null);
         }
 
         $kept = array_values(array_filter(
@@ -93,6 +128,18 @@ final readonly class ImprovementJudge
             $picture->describe(),
             $currentPrompt,
             $candidates,
+        );
+    }
+
+    /** See this class's own docblock: there is no real quote behind a period-level judge call. */
+    private static function nominalSnapshot(): QuoteSnapshot
+    {
+        return new QuoteSnapshot(
+            new QuoteIdentity('', '', ''),
+            new QuoteRevision('', new \DateTimeImmutable()),
+            new QuoteTotals(0.0),
+            new QuoteLifecycle(''),
+            new QuoteContent(),
         );
     }
 }

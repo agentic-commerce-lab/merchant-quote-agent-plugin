@@ -61,12 +61,25 @@ final class ImprovementGeneratorFixture
 {
     private const SALES_CHANNEL_ID = 'sc-1';
 
-    /** @param list<QuoteDecisionRecord> $decisions */
+    /**
+     * $platformFactory builds the ModelPlatform AFTER this method already has
+     * a DecisionRecorder in hand -- the SAME instance must back both
+     * ImprovementJudge's begin()/finish() bracketing and the ModelPlatform's
+     * own recordModelCall() calls (see ImprovementJudge's own docblock and
+     * services.php's private wiring), or a real call's tokens silently never
+     * reach the tally ReplayHarness::tokensSoFar() reads. Building the
+     * platform first and handing it in, the way this method used to, cannot
+     * express that: nothing outside this method can hand back the recorder it
+     * is about to create.
+     *
+     * @param list<QuoteDecisionRecord>            $decisions
+     * @param \Closure(DecisionRecorder): ModelPlatform $platformFactory
+     */
     public function generator(
         ?ImprovementSettings $settings,
         ?\DateTimeImmutable $lastCompletedRun,
         array $decisions,
-        ModelPlatform $platform,
+        \Closure $platformFactory,
         RunRepositorySpy $runs,
     ): ImprovementGenerator {
         if ($lastCompletedRun !== null) {
@@ -74,11 +87,14 @@ final class ImprovementGeneratorFixture
         }
 
         $proposalWriter = new StrategyProposalWriter(self::readOnlyRepository([]));
+        $tally = new TallyingDecisionWriter();
+        $recorder = new DecisionRecorder($tally);
+        $platform = $platformFactory($recorder);
         $runner = new ImprovementRunner(
             self::settingsResolver($settings),
             new DecisionHarvest(self::readOnlyRepository($decisions)),
-            new ImprovementJudge($platform),
-            self::harness($platform),
+            new ImprovementJudge($platform, $recorder),
+            self::harness($platform, $tally, $recorder),
             new ImprovementRunWriter($runs, $proposalWriter),
         );
 
@@ -167,8 +183,11 @@ final class ImprovementGeneratorFixture
         };
     }
 
-    private static function harness(ModelPlatform $platform): ReplayHarness
-    {
+    private static function harness(
+        ModelPlatform $platform,
+        TallyingDecisionWriter $tally,
+        DecisionRecorder $recorder,
+    ): ReplayHarness {
         $quotes = new QuoteSnapshotReader(
             self::readOnlyRepository([]),
             new QuoteVersionResolver(),
@@ -177,8 +196,6 @@ final class ImprovementGeneratorFixture
         );
         $subjects = new ReplaySubjectResolver($quotes);
 
-        $tally = new TallyingDecisionWriter();
-        $recorder = new DecisionRecorder($tally);
         $proposer = new OfferProposer(
             $platform,
             new PromptComposer('EXTRACT', 'NEGOTIATE BASE', 'REPLY {{tone}}'),

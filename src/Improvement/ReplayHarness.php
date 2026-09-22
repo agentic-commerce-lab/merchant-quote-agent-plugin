@@ -27,12 +27,33 @@ final readonly class ReplayHarness
     ) {}
 
     /**
+     * The shared tally's running totals, read (never reset) so
+     * ImprovementRunner can snapshot them before and after ImprovementJudge's
+     * own call -- which bills the SAME writer, see ImprovementJudge's own
+     * docblock -- and bill that call's tokens onto the run row too, without
+     * this class needing to know ImprovementJudge exists.
+     *
+     * @return array{0: int, 1: int} prompt tokens, completion tokens
+     */
+    public function tokensSoFar(): array
+    {
+        return [$this->tally->promptTokens, $this->tally->completionTokens];
+    }
+
+    /**
      * @param list<HarvestedDecision> $sample
      * @param list<JudgeCandidate>    $candidates
+     *
+     * @return array{0: RunTally, 1: RunProposals} what ImprovementRunner needs
+     *     to finish the run -- returned directly rather than through a
+     *     wrapper: the only producer of a `RunProposals` was this method
+     *     handing its own `ReplayResult` straight back into one two lines
+     *     later in the caller, so the wrapper added a class without adding a
+     *     seam.
      */
-    public function run(array $sample, QuoteAgentSettings $control, array $candidates, Context $context): ReplayResult
+    public function run(array $sample, QuoteAgentSettings $control, array $candidates, Context $context): array
     {
-        [$promptBefore, $completionBefore] = [$this->tally->promptTokens, $this->tally->completionTokens];
+        [$promptBefore, $completionBefore] = $this->tokensSoFar();
 
         $subjects = $this->resolve($sample, $context);
         $skipped = \count($sample) - \count($subjects);
@@ -41,18 +62,22 @@ final readonly class ReplayHarness
         $proposals = $this->candidateProposals($subjects, $control, $candidates);
 
         $controlScore = ReplayScore::of($controlArms);
+        [$promptAfter, $completionAfter] = $this->tokensSoFar();
 
-        return new ReplayResult(
-            tally: new RunTally(
+        return [
+            new RunTally(
                 \count($subjects),
                 $skipped,
-                $this->tally->promptTokens - $promptBefore,
-                $this->tally->completionTokens - $completionBefore,
+                $promptAfter - $promptBefore,
+                $completionAfter - $completionBefore,
             ),
-            control: $controlScore,
-            diverged: ControlDivergence::diverged($controlScore->escalationRate * 100, self::recordedRate($subjects)),
-            proposals: $proposals,
-        );
+            new RunProposals(
+                $controlScore,
+                ControlDivergence::diverged($controlScore->escalationRate * 100, self::recordedRate($subjects)),
+                $control->strategyVersionId,
+                $proposals,
+            ),
+        ];
     }
 
     /**

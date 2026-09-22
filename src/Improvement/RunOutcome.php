@@ -24,13 +24,20 @@ final readonly class RunOutcome
      * The judge answered with nothing usable (ImprovementJudge::assess()
      * returned null): the run still completes, with no findings and no
      * proposal, rather than failing the night over an empty candidate list or
-     * a model outage.
+     * a model outage. The judge's own call still cost real tokens whenever it
+     * actually reached the model (an outage records none -- see
+     * ImprovementJudge), so those are billed here even though nothing else
+     * about the call is kept.
      */
-    public static function empty(\DateTimeImmutable $finishedAt, ?string $model): self
-    {
+    public static function empty(
+        \DateTimeImmutable $finishedAt,
+        ?string $model,
+        int $judgePromptTokens,
+        int $judgeCompletionTokens,
+    ): self {
         return new self(
             finishedAt: $finishedAt,
-            tally: new RunTally(0, 0, 0, 0),
+            tally: new RunTally(0, 0, $judgePromptTokens, $judgeCompletionTokens),
             model: $model,
             findings: [],
             proposals: new RunProposals(ReplayScore::of([]), false, null, []),

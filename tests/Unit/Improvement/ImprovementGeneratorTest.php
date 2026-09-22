@@ -10,7 +10,6 @@ use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Improvement\ImprovementCadence;
 use MerchantQuoteAgentPlugin\Improvement\ImprovementSettings;
 use MerchantQuoteAgentPlugin\Improvement\RunStatus;
-use MerchantQuoteAgentPlugin\Improvement\TallyingDecisionWriter;
 use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -125,14 +124,23 @@ final class ImprovementGeneratorTest extends TestCase
     /**
      * A ModelPlatform wired to an HTTP client that fails the test if it is
      * ever called -- none of these three behaviours reaches the judge or the
-     * replay, so no model call is legitimate here.
+     * replay, so no model call is legitimate here. A factory, like every
+     * platform builder here, so ImprovementGeneratorFixture::generator() can
+     * hand it the one DecisionRecorder that must also back ImprovementJudge's
+     * begin()/finish() (see that method's own docblock).
+     *
+     * @return \Closure(DecisionRecorder): ModelPlatform
      */
-    private function platformThatMustNotBeCalled(): ModelPlatform
+    private function platformThatMustNotBeCalled(): \Closure
     {
         $http = $this->createMock(HttpClientInterface::class);
         $http->expects(self::never())->method('request');
 
-        return new ModelPlatform($http, new NullLogger(), new DecisionRecorder(new TallyingDecisionWriter()));
+        return static fn(DecisionRecorder $recorder): ModelPlatform => new ModelPlatform(
+            $http,
+            new NullLogger(),
+            $recorder,
+        );
     }
 
     /**
@@ -141,14 +149,20 @@ final class ImprovementGeneratorTest extends TestCase
      * wraps whatever it gets back from it in a RetryableHttpClient, and an
      * unstubbed mock method would otherwise hand that wrapper a fresh, inert
      * double instead of this one.
+     *
+     * @return \Closure(DecisionRecorder): ModelPlatform
      */
-    private function platformThatThrows(\Throwable $error): ModelPlatform
+    private function platformThatThrows(\Throwable $error): \Closure
     {
         $http = $this->createMock(HttpClientInterface::class);
         $http->method('withOptions')->willReturnSelf();
         $http->method('request')->willThrowException($error);
 
-        return new ModelPlatform($http, new NullLogger(), new DecisionRecorder(new TallyingDecisionWriter()));
+        return static fn(DecisionRecorder $recorder): ModelPlatform => new ModelPlatform(
+            $http,
+            new NullLogger(),
+            $recorder,
+        );
     }
 
     /** One decision, populated only enough for DayPicture and DecisionHarvest to accept it. */

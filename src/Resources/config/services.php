@@ -1108,11 +1108,6 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service(StrategyProposalWriter::class),
     ]);
 
-    // The judge's one call a night, over the SHARED ModelPlatform::class: it is
-    // not part of the replay batch RunTally counts (see ReplayHarness's own
-    // docblock), so it needs none of the private stack below it.
-    $services->set(ImprovementJudge::class);
-
     // The replay's OWN negotiation stack, entirely separate from the shared
     // one above. ReplayEvaluator runs production code (NegotiationDecider,
     // OfferProposer) but must leave no trace: `merchant_quote_agent.improvement.recorder`
@@ -1120,7 +1115,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // class's own docblock), and `merchant_quote_agent.improvement.customer_history`
     // never reads a company's history. `merchant_quote_agent.improvement.model_platform`
     // is its own ModelPlatform instance, wired to the SAME private recorder --
-    // reusing the shared ModelPlatform::class service would tally the replay's
+    // reusing the shared ModelPlatform::class service would tally this
     // token usage onto a recorder with no open draft, and it would be lost
     // rather than reaching RunTally (see ReplayHarness's own docblock).
     $services->set(TallyingDecisionWriter::class);
@@ -1133,6 +1128,15 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service('merchant_quote_agent.improvement.recorder'),
     ]);
     $services->set('merchant_quote_agent.improvement.customer_history', NoCustomerHistoryFactory::class);
+
+    // The judge's one call a night, over this SAME private pair -- never the
+    // container's shared ModelPlatform::class/DecisionRecorder::class, whose
+    // recorder has no open draft outside a live servicing pass and would
+    // silently drop this call's tokens. See ImprovementJudge's own docblock.
+    $services->set(ImprovementJudge::class)->args([
+        service('merchant_quote_agent.improvement.model_platform'),
+        service('merchant_quote_agent.improvement.recorder'),
+    ]);
 
     // Private and explicitly named, per the design brief: this must NOT be the
     // container's shared OfferProposer::class, which writes through the real

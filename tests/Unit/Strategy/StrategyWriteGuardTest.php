@@ -102,6 +102,35 @@ final class StrategyWriteGuardTest extends TestCase
         self::assertCount(0, $event->getExceptions()->getExceptions());
     }
 
+    /**
+     * I4: a bare admin-API PATCH with just `{status: 'active'}` bypasses
+     * ProposalController -- same ACL, no version assigned -- and would leave
+     * an `active` row with `version = NULL`. The number is assigned
+     * server-side, never by the browser; see VersionTransition.
+     */
+    public function testItRefusesAcceptingWithoutAVersionNumber(): void
+    {
+        $event = $this->event('merchant_quote_agent_strategy_version', UpdateCommand::class, self::VERSION_ID, [
+            'status' => VersionStatus::Active->value,
+        ]);
+
+        $this->guard(VersionStatus::Proposed)->preValidate($event);
+
+        self::assertCount(1, $event->getExceptions()->getExceptions());
+    }
+
+    public function testItRefusesAcceptingWithANonIntegerVersionNumber(): void
+    {
+        $event = $this->event('merchant_quote_agent_strategy_version', UpdateCommand::class, self::VERSION_ID, [
+            'status' => VersionStatus::Active->value,
+            'version' => '4',
+        ]);
+
+        $this->guard(VersionStatus::Proposed)->preValidate($event);
+
+        self::assertCount(1, $event->getExceptions()->getExceptions());
+    }
+
     public function testItRefusesEditingAProposalsPrompt(): void
     {
         $event = $this->event('merchant_quote_agent_strategy_version', UpdateCommand::class, self::VERSION_ID, [

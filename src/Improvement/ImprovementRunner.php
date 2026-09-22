@@ -13,13 +13,15 @@ use Shopware\Core\Framework\Context;
  * RunSettingsResolver, DecisionHarvest, ImprovementJudge, ReplayHarness and
  * ImprovementRunWriter).
  *
- * The judge's own model call is never tallied onto the run: ModelPlatform
- * records tokens through whichever DecisionRecorder it was built with, and
- * ImprovementJudge is wired to the container's SHARED ModelPlatform, whose
- * recorder has no open draft outside a live servicing pass -- so
- * recordModelCall() is a silent no-op there. Only the replay's own private
- * ModelPlatform (wired to TallyingDecisionWriter) contributes to
- * RunTally -- see services.php.
+ * The judge's own model call bills the run row too, not just the replay's:
+ * ImprovementJudge is wired to the run's PRIVATE ModelPlatform/DecisionRecorder
+ * pair (see that class's own docblock), the same TallyingDecisionWriter
+ * ReplayHarness reports through, so evaluateAndWrite() reads
+ * ReplayHarness::tokensSoFar() before and after the judge call to bill that
+ * delta separately from the replay's own -- which still starts its OWN
+ * before/after measurement only once the judge call has finished, so
+ * ReplayHarness's returned RunTally stays exactly what the replay itself
+ * cost.
  */
 final readonly class ImprovementRunner
 {
@@ -82,6 +84,8 @@ final readonly class ImprovementRunner
         \DateTimeImmutable $now,
         Context $context,
     ): void {
+        [$judgePromptBefore, $judgeCompletionBefore] = $this->harness->tokensSoFar();
+
         $answer = $this->judge->assess(
             $settings->improvement->llm,
             DayPicture::of($all),
@@ -89,28 +93,36 @@ final readonly class ImprovementRunner
             $settings->improvement->candidates,
         );
 
+        [$judgePromptAfter, $judgeCompletionAfter] = $this->harness->tokensSoFar();
+        $judgePromptTokens = $judgePromptAfter - $judgePromptBefore;
+        $judgeCompletionTokens = $judgeCompletionAfter - $judgeCompletionBefore;
+
         if ($answer === null) {
-            $this->writer->writeCompleted($runId, RunOutcome::empty($now, $settings->agent->llm->model), $context);
+            $this->writer->writeCompleted(
+                $runId,
+                RunOutcome::empty($now, $settings->improvement->llm->model, $judgePromptTokens, $judgeCompletionTokens),
+                $context,
+            );
 
             return;
         }
 
         $sample = \array_slice($all, 0, $settings->improvement->sampleSize);
-        $result = $this->harness->run($sample, $settings->agent, $answer->candidates, $context);
+        [$tally, $proposals] = $this->harness->run($sample, $settings->agent, $answer->candidates, $context);
 
         $this->writer->writeCompleted(
             $runId,
             new RunOutcome(
                 finishedAt: $now,
-                tally: $result->tally,
-                model: $settings->agent->llm->model,
-                findings: $answer->findings,
-                proposals: new RunProposals(
-                    $result->control,
-                    $result->diverged,
-                    $settings->agent->strategyVersionId,
-                    $result->proposals,
+                tally: new RunTally(
+                    $tally->sampled,
+                    $tally->skipped,
+                    $tally->promptTokens + $judgePromptTokens,
+                    $tally->completionTokens + $judgeCompletionTokens,
                 ),
+                model: $settings->improvement->llm->model,
+                findings: $answer->findings,
+                proposals: $proposals,
             ),
             $context,
         );

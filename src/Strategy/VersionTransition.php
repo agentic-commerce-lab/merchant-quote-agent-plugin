@@ -38,6 +38,15 @@ final class VersionTransition
             return false;
         }
 
+        // The version number is assigned server-side, in ProposalController's
+        // own locked transaction -- never by the browser. A bare admin-API
+        // write that sets status to active without one would leave that
+        // invariant unenforced, so becoming active REQUIRES an int version in
+        // the same payload.
+        if ($target === VersionStatus::Active->value && !\is_int($payload['version'] ?? null)) {
+            return false;
+        }
+
         return array_diff(array_keys($payload), self::ALLOWED_FIELDS) === [];
     }
 }
