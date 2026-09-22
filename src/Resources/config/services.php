@@ -101,6 +101,7 @@ use MerchantQuoteAgentPlugin\Improvement\ImprovementRunWriter;
 use MerchantQuoteAgentPlugin\Improvement\ImprovementSettingsReader;
 use MerchantQuoteAgentPlugin\Improvement\ImproveStrategyTask;
 use MerchantQuoteAgentPlugin\Improvement\ImproveStrategyTaskHandler;
+use MerchantQuoteAgentPlugin\Improvement\ProposalController;
 use MerchantQuoteAgentPlugin\Improvement\ReplayEvaluator;
 use MerchantQuoteAgentPlugin\Improvement\ReplayHarness;
 use MerchantQuoteAgentPlugin\Improvement\ReplaySubjectResolver;
@@ -515,6 +516,18 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     ]);
     $services->alias(DecisionEraserInterface::class, DecisionEraser::class);
     $services->set(DecisionForgetCommand::class)->tag('console.command');
+
+    // Accepting or rejecting a nightly proposal (Task 12). Registered
+    // unconditionally, like StrategyWriteGuard above: an admin API token
+    // bypasses the administration, so the accept/reject endpoints have to
+    // exist on any shop where these tables do, independent of the
+    // SwagCommercial-gated replay that produced the proposal in the first
+    // place. The repository is named for the same reason as everywhere else
+    // in this file -- it is DAL-generated and not autowirable by type.
+    $services
+        ->set(ProposalController::class)
+        ->args([service(Connection::class), service('merchant_quote_agent_strategy_version.repository')])
+        ->tag('controller.service_arguments');
 
     // The outcome half of the audit trail (#33): a subscriber on the core
     // quote state machine stamps terminal_state / terminal_at onto the newest
