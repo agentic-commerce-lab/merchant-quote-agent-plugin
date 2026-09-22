@@ -681,3 +681,106 @@
 }
 
 .mqa-run__feedback { margin: 8px 0; }
+
+/* ------------------------------------------------------------- improvements */
+
+.mqa-findings {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.mqa-finding {
+    padding: 10px 14px;
+    border-left: 3px solid var(--color-border-primary-default);
+    border-radius: 0 4px 4px 0;
+    background: var(--color-elevation-surface-sunken);
+}
+
+.mqa-finding__pattern {
+    margin: 0;
+    color: var(--color-text-primary-default);
+    text-wrap: pretty;
+}
+
+.mqa-finding__count {
+    display: block;
+    margin-top: 2px;
+    color: var(--color-text-secondary-default);
+    font-size: 12px;
+}
+
+.mqa-finding__evidence {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 12px;
+}
+
+/* One proposal is a whole review, not a grid row -- the prompt diff and the
+   A/B table both need real width, which is why each gets its own block
+   rather than a place in sw-data-grid. */
+.mqa-proposal {
+    padding: 16px 0;
+    border-top: 1px solid var(--color-border-secondary-default);
+}
+
+.mqa-proposal:first-of-type {
+    padding-top: 0;
+    border-top: none;
+}
+
+.mqa-proposal__title {
+    margin: 0 0 8px;
+}
+
+.mqa-proposal__rationale {
+    max-width: 70ch;
+    margin: 0 0 12px;
+    color: var(--color-text-primary-default);
+    text-wrap: pretty;
+}
+
+.mqa-proposal__diff {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+/* Prose, like the strategy editor's own prompt field -- see that page's rule
+   for why mt-textarea's own scoped selector needs three classes to outrank. */
+.mqa-proposal__diff-col .mt-textarea__textarea {
+    min-height: 220px;
+    max-height: none;
+}
+
+.mqa-proposal__note {
+    max-width: 70ch;
+    margin: 10px 0 0;
+    color: var(--color-text-secondary-default);
+    font-size: 13px;
+    text-wrap: pretty;
+}
+
+.mqa-proposal__stats {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 12px 0 0;
+}
+
+.mqa-proposal__unshowable {
+    color: var(--color-text-secondary-default);
+    font-size: 13px;
+}
+
+.mqa-proposal__actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+}
