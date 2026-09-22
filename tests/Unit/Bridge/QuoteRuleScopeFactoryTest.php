@@ -82,6 +82,7 @@ final class QuoteRuleScopeFactoryTest extends TestCase
         );
 
         $this->expectException(RuleScopeUnavailable::class);
+        $this->expectExceptionMessage('could not be converted to a cart');
 
         $factory->forQuote(self::QUOTE_ID, Context::createDefaultContext());
     }
@@ -105,6 +106,7 @@ final class QuoteRuleScopeFactoryTest extends TestCase
         );
 
         $this->expectException(RuleScopeUnavailable::class);
+        $this->expectExceptionMessage('was not found');
 
         $factory->forQuote(self::QUOTE_ID, Context::createDefaultContext());
     }

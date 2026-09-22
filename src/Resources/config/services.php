@@ -624,7 +624,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     ]);
     $services->alias(CustomerHistoryFactoryInterface::class, CustomerHistoryFactory::class);
 
-    // The four commercial services, referenced by the string ids on
+    // The five commercial services, referenced by the string ids on
     // CommercialAvailability because their classes are not ours to name with
     // `::class`. ignoreOnInvalid() rather than a plain reference because an
     // unresolvable reference is a COMPILE-time failure in Symfony — it would
@@ -632,7 +632,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // the classes provably exist, so a null here would mean SwagCommercial
     // moved a service id; that surfaces as a TypeError on the adapter's
     // non-nullable `object` parameter, a legible failure confined to the
-    // bridge. GatewayWiringTest resolves all four against the live shop.
+    // bridge. GatewayWiringTest resolves all five against the live shop.
     $services->set(SwagCommercialProductAdder::class)->args([service(CommercialAvailability::QUOTE_MANIPULATION)->ignoreOnInvalid()]);
     $services->set(SwagCommercialCommentWriter::class)->args([service(CommercialAvailability::QUOTE_COMMENTER)->ignoreOnInvalid()]);
     $services->set(QuoteRecalculator::class)->args([
