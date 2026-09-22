@@ -50,7 +50,7 @@ final class AskGateTest extends TestCase
         // object's presence alone would send every quote to a human.
         $harness = PipelineHarness::with([
             '{"price":{"additionalDiscountPercent":5},"negotiation":{"delivery":{"freeShipping":false,'
-                . '"expedited":false,"requestedLeadTimeDays":null},"bundle":{"requested":false}}}',
+                . '"expedited":false,"requestedLeadTimeDays":null}}}',
             '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
             'ok',
         ]);

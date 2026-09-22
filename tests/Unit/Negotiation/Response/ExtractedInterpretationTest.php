@@ -46,8 +46,7 @@ final class ExtractedInterpretationTest extends TestCase
               "humanReviewRequests": [],
               "negotiation": {
                 "delivery": {"freeShipping": true, "expedited": false, "requestedLeadTimeDays": 5},
-                "payment": {"requestedTerm": "net_30", "requestedNetDays": 30, "requestedDepositPercent": 10},
-                "bundle": {"requested": false}
+                "payment": {"requestedTerm": "net_30", "requestedNetDays": 30, "requestedDepositPercent": 10}
               }
             }
             JSON;

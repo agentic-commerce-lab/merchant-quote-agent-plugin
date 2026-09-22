@@ -224,10 +224,12 @@ requested price) plus the buyer's latest comment under a JSON schema generated
 from the response DTOs. It extracts **only what the buyer explicitly asked**:
 
 - `price.additionalDiscountPercent` — an explicit extra percentage.
-- `price.bestPriceRequested` — "your best price", with no number named.
+- `price.bestPriceRequested` — "your best price", with no number named. A
+  volume/bulk/tiered ask ("better price if we take 10?") is this field too: it
+  asks for a price the merchant's own cap can answer.
 - `structural.lineChanges` — quantity changes, per-unit target prices, removals.
 - `structural.addProducts`, `structural.validityUntilIsoDate`.
-- `negotiation.delivery` / `.payment` / `.bundle` — non-price asks.
+- `negotiation.delivery` / `.payment` — non-price asks.
 - `clarificationQuestions` — asks ambiguous in *reference* ("10% off" on a
   five-line quote) or in *intent* ("What about this?").
 - `humanReviewRequests` — an ask that was understood and only the merchant can
@@ -247,7 +249,7 @@ but only when the agent's own comment is the newest one on the quote.
 | Ask | Why a human takes it |
 | --- | --- |
 | **Structural** (add/remove products, change quantities) | Changing *what* is being sold is outside a price-and-validity mandate, and nothing downstream would act on it — so without the gate the buyer's real ask is silently dropped. |
-| **Non-price** (free shipping, payment terms, bundles) | The quote gateway cannot write a delivery or payment term at all. Answering the price half and dropping the rest silently is worse than saying a human takes it. The asks are still *extracted* — that is what makes this escalation possible instead of a silent drop. |
+| **Non-price** (free shipping, payment terms) | The quote gateway cannot write a delivery or payment term at all. Answering the price half and dropping the rest silently is worse than saying a human takes it. The asks are still *extracted* — that is what makes this escalation possible instead of a silent drop. A *volume* ask is not one of these: it names no term, only a price, so it is negotiated. |
 | **Ambiguous**, first time | Not escalated: the questions are posted to the buyer **verbatim**, once, and the pass ends as `clarified` without spending the negotiate call. |
 | **Ambiguous**, after already asking | A human takes it. The marker clears as soon as a pass answers with an offer, so a genuinely new ambiguity later is asked about rather than escalated silently. |
 

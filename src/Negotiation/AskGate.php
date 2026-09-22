@@ -52,7 +52,7 @@ final class AskGate
         }
 
         if ($ask->hasNonPriceAsk()) {
-            // Shipping, payment terms and bundles are extracted and then go
+            // Shipping and payment terms are extracted and then go
             // nowhere: only `price` is composed into the proposal below, and
             // QuoteUpdate cannot write a delivery term anyway. Answering the
             // price half and dropping the rest silently is worse than saying

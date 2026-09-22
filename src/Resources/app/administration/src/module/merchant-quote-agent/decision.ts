@@ -498,6 +498,9 @@ export function askItems(vm: any, asks: any): { label: string; value: string }[]
     add('paymentTerm', payment.requestedTerm ?? null);
     add('netDays', days(payment.requestedNetDays));
     add('deposit', percent(payment.requestedDepositPercent));
+    // Only ever set on records written before the volume ask became
+    // `price.bestPriceRequested` (see NegotiationAsks). Kept so an old
+    // decision still reads the way it was decided.
     add('bundle', flag(asks.negotiation?.bundle?.requested));
     add('clarification', list(asks.clarificationQuestions));
     add('humanReview', list(asks.humanReviewRequests));

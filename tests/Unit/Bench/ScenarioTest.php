@@ -139,6 +139,7 @@ final class ScenarioTest extends TestCase
                 'payment-terms-ask',
                 'plain-percentage',
                 'structured-only',
+                'volume-ask',
             ],
             array_map(static fn(Scenario $scenario): string => $scenario->id, $scenarios),
             'One scenario per file, sorted by filename -- add a new *.json here and this list, never silently.',

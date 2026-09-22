@@ -44,7 +44,7 @@ use PHPUnit\Framework\TestCase;
  * id/description inline, so the assertions stay tied to what actually ships.
  *
  * @mago-expect lint:too-many-methods
- * Nine scenario cases plus three private fixture builders for the one
+ * Ten scenario cases plus three private fixture builders for the one
  * scenario (`exactly-at-the-ceiling`) whose numbers cannot be built from the
  * shared `NegotiationFixture` helpers. Splitting one scenario's coverage into
  * a second file would scatter the set this test exists to keep together.
@@ -267,12 +267,55 @@ final class ScenarioPipelineTest extends TestCase
         );
     }
 
-    public function testBundleAskEscalatesBeforeTheNegotiateCall(): void
+    /**
+     * `volume-ask`: the regression sw-ag.dev quote 1053 shipped. "Can we get
+     * some better price, as we take 10?" is a price ask with no number in it,
+     * which `price.bestPriceRequested` is exactly for -- the merchant's own
+     * cap answers it. It used to ALSO set `negotiation.bundle.requested`, and
+     * AskGate escalated on that flag before the negotiate call ever ran, so a
+     * plain second round of haggling reached a human. The field is gone (see
+     * `NegotiationAsks`); what this test guards is that the pass now gets all
+     * three model calls instead of one.
+     */
+    public function testVolumeAskReachesTheNegotiateCallInsteadOfEscalating(): void
+    {
+        $scenario = Scenario::load(self::SCENARIOS_DIR . '/volume-ask.json');
+
+        $harness = PipelineHarness::with(
+            [
+                '{"price":{"bestPriceRequested":true}}',
+                '{"action":"offer","message":"Our best at this quantity.","terms":{"discountPercent":5}}',
+                'Here you go.',
+            ],
+            reReadTotalNet: PipelineHarness::AFTER_NET,
+        );
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment($scenario->openingAsk, '2026-08-28 09:00:00'),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(maxDiscountPercent: 15.0),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame('auto', $scenario->expectedBand);
+        self::assertSame(NegotiationOutcome::Offered, $outcome);
+        self::assertSame(3, $harness->spy->calls, 'A volume ask must be negotiated, not gated away.');
+    }
+
+    /**
+     * `bundle-ask`: an extra product asked for free. Still escalates before
+     * the negotiate call, but as a STRUCTURAL change -- it moves what is being
+     * sold, which no pricing cap can answer.
+     */
+    public function testFreeExtraProductEscalatesBeforeTheNegotiateCall(): void
     {
         $scenario = Scenario::load(self::SCENARIOS_DIR . '/bundle-ask.json');
 
         $harness = PipelineHarness::with([
-            '{"negotiation":{"bundle":{"requested":true}}}',
+            '{"structural":{"addProducts":[{"productRef":"matching stand"}]}}',
         ]);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment($scenario->openingAsk, '2026-08-28 09:00:00'),
@@ -287,7 +330,7 @@ final class ScenarioPipelineTest extends TestCase
 
         self::assertSame('escalate', $scenario->expectedBand);
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
-        self::assertSame(1, $harness->spy->calls, 'A bundle ask must not reach the negotiate call.');
+        self::assertSame(1, $harness->spy->calls, 'A structural ask must not reach the negotiate call.');
     }
 
     public function testPaymentTermsAskEscalatesBeforeTheNegotiateCall(): void

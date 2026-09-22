@@ -171,8 +171,8 @@ final class AnonymizedDecision
     }
 
     /**
-     * Every typed ask survives -- prices, quantities, delivery, payment,
-     * bundle -- because that structure is what the export is for. The two
+     * Every typed ask survives -- prices, quantities, delivery, payment --
+     * because that structure is what the export is for. The two
      * lists of sentences the extraction model wrote while reading the buyer's
      * message do not.
      *

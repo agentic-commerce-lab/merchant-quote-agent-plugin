@@ -29,7 +29,9 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
   it).
 - price.bestPriceRequested: true when the buyer asks for the best/lowest/final price or the maximum
   possible discount WITHOUT naming a number ("your best price", "was ist der letzte Preis",
-  "as cheap as possible"). NEVER route such asks to humanReviewRequests or
+  "as cheap as possible"). A volume/bulk/tiered ask is this field too — a better price BECAUSE of
+  the quantity, with no number named ("can we get a better price, as we take 10?", "what's your
+  bulk rate?", "staffelpreis ab 50 Stück?"). NEVER route such asks to humanReviewRequests or
   clarificationQuestions — the merchant's pricing policy answers them.
 - structural.lineChanges: quantity changes, per-unit target prices (targetUnitPrice), or removals
   (remove) for EXISTING line items; lineItemId must be copied from the provided table. A comment
@@ -39,7 +41,8 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
   figure for the quote as a whole is price.targetTotal, never a reason to ask, no matter how many
   items the buyer mentions spreading it across.
 - structural.addProducts: products the buyer asks to add; productRef is the name or product number
-  verbatim as the buyer wrote it. When the buyer names a price for the added product ("10x cable
+  verbatim as the buyer wrote it. An ask to throw something in for free ("could you include the
+  matching stand?") is this field, not a price ask — it changes WHAT is sold. When the buyer names a price for the added product ("10x cable
   ties at 3.50 each"), put the per-unit price into targetUnitPrice — never into
   humanReviewRequests.
 - structural.validityUntilIsoDate: only for an explicit offer-validity/deadline date for THIS
@@ -59,7 +62,7 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
   language. A comment you did not understand belongs here and NEVER in humanReviewRequests: the
   merchant's policy still decides the answer once the buyer says what they want.
 - negotiation: structured non-price asks the merchant's policy can decide deterministically. Set
-  the whole object to null when the buyer makes no delivery/payment/bundle ask.
+  the whole object to null when the buyer makes no delivery or payment ask.
   - negotiation.delivery.freeShipping: true when the buyer asks to waive/drop shipping cost.
     negotiation.delivery.expedited: true for a faster/express shipping ask.
     negotiation.delivery.requestedLeadTimeDays: an explicit delivery deadline expressed in days,
@@ -68,14 +71,12 @@ Rules — extract only what the buyer EXPLICITLY asks, never guess:
     "net_30", "prepaid"/"pay upfront" → "prepaid"). negotiation.payment.requestedNetDays: an
     explicit numeric net-days ask ("can we pay in 45 days" → 45).
     negotiation.payment.requestedDepositPercent: an explicit deposit offer.
-  - negotiation.bundle.requested: true when the buyer asks for volume/bulk/tiered pricing WITHOUT
-    naming a specific per-line price (those go to structural.lineChanges).
 - humanReviewRequests: one concise summary, in the buyer's language, per remaining ask you
   cannot express in the fields above — stock/availability questions or anything else only the
   merchant can decide. Empty array if none. Do not duplicate asks you already mapped. NEVER put
   price or discount asks here: specific numbers go to structural.lineChanges /
-  price.additionalDiscountPercent, open-ended ones to price.bestPriceRequested. Delivery, payment
-  and volume asks go to `negotiation`, NOT here. This field is only for an ask you UNDERSTOOD and
+  price.additionalDiscountPercent, open-ended ones to price.bestPriceRequested. Delivery and
+  payment asks go to `negotiation`, volume/bulk asks to price.bestPriceRequested, NOT here. This field is only for an ask you UNDERSTOOD and
   that only the merchant can answer; a vague or unintelligible comment is not one, because if you
   cannot name the ask you cannot know the merchant is the only one who can answer it — that goes
   to clarificationQuestions. A specific price for one line plus a vague wish for the rest = map
