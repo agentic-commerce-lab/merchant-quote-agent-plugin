@@ -15,6 +15,7 @@ use MerchantQuoteAgentPlugin\Negotiation\Response\HistoryRequest;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
 
 /**
  * Collects one servicing pass into a DecisionDraft, then hands it to the
@@ -140,6 +141,7 @@ final class DecisionRecorder
         NegotiationDecision $decision,
         float $maxDiscountPercent,
         ?string $strategyVersionId = null,
+        ?StrategyAssignmentSource $strategyAssignmentSource = null,
     ): void {
         if ($this->draft === null) {
             return;
@@ -148,6 +150,7 @@ final class DecisionRecorder
         $this->draft->band = $decision->overall->value;
         $this->draft->maxDiscountPercent = $maxDiscountPercent;
         $this->draft->strategyVersionId = $strategyVersionId;
+        $this->draft->strategyAssignmentSource = $strategyAssignmentSource?->value;
     }
 
     public function recordProposal(?string $rawResponse, ProposedAnswer $answer): void

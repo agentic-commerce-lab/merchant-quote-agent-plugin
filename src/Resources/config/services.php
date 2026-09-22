@@ -42,6 +42,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLineItemWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteRecalculator;
+use MerchantQuoteAgentPlugin\Bridge\QuoteRuleScopeFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteSnapshotReader;
 use MerchantQuoteAgentPlugin\Bridge\QuoteStateTransitioner;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
@@ -141,6 +142,8 @@ use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
 use MerchantQuoteAgentPlugin\Strategy\Strategy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignment;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentResolver;
 use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
 use MerchantQuoteAgentPlugin\Strategy\StrategyVersion;
 use MerchantQuoteAgentPlugin\Strategy\StrategyWriteGuard;
@@ -371,6 +374,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // reads the #[Entity] attributes and adds the `shopware.entity` tag.
     $services->set(Strategy::class);
     $services->set(StrategyVersion::class);
+    $services->set(StrategyAssignment::class);
 
     // Resolves a strategy id to its newest version's prompt (Task 6). The
     // repositories are DAL-generated from the #[Entity] attributes above, so
@@ -625,7 +629,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     ]);
     $services->alias(CustomerHistoryFactoryInterface::class, CustomerHistoryFactory::class);
 
-    // The four commercial services, referenced by the string ids on
+    // The five commercial services, referenced by the string ids on
     // CommercialAvailability because their classes are not ours to name with
     // `::class`. ignoreOnInvalid() rather than a plain reference because an
     // unresolvable reference is a COMPILE-time failure in Symfony — it would
@@ -633,12 +637,25 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // the classes provably exist, so a null here would mean SwagCommercial
     // moved a service id; that surfaces as a TypeError on the adapter's
     // non-nullable `object` parameter, a legible failure confined to the
-    // bridge. GatewayWiringTest resolves all four against the live shop.
+    // bridge. GatewayWiringTest resolves all five against the live shop.
     $services->set(SwagCommercialProductAdder::class)->args([service(CommercialAvailability::QUOTE_MANIPULATION)->ignoreOnInvalid()]);
     $services->set(SwagCommercialCommentWriter::class)->args([service(CommercialAvailability::QUOTE_COMMENTER)->ignoreOnInvalid()]);
     $services->set(QuoteRecalculator::class)->args([
         service(CommercialAvailability::CONTEXT_RESTORER)->ignoreOnInvalid(),
         service(CommercialAvailability::QUOTE_CALCULATOR)->ignoreOnInvalid(),
+    ]);
+    $services->set(QuoteRuleScopeFactory::class)->args([
+        service(CommercialAvailability::CONTEXT_RESTORER)->ignoreOnInvalid(),
+        service(CommercialAvailability::QUOTE_TO_CART_CONVERTER)->ignoreOnInvalid(),
+        service('quote.repository'),
+        service(CommercialCapabilities::class),
+    ]);
+    $services->set(StrategyAssignmentResolver::class)->args([
+        service('merchant_quote_agent_strategy_assignment.repository'),
+        service('rule.repository'),
+        service(StrategyResolver::class),
+        service(QuoteRuleScopeFactory::class),
+        service('logger'),
     ]);
 
     // The guard sits in front of the commercial adder: QuoteManipulation
@@ -802,6 +819,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service(QuoteEscalator::class),
         service('logger'),
         service(DecisionRecorder::class),
+        service(StrategyAssignmentResolver::class),
     ]);
 
     // Negotiation (issue #18). The prompts are read HERE, at container compile,

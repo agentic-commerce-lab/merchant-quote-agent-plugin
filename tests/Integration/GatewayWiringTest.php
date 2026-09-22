@@ -104,6 +104,7 @@ final class GatewayWiringTest extends IntegrationTestCase
             CommercialAvailability::QUOTE_COMMENTER,
             CommercialAvailability::CONTEXT_RESTORER,
             CommercialAvailability::QUOTE_CALCULATOR,
+            CommercialAvailability::QUOTE_TO_CART_CONVERTER,
         ];
     }
 

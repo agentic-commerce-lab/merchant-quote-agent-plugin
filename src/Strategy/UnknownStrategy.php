@@ -9,9 +9,11 @@ namespace MerchantQuoteAgentPlugin\Strategy;
  *
  * Deliberately fatal to the configuration rather than a silent fallback to no
  * strategy: falling back would change that channel's negotiating behaviour
- * invisibly, where this escalates the quote to a human instead. The reader
+ * invisibly, where this escalates the quote to a human instead. One reader
  * turns it into InvalidQuoteAgentConfiguration, which ServicingPreflight
- * already handles.
+ * already handles; since the assignment ladder landed, it can also propagate
+ * directly out of StrategyAssignmentResolver::assign(), where ServicingPreflight
+ * catches it itself and escalates the same way.
  */
 final class UnknownStrategy extends \RuntimeException
 {

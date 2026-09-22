@@ -35,6 +35,19 @@ final class AnonymizedDecisionTest extends TestCase
         self::assertArrayHasKey('strategyVersion', $row);
     }
 
+    /**
+     * A closed vocabulary of four words describing plugin configuration, not
+     * a shop identifier -- VERBATIM, alongside band and outcome, the same
+     * shape. The property name is also the export key: VERBATIM is a plain
+     * list, not a rename map, so there is nothing to rename.
+     */
+    public function testTheAssignmentSourceLeavesTheShopUnpseudonymized(): void
+    {
+        $row = self::export(self::record());
+
+        self::assertSame('rule', $row['strategyAssignmentSource']);
+    }
+
     public function testTheQuoteNumberNeverLeaves(): void
     {
         $row = self::export(self::record());
@@ -149,6 +162,7 @@ final class AnonymizedDecisionTest extends TestCase
         $record->salesChannelId = '0191d3d0a0b071bd9c1a0d9d1a3f9f03';
         $record->revisionVersionId = '0191d3d0a0b071bd9c1a0d9d1a3f9f04';
         $record->strategyVersionId = '0191d3d0a0b071bd9c1a0d9d1a3f9f05';
+        $record->strategyAssignmentSource = 'rule';
         $record->quoteNumber = 'QU10042';
         $record->currencyIso = 'EUR';
         $record->outcome = 'offered';

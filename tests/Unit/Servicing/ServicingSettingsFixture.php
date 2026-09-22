@@ -15,8 +15,11 @@ use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
+use MerchantQuoteAgentPlugin\Strategy\AssignedStrategy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentResolver;
 use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use Psr\Log\NullLogger;
+use Shopware\Core\Framework\Context;
 
 /**
  * Settings and preflight doubles. Separate from ServicingHandlerFixture so
@@ -47,6 +50,7 @@ final class ServicingSettingsFixture
         \Closure $outcome,
         ?QuoteEscalator $escalator = null,
         ?DecisionRecordWriterInterface $writer = null,
+        ?StrategyAssignmentResolver $assignments = null,
     ): ServicingPreflight {
         $source = new class($outcome) implements QuoteAgentSettingsSource {
             /** @param \Closure(): ?QuoteAgentSettings $outcome */
@@ -66,7 +70,44 @@ final class ServicingSettingsFixture
             $escalator ?? new QuoteEscalator(buyerNotification: new FakeBuyerNotification(notify: false)),
             new NullLogger(),
             new DecisionRecorder($writer ?? new FakeDecisionWriter()),
+            $assignments ?? self::assigning(null),
         );
+    }
+
+    /**
+     * A resolver that always answers the same way. `$outcome` is the
+     * AssignedStrategy to return, or a Closure that throws -- the ladder's two
+     * observable behaviours from the preflight's side.
+     *
+     * A hand-written double rather than createMock(): StrategyAssignmentResolver
+     * is `final readonly`, and this also counts its calls, which is how
+     * ServicingPreflightTest proves a paused agent never pays for the ladder.
+     */
+    public static function assigning(AssignedStrategy|\Closure|null $outcome): StrategyAssignmentResolver
+    {
+        return new class($outcome) extends StrategyAssignmentResolver {
+            public int $calls = 0;
+
+            public function __construct(
+                private readonly AssignedStrategy|\Closure|null $outcome,
+            ) {}
+
+            #[\Override]
+            public function assign(
+                string $quoteId,
+                string $customerId,
+                string $salesChannelId,
+                Context $context,
+            ): ?AssignedStrategy {
+                $this->calls++;
+
+                if ($this->outcome instanceof \Closure) {
+                    ($this->outcome)();
+                }
+
+                return $this->outcome instanceof AssignedStrategy ? $this->outcome : null;
+            }
+        };
     }
 
     public static function context(): PassContext

@@ -18,14 +18,14 @@ final class CommercialAvailability
     public const LICENSE_TOGGLE = 'QUOTE_MANAGEMENT-6302947';
 
     /**
-     * The four commercial services this bridge injects, and the DI ids they
+     * The five commercial services this bridge injects, and the DI ids they
      * are registered under: SwagCommercial writes `$services->set(<FQCN>)`
      * with no alias, so the id IS the class name. Public because
      * `services.php` and the integration harness must name the same strings —
      * a rename on SwagCommercial's side has to be a one-line fix here, not a
      * hunt. Class-name literals, not `::class`: these need not be loadable.
      *
-     * GatewayWiringTest resolves all four against the live shop, which is what
+     * GatewayWiringTest resolves all five against the live shop, which is what
      * catches a rename or a typo — static analysis cannot see these.
      */
     public const QUOTE_MANIPULATION = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\Admin\\QuoteManipulation';
@@ -35,6 +35,8 @@ final class CommercialAvailability
     public const CONTEXT_RESTORER = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\SalesChannelContextRestorer\\SalesChannelContextRestorer';
 
     public const QUOTE_CALCULATOR = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\Recalculation\\QuoteCalculator';
+
+    public const QUOTE_TO_CART_CONVERTER = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\QuoteToCart\\QuoteToCartConverter';
 
     /**
      * The nine commercial services the buyer-side gateway injects, same

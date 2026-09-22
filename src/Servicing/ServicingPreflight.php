@@ -12,7 +12,10 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentResolver;
+use MerchantQuoteAgentPlugin\Strategy\UnknownStrategy;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Framework\Context;
 
 /**
  * May this quote be serviced, and with what settings.
@@ -37,6 +40,16 @@ use Psr\Log\LoggerInterface;
  * terminal-state refusal are both silent by design — a row per buyer comment
  * announcing that the agent is paused, or that an accepted quote is not being
  * touched, is not an audit event, it is noise.
+ *
+ * Also answers *which strategy*, not only *whether and with what settings*:
+ * after the off-switch and the misconfiguration check both clear, the
+ * assignment ladder (StrategyAssignmentResolver) gets one chance to replace
+ * the sales-channel's configured strategy with a customer pin, a matching
+ * rule or a split arm. It runs strictly after the off-switch, never before,
+ * so a paused agent never pays for a quote read, a context restore or a cart
+ * conversion the rule rung can cost. An assignment naming a missing or
+ * archived strategy is configuration the merchant made in our own UI, and is
+ * escalated exactly like a dangling config key already is.
  */
 final readonly class ServicingPreflight
 {
@@ -60,6 +73,7 @@ final readonly class ServicingPreflight
         private QuoteEscalator $escalator,
         private LoggerInterface $logger,
         private DecisionRecorder $recorder,
+        private StrategyAssignmentResolver $assignments,
     ) {}
 
     /** Null means "do not service this quote"; the reason has already been handled. */
@@ -105,9 +119,34 @@ final readonly class ServicingPreflight
                 'quoteId' => $snapshot->identity->quoteId,
                 'salesChannelId' => $snapshot->identity->salesChannelId,
             ]);
+
+            return null;
         }
 
-        return $settings;
+        // After the off-switch, never before it: a paused agent must not pay
+        // for the quote read and the cart conversion the rule rung can cost.
+        try {
+            $assigned = $this->assignments->assign(
+                $snapshot->identity->quoteId,
+                $snapshot->identity->customerId,
+                $snapshot->identity->salesChannelId,
+                Context::createDefaultContext(),
+            );
+        } catch (UnknownStrategy $e) {
+            $this->logger->error('A strategy assignment points at a strategy that is missing or archived, so this '
+            . 'quote was escalated instead of serviced with a posture nobody chose.', [
+                'quoteId' => $snapshot->identity->quoteId,
+                'salesChannelId' => $snapshot->identity->salesChannelId,
+                'problem' => $e->getMessage(),
+            ]);
+
+            $this->escalator->escalate($gateway, $snapshot, QuoteEscalationReason::NotConfigured);
+            $this->record($snapshot, $context, [$e->getMessage()]);
+
+            return null;
+        }
+
+        return $assigned === null ? $settings : $settings->withStrategy($assigned->strategy, $assigned->source);
     }
 
     /**

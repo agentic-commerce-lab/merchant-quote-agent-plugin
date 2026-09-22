@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Config;
 
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
+use MerchantQuoteAgentPlugin\Strategy\ResolvedStrategy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
 
 /**
  * Everything the agent needs to service one sales channel, already validated.
@@ -19,6 +21,14 @@ use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
  *
  * No Shopware in it. The reader touches SystemConfigService; this does not,
  * so the negotiation engine stays framework-free.
+ *
+ * @mago-expect lint:excessive-parameter-list
+ * All six fields are what one sales channel's configuration resolves to;
+ * `$strategyAssignmentSource` travels with `$strategyPrompt` and
+ * `$strategyVersionId` because all three describe the same resolved
+ * strategy, so splitting them into a sub-object would just move that
+ * three-field group one level down without changing what withStrategy()
+ * has to keep in sync.
  */
 final readonly class QuoteAgentSettings
 {
@@ -34,6 +44,7 @@ final readonly class QuoteAgentSettings
          */
         public bool $notifyBuyerOnEscalation = true,
         public ?string $strategyVersionId = null,
+        public ?StrategyAssignmentSource $strategyAssignmentSource = null,
     ) {}
 
     public function withPolicy(NegotiationPolicy $policy): self
@@ -44,6 +55,25 @@ final readonly class QuoteAgentSettings
             $this->strategyPrompt,
             $this->notifyBuyerOnEscalation,
             $this->strategyVersionId,
+            $this->strategyAssignmentSource,
+        );
+    }
+
+    /**
+     * The assignment ladder's answer, replacing whatever the configuration key
+     * resolved. Both the prompt and the version id move together: a row that
+     * recorded one strategy's version while another strategy's prompt was sent
+     * would make the whole per-strategy dashboard lie.
+     */
+    public function withStrategy(ResolvedStrategy $strategy, StrategyAssignmentSource $source): self
+    {
+        return new self(
+            $this->policy,
+            $this->llm,
+            $strategy->prompt,
+            $this->notifyBuyerOnEscalation,
+            $strategy->versionId,
+            $source,
         );
     }
 }
