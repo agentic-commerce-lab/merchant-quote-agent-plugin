@@ -6,7 +6,9 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
+use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\ScriptedClient;
 
 /** Assertions on actual writes and information flow, independent of the scripted safe reply. */
@@ -74,7 +76,18 @@ trait HistoryInjectionAssertions
         $template = self::replyTemplateFor($before, $after);
         $reply = self::reworded($template);
         $replyPrompt = $spy->userPrompts[$spy->calls - 1];
-        self::assertSame($template, $replyPrompt, 'Only verified offer facts may reach the reply model.');
+        // Verified offer facts, plus the buyer's own newest comment as
+        // context for the wording -- and nothing else. Still an equality, not
+        // a `contains`: the buyer's words were let in deliberately, and an
+        // exact match is what keeps the next thing from being let in by
+        // accident. The private-history secrets below are asserted absent
+        // from this same string, so the boundary this trait is named for is
+        // unchanged.
+        self::assertSame(
+            ReplyComposer::userMessage(SnapshotAdapter::conversation($before)->newestBuyerText(), $template),
+            $replyPrompt,
+            'Only verified offer facts and the buyer\'s own words may reach the reply model.',
+        );
         self::assertSame(
             $reply,
             $record->replyToBuyer,

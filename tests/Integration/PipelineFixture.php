@@ -174,8 +174,18 @@ trait PipelineFixture
      * this transform ever degraded to the identity function, those sites
      * would go straight back to proving nothing while looking like they do.
      */
-    protected static function reworded(string $template): string
+    protected static function reworded(string $prompt): string
     {
+        // The reply call's user message carries the buyer's own ask above the
+        // template now (ReplyComposer::userMessage()), and a "rewording" that
+        // echoed that half back would be rejected for the buyer's figures
+        // rather than accepted for the template's — a false green in the one
+        // direction #146 already caught once.
+        $heading = strrpos($prompt, ReplyComposer::TEMPLATE_HEADING);
+        $template = $heading === false
+            ? $prompt
+            : trim(substr($prompt, $heading + \strlen(ReplyComposer::TEMPLATE_HEADING)));
+
         $reworded = str_replace('. The offer is valid until ', ', valid until ', $template);
         self::assertNotSame($template, $reworded, 'The rewording must actually differ from its template.');
 

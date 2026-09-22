@@ -14,6 +14,14 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
  * deciding whether to use it instead are two different jobs, and this one
  * carries all of the guard's branching.
  *
+ * Since live quote 1054 the reply prompt also carries the buyer's own newest
+ * comment, so the model it guards is now reading untrusted text
+ * (`ReplyComposer::userMessage()`). Nothing here was relaxed for it, and
+ * nothing should be: a figure the buyer wrote is a figure nobody authorised,
+ * which is what makes "acknowledge what they asked for" safe to ask for at
+ * all. The reply prompt holds no history either, so an instruction smuggled
+ * into that comment has nothing to disclose even if the model obeys it.
+ *
  * Payment and delivery are not this system's to promise: `AskGate` escalates
  * every non-price ask and `OfferApplier` writes price and expiry only. A term
  * the model writes into a reply for either one is a commitment nothing

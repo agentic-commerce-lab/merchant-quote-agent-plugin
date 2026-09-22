@@ -23,6 +23,16 @@ use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
  */
 final readonly class ReplyComposer
 {
+    /**
+     * Where the sentence the model may reword starts.
+     *
+     * Public because the reply call's user message is two parts now, and the
+     * test fixture that derives a valid rewording from it
+     * (`PipelineFixture::reworded()`) has to find the template half — a
+     * marker spelled out there would drift the first time this wording moved.
+     */
+    public const TEMPLATE_HEADING = 'Reply to reword:';
+
     public function __construct(
         private ModelPlatform $platform,
         private PromptComposer $prompts,
@@ -54,6 +64,67 @@ final readonly class ReplyComposer
             return null;
         }
 
+        [$text, $hash] = $this->reword($settings, $after, $conversation->newestBuyerText(), $reductionPercent);
+
+        $gateway->addComment($after->identity->quoteId, $text);
+        $this->recorder->recordReply($text, $hash);
+        $this->send($gateway, $after->identity->quoteId, $after->lifecycle->stateTechnicalName);
+
+        return $hash;
+    }
+
+    /**
+     * The buyer's own ask above the template, or the template alone when
+     * there is none.
+     *
+     * Live quote 1054 is why the ask is here at all: the buyer wrote "Can we
+     * get a discount, my max budget is 9k" and read back "We have reduced the
+     * quote by 15% to 9885.58 EUR." — correct, and a form letter, because the
+     * template was the whole of what the reply model had ever seen. It could
+     * not acknowledge a target nobody showed it, and no strategy prompt could
+     * fix that: the strategy reaches this call as a tone sentence only
+     * (`PromptComposer::toneFrom()`).
+     *
+     * The ask is context for the WORDING, never a second source of facts, and
+     * it does NOT relax `RewordingGuard`: every figure the buyer wrote is a
+     * figure nobody authorised, so a rewording that quotes their target back
+     * at them falls back to the template exactly like an invented one does.
+     * That is the whole safety argument for putting untrusted buyer text in
+     * the last prompt before a buyer — the guard never learned to trust it,
+     * and the reply model holds no history to leak even if it were talked
+     * into trying (`HistoryInjectionAssertions::assertPrivateReplyBoundary()`
+     * pins the prompt to exactly this string).
+     *
+     * It goes in the USER message, not the system prompt: `reply_prompt_hash`
+     * identifies a prompt VERSION across quotes, and a per-quote system
+     * prompt would give every pass its own hash and make that column useless.
+     */
+    public static function userMessage(string $ask, string $template): string
+    {
+        $ask = trim($ask);
+
+        if ($ask === '') {
+            return $template;
+        }
+
+        return "The buyer wrote:\n" . $ask . "\n\n" . self::TEMPLATE_HEADING . "\n" . $template;
+    }
+
+    /**
+     * Composing the template and rewording it live together because the
+     * template is both halves of the outcome: the text the model is asked to
+     * reword, and the text that ships when the rewording is rejected.
+     *
+     * @return array{0: string, 1: string|null}
+     */
+    private function reword(
+        QuoteAgentSettings $settings,
+        QuoteSnapshot $after,
+        string $ask,
+        ?float $reductionPercent,
+    ): array {
+        $access = $settings->llm;
+
         // The GROSS total, never the net one. Live quote 1020 told a buyer who
         // owed 8226.60 that their new total was 6913.11, because this reached
         // for totalNet -- 19% understated, and invisible on the 0%-tax quote
@@ -64,29 +135,10 @@ final readonly class ReplyComposer
             ? ReplyTemplate::holds($total, $after->identity->currencyIso, $validUntil)
             : ReplyTemplate::compose($reductionPercent, $total, $after->identity->currencyIso, $validUntil);
 
-        [$text, $hash] = $this->reword($settings, $template, $reductionPercent, $total, $validUntil);
-
-        $gateway->addComment($after->identity->quoteId, $text);
-        $this->recorder->recordReply($text, $hash);
-        $this->send($gateway, $after->identity->quoteId, $after->lifecycle->stateTechnicalName);
-
-        return $hash;
-    }
-
-    /** @return array{0: string, 1: string|null} */
-    private function reword(
-        QuoteAgentSettings $settings,
-        string $template,
-        ?float $reductionPercent,
-        float $total,
-        \DateTimeImmutable $validUntil,
-    ): array {
-        $access = $settings->llm;
-
         $prompt = $this->prompts->reply($settings);
 
         try {
-            $reworded = trim($this->platform->text($access, $prompt->text, $template));
+            $reworded = trim($this->platform->text($access, $prompt->text, self::userMessage($ask, $template)));
         } catch (ModelUnavailable $e) {
             // The offer is already applied. A plainer sentence beats no
             // sentence, so the template ships and the pass still succeeds.
