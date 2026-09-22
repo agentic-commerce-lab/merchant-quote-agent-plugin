@@ -147,8 +147,7 @@ function agentDiscountPercent(quote: any): number | null {
  * `totalLineItemDiscount` does not exist on SwagCommercial 7.12, so a merchant
  * there who negotiates by editing line prices rather than setting a quote
  * discount reads as 0%. That understates the baseline and so makes the agent
- * look worse, which is the safe direction, and the tile carries a footnote
- * saying the baseline reads quote-level discounts only.
+ * look worse, which is the safe direction.
  */
 function baselineDiscountPercent(row: any): number | null {
     const given = Number(row.totalDiscount ?? 0) + Number(row.totalLineItemDiscount ?? 0);

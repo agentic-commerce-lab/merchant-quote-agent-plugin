@@ -138,9 +138,6 @@
                         <span v-else class="mqa-figure__aside">
                             {{ $tc('merchant-quote-agent.figures.noBaseline') }}
                         </span>
-                        <span v-if="!dealsUnavailable && retention.baselineDiscount !== null" class="mqa-figure__aside">
-                            {{ $tc('merchant-quote-agent.figures.retentionFootnote') }}
-                        </span>
                     </div>
                     {% endblock %}
 
