@@ -71,6 +71,45 @@ final class BuyerPriceSpaceTest extends TestCase
         self::assertSame(72.0, $result?->interpretation->structural->lineChanges[0]->targetUnitPrice);
     }
 
+    public function testAGrossQuoteLevelBudgetComesBackNet(): void
+    {
+        // A budget covers whatever the quote covers, so it converts on the
+        // quote's own blended ratio (800 net behind 1000 gross), not on a
+        // line's: 900 gross is a 720 net target, a 10% ask on an 800 net
+        // quote — not the 12.5% the raw figure implies.
+        [$client] = ScriptedClient::spy(['{"price":{"targetTotal":900.0}}']);
+        $snapshot = NegotiationFixture::grossSnapshot([
+            NegotiationFixture::buyerComment('max cost should be 900', '2026-08-28 09:00:00'),
+        ]);
+
+        $result = (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
+            NegotiationFixture::settings(),
+            $snapshot,
+            SnapshotAdapter::conversation($snapshot),
+        );
+
+        self::assertSame(720.0, $result?->interpretation->price->targetTotal);
+    }
+
+    public function testTheModelIsShownTheQuoteTotalItHasToPlaceANumberAgainst(): void
+    {
+        // Which level "2500" belongs to is a comparison, and the total is half
+        // of it. In the buyer's space like the table, or the two halves would
+        // be different money.
+        [$client, $spy] = ScriptedClient::spy(['{}']);
+        $snapshot = NegotiationFixture::grossSnapshot([
+            NegotiationFixture::buyerComment('max cost should be 900', '2026-08-28 09:00:00'),
+        ]);
+
+        (new AskInterpreter($client, self::prompts(), self::recorder()))->interpret(
+            NegotiationFixture::settings(),
+            $snapshot,
+            SnapshotAdapter::conversation($snapshot),
+        );
+
+        self::assertStringContainsString('Quote total: 1000.00', $spy->userPrompts[0]);
+    }
+
     public function testANetQuoteLeavesTheTargetAlone(): void
     {
         [$client] = ScriptedClient::spy([

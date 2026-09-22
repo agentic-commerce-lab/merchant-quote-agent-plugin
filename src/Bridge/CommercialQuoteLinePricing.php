@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Bridge;
 
+use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Ucp\Sdk\Exception\ValidationException;
@@ -29,6 +30,7 @@ final readonly class CommercialQuoteLinePricing
 {
     public function __construct(
         private ?object $quoteLineItemRoute = null,
+        private ?LoggerInterface $logger = null,
     ) {}
 
     /**
@@ -76,6 +78,14 @@ final readonly class CommercialQuoteLinePricing
      * Buyer asks belong in `requestedPrice` (per unit) - never in a price
      * definition, which newer commercial versions rebuild from the catalog.
      *
+     * A price-only target naming a product that is not (or no longer) on the
+     * quote matches nothing here and is silently dropped, by design: hard
+     * failing could turn a currently-succeeding UCP request into a 422 if a
+     * cart processor dropped an unavailable line between the ask and this
+     * call. Unmatched ids are logged instead, so a buyer's ask that never
+     * reached the quote is visible somewhere other than the assistant's
+     * unearned "success".
+     *
      * @param array<string, float> $requestedPrices product id => requested unit price
      */
     public function applyRequestedPrices(
@@ -87,6 +97,8 @@ final readonly class CommercialQuoteLinePricing
         if ([] === $requestedPrices) {
             return;
         }
+
+        $unmatched = $requestedPrices;
 
         /** @mago-expect analysis:invalid-iterator */
         /** @mago-expect analysis:mixed-method-access */
@@ -101,6 +113,8 @@ final readonly class CommercialQuoteLinePricing
                 continue;
             }
 
+            unset($unmatched[$productId]);
+
             /** @mago-expect analysis:mixed-method-access */
             CommercialQuoteAccess::service($this->quoteLineItemRoute, 'quote line-item')->edit(
                 $quoteId,
@@ -108,6 +122,13 @@ final readonly class CommercialQuoteLinePricing
                 $context,
                 new RequestDataBag(['requestedPrice' => $requestedPrices[$productId]]),
             );
+        }
+
+        if ([] !== $unmatched) {
+            $this->logger?->warning('A price ask named a product that is not on this quote.', [
+                'quoteId' => $quoteId,
+                'unmatchedProductIds' => array_keys($unmatched),
+            ]);
         }
     }
 

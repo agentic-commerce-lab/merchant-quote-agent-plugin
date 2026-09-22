@@ -23,18 +23,15 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  *
  * A buyer has four ways to name a number and all four bind the agent: a
  * percentage in the conversation, the storefront's per-line "Requested price"
- * field, a per-unit price typed in the conversation, and — #164 — an absolute
- * price for the WHOLE quote typed in the conversation. The per-unit one used
- * to fall through here — it lands in `structural.lineChanges` rather than on
- * the line, and NegotiationPipeline hands this class the ANCHORED snapshot,
- * which AskMirror's write-back does not reach — so the model was told the
- * merchant's whole band on exactly the asks QuoteDiscountApplier was already
- * pricing at the buyer's figure. Merging below closes that, and reuses the
- * merger so the cap is measured on the same targets the pricer prices
- * against, including its "structured field wins outside a renegotiation"
- * precedence. The quote-level absolute target needs no merge — it names no
- * line — so it is converted to its equivalent percent directly, off the same
- * quoted total the merged snapshot still carries.
+ * field, a per-unit price typed in the conversation, and a budget named for the
+ * whole quote ("max cost 2500"). The third one used to fall through here — it
+ * lands in `structural.lineChanges` rather than on the line, and
+ * NegotiationPipeline hands this class the ANCHORED snapshot, which
+ * AskMirror's write-back does not reach — so the model was told the merchant's
+ * whole band on exactly the asks QuoteDiscountApplier was already pricing at
+ * the buyer's figure. Merging below closes that, and reuses the merger so the
+ * cap is measured on the same targets the pricer prices against, including its
+ * "structured field wins outside a renegotiation" precedence.
  */
 final class AskedDiscountCeiling
 {
@@ -65,22 +62,22 @@ final class AskedDiscountCeiling
         // of any requested prices already entered", so all three add rather
         // than compete. Summing can only raise the ceiling, never lower it
         // below what the buyer asked for.
-        $asked =
-            self::fromRequestedLinePrices($merged)
-            + ($interpretation?->price->additionalDiscountPercent ?? 0.0)
-            + self::targetTotalPercent($snapshot, $interpretation?->price->targetTotal);
+        $asked = self::fromRequestedLinePrices($merged) + ($interpretation?->price->additionalDiscountPercent ?? 0.0);
+
+        // A quote-level budget is the fourth way to name a number, and the
+        // only one that binds the whole quote at once. Measured against the
+        // ANCHORED total this class is handed, so a budget repeated in a later
+        // round still means the same money it did in the first — which is
+        // exactly what an absolute figure, unlike a percentage, should do.
+        // `max` rather than `+`: a budget already covers the lines it pays
+        // for, so adding it to the per-line asks would double-count them.
+        $asked = max($asked, self::fromTargetTotal($snapshot, $interpretation?->price->targetTotal));
 
         return $asked > 0.0 ? $asked : null;
     }
 
-    /**
-     * The buyer's absolute quote-level target (#164), as the discount percent
-     * it implies. Measured on the ORIGINAL quoted total, not a merged one —
-     * a quote-level figure names no line for merge() to apply it to — and
-     * capped at the quoted total itself, so a target above it (no discount at
-     * all) contributes nothing rather than a negative ask.
-     */
-    private static function targetTotalPercent(QuoteSnapshot $snapshot, ?float $targetTotal): float
+    /** Zero when the buyer named no budget, or named one at or above the quoted total. */
+    private static function fromTargetTotal(QuoteSnapshot $snapshot, ?float $targetTotal): float
     {
         if ($targetTotal === null || $snapshot->totalNet <= 0.0) {
             return 0.0;

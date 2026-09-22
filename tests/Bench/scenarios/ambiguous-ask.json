@@ -1,0 +1,11 @@
+{
+    "id": "ambiguous-ask",
+    "description": "An ask that is clear in intent but ambiguous in reference. Must draw a clarification question, never a guessed offer.",
+    "lines": [
+        {"productRef": "any-purchasable", "quantity": 5}
+    ],
+    "openingAsk": "Can you sharpen up the pricing on this a bit?",
+    "persona": "scripted:vague",
+    "maxRounds": 3,
+    "expectedBand": "clarify"
+}

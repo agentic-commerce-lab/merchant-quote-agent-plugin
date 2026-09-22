@@ -49,14 +49,11 @@ final class DiscountCeilingTest extends TestCase
 
     public function testAQuoteWithNoStatedAskKeepsTheConfiguredCap(): void
     {
-        // "Your best price" names no figure -- #177's empty-extraction gate
-        // is about an extraction with NO ask anywhere, not this one.
+        // bestPriceRequested, not '{}': "what can you do for us?" IS an ask,
+        // and an interpretation empty in every field now ends the pass as
+        // NothingToDo (#177), which would measure nothing here.
         $harness = PipelineHarness::with(
-            [
-                '{"price":{"bestPriceRequested":true}}',
-                self::OFFER_5_PERCENT,
-                'Here you go.',
-            ],
+            ['{"price":{"bestPriceRequested":true}}', self::OFFER_5_PERCENT, 'Here you go.'],
             reReadTotalNet: 950.0,
         );
         $snapshot = NegotiationFixture::snapshot(comments: [
@@ -161,24 +158,18 @@ final class DiscountCeilingTest extends TestCase
         );
     }
 
-    /**
-     * #164, verified live in the 2026-09-18 session: a buyer who names a
-     * figure for the WHOLE quote ("take 200 off the total") had nowhere for
-     * it to land, so the model was left to compute the percentage itself —
-     * and on a 3,700.00 quote it answered with 5.41% one round and 5.41% a
-     * different way the next, neither one checked against the 200 actually
-     * asked for. The absolute target now carries the number in code: 200 off
-     * 3,700.00 is a 5.41% ask (200 / 3,700 = 5.405...%), and that is what
-     * must cap the model — not the merchant's full 15%.
-     */
-    public function testAQuoteLevelAbsoluteAskCapsTheModelToo(): void
+    public function testAQuoteLevelBudgetCapsTheModelToo(): void
     {
+        // "Max cost should be 2500" on a 1000 fixture quote: 900 against a
+        // 1000 total is a 10% ask. Nothing lands on a line here — the buyer
+        // named one number for the whole quote — so the cap can only come
+        // from the budget itself.
         $harness = PipelineHarness::with(
-            ['{"price":{"targetTotal":3500}}', self::OFFER_5_PERCENT, 'Here you go.'],
-            reReadTotalNet: 3500.0,
+            ['{"price":{"targetTotal":900.0}}', self::OFFER_5_PERCENT, 'Here you go.'],
+            reReadTotalNet: 950.0,
         );
-        $snapshot = NegotiationFixture::snapshot(totalNet: 3700.0, comments: [
-            NegotiationFixture::buyerComment('can you take 200 off the total?', '2026-08-28 09:00:00'),
+        $snapshot = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('max cost should be 900 for everything', '2026-08-28 09:00:00'),
         ]);
 
         $harness->pipeline->service(
@@ -189,9 +180,36 @@ final class DiscountCeilingTest extends TestCase
         );
 
         self::assertStringContainsString(
-            'maximum discount you may grant: 5.41%',
+            'maximum discount you may grant: 10.00%',
             $harness->spy->userPrompts[1],
-            'An absolute quote-level target must cap the model at what it implies, not the configured 15%.',
+            'A budget for the whole quote is an ask like any other, and must cap the model.',
+        );
+    }
+
+    public function testAGrossQuoteLevelBudgetIsCappedInNetSpace(): void
+    {
+        // The same hazard as the per-unit case, one level up: 900 gross on a
+        // quote whose 1000 gross is 800 net is a 720 net target — a 10% ask,
+        // not the 12.5% the number as typed implies.
+        $harness = PipelineHarness::with(
+            ['{"price":{"targetTotal":900.0}}', self::OFFER_5_PERCENT, 'Here you go.'],
+            reReadTotalNet: 760.0,
+        );
+        $snapshot = NegotiationFixture::grossSnapshot([
+            NegotiationFixture::buyerComment('max cost should be 900 all in', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(maxDiscountPercent: 15.0),
+            NegotiationFixture::context(),
+        );
+
+        self::assertStringContainsString(
+            'maximum discount you may grant: 10.00%',
+            $harness->spy->userPrompts[1],
+            'A gross budget must cap the model on its net value, not on the number as typed.',
         );
     }
 
@@ -226,6 +244,40 @@ final class DiscountCeilingTest extends TestCase
             'maximum discount you may grant: 10.00%',
             $harness->spy->userPrompts[1],
             'A gross figure must cap the model on its net value, not on the number as typed.',
+        );
+    }
+
+    /**
+     * #164, verified live in the 2026-09-18 session: a buyer who names a
+     * figure for the WHOLE quote ("take 200 off the total") had nowhere for
+     * it to land, so the model was left to compute the percentage itself —
+     * and on a 3,700.00 quote it answered with 5.41% one round and 5.41% a
+     * different way the next, neither one checked against the 200 actually
+     * asked for. The absolute target now carries the number in code: 200 off
+     * 3,700.00 is a 5.41% ask (200 / 3,700 = 5.405...%), and that is what
+     * must cap the model — not the merchant's full 15%.
+     */
+    public function testAQuoteLevelAbsoluteAskCapsTheModelToo(): void
+    {
+        $harness = PipelineHarness::with(
+            ['{"price":{"targetTotal":3500}}', self::OFFER_5_PERCENT, 'Here you go.'],
+            reReadTotalNet: 3500.0,
+        );
+        $snapshot = NegotiationFixture::snapshot(totalNet: 3700.0, comments: [
+            NegotiationFixture::buyerComment('can you take 200 off the total?', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(maxDiscountPercent: 15.0),
+            NegotiationFixture::context(),
+        );
+
+        self::assertStringContainsString(
+            'maximum discount you may grant: 5.41%',
+            $harness->spy->userPrompts[1],
+            'An absolute quote-level target must cap the model at what it implies, not the configured 15%.',
         );
     }
 }

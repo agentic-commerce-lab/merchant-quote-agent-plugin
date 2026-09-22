@@ -467,6 +467,9 @@ export function askItems(vm: any, asks: any): { label: string; value: string }[]
 
     add('discount', percent(asks.targetDiscountPercent ?? price.additionalDiscountPercent));
     add('bestPrice', flag(price.bestPriceRequested));
+    // A quote-level budget has no line to sit on, so this chip is the only
+    // place it is visible before the offer that answers it.
+    add('targetTotal', num(price.targetTotal) ? formatCurrency(price.targetTotal) : null);
 
     (asks.lines ?? structural.lineChanges ?? []).forEach((line: any, index: number) => {
         const suffix = ` #${index + 1}`;

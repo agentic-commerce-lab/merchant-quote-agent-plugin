@@ -13,11 +13,18 @@ final readonly class PriceAsk
         public ?float $additionalDiscountPercent = null,
         public ?bool $bestPriceRequested = null,
         /**
-         * An absolute price named for the WHOLE quote ("can you do 3,500?"),
-         * as the buyer wrote it — converted to net exactly once, alongside
-         * every other extracted figure, by BuyerPriceSpace::toNet().
+         * A budget the buyer names for the WHOLE quote ("max cost 2500"), as
+         * opposed to the per-unit targets that land in
+         * StructuralAsks::$lineChanges. Which of the two a number IS is the
+         * extract model's call, made against the quote total it is shown.
+         *
+         * In the BUYER's tax space until BuyerPriceSpace::toNet() converts it,
+         * like every other price the model hands back. Downstream it becomes
+         * QuoteSnapshot::$buyerTargetNet, which the band decider and the
+         * uniform pricer already read — so a quote-level budget needs no
+         * decider of its own.
          */
-        #[Assert\PositiveOrZero]
+        #[Assert\Positive]
         public ?float $targetTotal = null,
     ) {}
 }

@@ -72,6 +72,12 @@ final readonly class AskInterpreter
      * `additionalDiscountPercent` rule reads "on top of any requested prices
      * already entered".
      *
+     * The quote total leads, in the buyer's space like the two price columns
+     * below it, because a number in the prose is only placeable against it: a
+     * budget ("max cost 2500") and a per-unit target can be the same digits,
+     * and which one the buyer means is the number's size relative to the total
+     * and to the lines. Without it the model could only ask.
+     *
      * Echoing a requested price back as a `lineChanges` target is harmless:
      * CommentTargetMerger lets the structured field win over a comment target
      * outside a renegotiation round, so the number cannot be double-counted.

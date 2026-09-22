@@ -46,22 +46,24 @@ use Shopware\Core\Framework\Migration\MigrationStep;
  * en/de special-casing. Add a translation for a specific language if a
  * merchant asks for one.
  *
- * ponytail: `mail_template`/`mail_template_type`/`flow`/`flow_sequence` are
- * shared core tables, so MerchantQuoteAgentPlugin::dropPluginTables() rightly
- * never touches them — but that also means these seeded rows outlive a full
- * "remove all data" uninstall, unlike merchant_quote_agent_strategy's own
- * DROP TABLE. They carry no buyer or merchant data (only static Twig markup),
- * so this is untidiness, not the #59 class of problem. Row-level cleanup
- * belongs in MerchantQuoteAgentPlugin::uninstall(), outside this change's
- * ownership of src/Migration and src/Servicing.
+ * `mail_template`/`mail_template_type`/`flow`/`flow_sequence` are shared core
+ * tables, so MerchantQuoteAgentPlugin::dropPluginTables() rightly never
+ * touches them — a DROP TABLE would take the shop's own mail with it. The
+ * row-level counterpart lives in
+ * MerchantQuoteAgentPlugin::deleteSeededMailAndFlow(), which removes exactly
+ * the four ids below on a "remove all data" uninstall, and only while they are
+ * still untouched. That is why three of them are public: the delete side must
+ * name the same rows this side seeds, and a second copy of a hex literal is a
+ * copy that drifts. FLOW_SEQUENCE_ID stays private because deleting the flow
+ * cascades it.
  */
 class Migration1789500001SeedEscalationMailAndFlow extends MigrationStep
 {
-    private const MAIL_TEMPLATE_TYPE_ID = 'f6caf8ac80f3db231b89fd00bec1eaff';
+    public const MAIL_TEMPLATE_TYPE_ID = 'f6caf8ac80f3db231b89fd00bec1eaff';
 
-    private const MAIL_TEMPLATE_ID = 'c3822f2498c843a66e5865ef0ce34f9f';
+    public const MAIL_TEMPLATE_ID = 'c3822f2498c843a66e5865ef0ce34f9f';
 
-    private const FLOW_ID = '8ae9f480fef0ecd82c9d6d2ff62ffd89';
+    public const FLOW_ID = '8ae9f480fef0ecd82c9d6d2ff62ffd89';
 
     private const FLOW_SEQUENCE_ID = '6ef5b9206330d85083bc9990d7ce974b';
 

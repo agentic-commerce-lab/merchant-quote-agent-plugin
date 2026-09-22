@@ -21,9 +21,10 @@ use Symfony\Component\Validator\Validation;
  * never talks to a real API, not real secrets.
  *
  * @mago-expect lint:too-many-methods
- * Eleven cases plus two private helpers (the reader builder and a strategy
+ * Thirteen cases plus two private helpers (the reader builder and a strategy
  * resolver stub) shared across them, including the #140 regression coverage
- * for notifyBuyerOnEscalation().
+ * for notifyBuyerOnEscalation() and the mirrored default-off pin for
+ * assistantQuoteRequests().
  */
 final class QuoteAgentSettingsReaderTest extends TestCase
 {
@@ -181,5 +182,23 @@ final class QuoteAgentSettingsReaderTest extends TestCase
         }
 
         self::assertTrue($reader->notifyBuyerOnEscalation(null));
+    }
+
+    /**
+     * The opposite default from notifyBuyerOnEscalation, and just as load
+     * bearing: the assistant acts for the buyer, so an unset key must mean
+     * off, not on. `RequestQuoteToolFactoryTest` mocks this method's return
+     * value directly, so only a test against the reader's own `=== true`
+     * check catches a regression to `!== false`.
+     */
+    public function testAssistantQuoteRequestsDefaultsToOff(): void
+    {
+        self::assertFalse($this->reader()->assistantQuoteRequests(null));
+    }
+
+    public function testAssistantQuoteRequestsIsOnOnlyWhenExplicitlyTrue(): void
+    {
+        self::assertFalse($this->reader(['assistantQuoteRequests' => false])->assistantQuoteRequests(null));
+        self::assertTrue($this->reader(['assistantQuoteRequests' => true])->assistantQuoteRequests(null));
     }
 }

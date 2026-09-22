@@ -48,10 +48,13 @@ final class QuoteExtractPromptTest extends TestCase
 
     public function testTargetTotalExplicitlyCoversABudgetSpreadAcrossItems(): void
     {
+        // The rule the 2026-09-18 escalations needed: a budget the buyer
+        // describes spreading over the items is still one quote-level number,
+        // and asking how to split it costs the buyer a round for nothing.
         $prompt = self::prompt();
 
-        self::assertStringContainsString('spreading, distributing, or', $prompt);
-        self::assertStringContainsString('applying it across the items', $prompt);
+        self::assertStringContainsString('NEVER ask the buyer how a', $prompt);
+        self::assertStringContainsString('budget should be split across the items', $prompt);
     }
 
     public function testABareNumberAmbiguousBetweenTotalAndUnitPriceIsStillClarificationWorthy(): void
@@ -62,6 +65,8 @@ final class QuoteExtractPromptTest extends TestCase
         // it to price.targetTotal by default.
         $prompt = self::prompt();
 
-        self::assertStringContainsString('unclear whether it means the total or a per-unit price', $prompt);
+        // Phrased as the level rule's own escape hatch: a number that fits no
+        // level, or sits between two lines with no wording to settle it.
+        self::assertStringContainsString('Only ask when the number fits NO level', $prompt);
     }
 }
