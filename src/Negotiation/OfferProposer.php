@@ -73,7 +73,7 @@ final readonly class OfferProposer
             $response = $rounds->negotiate(
                 $settings->llm,
                 $prompt,
-                self::userPrompt($settings, $snapshot, $decision, $context->conversation),
+                self::userPrompt($settings, $snapshot, $decision, $context),
                 $snapshot->lines,
             );
         } catch (HistoryBudgetExhausted $e) {
@@ -176,8 +176,9 @@ final readonly class OfferProposer
         QuoteAgentSettings $settings,
         PolicySnapshot $snapshot,
         QuoteDecision $decision,
-        BuyerConversation $conversation,
+        NegotiationContext $context,
     ): string {
+        $conversation = $context->conversation;
         $lines = array_map(static fn(PolicyQuoteLineSnapshot $l): string => sprintf(
             '%s | %s | %s | %d | %.2f',
             $l->lineItemId(),
@@ -186,6 +187,22 @@ final readonly class OfferProposer
             $l->quantity,
             $l->unitPriceNet,
         ), $snapshot->lines);
+
+        // Everything above and below prices in net, and the buyer's comment
+        // does not: on a gross quote the figure in their sentence carries the
+        // tax. Naming their target in the prompt's own space is what stops the
+        // model reading their number against the net total and pricing to it —
+        // sw-ag.dev quote 1055 asked for 3000 gross and was offered 3209.73,
+        // the model's own message claiming it had met a "3,000 EUR" budget.
+        // Stated as an ask, not an instruction: the authority above still
+        // decides how much of it may be met.
+        $buyerTarget = $context->buyerTargetNet === null
+            ? ''
+            : sprintf(
+                "Buyer's target total for the whole quote (net, converted from the figure in their comment): %.2f %s\n",
+                $context->buyerTargetNet,
+                $snapshot->currencyIso,
+            );
 
         // #166: the prompt used to show the agent's own earlier replies as
         // prose, which drops its figures the moment a reword changes the
@@ -208,10 +225,11 @@ final readonly class OfferProposer
             );
 
         return sprintf(
-            "Quote total (net): %.2f %s\n\nLine items (lineItemId | productId | label | quantity | unit price net):\n%s\n\nYOUR AUTHORITY:\n%s\n\n"
+            "Quote total (net): %.2f %s\n%s\nLine items (lineItemId | productId | label | quantity | unit price net):\n%s\n\nYOUR AUTHORITY:\n%s\n\n"
             . "%sBuyer's latest comment:\n%s",
             $snapshot->totalNet,
             $snapshot->currencyIso,
+            $buyerTarget,
             implode("\n", $lines),
             AuthorityBrief::of($settings->policy, $decision->autoReply?->counteredRequestPercent),
             $earlierRounds,
