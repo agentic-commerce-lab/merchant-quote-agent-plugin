@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Audit;
 
 use MerchantQuoteAgentPlugin\Audit\InterpretationPayload;
-use MerchantQuoteAgentPlugin\Policy\Data\BundleAsk;
 use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
 use MerchantQuoteAgentPlugin\Policy\Data\DeliveryAsk;
 use MerchantQuoteAgentPlugin\Policy\Data\InterpretedLineChange;
@@ -99,7 +98,6 @@ final class InterpretationPayloadTest extends TestCase
                     requestedNetDays: 30,
                     requestedDepositPercent: 10.0,
                 ),
-                bundle: new BundleAsk(requested: true),
             ),
         );
     }
