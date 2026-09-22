@@ -38,6 +38,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLineItemWriter;
 use MerchantQuoteAgentPlugin\Bridge\QuoteRecalculator;
+use MerchantQuoteAgentPlugin\Bridge\QuoteRuleScopeFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteSnapshotReader;
 use MerchantQuoteAgentPlugin\Bridge\QuoteStateTransitioner;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
@@ -637,6 +638,11 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(QuoteRecalculator::class)->args([
         service(CommercialAvailability::CONTEXT_RESTORER)->ignoreOnInvalid(),
         service(CommercialAvailability::QUOTE_CALCULATOR)->ignoreOnInvalid(),
+    ]);
+    $services->set(QuoteRuleScopeFactory::class)->args([
+        service(CommercialAvailability::CONTEXT_RESTORER)->ignoreOnInvalid(),
+        service(CommercialAvailability::QUOTE_TO_CART_CONVERTER)->ignoreOnInvalid(),
+        service('quote.repository'),
     ]);
 
     // The guard sits in front of the commercial adder: QuoteManipulation
