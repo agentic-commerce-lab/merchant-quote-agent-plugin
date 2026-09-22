@@ -64,6 +64,14 @@
 .mqa-page__range {
     width: 210px;
     text-align: left;
+
+    /* sw-field reserves 32px under itself for the error line it would show in a
+       form. The smart bar centres its actions on the *margin* box, so that
+       reserve lifts the select half its height above the export button next to
+       it. Nothing renders below the select here, so drop it. */
+    .sw-field {
+        margin-bottom: 0;
+    }
 }
 
 /* A ratio against a limit: one hue, filled portion against its own track. */
