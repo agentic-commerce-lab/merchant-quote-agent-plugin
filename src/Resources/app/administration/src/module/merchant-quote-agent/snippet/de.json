@@ -114,7 +114,6 @@
             "openEscalations": "{open} noch offen",
             "retention": "Gewährter Rabatt",
             "retentionBaseline": "vs. {baseline} bei Abschlüssen ohne Agentenbeteiligung",
-            "retentionFootnote": "Auf SwagCommercial 7.12 berücksichtigt der Vergleich nur Rabatte auf Angebotsebene.",
             "cycleTime": "Abschlussdauer",
             "cycleBaseline": "vs. {baseline} bei vergleichbarer Abschlussgröße",
             "noBaseline": "keine vergleichbaren Abschlüsse in diesem Zeitraum",
