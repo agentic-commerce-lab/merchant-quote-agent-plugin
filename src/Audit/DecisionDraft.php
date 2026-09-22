@@ -105,5 +105,8 @@ final class DecisionDraft
     /** The prompt version this pass actually sent — see StrategyVersion. */
     public ?string $strategyVersionId = null;
 
+    /** Which rung of the ladder chose that version — see StrategyAssignmentSource. */
+    public ?string $strategyAssignmentSource = null;
+
     public float $startedAt = 0.0;
 }

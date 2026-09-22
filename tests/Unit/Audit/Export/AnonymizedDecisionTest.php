@@ -35,6 +35,19 @@ final class AnonymizedDecisionTest extends TestCase
         self::assertArrayHasKey('strategyVersion', $row);
     }
 
+    /**
+     * Unlike every other entry in the same rename map, this one is not a shop
+     * identifier -- it is one of StrategyAssignmentSource's four fixed words
+     * describing plugin configuration. Salting it would only make it
+     * unreadable, not anonymous, so it survives the pseudonymizer untouched.
+     */
+    public function testTheAssignmentSourceLeavesTheShopUnpseudonymized(): void
+    {
+        $row = self::export(self::record());
+
+        self::assertSame('rule', $row['strategyAssignmentSource']);
+    }
+
     public function testTheQuoteNumberNeverLeaves(): void
     {
         $row = self::export(self::record());
@@ -149,6 +162,7 @@ final class AnonymizedDecisionTest extends TestCase
         $record->salesChannelId = '0191d3d0a0b071bd9c1a0d9d1a3f9f03';
         $record->revisionVersionId = '0191d3d0a0b071bd9c1a0d9d1a3f9f04';
         $record->strategyVersionId = '0191d3d0a0b071bd9c1a0d9d1a3f9f05';
+        $record->strategyAssignmentSource = 'rule';
         $record->quoteNumber = 'QU10042';
         $record->currencyIso = 'EUR';
         $record->outcome = 'offered';

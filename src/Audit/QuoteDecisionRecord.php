@@ -241,4 +241,9 @@ class QuoteDecisionRecord extends EntityStruct
     #[Field(type: FieldType::UUID, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $strategyVersionId = null;
+
+    /** Which rung of the ladder chose that version — see StrategyAssignmentSource. */
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?string $strategyAssignmentSource = null;
 }

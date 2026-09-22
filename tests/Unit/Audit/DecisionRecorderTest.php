@@ -15,6 +15,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
+use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use PHPUnit\Framework\TestCase;
 
@@ -148,6 +149,40 @@ final class DecisionRecorderTest extends TestCase
         $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
 
         self::assertNull($writer->drafts[0]->strategyVersionId);
+    }
+
+    /**
+     * Which rung assigned the strategy is what makes a fall-through visible
+     * to a merchant -- see StrategyAssignmentSource. Stored as its scalar
+     * value, alongside the version id it explains, at the same call site.
+     */
+    public function testRecordDecisionCarriesTheAssignmentSourceOntoTheDraft(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->begin(NegotiationFixture::snapshot(), self::context());
+        $recorder->recordDecision(
+            self::grantDecision(),
+            10.0,
+            'feedfacefeedfacefeedfacefeedface',
+            StrategyAssignmentSource::Rule,
+        );
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        self::assertSame('rule', $writer->drafts[0]->strategyAssignmentSource);
+    }
+
+    public function testRecordDecisionWithoutAnAssignmentSourceLeavesTheColumnNull(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->begin(NegotiationFixture::snapshot(), self::context());
+        $recorder->recordDecision(self::grantDecision(), 10.0, 'feedfacefeedfacefeedfacefeedface');
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        self::assertNull($writer->drafts[0]->strategyAssignmentSource);
     }
 
     public function testARefusalBeforeAnyPassWritesOneEscalatedRecord(): void
