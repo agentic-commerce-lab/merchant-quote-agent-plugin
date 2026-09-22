@@ -27,6 +27,11 @@ use Shopware\Core\Framework\Migration\MigrationStep;
  * offers no hook to refuse from; the choice is a cascade or a row that
  * silently never matches again.
  *
+ * `sales_channel_id` also cascades: deleting a sales channel should remove the
+ * assignment rows scoped to it, because the alternative is configuration that
+ * is unreachable in the admin -- there is no channel left to edit it from --
+ * but still consulted by the resolver.
+ *
  * The unique key does not catch every duplicate pin: MySQL treats NULLs as
  * distinct in a unique index, so two GLOBAL pins for one customer pass. The
  * resolver orders deterministically for that case; see StrategyAssignmentResolver.

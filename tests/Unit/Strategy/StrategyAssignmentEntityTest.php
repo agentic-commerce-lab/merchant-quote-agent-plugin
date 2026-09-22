@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Strategy;
 
-use MerchantQuoteAgentPlugin\Migration\Migration1789600000CreateStrategyAssignment;
 use MerchantQuoteAgentPlugin\Strategy\StrategyAssignment;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\DataAbstractionLayer\Attribute\Entity;

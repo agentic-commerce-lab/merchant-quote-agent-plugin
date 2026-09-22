@@ -57,15 +57,15 @@ final readonly class QuoteAgentSettingsFactory
             throw new InvalidQuoteAgentConfiguration(array_values($problems));
         }
 
+        $strategyVersionId = RawConfigValue::string($raw, 'negotiationStrategyVersionId');
+
         return new QuoteAgentSettings(
             policy: $policy,
             llm: RawConfigValue::llm($raw, $apiKey),
             strategyPrompt: RawConfigValue::string($raw, 'negotiationStrategy'),
             notifyBuyerOnEscalation: RawConfigValue::bool($raw, 'notifyBuyerOnEscalation') !== false,
-            strategyVersionId: RawConfigValue::string($raw, 'negotiationStrategyVersionId'),
-            strategyAssignmentSource: RawConfigValue::string($raw, 'negotiationStrategyVersionId') === null
-                ? null
-                : StrategyAssignmentSource::Config,
+            strategyVersionId: $strategyVersionId,
+            strategyAssignmentSource: $strategyVersionId === null ? null : StrategyAssignmentSource::Config,
         );
     }
 }
