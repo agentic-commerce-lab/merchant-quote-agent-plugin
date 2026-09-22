@@ -44,6 +44,16 @@ use Shopware\Core\Framework\Context;
  * LIVE (possibly already-discounted) snapshot as its own anchor -- corrupting
  * the comparison rather than failing loudly. Skipping here is what keeps that
  * from happening quietly.
+ *
+ * Reading QuoteVersion::Live here means the CONVERSATION every arm replays
+ * against can carry comments written after the decision being replayed, even
+ * though the price anchor is pinned to that decision's own moment (see
+ * QuoteBaseline above) -- ReplayEvaluator's own docblock spells this out.
+ * Accepted rather than fixed: every arm sees the identical drifted text, so
+ * the A/B delta stays attributable to the strategy prompt, and
+ * ControlDivergence exists precisely to catch a night where that drift (or
+ * anything else) has pulled the control arm's own numbers away from what
+ * actually happened.
  */
 final readonly class ReplaySubjectResolver
 {

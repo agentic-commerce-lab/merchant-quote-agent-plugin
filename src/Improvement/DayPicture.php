@@ -23,13 +23,16 @@ namespace MerchantQuoteAgentPlugin\Improvement;
  * but they are shop-identifying or free-form enough that this class does not
  * take the risk of touching them at all.
  *
- * `interpretedAsks` in particular is already the STRUCTURED shape
- * AnonymizedDecision::asks() exports -- not raw model output -- and this class
- * still leaves it untouched, because a structured ask can itself carry a
- * buyer-typed string (an addProducts sku or a lineChanges description free
- * field). Aggregating it would mean deciding, per field, whether that field is
- * safe; not aggregating it at all means that question never has to be
- * answered correctly under time pressure.
+ * `interpretedAsks` in particular is the RAW stored interpretation --
+ * exactly what DecisionRecorder::recordAsk() wrote via InterpretationPayload::of(),
+ * never the shape AnonymizedDecision::asks() exports after stripping
+ * `clarificationQuestions` and `humanReviewRequests` (see HarvestedDecision's
+ * own docblock for why the raw shape is the one this class is built from) --
+ * and this class still leaves it untouched, because a structured ask can
+ * itself carry a buyer-typed string (an addProducts sku or a lineChanges
+ * description free field). Aggregating it would mean deciding, per field,
+ * whether that field is safe; not aggregating it at all means that question
+ * never has to be answered correctly under time pressure.
  */
 final readonly class DayPicture
 {

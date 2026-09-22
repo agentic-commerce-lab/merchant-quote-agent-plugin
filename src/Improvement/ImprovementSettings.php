@@ -30,10 +30,4 @@ final readonly class ImprovementSettings
         $this->sampleSize = max(1, min(100, $sampleSize));
         $this->candidates = max(1, min(4, $candidates));
     }
-
-    /** 1 judge call plus one replay per arm per sampled decision. */
-    public function callBudget(): int
-    {
-        return 1 + ($this->sampleSize * (1 + $this->candidates));
-    }
 }

@@ -27,8 +27,8 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity as EntityStruct;
  * No `maxLength:` on the string fields: the argument does not exist at the
  * 6.7.1.0 support floor and a named argument for a parameter the installed
  * core lacks is an Error during the container build. The widths live in the
- * migration. testNoFieldUsesMaxLength pins this for the strategy entities;
- * the same rule applies here even though nothing yet asserts it.
+ * migration. StrategyEntityTest::testNoFieldUsesMaxLength() pins this for
+ * this entity too, alongside the strategy entities.
  *
  * @mago-expect lint:too-many-properties
  * The gate fires above 10 and these properties ARE the table's columns, same

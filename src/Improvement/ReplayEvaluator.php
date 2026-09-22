@@ -34,7 +34,15 @@ use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
  *
  * The ONLY difference between the control arm and a candidate arm is
  * $settings->strategyPrompt. That is what makes the delta attributable: same
- * quote, same interpretation, same bands, same model, same night.
+ * interpretation, same bands, same model, same night -- and the SAME
+ * conversation text, but not necessarily the SAME conversation the original
+ * pass saw. `run()` reads it from the LIVE quote (SnapshotAdapter::conversation()
+ * over the snapshot ReplaySubjectResolver resolved with QuoteVersion::Live),
+ * which can carry comments written after the replayed decision; the price
+ * anchor is the one thing pinned to that decision's own moment (see
+ * QuoteBaseline::read() above). Every arm still sees the identical text, so
+ * the A/B delta holds regardless -- see ReplaySubjectResolver's own docblock
+ * for why this is an accepted limitation rather than a bug.
  *
  * Buyer history is deliberately absent -- $proposer is constructed with
  * NoCustomerHistory. Both arms are equal, so the delta holds, and a buyer's
