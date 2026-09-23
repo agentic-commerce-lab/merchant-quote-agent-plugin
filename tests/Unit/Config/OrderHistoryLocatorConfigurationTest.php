@@ -28,6 +28,9 @@ final class OrderHistoryLocatorConfigurationTest extends TestCase
         self::makeCommercialClassesAvailable();
         $container = new ContainerBuilder();
         $container->setParameter('kernel.environment', $kernelEnvironment);
+        $container->setParameter('kernel.bundles', [
+            'QuoteManagement' => 'Shopware\\Commercial\\B2B\\QuoteManagement\\QuoteManagement',
+        ]);
         $pluginRoot = \dirname(__DIR__, levels: 3);
         (new MerchantQuoteAgentPlugin(active: true, basePath: $pluginRoot))->build($container);
 
@@ -63,8 +66,9 @@ final class OrderHistoryLocatorConfigurationTest extends TestCase
 
     private static function makeCommercialClassesAvailable(): void
     {
-        // Configuration only checks class existence; it never instantiates
-        // these placeholders. Process isolation prevents leaking them to tests.
+        // The gate checks class existence alongside the bundle list; it never
+        // instantiates these placeholders. Process isolation prevents leaking
+        // them to tests.
         $placeholder = new class {};
         foreach ([
             CommercialAvailability::QUOTE_MANIPULATION,

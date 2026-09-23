@@ -21,6 +21,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 /**
  * The SwagCommercial half of the gate in `src/Resources/config/services.php`,
@@ -114,6 +115,26 @@ final class CommercialSurfaceConfigurationTest extends TestCase
     }
 
     /**
+     * #152, stated directly. A composer-installed SwagCommercial that a
+     * merchant deactivates leaves its classes loadable and its bundle gone;
+     * the gate must build exactly the shop it builds when SwagCommercial was
+     * never there. The two dependency tests below state the consequence — no
+     * `service('quote.repository')` left dangling — this states the cause.
+     */
+    public function testAVendoredButInactiveShopRegistersWhatAnAbsentOneDoes(): void
+    {
+        $shops = GateMatrix::build()->shops;
+        $ids = static function (ContainerBuilder $container): array {
+            $all = array_merge(array_keys($container->getDefinitions()), array_keys($container->getAliases()));
+            sort($all);
+
+            return $all;
+        };
+
+        self::assertSame($ids($shops['withoutCommercial']), $ids($shops['vendoredButInactive']));
+    }
+
+    /**
      * The check that replaces "the container compiles", for the dependencies
      * somebody wrote down: no service this shop still registers may hold a
      * mandatory reference to an id this shop's gates removed.
@@ -191,6 +212,7 @@ final class CommercialSurfaceConfigurationTest extends TestCase
         yield 'neither SwagCommercial nor the UCP SDK bundle' => ['withoutEither'];
         yield 'the UCP SDK bundle but no SwagCommercial' => ['withoutCommercial'];
         yield 'SwagCommercial but no UCP SDK bundle' => ['withoutUcp'];
+        yield 'SwagCommercial vendored but deactivated' => ['vendoredButInactive'];
         // A control, not a check: every registration in services.php sits
         // inside an `if` with no `else`, so the shop with both gates open is a
         // superset of the other three and its removed set is structurally

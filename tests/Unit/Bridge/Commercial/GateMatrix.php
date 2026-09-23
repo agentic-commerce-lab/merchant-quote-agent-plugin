@@ -9,8 +9,10 @@ use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 /**
- * `src/Resources/config/services.php` built four times: both runtime gates —
- * SwagCommercial and the UCP SDK bundle — crossed.
+ * `src/Resources/config/services.php` built five times: both runtime gates —
+ * SwagCommercial and the UCP SDK bundle — crossed. The fifth is #152's:
+ * SwagCommercial composer-installed but deactivated, so its classes load and
+ * its bundle is not in the kernel.
  *
  * Not a test. It is the fixture CommercialSurfaceConfigurationTest asserts
  * over, split out because the building is a different job from the asserting
@@ -24,15 +26,29 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
  * foreign, behind which gate — which is four cases because there are two gates
  * and each can be open or shut. Collapsing them would lose the distinction the
  * whole check rests on.
+ *
+ * @mago-expect lint:kan-defect
+ * New with the fifth shop (#152): phpmetrics' heuristic counts the same
+ * control flow the cyclomatic-complexity suppression above already justifies
+ * — build()'s five `$record()` calls plus removedIn()'s four-way gate
+ * classification — not a second, independent complexity problem.
  */
 final class GateMatrix
 {
-    /** Which gates each shop has open: [SwagCommercial, UCP SDK bundle]. */
+    /**
+     * Which gates each shop has open: [SwagCommercial, UCP SDK bundle].
+     *
+     * `vendoredButInactive` has its commercial gate SHUT although its classes
+     * load: that is the shop a merchant makes by deactivating a
+     * composer-installed SwagCommercial (#152), and the gate must read it as
+     * absent.
+     */
     public const SHOPS = [
         'withoutEither' => [false, false],
         'withoutCommercial' => [false, true],
         'withBoth' => [true, true],
         'withoutUcp' => [true, false],
+        'vendoredButInactive' => [false, true],
     ];
 
     /**
@@ -58,9 +74,9 @@ final class GateMatrix
     ) {}
 
     /**
-     * Builds all four in one pass, because `class_alias` is one-way: the two
+     * Builds all five in one pass, because `class_alias` is one-way: the two
      * SwagCommercial-absent containers must exist before the placeholders do,
-     * and the two present ones after.
+     * and the three whose classes load after.
      *
      * Each shop's construction needs are snapshotted as it is built, while the
      * process's class table still matches that shop — see DefinitionNeeds::inContainer().
@@ -70,8 +86,9 @@ final class GateMatrix
         $shops = [];
         $needs = [];
 
-        $record = static function (string $shop, bool $ucp) use (&$shops, &$needs): void {
-            $container = self::container($ucp);
+        $record = static function (string $shop) use (&$shops, &$needs): void {
+            [$commercial, $ucp] = self::SHOPS[$shop];
+            $container = self::container($commercial, $ucp);
             $shops[$shop] = $container;
             $needs[$shop] = DefinitionNeeds::inContainer($container);
         };
@@ -87,13 +104,15 @@ final class GateMatrix
             );
         }
 
-        $record('withoutEither', ucp: false);
-        $record('withoutCommercial', ucp: true);
+        $record('withoutEither');
+        $record('withoutCommercial');
 
         self::makeCommercialClassesAvailable();
 
-        $record('withBoth', ucp: true);
-        $record('withoutUcp', ucp: false);
+        $record('withBoth');
+        $record('withoutUcp');
+        // Classes loadable, bundle gone: a deactivated vendored SwagCommercial.
+        $record('vendoredButInactive');
 
         return new self($shops, $needs);
     }
@@ -189,14 +208,23 @@ final class GateMatrix
     }
 
     /**
-     * The UCP gate reads `kernel.bundles` and nothing else, so the bundle need
-     * not be loadable here — only listed, exactly as the kernel would list it.
+     * Both gates read `kernel.bundles`, so neither bundle need be loadable
+     * here — only listed, exactly as the kernel would list it.
      */
-    private static function container(bool $ucp): ContainerBuilder
+    private static function container(bool $commercial, bool $ucp): ContainerBuilder
     {
+        $bundles = [];
+        if ($ucp) {
+            $bundles['UcpSdkBundle'] = 'Ucp\Sdk\Symfony\UcpSdkBundle';
+        }
+
+        if ($commercial) {
+            $bundles['QuoteManagement'] = 'Shopware\Commercial\B2B\QuoteManagement\QuoteManagement';
+        }
+
         $container = new ContainerBuilder();
         $container->setParameter('kernel.environment', 'prod');
-        $container->setParameter('kernel.bundles', $ucp ? ['UcpSdkBundle' => 'Ucp\Sdk\Symfony\UcpSdkBundle'] : []);
+        $container->setParameter('kernel.bundles', $bundles);
         (new MerchantQuoteAgentPlugin(active: true, basePath: \dirname(__DIR__, levels: 4)))->build($container);
 
         return $container;
