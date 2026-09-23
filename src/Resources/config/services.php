@@ -21,6 +21,7 @@ use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeSubscriber;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriterInterface;
+use MerchantQuoteAgentPlugin\Audit\TraceEvent;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
@@ -370,6 +371,11 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // and adds the `shopware.entity` tag; this set() call only has to make
     // the class a service for that to fire.
     $services->set(QuoteDecisionRecord::class);
+
+    // The run trace (2026-09-23 spec). Registered unconditionally for the same
+    // reason as QuoteDecisionRecord: a pass writes it whether or not
+    // SwagCommercial is installed.
+    $services->set(TraceEvent::class);
 
     // The strategy library (Task 2). Registered unconditionally like
     // QuoteDecisionRecord — they are written by the administration through the
