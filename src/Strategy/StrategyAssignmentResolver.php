@@ -127,20 +127,40 @@ class StrategyAssignmentResolver
         return $row instanceof StrategyAssignment ? $row->strategyId : null;
     }
 
+    /**
+     * A rule bound both globally and on this channel resolves to the
+     * channel's strategy -- built from two maps, global filled first and
+     * channel second, merged with the channel map winning, so the result
+     * never depends on the order `scoped()`'s rows come back in (the search
+     * itself carries no sorting). Two bindings of the SAME rule at the same
+     * scope are still resolved by whichever one lands in the map last: that
+     * is genuinely ambiguous configuration, and the admin UI refuses to
+     * create it, so this resolver does not need to.
+     */
     private function ruled(string $quoteId, string $salesChannelId, Context $context): ?string
     {
         $rows = $this->assignments
             ->search($this->scoped(StrategyAssignmentSource::Rule->value, $salesChannelId), $context)
             ->getElements();
 
-        /** @var array<string, string> $byRule */
-        $byRule = [];
+        /** @var array<string, string> $byRuleGlobal */
+        $byRuleGlobal = [];
+        /** @var array<string, string> $byRuleChannel */
+        $byRuleChannel = [];
 
         foreach ($rows as $row) {
-            if ($row instanceof StrategyAssignment && $row->ruleId !== null) {
-                $byRule[$row->ruleId] = $row->strategyId;
+            if (!$row instanceof StrategyAssignment || $row->ruleId === null) {
+                continue;
+            }
+
+            if ($row->salesChannelId === null) {
+                $byRuleGlobal[$row->ruleId] = $row->strategyId;
+            } else {
+                $byRuleChannel[$row->ruleId] = $row->strategyId;
             }
         }
+
+        $byRule = array_merge($byRuleGlobal, $byRuleChannel);
 
         if ($byRule === []) {
             return null;
@@ -191,23 +211,7 @@ class StrategyAssignmentResolver
      */
     private function split(string $customerId, string $salesChannelId, Context $context): ?string
     {
-        $criteria = $this->scoped(StrategyAssignmentSource::Split->value, $salesChannelId);
-        $criteria->addSorting(new FieldSorting('strategyId', FieldSorting::ASCENDING));
-
-        /** @var list<StrategyAssignment> $arms */
-        $arms = [];
-        $total = 0;
-
-        foreach ($this->assignments->search($criteria, $context)->getElements() as $row) {
-            // weight > 0 is domain logic, not a re-filter of what the
-            // Criteria already scoped: a configured zero-weight arm is a
-            // live row (kind, channel and all) that this rung must still
-            // never pick, per the brief.
-            if ($row instanceof StrategyAssignment && $row->weight !== null && $row->weight > 0) {
-                $arms[] = $row;
-                $total += $row->weight;
-            }
-        }
+        [$arms, $total] = $this->splitArms($salesChannelId, $context);
 
         if ($total === 0) {
             return null;
@@ -240,6 +244,62 @@ class StrategyAssignmentResolver
         // 10000 -- but kept as a safety net rather than an assertion, since a
         // wrong assumption here would otherwise throw on a real negotiation.
         return $last?->strategyId;
+    }
+
+    /**
+     * The channel's own arms, or -- only when the channel has none usable --
+     * the global arms. Never pooled: a global A/B split and a channel's own
+     * arm are two different experiments, and per the design spec a row
+     * naming a channel wins over a NULL row rather than sharing traffic with
+     * it.
+     *
+     * Two exact queries (channel, then global) rather than one broad query
+     * filtered in PHP, so each Criteria stays honest about what it asks for
+     * and a test can catch a wrong scope by asserting on the query alone.
+     *
+     * A channel whose only arms are zero-weight (or net non-positive) counts
+     * as having none of its own: that is the same "usable" guard `split()`
+     * already applies per arm, so a channel override left at 0 falls back to
+     * the global split instead of stranding every quote on that channel with
+     * no assignment.
+     *
+     * @return array{0: list<StrategyAssignment>, 1: int}
+     */
+    private function splitArms(string $salesChannelId, Context $context): array
+    {
+        [$channelArms, $channelTotal] = $this->weightedArms($salesChannelId, $context);
+
+        if ($channelTotal > 0) {
+            return [$channelArms, $channelTotal];
+        }
+
+        return $this->weightedArms(null, $context);
+    }
+
+    /** @return array{0: list<StrategyAssignment>, 1: int} */
+    private function weightedArms(?string $salesChannelId, Context $context): array
+    {
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('kind', StrategyAssignmentSource::Split->value));
+        $criteria->addFilter(new EqualsFilter('salesChannelId', $salesChannelId));
+        $criteria->addSorting(new FieldSorting('strategyId', FieldSorting::ASCENDING));
+
+        /** @var list<StrategyAssignment> $arms */
+        $arms = [];
+        $total = 0;
+
+        foreach ($this->assignments->search($criteria, $context)->getElements() as $row) {
+            // weight > 0 is domain logic, not a re-filter of what the
+            // Criteria already scoped: a configured zero-weight arm is a
+            // live row (kind, channel and all) that this rung must still
+            // never pick, per the brief.
+            if ($row instanceof StrategyAssignment && $row->weight !== null && $row->weight > 0) {
+                $arms[] = $row;
+                $total += $row->weight;
+            }
+        }
+
+        return [$arms, $total];
     }
 
     /**

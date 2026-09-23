@@ -211,5 +211,43 @@ assert.deepEqual(spansStrategies[0].versions, [3]);
 // An unresolvable version id still groups, under null, rather than vanishing.
 assert.equal(strategyRows(rollupPasses, [], new Map(), null, () => null).length, 1);
 
+// ------------------------------------------------- assignment spread
+//
+// One strategy reached three times: twice by the rule the merchant wrote and
+// once by the sales-channel config key. That mix is the whole reason the
+// column exists -- the rule rung skips itself silently when a quote's customer
+// has no active shipping address, so `rule: 2, config: 1` is the only place a
+// merchant sees it happened.
+const spreadPasses = [
+    { id: 'a1', quoteId: 'q1', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(3), strategyAssignmentSource: 'rule' },
+    { id: 'a2', quoteId: 'q2', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(2), strategyAssignmentSource: 'rule' },
+    { id: 'a3', quoteId: 'q3', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(1), strategyAssignmentSource: 'config' },
+];
+const spreadStrategyOf = (id) => (id === 'v1' ? { strategyId: 's-margin', name: 'Margin defender', version: 1 } : null);
+const spreadRows = strategyRows(spreadPasses, [], new Map(), null, spreadStrategyOf);
+
+assert.deepEqual(spreadRows[0].assignment, [
+    { source: 'rule', count: 2 },
+    { source: 'config', count: 1 },
+], 'commonest source first');
+
+// A pass written before the column existed carries null and is not a source.
+const legacyPasses = [
+    { id: 'a4', quoteId: 'q4', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(1), strategyAssignmentSource: null },
+];
+assert.deepEqual(strategyRows(legacyPasses, [], new Map(), null, spreadStrategyOf)[0].assignment, []);
+
+// A quote spanning two STRATEGIES must not leak its foreign-strategy pass's
+// assignment source into this row -- the same guard `versions` already has.
+// (Same fixture shape as `spansStrategies` above: one row, keyed on the
+// attributed version's strategy, carrying only that strategy's own passes.)
+const spreadAcrossStrategies = strategyRows([
+    { id: 'x1', quoteId: 'q6', outcome: 'offered', strategyVersionId: 'v9', createdAt: iso(3), strategyAssignmentSource: 'pin' },
+    { id: 'x2', quoteId: 'q6', outcome: 'offered', strategyVersionId: 'v1', createdAt: iso(2), strategyAssignmentSource: 'rule' },
+], [], new Map(), null, versionOf);
+assert.equal(spreadAcrossStrategies.length, 1);
+assert.deepEqual(spreadAcrossStrategies[0].versions, [3]);
+assert.deepEqual(spreadAcrossStrategies[0].assignment, [{ source: 'pin', count: 1 }], 'foreign-strategy pass excluded');
+
 // eslint-disable-next-line no-console
 console.log('strategy-measures.check.mjs: all assertions passed');

@@ -21,6 +21,11 @@
  * `strategyRows` rolls each attributed version up to its strategy afterwards,
  * via the `strategyOf` lookup, and reports the version spread it collapsed
  * as `versions` instead of silently discarding it.
+ *
+ * The `assignment` spread is reported for the same reason as `versions`: it
+ * is collapsed information that would otherwise be discarded silently, and
+ * it is the only place a merchant can see the rule rung falling through to
+ * the next one on a quote whose customer has no active shipping address.
  */
 
 import {
@@ -32,6 +37,7 @@ import {
     tokensPerNegotiation,
 } from './measures.ts';
 import { answeredTheBuyer, foldToQuotes } from './decision.ts';
+import { spreadLabel } from './assignment.ts';
 
 /**
  * Which strategy a quote belongs to, from all of that quote's passes.
@@ -205,10 +211,18 @@ export function strategyRows(
                 .map((pass) => resolveOwnStrategy(pass, strategyOf))
                 .filter((resolved): resolved is ResolvedStrategy => resolved !== null && resolved.strategyId === strategyId);
 
+        // Same leak the version spread above guards against: a mixed quote's
+        // foreign-strategy pass must not count its assignment source toward
+        // this row either.
+        const ownPasses = strategyId === null
+            ? []
+            : group.filter((pass) => resolveOwnStrategy(pass, strategyOf)?.strategyId === strategyId);
+
         return {
             strategyId,
             name: ownVersions[0]?.name ?? null,
             versions: [...new Set(ownVersions.map((resolved) => resolved.version))].sort((a, b) => a - b),
+            assignment: spreadLabel(ownPasses.map((pass) => pass.strategyAssignmentSource ?? null)),
             quotes: folded.length,
             mixedQuotes,
             autoExecution: autoExecutionRate(folded),

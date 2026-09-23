@@ -23,6 +23,7 @@ import {
     splitDeals,
 } from '../../measures';
 import { strategyRows } from '../../strategy-measures';
+import { ASSIGNMENT_SOURCE_SNIPPET_KEYS } from '../../assignment.ts';
 
 const { Criteria } = Shopware.Data;
 
@@ -336,6 +337,23 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
         dispositionLabel(key) {
             return this.$tc(`merchant-quote-agent.disposition.${key}`);
+        },
+
+        /**
+         * Which rung of the assignment ladder — pin, rule, split, config —
+         * chose a strategy, translated rather than shown as the raw enum
+         * value the row's `assignment` spread carries.
+         *
+         * The map itself lives in assignment.ts, not here: assignment.check.mjs
+         * pins it end to end against the PHP enum and both locale files, so a
+         * fifth source can no longer render as a raw, untranslated value with
+         * nothing failing -- a second literal copy in this file would have
+         * been exactly the kind of drift that check exists to catch.
+         */
+        assignmentSourceLabel(source) {
+            const key = ASSIGNMENT_SOURCE_SNIPPET_KEYS[source];
+
+            return key ? this.$tc(`merchant-quote-agent.strategyComparison.${key}`) : source;
         },
 
         /**

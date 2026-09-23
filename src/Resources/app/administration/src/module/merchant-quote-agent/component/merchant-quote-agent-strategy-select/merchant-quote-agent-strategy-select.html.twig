@@ -13,37 +13,56 @@
     </mt-banner>
 
     <template v-if="canRead">
+        {# compact: the grid column header already names this field, and a row
+           has no room for a help text below it. Passing '' (not omitting the
+           binding) is what actually hides mt-select's label row -- see
+           mt-field__label's own `:has(label:only-child:empty)` rule. #}
         <mt-select
-            :label="$tc('merchant-quote-agent.strategy.selectLabel')"
-            :help-text="$tc('merchant-quote-agent.strategy.selectHelp')"
+            :label="compact ? '' : $tc('merchant-quote-agent.strategy.selectLabel')"
+            :help-text="compact ? '' : $tc('merchant-quote-agent.strategy.selectHelp')"
             :options="options"
             :model-value="value"
-            :disabled="isLoading"
+            :disabled="isLoading || disabled"
             @update:model-value="onUpdateValue"
         />
+
+        {# compact only: a saved row pointing at an archived or versionless
+           strategy renders the select above blank, since selectableStrategies
+           excludes both from `options` -- with no hint here, that reads as an
+           empty cell rather than as "every quote this row matches is being
+           escalated". Full mode already explains this state via `noVersionHint`
+           on the strategies page itself, so this notice only fires in compact. #}
+        <mt-banner v-if="compact && !valueIsSelectable" variant="critical">
+            {{ $t('merchant-quote-agent.strategy.assignedUnusable', { name: unresolvedStrategyName }) }}
+        </mt-banner>
 
         {# Archived strategies are excluded above. A value already selected
            that no longer appears here (archived, or unknown) is left as-is --
            it still resolves and is enforced server-side, and papering over
-           that here would hide a state the merchant needs to act on. #}
-        <div v-if="selected" class="mqa-strategy-select__meta">
-            <mt-badge :variant="selectedIsBuiltIn ? 'info' : 'neutral'">
-                {{ selectedIsBuiltIn ? $tc('merchant-quote-agent.strategy.builtInBadge') : $tc('merchant-quote-agent.strategy.custom') }}
-            </mt-badge>
-            <p class="mqa-strategy-select__description">{{ description }}</p>
-        </div>
+           that here would hide a state the merchant needs to act on. None of
+           this -- badge, description, prompt -- fits a compact grid cell. #}
+        <template v-if="!compact">
+            <div v-if="selected" class="mqa-strategy-select__meta">
+                <mt-badge :variant="selectedIsBuiltIn ? 'info' : 'neutral'">
+                    {{ selectedIsBuiltIn ? $tc('merchant-quote-agent.strategy.builtInBadge') : $tc('merchant-quote-agent.strategy.custom') }}
+                </mt-badge>
+                <p class="mqa-strategy-select__description">{{ description }}</p>
+            </div>
 
-        <mt-textarea
-            :label="$tc('merchant-quote-agent.strategy.promptLabel')"
-            :help-text="$tc('merchant-quote-agent.strategy.promptHelp')"
-            :model-value="prompt"
-            :disabled="true"
-        />
+            <mt-textarea
+                :label="$tc('merchant-quote-agent.strategy.promptLabel')"
+                :help-text="$tc('merchant-quote-agent.strategy.promptHelp')"
+                :model-value="prompt"
+                :disabled="true"
+            />
+        </template>
     </template>
 
     {# Without merchant_quote_agent.viewer the route above 403s on open --
-       this link is worth nothing without the privilege it manages. #}
-    <router-link v-if="canRead" class="mqa-strategy-select__manage" :to="{ name: 'merchant.quote.agent.strategies' }">
+       this link is worth nothing without the privilege it manages. Also
+       skipped in compact mode: it points at the very page a grid row is
+       already on. #}
+    <router-link v-if="canRead && !compact" class="mqa-strategy-select__manage" :to="{ name: 'merchant.quote.agent.strategies' }">
         {{ $tc('merchant-quote-agent.strategy.manage') }}
     </router-link>
 </div>

@@ -16,190 +16,519 @@
 
     {% block merchant_quote_agent_strategies_content %}
     <template #content>
-        <sw-card-view>
-            {% block merchant_quote_agent_strategies_list_card %}
-            <sw-card :title="$tc('merchant-quote-agent.strategy.title')" :is-loading="isLoading">
-                <mt-banner v-if="error" variant="critical">
-                    {{ error }}
-                </mt-banner>
+        {# Tab shell added alongside the assignment ladder. There is no other
+           sw-tabs/mt-tabs usage in this module -- verified against the
+           installed 6.7.x core (sw-tabs-deprecated's actual props are
+           position-identifier/default-item, and both its default and
+           "content" slots yield { active }; mt-tabs only takes over once the
+           V6_8_0_0 feature flag is active, which it is not here). Everything
+           the library tab contained keeps its original block names and
+           markup unchanged, so a template override targeting one of those
+           blocks still works. #}
+        {% block merchant_quote_agent_strategies_tabs %}
+        <sw-tabs
+            default-item="library"
+            position-identifier="merchant-quote-agent-strategies-tabs"
+            @new-item-active="(item) => { activeTab = item.name; }"
+        >
+            <template #default="{ active }">
+                <sw-tabs-item name="library" :active-tab="active">
+                    {{ $tc('merchant-quote-agent.assignment.tabLibrary') }}
+                </sw-tabs-item>
+                <sw-tabs-item name="assignments" :active-tab="active">
+                    {{ $tc('merchant-quote-agent.assignment.tabAssignments') }}
+                </sw-tabs-item>
+            </template>
 
-                {# Viewing and duplicating need only merchant_quote_agent.viewer;
-                   renaming, editing and archiving need .editor. Rather than hide
-                   those rows entirely, the hint explains why they are missing --
-                   an admin who lacks .editor should not conclude the library is
-                   broken. #}
-                <mt-banner v-if="!canEdit" variant="attention">
-                    {{ $tc('merchant-quote-agent.strategy.readOnlyHint') }}
-                </mt-banner>
+            <template #content="{ active }">
+                <template v-if="active === 'library'">
+                    <sw-card-view>
+                        {% block merchant_quote_agent_strategies_list_card %}
+                        <sw-card :title="$tc('merchant-quote-agent.strategy.title')" :is-loading="isLoading">
+                            <mt-banner v-if="error" variant="critical">
+                                {{ error }}
+                            </mt-banner>
 
-                <sw-data-grid
-                    v-if="strategies.length"
-                    :data-source="strategies"
-                    :columns="columns"
-                    :is-loading="isLoading"
-                    :plain-appearance="true"
-                    :show-selection="false"
-                    :show-settings="false"
-                    :show-actions="true"
-                    :allow-column-edit="false"
-                >
-                    {# The name opens the same editor the row's View/Edit action does,
-                       so the common case does not need the context menu. A button,
-                       not a link: there is no route per strategy, the editor is a
-                       card on this page. #}
-                    <template #column-name="{ item }">
-                        <button type="button" class="mqa-strategy__name" @click="select(item)">
-                            {{ displayName(item) }}
-                        </button>
-                    </template>
+                            {# Viewing and duplicating need only merchant_quote_agent.viewer;
+                               renaming, editing and archiving need .editor. Rather than hide
+                               those rows entirely, the hint explains why they are missing --
+                               an admin who lacks .editor should not conclude the library is
+                               broken. #}
+                            <mt-banner v-if="!canEdit" variant="attention">
+                                {{ $tc('merchant-quote-agent.strategy.readOnlyHint') }}
+                            </mt-banner>
 
-                    <template #column-type="{ item }">
-                        <mt-badge :variant="rowIsBuiltIn(item) ? 'info' : 'neutral'">
-                            {{ rowIsBuiltIn(item) ? $tc('merchant-quote-agent.strategy.builtInBadge') : $tc('merchant-quote-agent.strategy.custom') }}
-                        </mt-badge>
-                        <mt-badge
-                            v-if="!hasVersion(item)"
-                            variant="critical"
+                            <sw-data-grid
+                                v-if="strategies.length"
+                                :data-source="strategies"
+                                :columns="columns"
+                                :is-loading="isLoading"
+                                :plain-appearance="true"
+                                :show-selection="false"
+                                :show-settings="false"
+                                :show-actions="true"
+                                :allow-column-edit="false"
+                            >
+                                {# The name opens the same editor the row's View/Edit action does,
+                                   so the common case does not need the context menu. A button,
+                                   not a link: there is no route per strategy, the editor is a
+                                   card on this page. #}
+                                <template #column-name="{ item }">
+                                    <button type="button" class="mqa-strategy__name" @click="select(item)">
+                                        {{ displayName(item) }}
+                                    </button>
+                                </template>
+
+                                <template #column-type="{ item }">
+                                    <mt-badge :variant="rowIsBuiltIn(item) ? 'info' : 'neutral'">
+                                        {{ rowIsBuiltIn(item) ? $tc('merchant-quote-agent.strategy.builtInBadge') : $tc('merchant-quote-agent.strategy.custom') }}
+                                    </mt-badge>
+                                    <mt-badge
+                                        v-if="!hasVersion(item)"
+                                        variant="critical"
+                                    >
+                                        {{ $tc('merchant-quote-agent.strategy.noVersion') }}
+                                    </mt-badge>
+                                </template>
+
+                                <template #column-description="{ item }">
+                                    {{ displayDescription(item) }}
+                                </template>
+
+                                <template #actions="{ item }">
+                                    <template v-if="rowIsBuiltIn(item)">
+                                        <sw-context-menu-item @click="select(item)">
+                                            {{ $tc('merchant-quote-agent.strategy.view') }}
+                                        </sw-context-menu-item>
+                                        <sw-context-menu-item v-if="canEdit" @click="duplicate(item)">
+                                            {{ $tc('merchant-quote-agent.strategy.duplicate') }}
+                                        </sw-context-menu-item>
+                                    </template>
+                                    <template v-else>
+                                        <sw-context-menu-item @click="select(item)">
+                                            {{ $tc('merchant-quote-agent.strategy.edit') }}
+                                        </sw-context-menu-item>
+                                        <sw-context-menu-item v-if="canEdit" @click="startRename(item)">
+                                            {{ $tc('merchant-quote-agent.strategy.rename') }}
+                                        </sw-context-menu-item>
+                                        <sw-context-menu-item v-if="canEdit" variant="danger" @click="confirmArchive(item)">
+                                            {{ $tc('merchant-quote-agent.strategy.archive') }}
+                                        </sw-context-menu-item>
+                                    </template>
+                                </template>
+                            </sw-data-grid>
+
+                            <sw-empty-state
+                                v-else-if="!isLoading"
+                                :absolute="false"
+                                :title="$tc('merchant-quote-agent.strategy.title')"
+                            />
+                        </sw-card>
+                        {% endblock %}
+
+                        {# Shown once a row is picked, whether that was View, Edit or a fresh
+                           Duplicate & edit. A built-in's textarea is disabled -- it refuses
+                           every field update server-side -- and it has no Save button, since
+                           there is nothing here it could ever persist. #}
+                        {% block merchant_quote_agent_strategies_editor_card %}
+                        <sw-card v-if="selected" :title="displayName(selected)">
+                            <mt-banner
+                                v-if="!hasVersion(selected)"
+                                variant="attention"
+                            >
+                                {{ $tc('merchant-quote-agent.strategy.noVersionHint') }}
+                            </mt-banner>
+
+                            <p v-if="currentVersion !== null" class="mqa-strategy__version">
+                                {{ $t('merchant-quote-agent.strategy.currentVersion', { version: currentVersion }) }}
+                            </p>
+
+                            <div class="mqa-strategy__prompt">
+                                <mt-textarea
+                                    :label="$tc('merchant-quote-agent.strategy.promptLabel')"
+                                    :model-value="prompt"
+                                    :disabled="selectedIsBuiltIn || !canEdit"
+                                    @update:model-value="(value) => { prompt = value; }"
+                                />
+                            </div>
+
+                            <mt-button
+                                v-if="!selectedIsBuiltIn"
+                                variant="primary"
+                                :disabled="!canEdit || isSaving || prompt.trim() === ''"
+                                @click="save"
+                            >
+                                {{ $tc('merchant-quote-agent.strategy.saveNewVersion') }}
+                            </mt-button>
+                        </sw-card>
+                        {% endblock %}
+
+                        {# Create, duplicate and rename all resolve to one name, taken once
+                           and confirmed the same way -- see confirmName(). Create and
+                           duplicate also take the first prompt here: the strategy and its
+                           version 1 are written together, and the DAL refuses an empty one. #}
+                        {% block merchant_quote_agent_strategies_name_modal %}
+                        <sw-modal
+                            v-if="nameModalOpen"
+                            variant="small"
+                            :title="nameModalLabel"
+                            @modal-close="nameModalOpen = false"
                         >
-                            {{ $tc('merchant-quote-agent.strategy.noVersion') }}
-                        </mt-badge>
-                    </template>
+                            <mt-text-field
+                                :label="$tc('merchant-quote-agent.strategy.namePrompt')"
+                                :model-value="nameDraft"
+                                maxlength="255"
+                                @update:model-value="(value) => { nameDraft = value; }"
+                            />
 
-                    <template #column-description="{ item }">
-                        {{ displayDescription(item) }}
-                    </template>
+                            <mt-textarea
+                                v-if="nameModalIntent !== 'rename'"
+                                :label="$tc('merchant-quote-agent.strategy.firstPromptLabel')"
+                                :model-value="promptDraft"
+                                @update:model-value="(value) => { promptDraft = value; }"
+                            />
 
-                    <template #actions="{ item }">
-                        <template v-if="rowIsBuiltIn(item)">
-                            <sw-context-menu-item @click="select(item)">
-                                {{ $tc('merchant-quote-agent.strategy.view') }}
-                            </sw-context-menu-item>
-                            <sw-context-menu-item v-if="canEdit" @click="duplicate(item)">
-                                {{ $tc('merchant-quote-agent.strategy.duplicate') }}
-                            </sw-context-menu-item>
-                        </template>
-                        <template v-else>
-                            <sw-context-menu-item @click="select(item)">
-                                {{ $tc('merchant-quote-agent.strategy.edit') }}
-                            </sw-context-menu-item>
-                            <sw-context-menu-item v-if="canEdit" @click="startRename(item)">
-                                {{ $tc('merchant-quote-agent.strategy.rename') }}
-                            </sw-context-menu-item>
-                            <sw-context-menu-item v-if="canEdit" variant="danger" @click="confirmArchive(item)">
-                                {{ $tc('merchant-quote-agent.strategy.archive') }}
-                            </sw-context-menu-item>
-                        </template>
-                    </template>
-                </sw-data-grid>
+                            <template #modal-footer>
+                                <mt-button size="small" variant="secondary" @click="nameModalOpen = false">
+                                    {{ $tc('global.default.cancel') }}
+                                </mt-button>
+                                <mt-button
+                                    size="small"
+                                    variant="primary"
+                                    :disabled="!canEdit || nameModalIncomplete() || isSaving"
+                                    @click="confirmName"
+                                >
+                                    {{ nameModalLabel }}
+                                </mt-button>
+                            </template>
+                        </sw-modal>
+                        {% endblock %}
 
-                <sw-empty-state
-                    v-else-if="!isLoading"
-                    :absolute="false"
-                    :title="$tc('merchant-quote-agent.strategy.title')"
-                />
-            </sw-card>
-            {% endblock %}
+                        {# A sales channel can still point at the strategy being archived, so
+                           it confirms first and says what happens to that channel's quotes. #}
+                        {% block merchant_quote_agent_strategies_archive_modal %}
+                        <sw-modal
+                            v-if="pendingArchive"
+                            variant="small"
+                            :title="$tc('merchant-quote-agent.strategy.archive')"
+                            @modal-close="pendingArchive = null"
+                        >
+                            <p>{{ $t('merchant-quote-agent.strategy.archiveWarning', { name: displayName(pendingArchive) }) }}</p>
 
-            {# Shown once a row is picked, whether that was View, Edit or a fresh
-               Duplicate & edit. A built-in's textarea is disabled -- it refuses
-               every field update server-side -- and it has no Save button, since
-               there is nothing here it could ever persist. #}
-            {% block merchant_quote_agent_strategies_editor_card %}
-            <sw-card v-if="selected" :title="displayName(selected)">
-                <mt-banner
-                    v-if="!hasVersion(selected)"
-                    variant="attention"
-                >
-                    {{ $tc('merchant-quote-agent.strategy.noVersionHint') }}
-                </mt-banner>
-
-                <p v-if="currentVersion !== null" class="mqa-strategy__version">
-                    {{ $t('merchant-quote-agent.strategy.currentVersion', { version: currentVersion }) }}
-                </p>
-
-                <div class="mqa-strategy__prompt">
-                    <mt-textarea
-                        :label="$tc('merchant-quote-agent.strategy.promptLabel')"
-                        :model-value="prompt"
-                        :disabled="selectedIsBuiltIn || !canEdit"
-                        @update:model-value="(value) => { prompt = value; }"
-                    />
-                </div>
-
-                <mt-button
-                    v-if="!selectedIsBuiltIn"
-                    variant="primary"
-                    :disabled="!canEdit || isSaving || prompt.trim() === ''"
-                    @click="save"
-                >
-                    {{ $tc('merchant-quote-agent.strategy.saveNewVersion') }}
-                </mt-button>
-            </sw-card>
-            {% endblock %}
-
-            {# Create, duplicate and rename all resolve to one name, taken once
-               and confirmed the same way -- see confirmName(). Create and
-               duplicate also take the first prompt here: the strategy and its
-               version 1 are written together, and the DAL refuses an empty one. #}
-            {% block merchant_quote_agent_strategies_name_modal %}
-            <sw-modal
-                v-if="nameModalOpen"
-                variant="small"
-                :title="nameModalLabel"
-                @modal-close="nameModalOpen = false"
-            >
-                <mt-text-field
-                    :label="$tc('merchant-quote-agent.strategy.namePrompt')"
-                    :model-value="nameDraft"
-                    maxlength="255"
-                    @update:model-value="(value) => { nameDraft = value; }"
-                />
-
-                <mt-textarea
-                    v-if="nameModalIntent !== 'rename'"
-                    :label="$tc('merchant-quote-agent.strategy.firstPromptLabel')"
-                    :model-value="promptDraft"
-                    @update:model-value="(value) => { promptDraft = value; }"
-                />
-
-                <template #modal-footer>
-                    <mt-button size="small" variant="secondary" @click="nameModalOpen = false">
-                        {{ $tc('global.default.cancel') }}
-                    </mt-button>
-                    <mt-button
-                        size="small"
-                        variant="primary"
-                        :disabled="!canEdit || nameModalIncomplete() || isSaving"
-                        @click="confirmName"
-                    >
-                        {{ nameModalLabel }}
-                    </mt-button>
+                            <template #modal-footer>
+                                <mt-button size="small" variant="secondary" @click="pendingArchive = null">
+                                    {{ $tc('global.default.cancel') }}
+                                </mt-button>
+                                <mt-button size="small" variant="critical" :disabled="!canEdit || isSaving" @click="archive(pendingArchive)">
+                                    {{ $tc('merchant-quote-agent.strategy.archive') }}
+                                </mt-button>
+                            </template>
+                        </sw-modal>
+                        {% endblock %}
+                    </sw-card-view>
                 </template>
-            </sw-modal>
-            {% endblock %}
+                <template v-else>
+                    {# The assignment ladder's three grids (pins, rules, split) are
+                       Tasks 3-5. This card is their empty shell. There is no
+                       cross-file include for Administration component templates --
+                       every component owns exactly one .html.twig, and the pipeline
+                       that turns this file into a Vue template treats *.twig as an
+                       opaque string with no include/embed step (checked against the
+                       real platform source: zero uses of an include-style tag
+                       anywhere under Administration, versus hundreds in Storefront,
+                       where sw_include is a Symfony/Twig runtime feature that never
+                       runs here). So this block lives in the page's own template
+                       rather than in a separate assignments.html.twig, and Tasks 3-5
+                       extend it here, by block name, the same way the library
+                       blocks above are extended. #}
+                    {% block merchant_quote_agent_assignments %}
+                    <mt-card :title="$tc('merchant-quote-agent.assignment.cardTitle')" position-identifier="merchant-quote-agent-assignments">
+                        {% block merchant_quote_agent_assignments_intro %}
+                        <p class="mqa-assignment__intro">{{ $tc('merchant-quote-agent.assignment.intro') }}</p>
 
-            {# A sales channel can still point at the strategy being archived, so
-               it confirms first and says what happens to that channel's quotes. #}
-            {% block merchant_quote_agent_strategies_archive_modal %}
-            <sw-modal
-                v-if="pendingArchive"
-                variant="small"
-                :title="$tc('merchant-quote-agent.strategy.archive')"
-                @modal-close="pendingArchive = null"
-            >
-                <p>{{ $t('merchant-quote-agent.strategy.archiveWarning', { name: displayName(pendingArchive) }) }}</p>
+                        {# The resolver reads every row server-side regardless of this page's
+                           own read limit, so a shop past it is still serviced correctly --
+                           only this admin view goes blind to the rows beyond ASSIGNMENT_LIMIT. #}
+                        <mt-banner v-if="assignmentTruncated" variant="attention">
+                            {{ $t('merchant-quote-agent.assignment.truncated', { shown: assignmentLimit, total: assignmentTotal }) }}
+                        </mt-banner>
+                        {% endblock %}
 
-                <template #modal-footer>
-                    <mt-button size="small" variant="secondary" @click="pendingArchive = null">
-                        {{ $tc('global.default.cancel') }}
-                    </mt-button>
-                    <mt-button size="small" variant="critical" :disabled="!canEdit || isSaving" @click="archive(pendingArchive)">
-                        {{ $tc('merchant-quote-agent.strategy.archive') }}
-                    </mt-button>
+                        {# Tab-level, not inside any one grid's section: saveAssignment()/
+                           removeAssignment() are shared by all three grids, so a validation
+                           or write failure from the rules or split grid is just as likely as
+                           one from pins. Sat inside the pins section, that error rendered far
+                           from whichever row actually failed whenever it came from rules or
+                           split. Its own block so a template override can still target it. #}
+                        {% block merchant_quote_agent_assignments_error %}
+                        <mt-banner v-if="assignmentError" variant="critical">
+                            {{ assignmentError }}
+                        </mt-banner>
+                        {% endblock %}
+
+                        {# Rung 1. Rules and the split (Tasks 4-5) are their own sections
+                           below this one, in ladder order -- see the intro above. #}
+                        {% block merchant_quote_agent_assignments_pins %}
+                        <div class="mqa-assignment__section">
+                            <div class="mqa-assignment__section-header">
+                                <h3>{{ $tc('merchant-quote-agent.assignment.pinsTitle') }}</h3>
+                                <mt-button v-if="canEdit" size="small" variant="secondary" @click="addPin">
+                                    {{ $tc('merchant-quote-agent.assignment.addPin') }}
+                                </mt-button>
+                            </div>
+
+                            <p class="mqa-assignment__section-intro">{{ $tc('merchant-quote-agent.assignment.pinsIntro') }}</p>
+
+                            <sw-data-grid
+                                v-if="pins.length"
+                                :data-source="pins"
+                                :columns="pinColumns"
+                                :show-selection="false"
+                                :show-settings="false"
+                                :show-actions="canEdit"
+                                :allow-column-edit="false"
+                                :plain-appearance="true"
+                            >
+                                {# The company note lives on the field's help text rather than only in
+                                   prose above the grid -- QuoteIdentity's own docblock says the id is
+                                   the company, and a merchant who expects per-person targeting here
+                                   would be wrong in a way nothing else on this page corrects. #}
+                                <template #column-customerId="{ item }">
+                                    <sw-entity-single-select
+                                        :value="item.customerId"
+                                        entity="customer"
+                                        :label-callback="customerLabel"
+                                        size="small"
+                                        show-clearable-button
+                                        :disabled="!canEdit || isRowSaving(item)"
+                                        :help-text="$tc('merchant-quote-agent.assignment.customerIsCompany')"
+                                        @update:value="(value) => { item.customerId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #column-strategyId="{ item }">
+                                    <merchant-quote-agent-strategy-select
+                                        :value="item.strategyId"
+                                        compact
+                                        :disabled="!canEdit || isRowSaving(item)"
+                                        :strategies="strategies"
+                                        :versioned-strategy-ids="versionedIds"
+                                        @update:value="(value) => { item.strategyId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #column-salesChannelId="{ item }">
+                                    <sw-entity-single-select
+                                        :value="item.salesChannelId"
+                                        entity="sales_channel"
+                                        size="small"
+                                        show-clearable-button
+                                        :disabled="!canEdit || isRowSaving(item)"
+                                        :placeholder="$tc('merchant-quote-agent.assignment.anyChannel')"
+                                        @update:value="(value) => { item.salesChannelId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #actions="{ item }">
+                                    <sw-context-menu-item variant="danger" @click="removeAssignment(item)">
+                                        {{ $tc('merchant-quote-agent.assignment.remove') }}
+                                    </sw-context-menu-item>
+                                </template>
+                            </sw-data-grid>
+
+                            <sw-empty-state
+                                v-else
+                                :absolute="false"
+                                :title="$tc('merchant-quote-agent.assignment.pinsTitle')"
+                            />
+                        </div>
+                        {% endblock %}
+
+                        {# Rung 2. Priority is core's own `rule.priority`, read-only here and
+                           sourced from ruleNames (see loadAssignments()) -- it is what orders
+                           this rung, so the grid sorts by it descending rather than by row
+                           creation order, and shows it so a merchant does not need a trip to
+                           the rule builder to see why one rule won over another. #}
+                        {% block merchant_quote_agent_assignments_rules %}
+                        <div class="mqa-assignment__section">
+                            <div class="mqa-assignment__section-header">
+                                <h3>{{ $tc('merchant-quote-agent.assignment.rulesTitle') }}</h3>
+                                <mt-button v-if="canEdit" size="small" variant="secondary" @click="addRule">
+                                    {{ $tc('merchant-quote-agent.assignment.addRule') }}
+                                </mt-button>
+                            </div>
+
+                            <p class="mqa-assignment__section-intro">{{ $tc('merchant-quote-agent.assignment.rulesIntro') }}</p>
+
+                            <sw-data-grid
+                                v-if="rules.length"
+                                :data-source="rules"
+                                :columns="ruleColumns"
+                                :show-selection="false"
+                                :show-settings="false"
+                                :show-actions="canEdit"
+                                :allow-column-edit="false"
+                                :plain-appearance="true"
+                            >
+                                {# Not filtered to conditions that can actually match a quote's
+                                   CartRuleScope -- that would mean mirroring a core list that
+                                   changes between versions to hide what the note below already
+                                   warns about in a sentence. #}
+                                <template #column-ruleId="{ item }">
+                                    <sw-entity-single-select
+                                        :value="item.ruleId"
+                                        entity="rule"
+                                        size="small"
+                                        show-clearable-button
+                                        :disabled="!canEdit || isRowSaving(item)"
+                                        :placeholder="$tc('merchant-quote-agent.assignment.noRuleSelected')"
+                                        @update:value="(value) => { item.ruleId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #column-strategyId="{ item }">
+                                    <merchant-quote-agent-strategy-select
+                                        :value="item.strategyId"
+                                        compact
+                                        :disabled="!canEdit || isRowSaving(item)"
+                                        :strategies="strategies"
+                                        :versioned-strategy-ids="versionedIds"
+                                        @update:value="(value) => { item.strategyId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #column-salesChannelId="{ item }">
+                                    <sw-entity-single-select
+                                        :value="item.salesChannelId"
+                                        entity="sales_channel"
+                                        size="small"
+                                        show-clearable-button
+                                        :disabled="!canEdit || isRowSaving(item)"
+                                        :placeholder="$tc('merchant-quote-agent.assignment.anyChannel')"
+                                        @update:value="(value) => { item.salesChannelId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #column-priority="{ item }">
+                                    {{ rulePriorityLabel(item) }}
+                                </template>
+
+                                <template #actions="{ item }">
+                                    <sw-context-menu-item variant="danger" @click="removeAssignment(item)">
+                                        {{ $tc('merchant-quote-agent.assignment.remove') }}
+                                    </sw-context-menu-item>
+                                </template>
+                            </sw-data-grid>
+
+                            <sw-empty-state
+                                v-else
+                                :absolute="false"
+                                :title="$tc('merchant-quote-agent.assignment.rulesTitle')"
+                            />
+
+                            <p class="mqa-assignment__note">{{ $tc('merchant-quote-agent.assignment.flowConditionsNote') }}</p>
+                        </div>
+                        {% endblock %}
+
+                        {# Rung 3. One flat grid, not one grid per sales channel -- each row
+                           already carries its own channel column, so the peer group an arm
+                           belongs to is never hidden. The percent column is NOT flat, though:
+                           `arms` (see index.ts) groups by salesChannelId before computing
+                           shares, since weights are only meaningful against the other arms in
+                           the SAME channel -- never recompute a percentage here, that
+                           grouping is exactly the part covered by assignment.check.mjs and a
+                           second expression in this template would not be. #}
+                        {% block merchant_quote_agent_assignments_split %}
+                        <div class="mqa-assignment__section">
+                            <div class="mqa-assignment__section-header">
+                                <h3>{{ $tc('merchant-quote-agent.assignment.splitTitle') }}</h3>
+                                <mt-button v-if="canEdit" size="small" variant="secondary" @click="addArm">
+                                    {{ $tc('merchant-quote-agent.assignment.addArm') }}
+                                </mt-button>
+                            </div>
+
+                            <p class="mqa-assignment__section-intro">{{ $tc('merchant-quote-agent.assignment.splitIntro') }}</p>
+
+                            <sw-data-grid
+                                v-if="arms.length"
+                                :data-source="arms"
+                                :columns="armColumns"
+                                :show-selection="false"
+                                :show-settings="false"
+                                :show-actions="canEdit"
+                                :allow-column-edit="false"
+                                :plain-appearance="true"
+                            >
+                                <template #column-strategyId="{ item }">
+                                    <merchant-quote-agent-strategy-select
+                                        :value="item.arm.strategyId"
+                                        compact
+                                        :disabled="!canEdit || isRowSaving(item.arm)"
+                                        :strategies="strategies"
+                                        :versioned-strategy-ids="versionedIds"
+                                        @update:value="(value) => { item.arm.strategyId = value; saveAssignment(item.arm); }"
+                                    />
+                                </template>
+
+                                <template #column-weight="{ item }">
+                                    <mt-number-field
+                                        :model-value="item.arm.weight"
+                                        number-type="int"
+                                        :min="1"
+                                        allow-empty
+                                        size="small"
+                                        :disabled="!canEdit || isRowSaving(item.arm)"
+                                        @update:model-value="(value) => { item.arm.weight = value; saveAssignment(item.arm); }"
+                                    />
+                                </template>
+
+                                {# Read-only, sourced from the `arms` computed only -- see this
+                                   block's own comment above. #}
+                                <template #column-percent="{ item }">
+                                    {{ item.percent }}%
+                                </template>
+
+                                <template #column-salesChannelId="{ item }">
+                                    <sw-entity-single-select
+                                        :value="item.arm.salesChannelId"
+                                        entity="sales_channel"
+                                        size="small"
+                                        show-clearable-button
+                                        :disabled="!canEdit || isRowSaving(item.arm)"
+                                        :placeholder="$tc('merchant-quote-agent.assignment.anyChannel')"
+                                        @update:value="(value) => { item.arm.salesChannelId = value; saveAssignment(item.arm); }"
+                                    />
+                                </template>
+
+                                <template #actions="{ item }">
+                                    <sw-context-menu-item variant="danger" @click="removeAssignment(item.arm)">
+                                        {{ $tc('merchant-quote-agent.assignment.remove') }}
+                                    </sw-context-menu-item>
+                                </template>
+                            </sw-data-grid>
+
+                            <sw-empty-state
+                                v-else
+                                :absolute="false"
+                                :title="$tc('merchant-quote-agent.assignment.splitTitle')"
+                            />
+
+                            {# Both halves matter: a merchant typing 1 and 4 must not read that as a
+                               validation error demanding they total 100, and a merchant tuning
+                               weights mid-experiment needs to know BEFORE saving that doing so
+                               reshuffles which customers land in which arm -- neither is guessable
+                               from the grid above. #}
+                            <p class="mqa-assignment__note">{{ $tc('merchant-quote-agent.assignment.weightsAreRelative') }}</p>
+                            <p class="mqa-assignment__note">{{ $tc('merchant-quote-agent.assignment.stickyPerCustomer') }}</p>
+                            <p class="mqa-assignment__note">{{ $tc('merchant-quote-agent.assignment.splitScopeNote') }}</p>
+                        </div>
+                        {% endblock %}
+                    </mt-card>
+                    {% endblock %}
                 </template>
-            </sw-modal>
-            {% endblock %}
-        </sw-card-view>
+            </template>
+        </sw-tabs>
+        {% endblock %}
     </template>
     {% endblock %}
 </sw-page>
