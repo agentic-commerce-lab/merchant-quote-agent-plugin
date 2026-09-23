@@ -114,6 +114,19 @@ final class DecisionRecorder
         $draft->totalNetBefore = $snapshot->totals->totalNet;
         $draft->startedAt = microtime(true);
 
+        // Position 0 of every row, refusals included: what the quote looked
+        // like when the agent picked it up is the one thing every later event
+        // is read against. Content, all of it -- product labels and the
+        // quote's own identity are in there.
+        TraceDraft::appendTo(
+            $draft,
+            TraceKind::QuoteBefore,
+            [
+                'lineCount' => \count($snapshot->content->lines),
+            ],
+            TracePayload::of($snapshot),
+        );
+
         return $draft;
     }
 
@@ -197,6 +210,9 @@ final class DecisionRecorder
         $this->draft->maxDiscountPercent = $maxDiscountPercent;
         $this->draft->strategyVersionId = $strategyVersionId;
         $this->draft->strategyAssignmentSource = $strategyAssignmentSource?->value;
+
+        [$meta, $content] = VerdictTrace::of($decision);
+        TraceDraft::appendTo($this->draft, TraceKind::PolicyVerdict, $meta, $content);
     }
 
     public function recordProposal(?string $rawResponse, ProposedAnswer $answer): void
@@ -238,6 +254,15 @@ final class DecisionRecorder
         $this->draft->discountPercentGranted = GrantedDiscount::of(
             $this->draft->totalNetBefore,
             $applied->after->totals->totalNet,
+        );
+
+        TraceDraft::appendTo(
+            $this->draft,
+            TraceKind::QuoteAfter,
+            [
+                'lineCount' => \count($applied->after->content->lines),
+            ],
+            TracePayload::of($applied->after),
         );
     }
 
