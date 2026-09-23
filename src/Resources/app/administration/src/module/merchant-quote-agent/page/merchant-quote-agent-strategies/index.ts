@@ -310,6 +310,16 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          * page itself still considers unsaved are carried over; a row this
          * page already persisted is always taken from the server, so a row
          * someone else deleted since the last load actually disappears.
+         *
+         * Returns whether THIS call actually applied a response: true once it
+         * has written `assignments`/`assignmentServerIds` (or would have, but
+         * a newer call already did it first -- see the token checks below;
+         * that is a supersession, not a failure, so it is not reported as
+         * one), false only when this call's own request rejected and its
+         * catch block set assignmentError. saveAssignment() uses this to
+         * decide whether the grid is actually back in sync with the server
+         * before it overwrites assignmentError with a refusal message -- see
+         * its own docblock.
          */
         async loadAssignments() {
             // Captured-token pattern, mirroring select()'s `requested`: two
@@ -329,7 +339,10 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 const result = await this.assignmentRepository.search(criteria, Shopware.Context.api);
 
                 if (token !== this.assignmentLoadToken) {
-                    return;
+                    // Superseded by a newer loadAssignments() call, which owns
+                    // assignmentError/assignments now -- not a failure of
+                    // THIS call.
+                    return true;
                 }
 
                 this.assignmentServerIds = new Set(result.map((row) => row.id));
@@ -355,7 +368,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                     const rules = await this.ruleRepository.search(ruleCriteria, Shopware.Context.api);
 
                     if (token !== this.assignmentLoadToken) {
-                        return;
+                        return true;
                     }
 
                     const ruleNames = {};
@@ -368,10 +381,18 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 } else {
                     this.ruleNames = {};
                 }
+
+                return true;
             } catch (error) {
                 if (token === this.assignmentLoadToken) {
                     this.assignmentError = this.messageFor(error);
+
+                    return false;
                 }
+
+                // Stale: a newer call is already in flight or finished and
+                // owns the error state now -- THIS call did not fail.
+                return true;
             }
         },
 
@@ -497,10 +518,43 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          * The error is always set AFTER the reload, never before: reloading
          * calls loadAssignments(), which clears assignmentError as its first
          * line, so setting the message first would erase it immediately.
+         *
+         * The reload can itself fail (e.g. a network drop right then).
+         * loadAssignments() already reports that through its own return value
+         * and has already put its "could not refresh" message in
+         * assignmentError -- see restoreThenSetError(), which every branch
+         * below goes through instead of setting assignmentError directly.
+         * Without that, the refusal/failure message below would silently
+         * overwrite the load error while `assignments` is left showing the
+         * stale, already-refused value -- and for a duplicate pin/rule, that
+         * stale row is exactly what lets the same duplicate through again on
+         * the next attempt, because isDuplicatePin/isDuplicateRule check
+         * against `this.assignments`.
          */
         /** Whether `row` has a save in flight -- see saveAssignment() and assignmentSavingIds in data(). */
         isRowSaving(row) {
             return this.assignmentSavingIds.has(row.id);
+        },
+
+        /**
+         * Shared by every refusal/failure branch in saveAssignment(): restore
+         * `row` from the server first when there is a saved version to
+         * restore, then show `message` -- but only if that restore actually
+         * succeeded. If loadAssignments() failed, it already set the more
+         * urgent "grid could not be refreshed" error; `message` is dropped
+         * rather than stomping on it, because the merchant needs to know the
+         * grid is stale more than they need the original refusal reason.
+         */
+        async restoreThenSetError(row, message) {
+            if (this.assignmentServerIds.has(row.id)) {
+                const reloaded = await this.loadAssignments();
+
+                if (!reloaded) {
+                    return;
+                }
+            }
+
+            this.assignmentError = message;
         },
 
         async saveAssignment(row) {
@@ -522,8 +576,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             try {
                 if (!isSavable(row)) {
                     if (this.assignmentServerIds.has(row.id)) {
-                        await this.loadAssignments();
-                        this.assignmentError = this.$tc(INCOMPLETE_SNIPPET_KEYS[row.kind]);
+                        await this.restoreThenSetError(row, this.$tc(INCOMPLETE_SNIPPET_KEYS[row.kind]));
                     }
 
                     return;
@@ -548,11 +601,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                         : 'merchant-quote-agent.assignment.duplicatePinGlobal';
                     const message = this.$t(key, { customer: customerName });
 
-                    if (this.assignmentServerIds.has(row.id)) {
-                        await this.loadAssignments();
-                    }
-
-                    this.assignmentError = message;
+                    await this.restoreThenSetError(row, message);
 
                     return;
                 }
@@ -569,11 +618,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                         : 'merchant-quote-agent.assignment.duplicateRuleGlobal';
                     const message = this.$t(key, { rule: ruleName });
 
-                    if (this.assignmentServerIds.has(row.id)) {
-                        await this.loadAssignments();
-                    }
-
-                    this.assignmentError = message;
+                    await this.restoreThenSetError(row, message);
 
                     return;
                 }
@@ -583,13 +628,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 try {
                     await this.assignmentRepository.save(row, Shopware.Context.api);
                 } catch (error) {
-                    const message = this.messageFor(error);
-
-                    if (this.assignmentServerIds.has(row.id)) {
-                        await this.loadAssignments();
-                    }
-
-                    this.assignmentError = message;
+                    await this.restoreThenSetError(row, this.messageFor(error));
 
                     return;
                 }
