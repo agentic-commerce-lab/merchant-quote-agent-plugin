@@ -129,7 +129,7 @@
                 <mt-button
                     v-if="!selectedIsBuiltIn"
                     variant="primary"
-                    :disabled="!canEdit || isSaving"
+                    :disabled="!canEdit || isSaving || prompt.trim() === ''"
                     @click="save"
                 >
                     {{ $tc('merchant-quote-agent.strategy.saveNewVersion') }}

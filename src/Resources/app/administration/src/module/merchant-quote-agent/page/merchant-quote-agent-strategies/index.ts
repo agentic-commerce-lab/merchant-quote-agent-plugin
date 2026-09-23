@@ -279,7 +279,9 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
         async save() {
             this.error = null;
 
-            if (this.selected === null || this.selectedIsBuiltIn) {
+            // An empty prompt is refused by the DAL with a 400; the button is
+            // disabled for it, and this holds if it is ever reached anyway.
+            if (this.selected === null || this.selectedIsBuiltIn || this.prompt.trim() === '') {
                 return;
             }
 
