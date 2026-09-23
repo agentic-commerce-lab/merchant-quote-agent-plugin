@@ -138,6 +138,17 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
          * notice in the template is keyed on.
          */
         valueIsSelectable() {
+            // An empty resolvedStrategies means the load hasn't finished (or
+            // failed) yet, not that every strategy is genuinely gone: three
+            // built-in strategies always exist, so a list that actually
+            // finished loading is never empty. Treating "empty" as "nothing
+            // matches" here would flash the critical "unusable" notice below
+            // on every saved row for the entire duration of the page's
+            // strategy fetch -- do not remove this guard.
+            if (this.resolvedStrategies.length === 0) {
+                return true;
+            }
+
             return this.value === null || this.value === '' || this.options.some((option) => option.value === this.value);
         },
 
