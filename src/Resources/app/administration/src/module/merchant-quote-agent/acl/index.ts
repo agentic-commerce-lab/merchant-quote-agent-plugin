@@ -30,6 +30,22 @@ export const privileges = {
             // priorities to display beside each assignment row. Without it
             // that read 403s and the grid cannot show which rule an
             // assignment names.
+            //
+            // `sales_channel:read` because all three assignment grids'
+            // channel-scope select (pins, rules, split arms) reads sales
+            // channel names so a merchant can choose one to scope a row to.
+            // Without it that read 403s on every grid, not just one.
+            //
+            // `customer:read` because the pins grid's customer select needs
+            // it to show which customer a pin targets. Called out on its own
+            // because it is a real privilege expansion, not a read already
+            // reachable some other way: it lets anyone holding only this
+            // plugin's viewer role read customer records, which carry
+            // personal data. `viewer` already reaches customer data through
+            // associations on `quote:read` and `order:read`, so this widens
+            // an existing reach rather than opening a new one -- but it is
+            // still a widening, worth a reviewer seeing stated rather than
+            // discovering on their own.
             privileges: [
                 'merchant_quote_agent_decision:read',
                 'quote:read',
@@ -39,6 +55,8 @@ export const privileges = {
                 'merchant_quote_agent_strategy_version:read',
                 'merchant_quote_agent_strategy_assignment:read',
                 'rule:read',
+                'sales_channel:read',
+                'customer:read',
             ],
             dependencies: [],
         },
