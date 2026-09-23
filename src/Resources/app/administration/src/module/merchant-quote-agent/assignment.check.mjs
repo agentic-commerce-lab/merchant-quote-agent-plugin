@@ -99,5 +99,10 @@ assert.equal(isDuplicatePin(channelPin, [globalPin]), false, 'a channel pin alon
 assert.equal(isDuplicatePin({ ...channelPin }, [channelPin]), true, 'two pins on the same channel');
 assert.equal(isDuplicatePin({ ...globalPin, customerId: 'c2' }, [globalPin]), false, 'a different customer');
 assert.equal(isDuplicatePin({ ...globalPin, kind: 'rule', ruleId: 'r' }, [globalPin]), false, 'only pins collide with pins');
+assert.equal(
+    isDuplicatePin(globalPin, [{ ...globalPin, kind: 'rule', ruleId: 'r' }]),
+    false,
+    'a rule row that happens to carry the same customer and scope is not a pin, so it cannot collide with one',
+);
 
 console.log('assignment.check.mjs OK');

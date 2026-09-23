@@ -254,12 +254,24 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             }
 
             if (row.kind === 'pin' && isDuplicatePin(row, this.pins)) {
-                const customer = await this.customerRepository.get(row.customerId, Shopware.Context.api);
+                // The refusal itself is load-bearing; the customer's name in it is a
+                // courtesy. A failed lookup (deleted customer, unreadable under the
+                // viewer's ACL) must still refuse the save, just with a generic label
+                // instead of leaving this an unhandled rejection that shows nothing.
+                let customerName = this.$tc('merchant-quote-agent.assignment.unknownCustomer');
+
+                try {
+                    const customer = await this.customerRepository.get(row.customerId, Shopware.Context.api);
+                    customerName = this.customerLabel(customer);
+                } catch {
+                    // fall back to the generic label above
+                }
+
                 const key = row.salesChannelId
                     ? 'merchant-quote-agent.assignment.duplicatePinChannel'
                     : 'merchant-quote-agent.assignment.duplicatePinGlobal';
 
-                this.assignmentError = this.$t(key, { customer: this.customerLabel(customer) });
+                this.assignmentError = this.$t(key, { customer: customerName });
 
                 return;
             }
