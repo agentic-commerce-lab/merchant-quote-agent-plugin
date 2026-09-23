@@ -113,6 +113,14 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             // "unsaved, splice locally" branch for that row and never send its
             // DELETE.
             assignmentServerIds: new Set(),
+            // Incremented at the start of every loadAssignments() call and
+            // captured locally there, the same captured-token pattern
+            // select() already uses for newestVersion(). Two saves each
+            // trigger their own reload; without this, an older response
+            // landing after a newer one would overwrite `assignments` and
+            // `assignmentServerIds` with a snapshot missing the row the newer
+            // reload just saw -- see loadAssignments() itself.
+            assignmentLoadToken: 0,
         };
     },
 
@@ -298,6 +306,14 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          * someone else deleted since the last load actually disappears.
          */
         async loadAssignments() {
+            // Captured-token pattern, mirroring select()'s `requested`: two
+            // overlapping calls (e.g. two saves in quick succession) each get
+            // their own token, and only the response for the LATEST call is
+            // still allowed to write `assignments`/`assignmentServerIds` --
+            // otherwise an older response landing last would replace them
+            // with a snapshot missing whatever the newer call just saw.
+            const token = ++this.assignmentLoadToken;
+
             this.assignmentError = null;
 
             try {
@@ -305,6 +321,10 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 criteria.setTotalCountMode(1);
 
                 const result = await this.assignmentRepository.search(criteria, Shopware.Context.api);
+
+                if (token !== this.assignmentLoadToken) {
+                    return;
+                }
 
                 this.assignmentServerIds = new Set(result.map((row) => row.id));
                 this.assignments = mergeUnsaved([...result], this.assignments, (row) => row.isNew());
@@ -327,6 +347,11 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                     ruleCriteria.addFilter(Shopware.Data.Criteria.equalsAny('id', ruleIds));
 
                     const rules = await this.ruleRepository.search(ruleCriteria, Shopware.Context.api);
+
+                    if (token !== this.assignmentLoadToken) {
+                        return;
+                    }
+
                     const ruleNames = {};
 
                     rules.forEach((rule) => {
@@ -338,7 +363,9 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                     this.ruleNames = {};
                 }
             } catch (error) {
-                this.assignmentError = this.messageFor(error);
+                if (token === this.assignmentLoadToken) {
+                    this.assignmentError = this.messageFor(error);
+                }
             }
         },
 
