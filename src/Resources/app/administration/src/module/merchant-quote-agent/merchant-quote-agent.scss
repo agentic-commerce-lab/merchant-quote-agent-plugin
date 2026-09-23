@@ -631,25 +631,3 @@
     color: var(--color-text-secondary-default);
     font-size: 13px;
 }
-
-/* The strategy column embeds the full merchant-quote-agent-strategy-select
-   component (label, select, badge, prompt preview) rather than a second,
-   thinner one -- see the brief that named it. sw-data-grid's row height is a
-   fixed `--scale-size-64` normally, and a fixed 42px under `.is--compact`
-   (core sets that class; this grid never opted in), via a three-class
-   selector -- confirmed by opening the rendered grid and reading its computed
-   style, not assumed from the twig, after a first attempt at this override
-   lost that specificity fight. Four classes here beats it no matter which
-   stylesheet loads last, the same reasoning as the mt-textarea override
-   above. */
-.merchant-quote-agent-strategies .mqa-assignment__section .sw-data-grid__body .sw-data-grid__cell,
-.merchant-quote-agent-strategies .mqa-assignment__section .sw-data-grid__body .sw-data-grid__cell-content {
-    height: auto;
-    overflow: visible;
-}
-
-.merchant-quote-agent-strategies .mqa-assignment__section .sw-data-grid__body .sw-data-grid__cell-content {
-    align-items: flex-start;
-    padding-top: var(--scale-size-16);
-    padding-bottom: var(--scale-size-16);
-}

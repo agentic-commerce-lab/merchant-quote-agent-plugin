@@ -309,6 +309,9 @@
                                 <template #column-strategyId="{ item }">
                                     <merchant-quote-agent-strategy-select
                                         :value="item.strategyId"
+                                        compact
+                                        :strategies="strategies"
+                                        :versioned-strategy-ids="versionedIds"
                                         @update:value="(value) => { item.strategyId = value; saveAssignment(item); }"
                                     />
                                 </template>
@@ -385,6 +388,9 @@
                                 <template #column-strategyId="{ item }">
                                     <merchant-quote-agent-strategy-select
                                         :value="item.strategyId"
+                                        compact
+                                        :strategies="strategies"
+                                        :versioned-strategy-ids="versionedIds"
                                         @update:value="(value) => { item.strategyId = value; saveAssignment(item); }"
                                     />
                                 </template>
@@ -454,6 +460,9 @@
                                 <template #column-strategyId="{ item }">
                                     <merchant-quote-agent-strategy-select
                                         :value="item.arm.strategyId"
+                                        compact
+                                        :strategies="strategies"
+                                        :versioned-strategy-ids="versionedIds"
                                         @update:value="(value) => { item.arm.strategyId = value; saveAssignment(item.arm); }"
                                     />
                                 </template>

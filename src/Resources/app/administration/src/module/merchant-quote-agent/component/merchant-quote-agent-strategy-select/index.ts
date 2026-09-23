@@ -27,6 +27,13 @@ const { Criteria } = Shopware.Data;
  * so a role without this module's `merchant_quote_agent.viewer` privilege would
  * otherwise see an empty select and conclude the feature is broken. Hence the
  * explicit hint below rather than a silent empty list.
+ *
+ * `compact` is the assignment grids' mode (Settings -> Negotiation strategies
+ * -> Assignments): just the select, no label/help/badge/description/prompt/
+ * manage-link, and no per-row prompt fetch -- see loadPromptSafely(). The
+ * `strategies` and `versionedStrategyIds` props let a page that already loaded
+ * both (the same page, for its library tab) pass them in instead of every grid
+ * row calling load() for itself.
  */
 Shopware.Component.register('merchant-quote-agent-strategy-select', {
     template,
@@ -39,13 +46,34 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
             required: false,
             default: null,
         },
+        compact: {
+            type: Boolean,
+            required: false,
+            default: false,
+        },
+        strategies: {
+            type: Array,
+            required: false,
+            default: null,
+        },
+        // Pass together with `strategies`: the ids of every strategy that has
+        // a version. Without it a passed-in list is filtered against an empty
+        // set and the select offers nothing -- deliberately, since offering a
+        // strategy it cannot vouch for would let a merchant assign one that
+        // escalates every matching quote.
+        versionedStrategyIds: {
+            type: Set,
+            required: false,
+            default: null,
+        },
     },
 
     emits: ['update:value'],
 
     data() {
         return {
-            strategies: [],
+            ownStrategies: [],
+            ownVersionedIds: new Set(),
             prompt: '',
             isLoading: false,
             error: null,
@@ -65,15 +93,25 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
             return this.repositoryFactory.create('merchant_quote_agent_strategy_version');
         },
 
+        /** The `strategies` prop when the caller passed one, otherwise this component's own load(). */
+        resolvedStrategies() {
+            return this.strategies ?? this.ownStrategies;
+        },
+
+        /** The `versionedStrategyIds` prop when passed, otherwise what load() found. */
+        resolvedVersionedIds() {
+            return this.versionedStrategyIds ?? this.ownVersionedIds;
+        },
+
         options() {
-            return this.strategies.map((strategy) => ({
+            return selectableStrategies(this.resolvedStrategies, this.resolvedVersionedIds).map((strategy) => ({
                 value: strategy.id,
                 label: this.displayName(strategy),
             }));
         },
 
         selected() {
-            return this.strategies.find((strategy) => strategy.id === this.value) ?? null;
+            return this.resolvedStrategies.find((strategy) => strategy.id === this.value) ?? null;
         },
 
         selectedIsBuiltIn() {
@@ -95,12 +133,23 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
 
     watch: {
         value() {
+            // Compact rows never show the prompt -- see the component
+            // docblock -- so there is nothing here worth a fetch.
+            if (this.compact) {
+                return;
+            }
+
             this.loadPromptSafely();
         },
     },
 
     created() {
-        this.load();
+        // A passed-in list means the parent already loaded it; calling
+        // load() here too would be the exact per-row duplicate fetch compact
+        // mode exists to avoid.
+        if (this.strategies === null) {
+            this.load();
+        }
     },
 
     methods: {
@@ -126,7 +175,9 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
                 // Archived and versionless strategies are not offered. One
                 // already selected still resolves server-side -- and refuses
                 // loudly, which is the intended behaviour, not something to
-                // paper over here.
+                // paper over here. selectableStrategies (used by `options`)
+                // enforces both on whichever list is in use, so a list passed
+                // in by a parent is held to the same rule as this one.
                 criteria.addFilter(Criteria.equals('archivedAt', null));
 
                 const versioned = new Criteria(1, 1);
@@ -137,8 +188,12 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
                     this.versionRepository.search(versioned, Shopware.Context.api),
                 ]);
 
-                this.strategies = selectableStrategies(sortStrategies([...result]), versionedIds(versions.aggregations));
-                await this.loadPrompt();
+                this.ownStrategies = sortStrategies([...result]);
+                this.ownVersionedIds = versionedIds(versions.aggregations);
+
+                if (!this.compact) {
+                    await this.loadPrompt();
+                }
             } catch (error) {
                 this.error = error?.response?.data?.errors?.[0]?.detail ?? this.$tc('merchant-quote-agent.strategy.loadFailed');
             } finally {
