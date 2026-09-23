@@ -575,6 +575,19 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             this.assignmentServerIds.add(row.id);
 
             await this.loadAssignments();
+
+            if (!this.assignmentServerIds.has(row.id)) {
+                // Core's sendChanges() (core/data/repository.data.ts)
+                // resolves instead of rejecting when the error response
+                // carries no `errors` body -- a network failure, an HTML 502
+                // -- so the save above did not throw even though nothing was
+                // written. loadAssignments() just rebuilt assignmentServerIds
+                // from a fresh server search, so its absence here is the
+                // server's own word that the write never landed, not a stale
+                // local copy: the optimistic add above is already gone,
+                // overwritten by that fresh set.
+                this.assignmentError = this.$tc('merchant-quote-agent.assignment.notSaved');
+            }
         },
 
         /**

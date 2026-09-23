@@ -286,6 +286,7 @@
             "unknownCustomer": "This customer",
             "duplicatePinGlobal": "{customer} is already pinned for every sales channel.",
             "duplicatePinChannel": "{customer} is already pinned for this sales channel.",
+            "notSaved": "This change could not be confirmed as saved. Please check the row and try again.",
             "remove": "Remove",
             "rulesTitle": "Rules",
             "rulesIntro": "The highest-priority rule that matches the quote wins, if no customer is pinned. Priority comes from the rule itself.",

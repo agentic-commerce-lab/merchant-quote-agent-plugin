@@ -286,6 +286,7 @@
             "unknownCustomer": "Dieser Kunde",
             "duplicatePinGlobal": "{customer} ist bereits für alle Verkaufskanäle angeheftet.",
             "duplicatePinChannel": "{customer} ist bereits für diesen Verkaufskanal angeheftet.",
+            "notSaved": "Diese Änderung konnte nicht als gespeichert bestätigt werden. Bitte prüfen Sie die Zeile und versuchen Sie es erneut.",
             "remove": "Entfernen",
             "rulesTitle": "Regeln",
             "rulesIntro": "Die Regel mit der höchsten Priorität, die auf das Angebot zutrifft, gewinnt, sofern kein Kunde angeheftet ist. Die Priorität stammt aus der Regel selbst.",
