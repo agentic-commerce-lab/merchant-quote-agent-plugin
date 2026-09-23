@@ -51,6 +51,16 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
             required: false,
             default: false,
         },
+        // The assignment grids pass `!canEdit`, and also true while that
+        // row's own save is in flight -- see isRowSaving() on the strategies
+        // page. Without a prop for it, a viewer could change the value here
+        // (the other columns already forward :disabled) and only find out
+        // it was refused after the 403 came back.
+        disabled: {
+            type: Boolean,
+            required: false,
+            default: false,
+        },
         strategies: {
             type: Array,
             required: false,
@@ -116,6 +126,34 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
 
         selectedIsBuiltIn() {
             return isBuiltIn(this.value);
+        },
+
+        /**
+         * A saved row can point at a strategy `options` no longer offers --
+         * archived, or never given a prompt -- since selectableStrategies
+         * filters both out. In full mode that is left visible on purpose (see
+         * `selected` above); in compact mode the select just renders blank
+         * with no explanation, while every quote that row matches is
+         * silently escalated to a human. This is what the compact-mode
+         * notice in the template is keyed on.
+         */
+        valueIsSelectable() {
+            return this.value === null || this.value === '' || this.options.some((option) => option.value === this.value);
+        },
+
+        /**
+         * Named from `resolvedStrategies` when it is still there -- a
+         * versionless strategy is (selectableStrategies only filters it out
+         * of `options`, not out of the list itself). An archived one is
+         * excluded from the list the strategies page passes in, the same way
+         * its own library tab excludes it (see that page's `load()`), so
+         * this falls back to a generic label, the same pattern as
+         * saveAssignment()'s unknownCustomer/unknownRule.
+         */
+        unresolvedStrategyName() {
+            const strategy = this.resolvedStrategies.find((candidate) => candidate.id === this.value) ?? null;
+
+            return strategy === null ? this.$tc('merchant-quote-agent.strategy.unresolvedName') : this.displayName(strategy);
         },
 
         description() {

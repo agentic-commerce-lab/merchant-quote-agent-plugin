@@ -251,6 +251,8 @@
             "saveNewVersion": "Save as a new version",
             "currentVersion": "Version {version}",
             "readOnlyHint": "You need the quote agent's editor privilege to create, duplicate, rename or archive a negotiation strategy. Ask an administrator to grant it.",
+            "assignedUnusable": "“{name}” can no longer be used here — it is archived or has no prompt, so every quote it matches is escalated to a person.",
+            "unresolvedName": "This strategy",
             "builtIn": {
                 "marginDefender": {
                     "name": "Margin defender",

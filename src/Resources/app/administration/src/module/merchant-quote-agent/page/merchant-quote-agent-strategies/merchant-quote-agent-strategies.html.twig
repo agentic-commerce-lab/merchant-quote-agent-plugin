@@ -310,6 +310,7 @@
                                     <merchant-quote-agent-strategy-select
                                         :value="item.strategyId"
                                         compact
+                                        :disabled="!canEdit || isRowSaving(item)"
                                         :strategies="strategies"
                                         :versioned-strategy-ids="versionedIds"
                                         @update:value="(value) => { item.strategyId = value; saveAssignment(item); }"
@@ -389,6 +390,7 @@
                                     <merchant-quote-agent-strategy-select
                                         :value="item.strategyId"
                                         compact
+                                        :disabled="!canEdit || isRowSaving(item)"
                                         :strategies="strategies"
                                         :versioned-strategy-ids="versionedIds"
                                         @update:value="(value) => { item.strategyId = value; saveAssignment(item); }"
@@ -461,6 +463,7 @@
                                     <merchant-quote-agent-strategy-select
                                         :value="item.arm.strategyId"
                                         compact
+                                        :disabled="!canEdit || isRowSaving(item.arm)"
                                         :strategies="strategies"
                                         :versioned-strategy-ids="versionedIds"
                                         @update:value="(value) => { item.arm.strategyId = value; saveAssignment(item.arm); }"

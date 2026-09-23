@@ -251,6 +251,8 @@
             "saveNewVersion": "Als neue Version speichern",
             "currentVersion": "Version {version}",
             "readOnlyHint": "Um eine Verhandlungsstrategie anzulegen, zu duplizieren, umzubenennen oder zu archivieren, wird das Bearbeitungsrecht des Quote Agent benötigt. Bitten Sie eine Administratorin oder einen Administrator, es zu vergeben.",
+            "assignedUnusable": "„{name}“ kann hier nicht mehr verwendet werden — sie ist archiviert oder hat noch keinen Prompt, daher werden alle passenden Angebote an einen Menschen eskaliert.",
+            "unresolvedName": "Diese Strategie",
             "builtIn": {
                 "marginDefender": {
                     "name": "Margen verteidigen",

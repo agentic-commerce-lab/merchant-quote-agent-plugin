@@ -22,9 +22,19 @@
             :help-text="compact ? '' : $tc('merchant-quote-agent.strategy.selectHelp')"
             :options="options"
             :model-value="value"
-            :disabled="isLoading"
+            :disabled="isLoading || disabled"
             @update:model-value="onUpdateValue"
         />
+
+        {# compact only: a saved row pointing at an archived or versionless
+           strategy renders the select above blank, since selectableStrategies
+           excludes both from `options` -- with no hint here, that reads as an
+           empty cell rather than as "every quote this row matches is being
+           escalated". Full mode already explains this state via `noVersionHint`
+           on the strategies page itself, so this notice only fires in compact. #}
+        <mt-banner v-if="compact && !valueIsSelectable" variant="critical">
+            {{ $t('merchant-quote-agent.strategy.assignedUnusable', { name: unresolvedStrategyName }) }}
+        </mt-banner>
 
         {# Archived strategies are excluded above. A value already selected
            that no longer appears here (archived, or unknown) is left as-is --
