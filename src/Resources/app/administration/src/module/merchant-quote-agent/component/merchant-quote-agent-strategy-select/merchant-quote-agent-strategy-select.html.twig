@@ -16,8 +16,10 @@
         {# compact: the grid column header already names this field, and a row
            has no room for a help text below it. Passing '' (not omitting the
            binding) is what actually hides mt-select's label row -- see
-           mt-field__label's own `:has(label:only-child:empty)` rule. #}
+           mt-field__label's own `:has(label:only-child:empty)` rule. `small`
+           matches the size="small" entity selects beside it in the grid rows. #}
         <mt-select
+            :small="compact"
             :label="compact ? '' : $tc('merchant-quote-agent.strategy.selectLabel')"
             :help-text="compact ? '' : $tc('merchant-quote-agent.strategy.selectHelp')"
             :options="options"

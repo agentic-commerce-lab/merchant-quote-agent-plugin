@@ -16,15 +16,18 @@
 
     {% block merchant_quote_agent_strategies_content %}
     <template #content>
-        {# Tab shell added alongside the assignment ladder. There is no other
-           sw-tabs/mt-tabs usage in this module -- verified against the
-           installed 6.7.x core (sw-tabs-deprecated's actual props are
-           position-identifier/default-item, and both its default and
-           "content" slots yield { active }; mt-tabs only takes over once the
-           V6_8_0_0 feature flag is active, which it is not here). Everything
-           the library tab contained keeps its original block names and
-           markup unchanged, so a template override targeting one of those
-           blocks still works. #}
+        {# sw-card-view is the page's scroll container -- position: absolute,
+           height: 100% -- so it must wrap the tabs, as core's own detail pages
+           do, never sit inside them: inside sw-tabs' content slot it resolved
+           100% against a box only as tall as the tab bar, and the library
+           rendered as a ~100px scrolling strip. The tabs therefore only switch
+           `activeTab`; the panels below are siblings, not slot content.
+           sw-tabs-deprecated's props are position-identifier/default-item;
+           mt-tabs only takes over once the V6_8_0_0 feature flag is active,
+           which it is not here. Everything the library tab contained keeps its
+           original block names and markup unchanged, so a template override
+           targeting one of those blocks still works. #}
+        <sw-card-view>
         {% block merchant_quote_agent_strategies_tabs %}
         <sw-tabs
             default-item="library"
@@ -39,10 +42,10 @@
                     {{ $tc('merchant-quote-agent.assignment.tabAssignments') }}
                 </sw-tabs-item>
             </template>
+        </sw-tabs>
+        {% endblock %}
 
-            <template #content="{ active }">
-                <template v-if="active === 'library'">
-                    <sw-card-view>
+                <template v-if="activeTab === 'library'">
                         {% block merchant_quote_agent_strategies_list_card %}
                         <sw-card :title="$tc('merchant-quote-agent.strategy.title')" :is-loading="isLoading">
                             <mt-banner v-if="error" variant="critical">
@@ -122,6 +125,7 @@
                                 v-else-if="!isLoading"
                                 :absolute="false"
                                 :title="$tc('merchant-quote-agent.strategy.title')"
+                                :show-description="false"
                             />
                         </sw-card>
                         {% endblock %}
@@ -225,7 +229,6 @@
                             </template>
                         </sw-modal>
                         {% endblock %}
-                    </sw-card-view>
                 </template>
                 <template v-else>
                     {# The assignment ladder's three grids (pins, rules, split) are
@@ -289,10 +292,6 @@
                                 :allow-column-edit="false"
                                 :plain-appearance="true"
                             >
-                                {# The company note lives on the field's help text rather than only in
-                                   prose above the grid -- QuoteIdentity's own docblock says the id is
-                                   the company, and a merchant who expects per-person targeting here
-                                   would be wrong in a way nothing else on this page corrects. #}
                                 <template #column-customerId="{ item }">
                                     <sw-entity-single-select
                                         :value="item.customerId"
@@ -301,7 +300,6 @@
                                         size="small"
                                         show-clearable-button
                                         :disabled="!canEdit || isRowSaving(item)"
-                                        :help-text="$tc('merchant-quote-agent.assignment.customerIsCompany')"
                                         @update:value="(value) => { item.customerId = value; saveAssignment(item); }"
                                     />
                                 </template>
@@ -340,7 +338,15 @@
                                 v-else
                                 :absolute="false"
                                 :title="$tc('merchant-quote-agent.assignment.pinsTitle')"
+                                :subline="$tc('merchant-quote-agent.assignment.pinsEmpty')"
                             />
+
+                            {# QuoteIdentity's own docblock says the id is the company, and a
+                               merchant who expects per-person targeting here would be wrong in a
+                               way nothing else on this page corrects. A note, not the field's
+                               help text: that adds a label row above the select, which the grid's
+                               fixed-height cell clips. #}
+                            <p class="mqa-assignment__note">{{ $tc('merchant-quote-agent.assignment.customerIsCompany') }}</p>
                         </div>
                         {% endblock %}
 
@@ -424,6 +430,7 @@
                                 v-else
                                 :absolute="false"
                                 :title="$tc('merchant-quote-agent.assignment.rulesTitle')"
+                                :subline="$tc('merchant-quote-agent.assignment.rulesEmpty')"
                             />
 
                             <p class="mqa-assignment__note">{{ $tc('merchant-quote-agent.assignment.flowConditionsNote') }}</p>
@@ -511,6 +518,7 @@
                                 v-else
                                 :absolute="false"
                                 :title="$tc('merchant-quote-agent.assignment.splitTitle')"
+                                :subline="$tc('merchant-quote-agent.assignment.splitEmpty')"
                             />
 
                             {# Both halves matter: a merchant typing 1 and 4 must not read that as a
@@ -526,9 +534,7 @@
                     </mt-card>
                     {% endblock %}
                 </template>
-            </template>
-        </sw-tabs>
-        {% endblock %}
+        </sw-card-view>
     </template>
     {% endblock %}
 </sw-page>
