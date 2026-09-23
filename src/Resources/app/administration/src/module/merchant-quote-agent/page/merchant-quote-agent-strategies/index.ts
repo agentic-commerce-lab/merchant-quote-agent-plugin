@@ -486,6 +486,13 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 return;
             }
 
+            // Closes the window between this save resolving and the reload
+            // below finishing: a Remove click landing in that gap read
+            // assignmentServerIds before loadAssignments() had repopulated
+            // it, saw a row the server has never heard of, and skipped the
+            // DELETE -- see removeAssignment()'s own docblock.
+            this.assignmentServerIds.add(row.id);
+
             await this.loadAssignments();
         },
 
