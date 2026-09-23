@@ -406,6 +406,95 @@
                             <p class="mqa-assignment__note">{{ $tc('merchant-quote-agent.assignment.flowConditionsNote') }}</p>
                         </div>
                         {% endblock %}
+
+                        {# Rung 3. One flat grid, not one grid per sales channel -- each row
+                           already carries its own channel column, so the peer group an arm
+                           belongs to is never hidden. The percent column is NOT flat, though:
+                           `arms` (see index.ts) groups by salesChannelId before computing
+                           shares, since weights are only meaningful against the other arms in
+                           the SAME channel -- never recompute a percentage here, that
+                           grouping is exactly the part covered by assignment.check.mjs and a
+                           second expression in this template would not be. #}
+                        {% block merchant_quote_agent_assignments_split %}
+                        <div class="mqa-assignment__section">
+                            <div class="mqa-assignment__section-header">
+                                <h3>{{ $tc('merchant-quote-agent.assignment.splitTitle') }}</h3>
+                                <mt-button v-if="canEdit" size="small" variant="secondary" @click="addArm">
+                                    {{ $tc('merchant-quote-agent.assignment.addArm') }}
+                                </mt-button>
+                            </div>
+
+                            <p class="mqa-assignment__section-intro">{{ $tc('merchant-quote-agent.assignment.splitIntro') }}</p>
+
+                            <sw-data-grid
+                                v-if="arms.length"
+                                :data-source="arms"
+                                :columns="armColumns"
+                                :show-selection="false"
+                                :show-settings="false"
+                                :show-actions="canEdit"
+                                :allow-column-edit="false"
+                                :plain-appearance="true"
+                            >
+                                <template #column-strategyId="{ item }">
+                                    <merchant-quote-agent-strategy-select
+                                        :value="item.arm.strategyId"
+                                        @update:value="(value) => { item.arm.strategyId = value; saveAssignment(item.arm); }"
+                                    />
+                                </template>
+
+                                <template #column-weight="{ item }">
+                                    <mt-number-field
+                                        :model-value="item.arm.weight"
+                                        number-type="int"
+                                        :min="1"
+                                        allow-empty
+                                        size="small"
+                                        :disabled="!canEdit"
+                                        @update:model-value="(value) => { item.arm.weight = value; saveAssignment(item.arm); }"
+                                    />
+                                </template>
+
+                                {# Read-only, sourced from the `arms` computed only -- see this
+                                   block's own comment above. #}
+                                <template #column-percent="{ item }">
+                                    {{ item.percent }}%
+                                </template>
+
+                                <template #column-salesChannelId="{ item }">
+                                    <sw-entity-single-select
+                                        :value="item.arm.salesChannelId"
+                                        entity="sales_channel"
+                                        size="small"
+                                        show-clearable-button
+                                        :disabled="!canEdit"
+                                        :placeholder="$tc('merchant-quote-agent.assignment.anyChannel')"
+                                        @update:value="(value) => { item.arm.salesChannelId = value; saveAssignment(item.arm); }"
+                                    />
+                                </template>
+
+                                <template #actions="{ item }">
+                                    <sw-context-menu-item variant="danger" @click="removeAssignment(item.arm)">
+                                        {{ $tc('merchant-quote-agent.assignment.remove') }}
+                                    </sw-context-menu-item>
+                                </template>
+                            </sw-data-grid>
+
+                            <sw-empty-state
+                                v-else
+                                :absolute="false"
+                                :title="$tc('merchant-quote-agent.assignment.splitTitle')"
+                            />
+
+                            {# Both halves matter: a merchant typing 1 and 4 must not read that as a
+                               validation error demanding they total 100, and a merchant tuning
+                               weights mid-experiment needs to know BEFORE saving that doing so
+                               reshuffles which customers land in which arm -- neither is guessable
+                               from the grid above. #}
+                            <p class="mqa-assignment__note">{{ $tc('merchant-quote-agent.assignment.weightsAreRelative') }}</p>
+                            <p class="mqa-assignment__note">{{ $tc('merchant-quote-agent.assignment.stickyPerCustomer') }}</p>
+                        </div>
+                        {% endblock %}
                     </mt-card>
                     {% endblock %}
                 </template>

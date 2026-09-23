@@ -15,7 +15,7 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ASSIGNMENT_KINDS, ASSIGNMENT_SOURCES, isDuplicatePin, isSavable, splitShares, spreadLabel } from './assignment.ts';
+import { ASSIGNMENT_KINDS, ASSIGNMENT_SOURCES, groupedSplitShares, isDuplicatePin, isSavable, splitShares, spreadLabel } from './assignment.ts';
 
 /**
  * Extracts the PHP enum's case values, in declaration order, straight from
@@ -74,6 +74,37 @@ assert.deepEqual(splitShares([{ weight: 0 }, { weight: 0 }]).map((s) => s.percen
 assert.deepEqual(splitShares([{ weight: null }, { weight: 4 }]).map((s) => s.percent), [0, 100]);
 assert.deepEqual(splitShares([{ weight: -5 }, { weight: 5 }]).map((s) => s.percent), [0, 100],
     'a negative weight is floored to zero for display; unfloored it would make the total 0 and divide by zero');
+
+// groupedSplitShares: weights are only meaningful relative to the other arms
+// in the SAME sales channel -- the bucket hash includes the channel, so two
+// channels each running their own 1:1 split are two experiments, not four
+// arms of one. This is the one piece of split-grid logic that could be wrong
+// while looking right, so it gets its own assertions rather than trust that
+// the template groups correctly.
+const armA1 = { weight: 1, salesChannelId: 'chA' };
+const armA2 = { weight: 1, salesChannelId: 'chA' };
+const armB1 = { weight: 1, salesChannelId: 'chB' };
+const armB2 = { weight: 1, salesChannelId: 'chB' };
+
+assert.deepEqual(
+    groupedSplitShares([armA1, armB1, armA2, armB2]).map((s) => s.percent),
+    [50, 50, 50, 50],
+    'two independent 1:1 splits must each read 50/50 -- computing over all four arms at once would give 25/25/25/25',
+);
+assert.deepEqual(
+    groupedSplitShares([armA1, armB1, armA2, armB2]).map((s) => s.arm),
+    [armA1, armA2, armB1, armB2],
+    'same-channel arms land adjacent in the flat result, in first-appearance order',
+);
+assert.deepEqual(
+    groupedSplitShares([
+        { weight: 1, salesChannelId: null },
+        { weight: 1, salesChannelId: '' },
+    ]).map((s) => s.percent),
+    [50, 50],
+    "null and '' are the same 'every channel' scope, same as isDuplicatePin's scope helper",
+);
+assert.deepEqual(groupedSplitShares([]), []);
 
 // spreadLabel: how a decision row's assignment sources are summarised.
 assert.deepEqual(spreadLabel(['rule', 'rule', 'config']), [{ source: 'rule', count: 2 }, { source: 'config', count: 1 }]);

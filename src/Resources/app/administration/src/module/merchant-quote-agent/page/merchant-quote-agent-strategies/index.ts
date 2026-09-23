@@ -8,7 +8,7 @@ import {
     VERSIONED_AGGREGATION,
     type StrategyLike,
 } from '../../strategy.ts';
-import { isDuplicatePin, isSavable } from '../../assignment.ts';
+import { groupedSplitShares, isDuplicatePin, isSavable } from '../../assignment.ts';
 
 /**
  * The snippet naming what an incomplete row of that kind is missing, keyed by
@@ -154,6 +154,30 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 { property: 'strategyId', label: this.$tc('merchant-quote-agent.assignment.columnStrategy') },
                 { property: 'salesChannelId', label: this.$tc('merchant-quote-agent.assignment.columnSalesChannel') },
                 { property: 'priority', label: this.$tc('merchant-quote-agent.assignment.columnPriority') },
+            ];
+        },
+
+        /**
+         * Rung 3. One flat grid, not one grid per sales channel: fewer
+         * template branches, and each row already carries its own channel
+         * column, so which peer group an arm belongs to is never hidden.
+         * The percentages themselves are NOT flat, though -- groupedSplitShares
+         * buckets by salesChannelId before computing shares, because a bucket
+         * hash includes the channel (see the design doc), so weights are only
+         * ever meaningful against the other arms in the SAME channel. Grouping
+         * also leaves same-channel rows adjacent here, so the flat table still
+         * reads as sectioned even without a heading per channel.
+         */
+        arms() {
+            return groupedSplitShares(this.assignments.filter((row) => row.kind === 'split'));
+        },
+
+        armColumns() {
+            return [
+                { property: 'strategyId', label: this.$tc('merchant-quote-agent.assignment.columnStrategy') },
+                { property: 'weight', label: this.$tc('merchant-quote-agent.assignment.columnWeight') },
+                { property: 'percent', label: this.$tc('merchant-quote-agent.assignment.columnShare') },
+                { property: 'salesChannelId', label: this.$tc('merchant-quote-agent.assignment.columnSalesChannel') },
             ];
         },
 
@@ -320,6 +344,25 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
         addRule() {
             const row = this.assignmentRepository.create(Shopware.Context.api);
             row.kind = 'rule';
+            row.customerId = null;
+            row.ruleId = null;
+            row.weight = null;
+            row.strategyId = null;
+            row.salesChannelId = null;
+            this.assignments.push(row);
+        },
+
+        /**
+         * A blank split-arm row, field for field like addPin()/addRule() above
+         * -- including `customerId: null` and `ruleId: null`, which
+         * isDuplicatePin's `other.kind === 'pin'` filter relies on staying
+         * true for every non-pin row. Left unsaved until saveAssignment() sees
+         * a strategy AND a positive weight; see isSavable's `kind === 'split'`
+         * branch.
+         */
+        addArm() {
+            const row = this.assignmentRepository.create(Shopware.Context.api);
+            row.kind = 'split';
             row.customerId = null;
             row.ruleId = null;
             row.weight = null;

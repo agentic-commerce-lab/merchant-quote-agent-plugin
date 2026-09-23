@@ -110,6 +110,42 @@ export function splitShares<T extends { weight: number | null }>(arms: T[]): { a
 }
 
 /**
+ * `splitShares`, but grouped by sales channel first, because a bucket hash
+ * includes the channel (`sha1(customerId . salesChannelId)`, see the design
+ * doc and `StrategyAssignmentResolver`) -- a 1:1 split in channel A and a 1:1
+ * split in channel B are two independent experiments, not four arms of one.
+ * Feeding all channels' arms into a single `splitShares()` call would show
+ * 25/25/25/25 for two separate 50/50 splits: wrong, while looking plausible,
+ * which is exactly the failure mode worth a dedicated function and its own
+ * assertions rather than a second expression inline wherever this is used.
+ *
+ * `null` and `''` group together, the same "every channel" scope
+ * `isDuplicatePin` uses -- a cleared `sw-entity-single-select` can hand back
+ * either. Grouping (a `Map`, not a sort) also leaves same-channel rows
+ * adjacent in the flat result, in first-appearance order.
+ */
+export function groupedSplitShares<T extends { weight: number | null; salesChannelId: string | null }>(
+    arms: T[],
+): { arm: T; percent: number }[] {
+    const scope = (salesChannelId: string | null): string => salesChannelId ?? '';
+    const order: string[] = [];
+    const byScope = new Map<string, T[]>();
+
+    for (const arm of arms) {
+        const key = scope(arm.salesChannelId);
+
+        if (!byScope.has(key)) {
+            byScope.set(key, []);
+            order.push(key);
+        }
+
+        byScope.get(key)?.push(arm);
+    }
+
+    return order.flatMap((key) => splitShares(byScope.get(key) ?? []));
+}
+
+/**
  * The assignment sources behind a set of passes, commonest first.
  *
  * This is what makes a silent fall-through legible: the rule rung skips itself

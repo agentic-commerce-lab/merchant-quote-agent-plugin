@@ -287,7 +287,14 @@
             "columnPriority": "Priorität",
             "flowConditionsNote": "Bedingungen, die nur für Bestellungen oder Flows gelten, treffen auf ein Angebot nie zu: Eine Regel, die nur aus solchen Bedingungen besteht, greift nie — und nichts meldet, dass sie nicht gegriffen hat.",
             "addRule": "Regel hinzufügen",
-            "noRuleSelected": "Regel auswählen"
+            "noRuleSelected": "Regel auswählen",
+            "splitTitle": "Gewichteter Split",
+            "splitIntro": "Wenn weder eine Anheftung noch eine Regel gegriffen hat, fällt ein Kunde nach Gewichtung in einen dieser Zweige — erst das macht A/B-Tests einer Verhandlungsstrategie möglich.",
+            "columnWeight": "Gewichtung",
+            "columnShare": "Anteil",
+            "addArm": "Zweig hinzufügen",
+            "weightsAreRelative": "Gewichtungen sind relativ, keine Prozentwerte: Sie müssen sich nicht zu 100 addieren. Die Eingabe von 1 und 4 ergibt 20 % für den ersten und 80 % für den zweiten Zweig. Der angezeigte Anteil bezieht sich nur auf die anderen Zweige desselben Verkaufskanals.",
+            "stickyPerCustomer": "Ein Kunde bleibt bei jedem Angebot im selben Zweig, sodass ein Käufer nie zwei unterschiedlichen Verhandlungshaltungen begegnet. Das Ändern einer Gewichtung mischt neu, welche Kunden in welchem Zweig landen — das sollten Sie bedenken, bevor Sie an einem laufenden Test etwas ändern."
         },
         "disposition": {
             "needsReview": "Prüfung nötig",
