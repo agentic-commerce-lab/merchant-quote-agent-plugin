@@ -51,8 +51,18 @@ final readonly class QuoteSnapshotReader
     /** @throws QuoteNotFoundException */
     public function read(string $quoteId, QuoteVersion $version, Context $context): QuoteSnapshot
     {
-        $versionedContext = $this->versionResolver->contextFor($context, $version);
+        return $this->readIn($quoteId, $this->versionResolver->contextFor($context, $version));
+    }
 
+    /**
+     * Reads in whatever version $versionedContext already names — a Draft
+     * Mode version, which QuoteVersion has no case for because nothing but
+     * the gateway bound to it ever asks.
+     *
+     * @throws QuoteNotFoundException
+     */
+    public function readIn(string $quoteId, Context $versionedContext): QuoteSnapshot
+    {
         $criteria = new Criteria([$quoteId]);
         $criteria->addAssociation('lineItems');
         $criteria->addAssociation('comments');

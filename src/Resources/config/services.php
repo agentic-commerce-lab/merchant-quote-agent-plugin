@@ -33,12 +33,15 @@ use MerchantQuoteAgentPlugin\Bridge\Commercial\VariantRejectingProductAdder;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteAccess;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteLinePricing;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteSnapshotMapper;
+use MerchantQuoteAgentPlugin\Bridge\ContextBoundGateways;
 use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;
 use MerchantQuoteAgentPlugin\Bridge\History\CustomerHistoryFactory;
 use MerchantQuoteAgentPlugin\Bridge\History\DecisionAggregate;
 use MerchantQuoteAgentPlugin\Bridge\History\OrderHistoryReads;
 use MerchantQuoteAgentPlugin\Bridge\History\QuoteHistoryReads;
 use MerchantQuoteAgentPlugin\Bridge\MerchantActionReader;
+use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersions;
+use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersionsInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -692,6 +695,16 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // `?QuoteGatewayInterface`. Per the spec's non-goals there is deliberately
     // no null-object implementation: capability absence belongs one layer up.
     $services->set(QuoteGatewayInterface::class)->factory([service(QuoteGatewayFactory::class), 'create']);
+
+    // Draft Mode's working copy of a quote: a DAL version, priced by the real
+    // recalculation, invisible to the buyer until a merchant sends it.
+    $services->set(QuoteDraftVersions::class)->args([
+        service('quote.repository'),
+        service('version.repository'),
+        service(QuoteGatewayFactory::class),
+    ]);
+    $services->alias(QuoteDraftVersionsInterface::class, QuoteDraftVersions::class);
+    $services->alias(ContextBoundGateways::class, QuoteGatewayFactory::class);
 
     // Buyer-side counterpart of the merchant gateway. Every commercial route is
     // an ignore-on-invalid reference, so the container compiles on a shop

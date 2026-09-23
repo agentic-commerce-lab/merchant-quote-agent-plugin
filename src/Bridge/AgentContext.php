@@ -46,4 +46,18 @@ final class AgentContext
 
         return $context;
     }
+
+    /**
+     * The agent's context re-versioned onto a DAL version — Draft Mode writes
+     * its offer into one. The state is added AFTER createWithVersionId(),
+     * which drops states (see above), or the version's writes would read as
+     * a stranger's.
+     */
+    public static function forVersion(string $versionId): Context
+    {
+        $context = Context::createDefaultContext()->createWithVersionId($versionId);
+        $context->addState(self::STATE);
+
+        return $context;
+    }
 }
