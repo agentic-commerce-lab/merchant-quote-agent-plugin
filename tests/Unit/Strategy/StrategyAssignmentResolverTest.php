@@ -49,6 +49,10 @@ final class StrategyAssignmentResolverTest extends TestCase
 
     private const ARM_TWO = '3333333333333333333333333333dddd';
 
+    private const RULE_GLOBAL_STRATEGY = '3333333333333333333333333333eeee';
+
+    private const RULE_CHANNEL_STRATEGY = '3333333333333333333333333333ffff';
+
     public function testAPinBeatsEverythingBelowIt(): void
     {
         $assigned = $this->resolver([
@@ -96,6 +100,45 @@ final class StrategyAssignmentResolverTest extends TestCase
         self::assertNotNull($assigned);
         self::assertSame(self::RULED, $assigned->strategy->versionId);
         self::assertSame(StrategyAssignmentSource::Rule, $assigned->source);
+    }
+
+    /**
+     * Rule 'w' is bound globally to one strategy and, separately, on
+     * self::CHANNEL to another. Both rows match. The channel binding must
+     * win regardless of which row the fake repository returns first --
+     * asserted in both orders so the test would fail if `ruled()` regressed
+     * to picking whichever row happens to be last in `$byRule`.
+     */
+    public function testAChannelRuleBindingBeatsAGlobalBindingForTheSameRuleGlobalFirst(): void
+    {
+        $assigned = $this->resolver([
+            $this->row('rule', self::RULE_GLOBAL_STRATEGY, ruleId: 'w'),
+            $this->row('rule', self::RULE_CHANNEL_STRATEGY, ruleId: 'w', salesChannelId: self::CHANNEL),
+        ], rules: [$this->rule('w', priority: 1, matches: true)])->assign(
+            self::QUOTE,
+            self::CUSTOMER,
+            self::CHANNEL,
+            Context::createDefaultContext(),
+        );
+
+        self::assertNotNull($assigned);
+        self::assertSame(self::RULE_CHANNEL_STRATEGY, $assigned->strategy->versionId);
+    }
+
+    public function testAChannelRuleBindingBeatsAGlobalBindingForTheSameRuleChannelFirst(): void
+    {
+        $assigned = $this->resolver([
+            $this->row('rule', self::RULE_CHANNEL_STRATEGY, ruleId: 'w', salesChannelId: self::CHANNEL),
+            $this->row('rule', self::RULE_GLOBAL_STRATEGY, ruleId: 'w'),
+        ], rules: [$this->rule('w', priority: 1, matches: true)])->assign(
+            self::QUOTE,
+            self::CUSTOMER,
+            self::CHANNEL,
+            Context::createDefaultContext(),
+        );
+
+        self::assertNotNull($assigned);
+        self::assertSame(self::RULE_CHANNEL_STRATEGY, $assigned->strategy->versionId);
     }
 
     public function testANonMatchingRuleFallsThroughToTheSplit(): void

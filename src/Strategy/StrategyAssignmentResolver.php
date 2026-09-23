@@ -127,20 +127,40 @@ class StrategyAssignmentResolver
         return $row instanceof StrategyAssignment ? $row->strategyId : null;
     }
 
+    /**
+     * A rule bound both globally and on this channel resolves to the
+     * channel's strategy -- built from two maps, global filled first and
+     * channel second, merged with the channel map winning, so the result
+     * never depends on the order `scoped()`'s rows come back in (the search
+     * itself carries no sorting). Two bindings of the SAME rule at the same
+     * scope are still resolved by whichever one lands in the map last: that
+     * is genuinely ambiguous configuration, and the admin UI refuses to
+     * create it, so this resolver does not need to.
+     */
     private function ruled(string $quoteId, string $salesChannelId, Context $context): ?string
     {
         $rows = $this->assignments
             ->search($this->scoped(StrategyAssignmentSource::Rule->value, $salesChannelId), $context)
             ->getElements();
 
-        /** @var array<string, string> $byRule */
-        $byRule = [];
+        /** @var array<string, string> $byRuleGlobal */
+        $byRuleGlobal = [];
+        /** @var array<string, string> $byRuleChannel */
+        $byRuleChannel = [];
 
         foreach ($rows as $row) {
-            if ($row instanceof StrategyAssignment && $row->ruleId !== null) {
-                $byRule[$row->ruleId] = $row->strategyId;
+            if (!$row instanceof StrategyAssignment || $row->ruleId === null) {
+                continue;
+            }
+
+            if ($row->salesChannelId === null) {
+                $byRuleGlobal[$row->ruleId] = $row->strategyId;
+            } else {
+                $byRuleChannel[$row->ruleId] = $row->strategyId;
             }
         }
+
+        $byRule = array_merge($byRuleGlobal, $byRuleChannel);
 
         if ($byRule === []) {
             return null;
