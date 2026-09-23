@@ -254,14 +254,22 @@
                         </mt-banner>
                         {% endblock %}
 
+                        {# Tab-level, not inside any one grid's section: saveAssignment()/
+                           removeAssignment() are shared by all three grids, so a validation
+                           or write failure from the rules or split grid is just as likely as
+                           one from pins. Sat inside the pins section, that error rendered far
+                           from whichever row actually failed whenever it came from rules or
+                           split. Its own block so a template override can still target it. #}
+                        {% block merchant_quote_agent_assignments_error %}
+                        <mt-banner v-if="assignmentError" variant="critical">
+                            {{ assignmentError }}
+                        </mt-banner>
+                        {% endblock %}
+
                         {# Rung 1. Rules and the split (Tasks 4-5) are their own sections
                            below this one, in ladder order -- see the intro above. #}
                         {% block merchant_quote_agent_assignments_pins %}
                         <div class="mqa-assignment__section">
-                            <mt-banner v-if="assignmentError" variant="critical">
-                                {{ assignmentError }}
-                            </mt-banner>
-
                             <div class="mqa-assignment__section-header">
                                 <h3>{{ $tc('merchant-quote-agent.assignment.pinsTitle') }}</h3>
                                 <mt-button v-if="canEdit" size="small" variant="secondary" @click="addPin">
