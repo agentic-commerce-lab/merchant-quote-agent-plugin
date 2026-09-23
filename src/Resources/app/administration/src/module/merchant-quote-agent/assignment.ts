@@ -167,3 +167,30 @@ export function spreadLabel(sources: (string | null)[]): { source: string; count
         .map(([source, count]) => ({ source, count }))
         .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
 }
+
+/**
+ * What `loadAssignments()` must do with a fresh search result instead of
+ * `this.assignments = [...serverRows]`.
+ *
+ * addPin()/addRule()/addArm() push a blank, unsaved row straight into
+ * `this.assignments`, and saveAssignment()/removeAssignment() both reload
+ * after every write. A flat replace discarded every OTHER unsaved row on the
+ * page the moment any one row was saved or removed -- a merchant filling in
+ * three split arms and saving the first silently lost the other two, with
+ * nothing saying so.
+ *
+ * `isNew` is a predicate rather than a property check so this stays framework
+ * -free: the real predicate is an Entity's `isNew()` method (not `_isNew`,
+ * verified against the installed core), which this pure function has no
+ * business importing.
+ *
+ * A local row that is NOT new is dropped in favour of its server copy rather
+ * than kept -- comparing by identity, the same way `isDuplicatePin` does,
+ * would treat "this row, freshly reloaded" as unrelated to "the same row from
+ * before", duplicating it. A saved row absent from the server result (deleted
+ * by someone else since the last load) is dropped, not resurrected: the
+ * point of reloading at all is to see deletions other admins made.
+ */
+export function mergeUnsaved<T>(serverRows: T[], localRows: T[], isNew: (row: T) => boolean): T[] {
+    return [...serverRows, ...localRows.filter(isNew)];
+}

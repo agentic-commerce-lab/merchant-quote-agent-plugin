@@ -8,7 +8,17 @@ import {
     VERSIONED_AGGREGATION,
     type StrategyLike,
 } from '../../strategy.ts';
-import { groupedSplitShares, isDuplicatePin, isSavable } from '../../assignment.ts';
+import { groupedSplitShares, isDuplicatePin, isSavable, mergeUnsaved } from '../../assignment.ts';
+
+/**
+ * Same ceiling and the same reason as PASS_LIMIT/QUOTE_LIMIT in the list
+ * page: a shop with more assignment rows than this cannot see or edit the
+ * rest here, though the resolver -- which reads server-side -- keeps
+ * applying them. `assignmentTruncated` below reports it rather than
+ * silently showing a partial grid. Raising this further, or paginating
+ * instead, is the upgrade path if a shop ever needs more than 500.
+ */
+const ASSIGNMENT_LIMIT = 500;
 
 /**
  * The snippet naming what an incomplete row of that kind is missing, keyed by
@@ -85,6 +95,9 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             // repository.get() -- so this map exists only for what that select
             // does not surface: the priority column and the sort order below it.
             ruleNames: {},
+            // Server-side total from the last loadAssignments() search, used
+            // only to detect truncation -- see assignmentTruncated.
+            assignmentTotal: 0,
             // Its own field rather than reusing `error`: the library tab's
             // load() and this tab's loadAssignments() both run un-awaited from
             // created(), so sharing one field let a failure surface under the
@@ -119,6 +132,16 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
         /** Only reached in loadAssignments(), to back-fill ruleNames for rung 2's rows. */
         ruleRepository() {
             return this.repositoryFactory.create('rule');
+        },
+
+        /** Exposed to the template so the truncation notice can name the ceiling without duplicating it. */
+        assignmentLimit() {
+            return ASSIGNMENT_LIMIT;
+        },
+
+        /** Whether the last loadAssignments() search left rows unread -- see ASSIGNMENT_LIMIT. */
+        assignmentTruncated() {
+            return this.assignmentTotal > ASSIGNMENT_LIMIT;
         },
 
         /** Rung 1 of the ladder. Rules and split arms are Tasks 4-5's own filters over the same array. */
@@ -257,16 +280,25 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          * Unlike strategies, assignment rows carry no archival flag -- the
          * design deliberately gives them none, since no decision references
          * one -- so this reads every row rather than filtering one out.
+         *
+         * Replacing `this.assignments` outright with the search result would
+         * discard every row a merchant has added but not yet saved -- see
+         * mergeUnsaved's own docblock for the bug this closes. Only rows this
+         * page itself still considers unsaved are carried over; a row this
+         * page already persisted is always taken from the server, so a row
+         * someone else deleted since the last load actually disappears.
          */
         async loadAssignments() {
             this.assignmentError = null;
 
             try {
-                const criteria = new Shopware.Data.Criteria(1, 100);
+                const criteria = new Shopware.Data.Criteria(1, ASSIGNMENT_LIMIT);
+                criteria.setTotalCountMode(1);
 
                 const result = await this.assignmentRepository.search(criteria, Shopware.Context.api);
 
-                this.assignments = [...result];
+                this.assignments = mergeUnsaved([...result], this.assignments, (row) => row.isNew());
+                this.assignmentTotal = result.total ?? this.assignments.length;
 
                 // rule.name/priority need a second read -- see ruleNames'
                 // own comment in data(). Skipped entirely when there is no
@@ -442,13 +474,25 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          * isNew() (not an `_isNew` property: this build's Entity marks itself
          * via EntityFactory#create -> markAsNew(), read back through the
          * isNew() method) is what tells the two cases apart.
+         *
+         * An unsaved row is spliced out of `this.assignments` directly
+         * rather than removed by reloading: now that loadAssignments()
+         * carries every still-unsaved row forward (mergeUnsaved), a reload
+         * would resurrect the very row this just "removed".
          */
         async removeAssignment(row) {
             if (row.id !== undefined && !row.isNew()) {
                 await this.assignmentRepository.delete(row.id, Shopware.Context.api);
+                await this.loadAssignments();
+
+                return;
             }
 
-            await this.loadAssignments();
+            const index = this.assignments.indexOf(row);
+
+            if (index !== -1) {
+                this.assignments.splice(index, 1);
+            }
         },
 
         /**

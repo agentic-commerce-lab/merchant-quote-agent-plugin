@@ -271,6 +271,7 @@
             "tabAssignments": "Assignments",
             "cardTitle": "Strategy assignments",
             "intro": "These rows decide which strategy a quote gets: a pinned customer, then a matching rule, then a weighted split are tried in that order, before the sales channel's default strategy applies.",
+            "truncated": "This shop has {total} assignment rows; only the first {shown} are shown here. The agent still applies every row when it resolves a quote — the rest just cannot be seen or edited from this page.",
             "pinsTitle": "Pinned customers",
             "pinsIntro": "A pin always wins: the named customer gets this strategy before any rule or split is tried.",
             "columnCustomer": "Customer",

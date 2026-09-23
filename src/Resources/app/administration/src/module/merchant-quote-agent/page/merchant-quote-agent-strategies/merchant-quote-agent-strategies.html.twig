@@ -245,6 +245,13 @@
                     <mt-card :title="$tc('merchant-quote-agent.assignment.cardTitle')" position-identifier="merchant-quote-agent-assignments">
                         {% block merchant_quote_agent_assignments_intro %}
                         <p class="mqa-assignment__intro">{{ $tc('merchant-quote-agent.assignment.intro') }}</p>
+
+                        {# The resolver reads every row server-side regardless of this page's
+                           own read limit, so a shop past it is still serviced correctly --
+                           only this admin view goes blind to the rows beyond ASSIGNMENT_LIMIT. #}
+                        <mt-banner v-if="assignmentTruncated" variant="attention">
+                            {{ $t('merchant-quote-agent.assignment.truncated', { shown: assignmentLimit, total: assignmentTotal }) }}
+                        </mt-banner>
                         {% endblock %}
 
                         {# Rung 1. Rules and the split (Tasks 4-5) are their own sections

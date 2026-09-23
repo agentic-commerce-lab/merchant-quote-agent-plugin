@@ -271,6 +271,7 @@
             "tabAssignments": "Zuordnungen",
             "cardTitle": "Strategiezuordnungen",
             "intro": "Diese Zeilen legen fest, welche Strategie ein Angebot erhält: Zuerst wird ein fest zugeordneter Kunde geprüft, dann eine passende Regel, dann ein gewichteter Split — in dieser Reihenfolge, bevor die Standardstrategie des Verkaufskanals greift.",
+            "truncated": "Dieser Shop hat {total} Zuordnungszeilen; nur die ersten {shown} werden hier angezeigt. Der Agent wendet weiterhin jede Zeile an, wenn er ein Angebot auflöst — die übrigen können auf dieser Seite nur nicht angezeigt oder bearbeitet werden.",
             "pinsTitle": "Angeheftete Kunden",
             "pinsIntro": "Eine Anheftung gewinnt immer: Der genannte Kunde erhält diese Strategie, bevor eine Regel oder ein Split geprüft wird.",
             "columnCustomer": "Kunde",

@@ -15,7 +15,7 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ASSIGNMENT_KINDS, ASSIGNMENT_SOURCES, groupedSplitShares, isDuplicatePin, isSavable, splitShares, spreadLabel } from './assignment.ts';
+import { ASSIGNMENT_KINDS, ASSIGNMENT_SOURCES, groupedSplitShares, isDuplicatePin, isSavable, mergeUnsaved, splitShares, spreadLabel } from './assignment.ts';
 
 /**
  * Extracts the PHP enum's case values, in declaration order, straight from
@@ -138,6 +138,36 @@ assert.equal(
     isDuplicatePin(globalPin, [{ ...globalPin, kind: 'rule', ruleId: 'r' }]),
     false,
     'a rule row that happens to carry the same customer and scope is not a pin, so it cannot collide with one',
+);
+
+// mergeUnsaved: what loadAssignments() must do instead of
+// `this.assignments = [...serverRows]`, which discarded every OTHER unsaved
+// row on the page the moment any one row was saved -- the critical bug this
+// closes.
+const isNew = (row) => row.id.startsWith('u');
+const savedA = { id: 's-a', v: 1 };
+const unsavedA = { id: 'u-a' };
+const unsavedB = { id: 'u-b' };
+
+assert.deepEqual(
+    mergeUnsaved([savedA], [savedA, unsavedA], isNew),
+    [savedA, unsavedA],
+    'an unsaved local row survives a reload',
+);
+assert.deepEqual(
+    mergeUnsaved([{ id: 's-a', v: 2 }], [savedA], isNew),
+    [{ id: 's-a', v: 2 }],
+    'a saved local row is replaced by its server version rather than duplicated',
+);
+assert.deepEqual(
+    mergeUnsaved([], [savedA], isNew),
+    [],
+    'a saved row absent from the server result is dropped',
+);
+assert.deepEqual(
+    mergeUnsaved([savedA], [unsavedA, savedA, unsavedB], isNew),
+    [savedA, unsavedA, unsavedB],
+    'server rows first, then every unsaved local row in its original order',
 );
 
 console.log('assignment.check.mjs OK');
