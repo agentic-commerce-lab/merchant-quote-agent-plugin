@@ -278,7 +278,14 @@
             "unknownCustomer": "This customer",
             "duplicatePinGlobal": "{customer} is already pinned for every sales channel.",
             "duplicatePinChannel": "{customer} is already pinned for this sales channel.",
-            "remove": "Remove"
+            "remove": "Remove",
+            "rulesTitle": "Rules",
+            "rulesIntro": "The highest-priority rule that matches the quote wins, if no customer is pinned. Priority comes from the rule itself.",
+            "columnRule": "Rule",
+            "columnPriority": "Priority",
+            "flowConditionsNote": "Conditions built only for orders or flows are never true for a quote: a rule made only from them will never match, and nothing will report that it didn't.",
+            "addRule": "Add a rule",
+            "noRuleSelected": "Select a rule"
         },
         "disposition": {
             "needsReview": "Needs review",

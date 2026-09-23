@@ -324,6 +324,88 @@
                             />
                         </div>
                         {% endblock %}
+
+                        {# Rung 2. Priority is core's own `rule.priority`, read-only here and
+                           sourced from ruleNames (see loadAssignments()) -- it is what orders
+                           this rung, so the grid sorts by it descending rather than by row
+                           creation order, and shows it so a merchant does not need a trip to
+                           the rule builder to see why one rule won over another. #}
+                        {% block merchant_quote_agent_assignments_rules %}
+                        <div class="mqa-assignment__section">
+                            <div class="mqa-assignment__section-header">
+                                <h3>{{ $tc('merchant-quote-agent.assignment.rulesTitle') }}</h3>
+                                <mt-button v-if="canEdit" size="small" variant="secondary" @click="addRule">
+                                    {{ $tc('merchant-quote-agent.assignment.addRule') }}
+                                </mt-button>
+                            </div>
+
+                            <p class="mqa-assignment__section-intro">{{ $tc('merchant-quote-agent.assignment.rulesIntro') }}</p>
+
+                            <sw-data-grid
+                                v-if="rules.length"
+                                :data-source="rules"
+                                :columns="ruleColumns"
+                                :show-selection="false"
+                                :show-settings="false"
+                                :show-actions="canEdit"
+                                :allow-column-edit="false"
+                                :plain-appearance="true"
+                            >
+                                {# Not filtered to conditions that can actually match a quote's
+                                   CartRuleScope -- that would mean mirroring a core list that
+                                   changes between versions to hide what the note below already
+                                   warns about in a sentence. #}
+                                <template #column-ruleId="{ item }">
+                                    <sw-entity-single-select
+                                        :value="item.ruleId"
+                                        entity="rule"
+                                        size="small"
+                                        show-clearable-button
+                                        :disabled="!canEdit"
+                                        :placeholder="$tc('merchant-quote-agent.assignment.noRuleSelected')"
+                                        @update:value="(value) => { item.ruleId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #column-strategyId="{ item }">
+                                    <merchant-quote-agent-strategy-select
+                                        :value="item.strategyId"
+                                        @update:value="(value) => { item.strategyId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #column-salesChannelId="{ item }">
+                                    <sw-entity-single-select
+                                        :value="item.salesChannelId"
+                                        entity="sales_channel"
+                                        size="small"
+                                        show-clearable-button
+                                        :disabled="!canEdit"
+                                        :placeholder="$tc('merchant-quote-agent.assignment.anyChannel')"
+                                        @update:value="(value) => { item.salesChannelId = value; saveAssignment(item); }"
+                                    />
+                                </template>
+
+                                <template #column-priority="{ item }">
+                                    {{ rulePriorityLabel(item) }}
+                                </template>
+
+                                <template #actions="{ item }">
+                                    <sw-context-menu-item variant="danger" @click="removeAssignment(item)">
+                                        {{ $tc('merchant-quote-agent.assignment.remove') }}
+                                    </sw-context-menu-item>
+                                </template>
+                            </sw-data-grid>
+
+                            <sw-empty-state
+                                v-else
+                                :absolute="false"
+                                :title="$tc('merchant-quote-agent.assignment.rulesTitle')"
+                            />
+
+                            <p class="mqa-assignment__note">{{ $tc('merchant-quote-agent.assignment.flowConditionsNote') }}</p>
+                        </div>
+                        {% endblock %}
                     </mt-card>
                     {% endblock %}
                 </template>

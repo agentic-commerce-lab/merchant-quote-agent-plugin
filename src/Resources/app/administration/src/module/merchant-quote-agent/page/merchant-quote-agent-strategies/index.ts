@@ -60,6 +60,14 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             // existed, so it stays the default.
             activeTab: 'library',
             assignments: [],
+            // ruleId -> { name, priority }, populated by loadAssignments(). The
+            // assignment entity stores ruleId as a plain UUID with no DAL
+            // association, so the rule's own priority (what orders rung 2)
+            // needs a second read; the select bound to ruleId shows the name
+            // itself, by fetching the rule the same way -- see its own
+            // repository.get() -- so this map exists only for what that select
+            // does not surface: the priority column and the sort order below it.
+            ruleNames: {},
             // Its own field rather than reusing `error`: the library tab's
             // load() and this tab's loadAssignments() both run un-awaited from
             // created(), so sharing one field let a failure surface under the
@@ -91,6 +99,11 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             return this.repositoryFactory.create('customer');
         },
 
+        /** Only reached in loadAssignments(), to back-fill ruleNames for rung 2's rows. */
+        ruleRepository() {
+            return this.repositoryFactory.create('rule');
+        },
+
         /** Rung 1 of the ladder. Rules and split arms are Tasks 4-5's own filters over the same array. */
         pins() {
             return this.assignments.filter((row) => row.kind === 'pin');
@@ -101,6 +114,29 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 { property: 'customerId', label: this.$tc('merchant-quote-agent.assignment.columnCustomer') },
                 { property: 'strategyId', label: this.$tc('merchant-quote-agent.assignment.columnStrategy') },
                 { property: 'salesChannelId', label: this.$tc('merchant-quote-agent.assignment.columnSalesChannel') },
+            ];
+        },
+
+        /**
+         * Rung 2 of the ladder, ordered the way the resolver walks it: highest
+         * `rule.priority` first, so the grid reads in evaluation order and a
+         * merchant can reason about two rules that could both match the same
+         * quote. A row whose rule metadata has not loaded yet (freshly added,
+         * not yet picked) sorts last rather than jumping around the list.
+         */
+        rules() {
+            return this.assignments
+                .filter((row) => row.kind === 'rule')
+                .slice()
+                .sort((a, b) => this.rulePriority(b) - this.rulePriority(a));
+        },
+
+        ruleColumns() {
+            return [
+                { property: 'ruleId', label: this.$tc('merchant-quote-agent.assignment.columnRule') },
+                { property: 'strategyId', label: this.$tc('merchant-quote-agent.assignment.columnStrategy') },
+                { property: 'salesChannelId', label: this.$tc('merchant-quote-agent.assignment.columnSalesChannel') },
+                { property: 'priority', label: this.$tc('merchant-quote-agent.assignment.columnPriority') },
             ];
         },
 
@@ -190,6 +226,34 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 const result = await this.assignmentRepository.search(criteria, Shopware.Context.api);
 
                 this.assignments = [...result];
+
+                // rule.name/priority need a second read -- see ruleNames'
+                // own comment in data(). Skipped entirely when there is no
+                // rule row, so a shop running only pins/splits pays nothing.
+                // Left inside this try block on purpose: a failure here must
+                // surface through assignmentError exactly like the search
+                // above, not reject unobserved (Task 3's second fix round).
+                const ruleIds = [...new Set(
+                    this.assignments
+                        .filter((row) => row.kind === 'rule' && row.ruleId)
+                        .map((row) => row.ruleId),
+                )];
+
+                if (ruleIds.length > 0) {
+                    const ruleCriteria = new Shopware.Data.Criteria(1, ruleIds.length);
+                    ruleCriteria.addFilter(Shopware.Data.Criteria.equalsAny('id', ruleIds));
+
+                    const rules = await this.ruleRepository.search(ruleCriteria, Shopware.Context.api);
+                    const ruleNames = {};
+
+                    rules.forEach((rule) => {
+                        ruleNames[rule.id] = { name: rule.name, priority: rule.priority };
+                    });
+
+                    this.ruleNames = ruleNames;
+                } else {
+                    this.ruleNames = {};
+                }
             } catch (error) {
                 this.assignmentError = this.messageFor(error);
             }
@@ -227,6 +291,36 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             row.strategyId = null;
             row.salesChannelId = null;
             this.assignments.push(row);
+        },
+
+        /**
+         * A blank rule row, field for field like addPin() above -- including
+         * `customerId: null`, which isDuplicatePin's `other.kind === 'pin'`
+         * filter relies on staying true for every non-pin row. Left unsaved
+         * until saveAssignment() sees a rule AND a strategy; see isSavable's
+         * `kind === 'rule'` branch, the guard against a dead rule binding.
+         */
+        addRule() {
+            const row = this.assignmentRepository.create(Shopware.Context.api);
+            row.kind = 'rule';
+            row.customerId = null;
+            row.ruleId = null;
+            row.weight = null;
+            row.strategyId = null;
+            row.salesChannelId = null;
+            this.assignments.push(row);
+        },
+
+        /** The rule's `priority`, or -Infinity while its metadata has not loaded -- see ruleNames. */
+        rulePriority(row) {
+            return this.ruleNames[row.ruleId]?.priority ?? Number.NEGATIVE_INFINITY;
+        },
+
+        /** Display form of the above: a dash rather than -Infinity for a row with no known priority yet. */
+        rulePriorityLabel(row) {
+            const priority = this.ruleNames[row.ruleId]?.priority;
+
+            return typeof priority === 'number' ? String(priority) : '—';
         },
 
         /**

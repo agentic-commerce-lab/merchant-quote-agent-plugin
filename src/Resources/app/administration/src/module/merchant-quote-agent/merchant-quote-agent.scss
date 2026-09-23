@@ -625,6 +625,13 @@
     font-size: 13px;
 }
 
+/* Below the rules grid rather than above it -- see flowConditionsNote. */
+.mqa-assignment__note {
+    margin: 12px 0 0;
+    color: var(--color-text-secondary-default);
+    font-size: 13px;
+}
+
 /* The strategy column embeds the full merchant-quote-agent-strategy-select
    component (label, select, badge, prompt preview) rather than a second,
    thinner one -- see the brief that named it. sw-data-grid's row height is a

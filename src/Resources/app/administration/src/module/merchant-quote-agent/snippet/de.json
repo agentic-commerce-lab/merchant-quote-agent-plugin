@@ -278,7 +278,14 @@
             "unknownCustomer": "Dieser Kunde",
             "duplicatePinGlobal": "{customer} ist bereits für alle Verkaufskanäle angeheftet.",
             "duplicatePinChannel": "{customer} ist bereits für diesen Verkaufskanal angeheftet.",
-            "remove": "Entfernen"
+            "remove": "Entfernen",
+            "rulesTitle": "Regeln",
+            "rulesIntro": "Die Regel mit der höchsten Priorität, die auf das Angebot zutrifft, gewinnt, sofern kein Kunde angeheftet ist. Die Priorität stammt aus der Regel selbst.",
+            "columnRule": "Regel",
+            "columnPriority": "Priorität",
+            "flowConditionsNote": "Bedingungen, die nur für Bestellungen oder Flows gelten, treffen auf ein Angebot nie zu: Eine Regel, die nur aus solchen Bedingungen besteht, greift nie — und nichts meldet, dass sie nicht gegriffen hat.",
+            "addRule": "Regel hinzufügen",
+            "noRuleSelected": "Regel auswählen"
         },
         "disposition": {
             "needsReview": "Prüfung nötig",

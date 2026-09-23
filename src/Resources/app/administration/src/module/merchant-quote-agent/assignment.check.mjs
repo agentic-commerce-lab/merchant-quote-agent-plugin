@@ -37,8 +37,12 @@ assert.deepEqual([...ASSIGNMENT_KINDS], php.filter((v) => v !== 'config'),
     'ASSIGNMENT_KINDS is every source except config, which is the absence of a row');
 
 // isSavable: the admin is the ONLY guard against a rule row with no rule id,
-// because PR #185 had to drop rule_id from the table's CHECK constraint.
+// because PR #185 had to drop rule_id from the table's CHECK constraint: such
+// a row is inert -- the resolver skips it -- which is exactly why it must be
+// unsavable rather than silently persisted as a dead binding.
 assert.equal(isSavable({ kind: 'rule', customerId: null, ruleId: null, weight: null, strategyId: 'a', salesChannelId: null }), false);
+assert.equal(isSavable({ kind: 'rule', customerId: null, ruleId: 'r', weight: null, strategyId: null, salesChannelId: null }), false,
+    'a rule row also needs a strategy -- a rule id alone is not enough');
 assert.equal(isSavable({ kind: 'rule', customerId: null, ruleId: 'r', weight: null, strategyId: 'a', salesChannelId: null }), true);
 assert.equal(isSavable({ kind: 'pin', customerId: null, ruleId: null, weight: null, strategyId: 'a', salesChannelId: null }), false);
 assert.equal(isSavable({ kind: 'pin', customerId: 'c', ruleId: null, weight: null, strategyId: 'a', salesChannelId: null }), true);
