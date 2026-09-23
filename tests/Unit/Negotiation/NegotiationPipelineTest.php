@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLifecycle;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
+use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use PHPUnit\Framework\TestCase;
 
@@ -80,12 +83,12 @@ final class NegotiationPipelineTest extends TestCase
         // The mirror write comes first: a quote-wide 40% ask has no line of
         // its own, so AskMirror distributes it across the fixture's one line
         // (100.00 * 0.6 = 60.00) before the gate ever runs (#165).
+        $writes = $harness->gateway->customFieldWrites;
+        self::assertCount(2, $writes);
+        self::assertSame([MirroredAsks::KEY => ['line-1' => 60.0]], $writes[0]);
         self::assertSame(
-            [
-                [MirroredAsks::KEY => ['line-1' => 60.0]],
-                [QuoteEscalator::MARKER_KEY => QuoteEscalationReason::DiscountLimitExceeded->value],
-            ],
-            $harness->gateway->customFieldWrites,
+            QuoteEscalationReason::DiscountLimitExceeded->value,
+            $writes[1][QuoteEscalator::MARKER_KEY] ?? null,
             'The band gate must escalate with the price reason, not a generic one.',
         );
     }
@@ -267,6 +270,45 @@ final class NegotiationPipelineTest extends TestCase
             $context['acknowledged'] ?? null,
             'An escalated quote is left to the human, and the log must say so.',
         );
+    }
+
+    public function testAnEscalatedQuoteAHumanHasAnsweredIsAcknowledged(): void
+    {
+        // The merchant sent an answer after the escalation, so the terms on
+        // the quote are theirs and a receipt for them is true. Silence here
+        // parked the quote in change_requested, where over UCP the buyer can
+        // neither accept nor counter -- quote 1056's dead end again.
+        $harness = PipelineHarness::with(['{}']);
+        $escalated = NegotiationFixture::snapshot(state: 'change_requested', comments: [
+            NegotiationFixture::buyerComment('ok, thanks', '2026-09-23 11:00:00'),
+        ]);
+        $snapshot = new QuoteSnapshot(
+            identity: $escalated->identity,
+            revision: $escalated->revision,
+            totals: $escalated->totals,
+            lifecycle: new QuoteLifecycle(
+                stateTechnicalName: 'change_requested',
+                customFields: [
+                    QuoteEscalator::MARKER_KEY => 'discount_limit_exceeded',
+                    PendingEscalation::ESCALATED_AT_KEY => (new \DateTimeImmutable('2026-09-23 09:00:00'))->format(
+                        'U.u',
+                    ),
+                ],
+                lastAdminTransitionAt: new \DateTimeImmutable('2026-09-23 10:00:00'),
+                lastAdminTransitionTo: 'replied',
+            ),
+            content: $escalated->content,
+        );
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
+        self::assertSame([QuoteTransition::AdminResend], $harness->gateway->transitions);
     }
 
     public function testAReplyPostedByADeadPassStillReachesReplied(): void

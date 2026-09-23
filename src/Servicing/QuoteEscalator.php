@@ -50,9 +50,9 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
  * The comment goes through the gateway, so it carries AgentContext::STATE and
  * cannot re-trigger servicing.
  *
- * Once per quote per reason. Without the marker a misconfigured shop with a
- * talkative buyer collects one comment per buyer comment, which is loud in
- * the wrong sense. The marker joins the two the servicing loop already keeps
+ * Once per reason per open escalation (see PendingEscalation). Without the
+ * marker a misconfigured shop with a talkative buyer collects one comment per
+ * buyer comment, which is loud in the wrong sense. The marker joins the two the servicing loop already keeps
  * on customFields, and QuoteWriter shallow-merges, so it cannot disturb the
  * A2CN act chain.
  */
@@ -98,7 +98,12 @@ final class QuoteEscalator
     ): void {
         $quoteId = $snapshot->identity->quoteId;
 
-        if (($snapshot->lifecycle->customFields[self::MARKER_KEY] ?? null) === $reason->value) {
+        // Once per open escalation: after a human has answered, the same
+        // reason escalating again is news to the buyer.
+        if (
+            ($snapshot->lifecycle->customFields[self::MARKER_KEY] ?? null) === $reason->value
+            && PendingEscalation::awaitsAHuman($snapshot->lifecycle)
+        ) {
             return;
         }
 
@@ -108,12 +113,15 @@ final class QuoteEscalator
             $gateway->addComment($quoteId, self::BUYER_MESSAGE);
         }
 
-        $gateway->updateQuote($quoteId, new QuoteUpdate(customFields: [self::MARKER_KEY => $reason->value]));
+        $gateway->updateQuote($quoteId, new QuoteUpdate(customFields: [
+            self::MARKER_KEY => $reason->value,
+            PendingEscalation::ESCALATED_AT_KEY => (new \DateTimeImmutable())->format('U.u'),
+        ]));
 
         // After the buyer is told (if enabled) and the marker is stamped, never before: the
-        // marker's early return above is what makes this once per quote per
-        // reason, and a notifier that throws must not cost the buyer their
-        // comment. Guarded even though the contract forbids throwing — an
+        // marker's early return above is what makes this once per reason per
+        // open escalation, and a notifier that throws must not cost the buyer
+        // their comment. Guarded even though the contract forbids throwing — an
         // implementation that forgets must not break escalation.
         //
         // The comment/marker order above is deliberate too, and #140 asked it

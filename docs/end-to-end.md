@@ -248,8 +248,9 @@ If there is no ask at all and no unmet structured target price, a pass that read
 a buyer comment ends as `acknowledged`: it posts `ReplyTemplate::acknowledges()`
 — the buyer-facing total and expiry as the quote holds them, no model call, no
 price write — and moves the quote to `replied` (`sent`, or `admin_resend` from
-the renegotiation states). On an escalated quote, or with no comment read, it
-ends as `nothing_to_do` instead — first finishing a stranded
+the renegotiation states). On an escalated quote no merchant has sent an
+answer to since (`PendingEscalation::awaitsAHuman()`), or with no comment read,
+it ends as `nothing_to_do` instead — first finishing a stranded
 `in_review → replied` transition, but only when the agent's own comment is the
 newest one on the quote.
 

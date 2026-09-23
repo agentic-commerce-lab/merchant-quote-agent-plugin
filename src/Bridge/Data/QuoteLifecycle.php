@@ -18,5 +18,10 @@ final readonly class QuoteLifecycle
          * for the decision it feeds, which also weighs the merchant's comments.
          */
         public ?\DateTimeImmutable $lastAdminTransitionAt = null,
+        /**
+         * The state that transition moved the quote into. `replied` is a
+         * human sending an answer; QuoteEscalator::awaitsAHuman() reads it.
+         */
+        public ?string $lastAdminTransitionTo = null,
     ) {}
 }
