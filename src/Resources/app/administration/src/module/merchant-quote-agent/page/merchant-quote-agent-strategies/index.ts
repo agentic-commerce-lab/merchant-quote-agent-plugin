@@ -1,5 +1,13 @@
 import template from './merchant-quote-agent-strategies.html.twig';
-import { isBuiltIn, sortStrategies, builtInSnippetKey } from '../../strategy.ts';
+import {
+    isBuiltIn,
+    sortStrategies,
+    builtInSnippetKey,
+    newStrategySync,
+    versionedIds,
+    VERSIONED_AGGREGATION,
+    type StrategyLike,
+} from '../../strategy.ts';
 
 /**
  * Settings -> Negotiation strategies. The library's CRUD.
@@ -14,11 +22,16 @@ import { isBuiltIn, sortStrategies, builtInSnippetKey } from '../../strategy.ts'
  * than as silent history loss.
  *
  * Deleting is archiving, for the same reason.
+ *
+ * Creating writes the strategy and its version 1 in one sync request, so a
+ * strategy never exists without a prompt to resolve. A row that predates this
+ * still lists here, badged, so it can be given a prompt or archived -- but no
+ * strategy select offers it (selectableStrategies).
  */
 Shopware.Component.register('merchant-quote-agent-strategies', {
     template,
 
-    inject: ['repositoryFactory', 'acl'],
+    inject: ['repositoryFactory', 'syncService', 'acl'],
 
     data() {
         return {
@@ -30,8 +43,11 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             isSaving: false,
             nameModalOpen: false,
             nameDraft: '',
-            // 'create' opens a blank strategy, 'duplicate' copies the selected
-            // built-in's prompt, 'rename' renames the selected custom one.
+            // The first prompt of a created or duplicated strategy.
+            promptDraft: '',
+            versionedIds: new Set<string>(),
+            // 'create' asks for a first prompt, 'duplicate' seeds it from the
+            // selected built-in's, 'rename' renames the selected custom one.
             nameModalIntent: 'create',
             pendingArchive: null,
             error: null,
@@ -108,9 +124,13 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 const criteria = new Shopware.Data.Criteria(1, 100);
                 criteria.addFilter(Shopware.Data.Criteria.equals('archivedAt', null));
 
-                const result = await this.repository.search(criteria, Shopware.Context.api);
+                const [result, versionedIds] = await Promise.all([
+                    this.repository.search(criteria, Shopware.Context.api),
+                    this.versionedStrategyIds(),
+                ]);
 
                 this.strategies = sortStrategies([...result]);
+                this.versionedIds = versionedIds;
             } catch (error) {
                 this.error = this.messageFor(error);
             } finally {
@@ -150,6 +170,20 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             }
         },
 
+        hasVersion(strategy: StrategyLike) {
+            return this.versionedIds.has(strategy.id);
+        },
+
+        /** The ids of every strategy with at least one version row. */
+        async versionedStrategyIds() {
+            const criteria = new Shopware.Data.Criteria(1, 1);
+            criteria.addAggregation(Shopware.Data.Criteria.terms(VERSIONED_AGGREGATION, 'strategyId'));
+
+            const result = await this.versionRepository.search(criteria, Shopware.Context.api);
+
+            return versionedIds(result.aggregations);
+        },
+
         async newestVersion(strategyId) {
             const criteria = new Shopware.Data.Criteria(1, 1);
             criteria.addFilter(Shopware.Data.Criteria.equals('strategyId', strategyId));
@@ -163,6 +197,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
         openNameModal(intent) {
             this.nameModalIntent = intent;
             this.nameDraft = intent === 'rename' ? (this.selected?.name ?? '') : '';
+            this.promptDraft = intent === 'duplicate' ? this.prompt : '';
             this.nameModalOpen = true;
         },
 
@@ -173,7 +208,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
 
         /**
          * Load the built-in's prompt BEFORE offering to name the copy. The
-         * modal's confirm reads `this.prompt`, so opening it alongside an
+         * modal is seeded from `this.prompt`, so opening it alongside an
          * unawaited select() would race and copy whatever was in the editor
          * before -- an empty string on first use.
          */
@@ -182,8 +217,13 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             this.openNameModal('duplicate');
         },
 
+        /** Rename needs a name; create and duplicate also need a first prompt. */
+        nameModalIncomplete() {
+            return this.nameDraft.trim() === '' || (this.nameModalIntent !== 'rename' && this.promptDraft.trim() === '');
+        },
+
         async confirmName() {
-            if (this.nameDraft.trim() === '') {
+            if (this.nameModalIncomplete()) {
                 return;
             }
 
@@ -194,12 +234,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 if (this.nameModalIntent === 'rename') {
                     await this.rename(this.nameDraft.trim());
                 } else {
-                    // 'duplicate' seeds version 1 from whatever is currently
-                    // loaded in the editor; 'create' starts blank.
-                    await this.create(
-                        this.nameDraft.trim(),
-                        this.nameModalIntent === 'duplicate' ? this.prompt : '',
-                    );
+                    await this.create(this.nameDraft.trim(), this.promptDraft);
                 }
 
                 this.nameModalOpen = false;
@@ -210,15 +245,13 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             }
         },
 
-        async create(name, prompt) {
-            const strategy = this.repository.create(Shopware.Context.api);
-            strategy.name = name;
+        async create(name: string, prompt: string) {
+            const strategyId = Shopware.Utils.createId();
 
-            await this.repository.save(strategy, Shopware.Context.api);
-            await this.appendVersion(strategy.id, 1, prompt);
+            await this.syncService.sync(newStrategySync(strategyId, Shopware.Utils.createId(), name, prompt));
             await this.load();
 
-            const created = this.strategies.find((candidate) => candidate.id === strategy.id);
+            const created = this.strategies.find((candidate) => candidate.id === strategyId);
 
             if (created !== undefined) {
                 await this.select(created);

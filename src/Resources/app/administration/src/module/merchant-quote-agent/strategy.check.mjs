@@ -15,7 +15,16 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { BUILT_IN_IDS, builtInSnippetKey, isBuiltIn, sortStrategies } from './strategy.ts';
+import {
+    BUILT_IN_IDS,
+    builtInSnippetKey,
+    isBuiltIn,
+    newStrategySync,
+    selectableStrategies,
+    sortStrategies,
+    VERSIONED_AGGREGATION,
+    versionedIds,
+} from './strategy.ts';
 
 const phpSource = readFileSync(
     new URL('../../../../../../Strategy/BuiltInStrategies.php', import.meta.url),
@@ -62,5 +71,50 @@ assert.deepEqual(
 );
 
 assert.deepEqual(sortStrategies([]), []);
+
+// selectableStrategies drops an archived strategy and a versionless one, keeps
+// a live versioned one, and keeps the order it was given. One deepEqual proves
+// all of it: letting Zebra (archived) or Quiet (no version) through, or
+// reordering the survivors, fails here. Zebra IS versioned, so the archived
+// exclusion is tested on its own rather than masked by the version one.
+const ZEBRA = 'ffff56789abcdef0123456789abcdef0';
+const QUIET = 'dddd56789abcdef0123456789abcdef0';
+const candidates = sortStrategies([
+    { id: FAST_CLOSE, name: 'Fast close' },
+    { id: ZEBRA, name: 'Zebra', archivedAt: '2026-01-01T00:00:00.000Z' },
+    { id: QUIET, name: 'Quiet' },
+    { id: MARGIN_DEFENDER, name: 'Margin defender' },
+]);
+assert.deepEqual(
+    selectableStrategies(candidates, new Set([FAST_CLOSE, MARGIN_DEFENDER, ZEBRA])).map((strategy) => strategy.id),
+    [MARGIN_DEFENDER, FAST_CLOSE],
+);
+assert.deepEqual(selectableStrategies(candidates, new Set()), []);
+
+// versionedIds reads the bucket keys of the named aggregation -- the shape a
+// DAL `terms` aggregation returns -- and reads anything else as no versions,
+// so a response without the aggregation offers nothing rather than all.
+assert.deepEqual(
+    [...versionedIds({ [VERSIONED_AGGREGATION]: { buckets: [{ key: FAST_CLOSE, count: 2 }, { key: ZEBRA, count: 1 }] } })],
+    [FAST_CLOSE, ZEBRA],
+);
+assert.deepEqual([...versionedIds({ other: { buckets: [{ key: FAST_CLOSE }] } })], []);
+assert.deepEqual([...versionedIds(null)], []);
+
+// newStrategySync writes the strategy and its version 1 in ONE payload, the
+// version pointing at the strategy -- two requests are what left a strategy
+// with no version when the second one was refused.
+const sync = newStrategySync(ZEBRA, QUIET, 'Q4 Firm', 'Hold the price.');
+assert.deepEqual(
+    Object.values(sync).map((operation) => [operation.entity, operation.action, operation.payload]),
+    [
+        ['merchant_quote_agent_strategy', 'upsert', [{ id: ZEBRA, name: 'Q4 Firm' }]],
+        [
+            'merchant_quote_agent_strategy_version',
+            'upsert',
+            [{ id: QUIET, strategyId: ZEBRA, version: 1, prompt: 'Hold the price.' }],
+        ],
+    ],
+);
 
 console.log('strategy.ts: all checks passed');
