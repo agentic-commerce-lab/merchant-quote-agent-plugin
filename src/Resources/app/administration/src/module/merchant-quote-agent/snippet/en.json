@@ -275,6 +275,8 @@
             "anyChannel": "Every sales channel",
             "addPin": "Pin a customer",
             "incomplete": "Choose a customer and a strategy before this row can be saved.",
+            "duplicatePinGlobal": "{customer} is already pinned for every sales channel.",
+            "duplicatePinChannel": "{customer} is already pinned for this sales channel.",
             "remove": "Remove"
         },
         "disposition": {

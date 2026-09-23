@@ -57,6 +57,44 @@ export function isSavable(row: AssignmentLike): boolean {
 }
 
 /**
+ * Whether `row` duplicates an already-known pin for the same customer at the
+ * same scope (same `salesChannelId`, treating `null` and `''` as the same
+ * "every channel" scope -- the select can hand back either). Same shape as
+ * the `rule_id` gap `isSavable` closes above: MySQL's unique index treats
+ * NULL as distinct, so it catches a duplicate CHANNEL-scoped pin but not two
+ * GLOBAL pins for the same customer -- `(NULL, customerX)` twice is accepted
+ * by the schema. A duplicate does not break anything; the resolver orders
+ * deterministically and takes the first row. It just means one of the two
+ * pins the merchant wrote silently never applies, with nothing saying which.
+ *
+ * A channel-scoped pin and a global pin for the same customer are NOT
+ * duplicates -- that pair is the whole point of scoping.
+ *
+ * Compared by object identity, not id: every row already carries a real id
+ * from the moment it is created (the repository assigns one before save), so
+ * an id comparison could not tell "this row, being re-saved" apart from a
+ * coincidentally-matching id -- which never happens -- from "the exact same
+ * in-memory row", the actual distinction this function needs. `row` is
+ * always one of the objects `existing` was built from, never a fresh copy of
+ * it, so identity is both simpler and correct.
+ */
+export function isDuplicatePin(row: AssignmentLike, existing: AssignmentLike[]): boolean {
+    if (row.kind !== 'pin') {
+        return false;
+    }
+
+    const scope = (salesChannelId: string | null): string => salesChannelId ?? '';
+
+    return existing.some(
+        (other) =>
+            other !== row &&
+            other.kind === 'pin' &&
+            other.customerId === row.customerId &&
+            scope(other.salesChannelId) === scope(row.salesChannelId),
+    );
+}
+
+/**
  * Each arm's share of the arms' OWN sum, so a merchant typing 1 and 4 sees 20%
  * and 80% instead of a validation error demanding they total 100. Rounded to
  * one decimal for display only -- the resolver buckets on the raw integers, so

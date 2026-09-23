@@ -275,6 +275,8 @@
             "anyChannel": "Alle Verkaufskanäle",
             "addPin": "Kunden anheften",
             "incomplete": "Wählen Sie einen Kunden und eine Strategie aus, damit diese Zeile gespeichert werden kann.",
+            "duplicatePinGlobal": "{customer} ist bereits für alle Verkaufskanäle angeheftet.",
+            "duplicatePinChannel": "{customer} ist bereits für diesen Verkaufskanal angeheftet.",
             "remove": "Entfernen"
         },
         "disposition": {

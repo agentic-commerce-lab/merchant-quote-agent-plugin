@@ -8,7 +8,7 @@ import {
     VERSIONED_AGGREGATION,
     type StrategyLike,
 } from '../../strategy.ts';
-import { isSavable } from '../../assignment.ts';
+import { isDuplicatePin, isSavable } from '../../assignment.ts';
 
 /**
  * Settings -> Negotiation strategies. The library's CRUD.
@@ -84,6 +84,11 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
 
         assignmentRepository() {
             return this.repositoryFactory.create('merchant_quote_agent_strategy_assignment');
+        },
+
+        /** Only reached to name the customer in a duplicate-pin refusal -- see saveAssignment(). */
+        customerRepository() {
+            return this.repositoryFactory.create('customer');
         },
 
         /** Rung 1 of the ladder. Rules and split arms are Tasks 4-5's own filters over the same array. */
@@ -227,13 +232,34 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
         /**
          * Shared by all three grids -- Tasks 4 and 5 call this by name, so it
          * stays generic rather than pin-specific. isSavable is the ONLY
-         * validity check: it already treats '' the same as null, which is
+         * completeness check: it already treats '' the same as null, which is
          * what a cleared sw-entity-single-select can hand back, so a second,
          * looser check here would only create a place for the two to disagree.
+         *
+         * The duplicate-pin check is separate from completeness on purpose --
+         * a complete row can still be a duplicate -- and is gated on
+         * `kind === 'pin'` rather than folded into isSavable, because it is
+         * the admin's only defence against a gap the database itself cannot
+         * close (see isDuplicatePin's docblock): MySQL accepts two global
+         * pins for the same customer, since NULL is distinct from NULL in a
+         * unique index. The customer's name is looked up here, not carried by
+         * `row`, because naming which customer is a merchant-facing detail
+         * this pure check has no business knowing.
          */
         async saveAssignment(row) {
             if (!isSavable(row)) {
                 this.assignmentError = this.$tc('merchant-quote-agent.assignment.incomplete');
+
+                return;
+            }
+
+            if (row.kind === 'pin' && isDuplicatePin(row, this.pins)) {
+                const customer = await this.customerRepository.get(row.customerId, Shopware.Context.api);
+                const key = row.salesChannelId
+                    ? 'merchant-quote-agent.assignment.duplicatePinChannel'
+                    : 'merchant-quote-agent.assignment.duplicatePinGlobal';
+
+                this.assignmentError = this.$t(key, { customer: this.customerLabel(customer) });
 
                 return;
             }
