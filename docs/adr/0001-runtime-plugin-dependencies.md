@@ -158,10 +158,16 @@ and no container, so it cannot ask. The gated route imports therefore moved into
 the booted one, the same container whose services those routes resolve against,
 so the router and the service graph cannot disagree.
 
-`CommercialAvailability` still uses `class_exists` and is left alone here: its
-service gate and its route gate read the same probe, so they agree with each
-other. It carries the same vendored-plugin blind spot, worth fixing the next
-time SwagCommercial's gate is touched.
+`CommercialAvailability` followed on 2026-09-23 (#152), after the blind spot got
+a measured consequence: deactivating a composer-installed SwagCommercial left
+`services.php` registering plain `service('quote.repository')` references
+against a bundle that was gone, and the shop did not boot. `isRegistered()`
+looks for `QuoteManagement` in `kernel.bundles` — SwagCommercial registers each
+feature as its own bundle, and that one owns the quote entities — AND keeps the
+class check, which still answers whether this SwagCommercial carries the
+`@internal` classes the bridge is written against. Both lanes (7.13 and 6.7.12)
+list the bundle under that key. Its route gate in `AgentFacingRoutes` reads the
+same probe from the booted container.
 
 **Switched off without it:** the UCP quote endpoints, the quote and mandate
 capability descriptors, identity linking (both controllers and the OAuth-table

@@ -60,11 +60,11 @@ final class CommercialSurfaceConfigurationTest extends TestCase
      * gate, so what is true of them — and what matters here — is that they need
      * no SwagCommercial.
      *
-     * Does not itself assert `CommercialAvailability::isAvailableByClass()` is
-     * false: `CommercialAvailabilityTest::testReportsUnavailableWhenSwagCommercialIsAbsent`
-     * already covers that claim, and GateMatrix has aliased the commercial
-     * classes into existence process-wide by the time this method runs, so a
-     * second probe here would only read back its own fixture.
+     * Does not itself assert `CommercialAvailability::isRegistered()` is
+     * false: `CommercialAvailabilityTest` already covers the probe, and
+     * GateMatrix has aliased the commercial classes into existence
+     * process-wide by the time this method runs, so a second probe here would
+     * only read back its own fixture.
      */
     public function testTheEvidenceLayerBuildsWithoutSwagCommercial(): void
     {

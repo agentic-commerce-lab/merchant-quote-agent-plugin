@@ -7,8 +7,9 @@ namespace MerchantQuoteAgentPlugin\Bridge\Commercial;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
- * The two-stage gate from ADR 0001: class existence decides whether the
- * gateway is built, the license toggle decides whether it can serve.
+ * The two-stage gate from ADR 0001: the quote bundle (with its classes)
+ * decides whether the gateway is built, the license toggle decides whether it
+ * can serve.
  */
 final class CommercialAvailability
 {
@@ -105,8 +106,11 @@ final class CommercialAvailability
      * Checked on the two `@internal` classes plus License rather than on all
      * four: those are the ones whose absence changes what this bridge can do,
      * and they come from the same plugin as the other two.
+     *
+     * Half of isRegistered(), and isLicensed()'s own guard; never a gate on
+     * its own — see isRegistered() on why.
      */
-    public static function isAvailableByClass(): bool
+    private static function isAvailableByClass(): bool
     {
         return (
             class_exists(self::QUOTE_MANIPULATION)

@@ -619,7 +619,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(QuoteWriter::class)->args([service('quote.repository')]);
     $services->set(QuoteStateTransitioner::class);
 
-    // Company history (#100). Registered here, inside the isAvailableByClass()
+    // Company history (#100). Registered here, inside the isRegistered()
     // guard, because `quote.repository` is SwagCommercial's — and the whole
     // negotiation stack below is guarded the same way, so OfferProposer can
     // take the factory as a plain non-nullable dependency.
@@ -696,8 +696,9 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // Buyer-side counterpart of the merchant gateway. Every commercial route is
     // an ignore-on-invalid reference, so the container compiles on a shop
     // without SwagCommercial and the capability reports itself unsupported.
-    // (No `isAvailableByClass()` guard here: the early return above already
-    // means SwagCommercial's classes provably exist past this point.)
+    // (No `isRegistered()` guard here: the early return above already means
+    // SwagCommercial's quote bundle and classes are provably present past
+    // this point.)
     $services->set(CommercialQuoteSnapshotMapper::class)->args([service(CommercialCapabilities::class)]);
 
     // "May this buyer request be served at all, and on whose behalf" —

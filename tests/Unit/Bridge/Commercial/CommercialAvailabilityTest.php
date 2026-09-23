@@ -10,13 +10,6 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 final class CommercialAvailabilityTest extends TestCase
 {
-    public function testReportsUnavailableWhenSwagCommercialIsAbsent(): void
-    {
-        // This suite runs without SwagCommercial on purpose: the plugin must
-        // install and run on a shop that does not have it.
-        self::assertFalse(CommercialAvailability::isAvailableByClass());
-    }
-
     public function testIsLicensedNeverThrowsWhenSwagCommercialIsAbsent(): void
     {
         self::assertFalse(CommercialAvailability::isLicensed());

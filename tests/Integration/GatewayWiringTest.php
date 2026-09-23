@@ -70,14 +70,14 @@ final class GatewayWiringTest extends IntegrationTestCase
     }
 
     /**
-     * Class existence is stage one of ADR 0001's gate and decides whether
-     * `services.php` registers the bridge block at all, so a shop where the
-     * license toggle is on but the classes are missing must not exist. Cheap,
-     * and it pins the direction of the implication.
+     * Stage one of ADR 0001's gate — the quote bundle registered, with its
+     * classes — decides whether `services.php` registers the bridge block at
+     * all, so a shop where the license toggle is on but the gate is shut must
+     * not exist. Cheap, and it pins the direction of the implication.
      */
-    public function testALicensedShopIsAlsoAClassAvailableShop(): void
+    public function testALicensedShopIsAlsoARegisteredShop(): void
     {
-        self::assertTrue(CommercialAvailability::isAvailableByClass());
+        self::assertTrue(CommercialAvailability::isRegistered(static::getContainer()));
         self::assertTrue(
             CommercialAvailability::isLicensed(),
             'This shop does not hold '

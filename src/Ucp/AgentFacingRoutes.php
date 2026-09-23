@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Ucp;
 
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
 
 /**
@@ -17,13 +18,17 @@ use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
  * matching controllers behind, and keeping them in one small file makes the two
  * lists readable side by side. Nothing else belongs in here.
  *
- * Static: it holds nothing, and the caller is a Bundle hook that has no
- * container to resolve a collaborator from.
+ * Static: it holds nothing. The caller hands over its booted container for
+ * the commercial gate to read — the same `kernel.bundles` services.php read
+ * when it built that container — not to resolve collaborators from.
  */
 final class AgentFacingRoutes
 {
-    /** @param string $pluginPath the plugin root, i.e. Bundle::getPath() */
-    public static function import(RoutingConfigurator $routes, string $pluginPath): void
+    /**
+     * @param string $pluginPath the plugin root, i.e. Bundle::getPath()
+     * @param ?ContainerInterface $container the booted container, i.e. Bundle::$container
+     */
+    public static function import(RoutingConfigurator $routes, string $pluginPath, ?ContainerInterface $container): void
     {
         // Where an agent registers an authorization request before sending a
         // human to the shop, and the consent page that request points at. Both
@@ -45,7 +50,7 @@ final class AgentFacingRoutes
         // nothing.
         $routes->import($pluginPath . '/Protocol/Http/A2cnNotFoundController.php', 'attribute');
 
-        if (!CommercialAvailability::isAvailableByClass()) {
+        if (!CommercialAvailability::isRegistered($container)) {
             return;
         }
 
