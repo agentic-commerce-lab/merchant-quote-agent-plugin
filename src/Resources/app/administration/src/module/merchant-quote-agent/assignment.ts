@@ -207,7 +207,24 @@ export function spreadLabel(sources: (string | null)[]): { source: string; count
  * before", duplicating it. A saved row absent from the server result (deleted
  * by someone else since the last load) is dropped, not resurrected: the
  * point of reloading at all is to see deletions other admins made.
+ *
+ * `isNew` alone cannot tell "never saved" from "saved a moment ago": Shopware's
+ * own repository (`core/data/repository.data.ts`, `sendChanges()`) POSTs a new
+ * entity but never clears its `_isNew` flag afterwards, and nothing else under
+ * `core/data` does either -- verified against the installed core, not assumed.
+ * So the very row this page just saved still reports `isNew() === true` on the
+ * next call here, and without the id check below it would be kept ALONGSIDE
+ * the fresh server copy of the same row: a permanent duplicate that re-merges
+ * on every future reload, a phantom second pin that blocks `isDuplicatePin`
+ * from letting the merchant re-save their own pin, and a row whose delete
+ * takes removeAssignment()'s "unsaved, splice locally" branch forever, so no
+ * DELETE is ever sent for it. The id check is what actually distinguishes the
+ * two cases: a row the server has never seen keeps an id absent from
+ * `serverRows`; a row that was just saved has an id the server now echoes
+ * back. Do not simplify this back to a bare `isNew` filter.
  */
-export function mergeUnsaved<T>(serverRows: T[], localRows: T[], isNew: (row: T) => boolean): T[] {
-    return [...serverRows, ...localRows.filter(isNew)];
+export function mergeUnsaved<T extends { id: string }>(serverRows: T[], localRows: T[], isNew: (row: T) => boolean): T[] {
+    const serverIds = new Set(serverRows.map((row) => row.id));
+
+    return [...serverRows, ...localRows.filter((row) => isNew(row) && !serverIds.has(row.id))];
 }

@@ -104,6 +104,15 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             // wrong tab, or get overwritten before anyone saw it, because the
             // Assignments tab had no banner of its own to show it in.
             assignmentError: null,
+            // ids from the LAST loadAssignments() search result, used only by
+            // removeAssignment() to tell "never saved" apart from "saved a
+            // moment ago" -- see mergeUnsaved's own docblock in assignment.ts.
+            // isNew() cannot tell them apart on its own: Shopware never clears
+            // it after a save, so a just-saved row still reports isNew() ===
+            // true. Without this set, removeAssignment() would take the
+            // "unsaved, splice locally" branch for that row and never send its
+            // DELETE.
+            assignmentServerIds: new Set(),
         };
     },
 
@@ -297,6 +306,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
 
                 const result = await this.assignmentRepository.search(criteria, Shopware.Context.api);
 
+                this.assignmentServerIds = new Set(result.map((row) => row.id));
                 this.assignments = mergeUnsaved([...result], this.assignments, (row) => row.isNew());
                 this.assignmentTotal = result.total ?? this.assignments.length;
 
@@ -482,10 +492,19 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
         /**
          * Shared by all three grids, same reason as saveAssignment(). A row
          * added by addPin()/addRule()/addSplitArm() and removed again before
-         * ever being saved has no server-side counterpart to delete --
-         * isNew() (not an `_isNew` property: this build's Entity marks itself
-         * via EntityFactory#create -> markAsNew(), read back through the
-         * isNew() method) is what tells the two cases apart.
+         * ever being saved has no server-side counterpart to delete.
+         *
+         * Deciding that from `row.isNew()` alone is exactly the bug
+         * mergeUnsaved's docblock (assignment.ts) closes for loadAssignments:
+         * Shopware never clears `_isNew` after a save, so a row this page just
+         * saved still reports `isNew() === true`. Checking `isNew()` here
+         * would send that just-saved row down the "unsaved, splice locally"
+         * branch below -- no DELETE would ever be sent for it, and the splice
+         * would only hide it from this page until the next reload brought it
+         * straight back. `assignmentServerIds` (populated by the last
+         * loadAssignments()) is what actually distinguishes the two cases: a
+         * row the server has never seen has no entry there; a saved row does,
+         * regardless of what `isNew()` still claims.
          *
          * An unsaved row is spliced out of `this.assignments` directly
          * rather than removed by reloading: now that loadAssignments()
@@ -493,7 +512,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          * would resurrect the very row this just "removed".
          */
         async removeAssignment(row) {
-            if (row.id !== undefined && !row.isNew()) {
+            if (row.id !== undefined && this.assignmentServerIds.has(row.id)) {
                 try {
                     await this.assignmentRepository.delete(row.id, Shopware.Context.api);
                 } catch (error) {

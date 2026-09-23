@@ -199,4 +199,20 @@ assert.deepEqual(
     'server rows first, then every unsaved local row in its original order',
 );
 
+// Real Shopware never flips isNew() back to false after a save (verified in
+// core/data/repository.data.ts's sendChanges() -- nothing under core/data
+// clears `_isNew`), unlike the `isNew` fake above, which quietly models the
+// predicate flipping. A row that was JUST saved keeps reporting isNew() ===
+// true forever, so the fake's own id-prefix trick ('u' vs 's') cannot stand in
+// for this case -- it has to say isNew() === true while the id is a real,
+// already-server-known one.
+const justSaved = { id: 'just-saved', v: 1 };
+const alwaysNew = () => true;
+
+assert.deepEqual(
+    mergeUnsaved([justSaved], [justSaved], alwaysNew),
+    [justSaved],
+    'a row whose isNew() still reports true but whose id is already in serverRows must appear exactly once, as the server copy -- not duplicated forever',
+);
+
 console.log('assignment.check.mjs OK');
