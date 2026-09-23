@@ -402,9 +402,13 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // EventSubscriberInterface, so no explicit tag.
     $services->set(StrategyWriteGuard::class);
 
-    // The repository is created by the DAL from the #[Entity] attribute; it
-    // is not autowirable by type, so name it.
-    $services->set(DecisionRecordWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
+    // The repositories are created by the DAL from the #[Entity] attributes;
+    // they are not autowirable by type, so name them.
+    $services->set(DecisionRecordWriter::class)->args([
+        service('merchant_quote_agent_decision.repository'),
+        service('merchant_quote_agent_trace.repository'),
+        service('logger'),
+    ]);
     $services->alias(DecisionRecordWriterInterface::class, DecisionRecordWriter::class);
     $services->set(DecisionRecorder::class);
 

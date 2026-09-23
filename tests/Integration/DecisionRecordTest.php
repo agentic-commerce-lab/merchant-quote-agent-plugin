@@ -137,7 +137,11 @@ final class DecisionRecordTest extends IntegrationTestCase
         $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
         self::assertInstanceOf(EntityRepository::class, $repository);
 
-        $writer = new DecisionRecordWriter($repository);
+        $writer = new DecisionRecordWriter(
+            $repository,
+            static::getContainer()->get('merchant_quote_agent_trace.repository'),
+            new \Psr\Log\NullLogger(),
+        );
 
         $draft = new DecisionDraft();
         $draft->quoteId = Uuid::randomHex();
@@ -199,7 +203,7 @@ final class DecisionRecordTest extends IntegrationTestCase
         // compares DateTimeImmutable and arrays (the JSON columns) by value,
         // which is exactly the round trip being proven for those fields.
         $payload = get_object_vars($draft);
-        unset($payload['startedAt']);
+        unset($payload['startedAt'], $payload['trace']);
 
         foreach ($payload as $field => $value) {
             self::assertEquals($value, $written->$field, sprintf('Field "%s" did not round-trip.', $field));

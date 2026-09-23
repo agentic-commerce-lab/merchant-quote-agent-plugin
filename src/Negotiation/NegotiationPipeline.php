@@ -115,6 +115,9 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         PassContext $context,
     ): void {
         try {
+            // Read before finish(): finish() closes the pass and the id with it.
+            $decisionId = $this->recorder->decisionId();
+
             try {
                 $this->recorder->finish($pass, $error);
             } catch (\Throwable $e) {
@@ -128,6 +131,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             // issue: #19 reads these, and #22 needs the hashes to attribute
             // an outcome to the prompt versions that produced it.
             $this->logger->info('A quote negotiation pass finished.', [
+                'decisionId' => $decisionId,
                 'outcome' => $pass?->outcome->value,
                 'trigger' => $context->reason->value,
                 'attempt' => $context->attempt,

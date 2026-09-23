@@ -128,6 +128,30 @@ final class DecisionRecorder
     }
 
     /**
+     * One event for the open pass's trace (see TraceKind). For the
+     * collaborators that are not the recorder's to map -- ModelPlatform and
+     * ReplyComposer build their own event. Dropped when no pass is open, like
+     * every other record* call.
+     *
+     * @param array<string, mixed> $meta
+     * @param array<array-key, mixed>|null $content
+     */
+    public function trace(TraceKind $kind, array $meta, ?array $content = null): void
+    {
+        if ($this->draft === null) {
+            return;
+        }
+
+        TraceDraft::appendTo($this->draft, $kind, $meta, $content);
+    }
+
+    /** The id the open pass's row will have, or null when no pass is open. */
+    public function decisionId(): ?string
+    {
+        return $this->draft?->id;
+    }
+
+    /**
      * The buyer's comment this pass is about to read, recorded BEFORE the
      * extract call so a model that fails, or one that finds nothing, still
      * leaves the question behind.
