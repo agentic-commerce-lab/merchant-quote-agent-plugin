@@ -11,6 +11,23 @@ import {
 import { isDuplicatePin, isSavable } from '../../assignment.ts';
 
 /**
+ * The snippet naming what an incomplete row of that kind is missing, keyed by
+ * `row.kind`. One shared `incomplete` message used to cover all three grids
+ * and told every merchant to "choose a customer", which is simply wrong on
+ * the rule and split grids -- worst of all on the rule grid, where isSavable
+ * is the only thing left blocking a dead rule_id-less binding (the CHECK
+ * constraint cannot, see assignment.ts), so the guard fired correctly and
+ * then explained itself incorrectly on the one path where that matters most.
+ * `split` is added now, before Task 5's grid exists, so saveAssignment --
+ * shared by all three -- does not need reopening for it later.
+ */
+const INCOMPLETE_SNIPPET_KEYS = {
+    pin: 'merchant-quote-agent.assignment.incompletePin',
+    rule: 'merchant-quote-agent.assignment.incompleteRule',
+    split: 'merchant-quote-agent.assignment.incompleteSplit',
+};
+
+/**
  * Settings -> Negotiation strategies. The library's CRUD.
  *
  * It lives on its own page rather than inside the plugin configuration card
@@ -342,7 +359,7 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          */
         async saveAssignment(row) {
             if (!isSavable(row)) {
-                this.assignmentError = this.$tc('merchant-quote-agent.assignment.incomplete');
+                this.assignmentError = this.$tc(INCOMPLETE_SNIPPET_KEYS[row.kind]);
 
                 return;
             }
