@@ -606,6 +606,11 @@
 /* Three ladder-order sections (pins, rules, split) stack in one card -- Tasks
    4-5 add the other two -- so each needs space from the one above it, not
    only from the intro paragraph the first one follows. */
+/* The card intro and the first section's title otherwise touch. */
+.mqa-assignment__intro {
+    margin-bottom: 24px;
+}
+
 .mqa-assignment__section + .mqa-assignment__section {
     margin-top: 32px;
 }
@@ -630,4 +635,12 @@
     margin: 12px 0 0;
     color: var(--color-text-secondary-default);
     font-size: 13px;
+}
+
+/* A grid cell is a fixed 64px, overflow hidden, and core only zeroes the
+   legacy `.sw-field` margin inside it. Meteor fields (mt-select, mt-number-
+   field) keep the 32px they reserve for an error line, which lifted them to
+   the top of the row and clipped them. Nothing renders below a field here. */
+.mqa-assignment__section .sw-data-grid__cell-content .mt-field {
+    margin-bottom: 0;
 }
