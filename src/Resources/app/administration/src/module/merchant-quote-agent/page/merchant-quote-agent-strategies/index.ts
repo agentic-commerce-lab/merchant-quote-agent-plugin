@@ -468,10 +468,34 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          * unique index. The customer's name is looked up here, not carried by
          * `row`, because naming which customer is a merchant-facing detail
          * this pure check has no business knowing.
+         *
+         * Every refusal or failed write below restores a row that was already
+         * on the server by reloading BEFORE showing the message -- see the
+         * `assignmentServerIds.has(row.id)` branches. Without that, an edit
+         * the server rejects (or never receives) stayed in `assignments`
+         * showing the merchant's rejected value forever, which opened a real
+         * hole: change saved global pin P1's customer to one that duplicates
+         * P2, get refused, and the grid now shows that customer twice and the
+         * original nowhere -- so isDuplicatePin, checking against that
+         * corrupted in-memory list, no longer sees the original and lets a
+         * FRESH pin for it through, leaving two real global pins in the
+         * database. A row that was never saved keeps its local edit instead:
+         * there is nothing on the server yet to restore, and reloading would
+         * only discard what the merchant just typed -- ordinary, incomplete
+         * data entry is not an error and is skipped silently for such a row
+         * (see the isSavable branch below); only a previously saved row that
+         * an edit has made incomplete gets the banner.
+         *
+         * The error is always set AFTER the reload, never before: reloading
+         * calls loadAssignments(), which clears assignmentError as its first
+         * line, so setting the message first would erase it immediately.
          */
         async saveAssignment(row) {
             if (!isSavable(row)) {
-                this.assignmentError = this.$tc(INCOMPLETE_SNIPPET_KEYS[row.kind]);
+                if (this.assignmentServerIds.has(row.id)) {
+                    await this.loadAssignments();
+                    this.assignmentError = this.$tc(INCOMPLETE_SNIPPET_KEYS[row.kind]);
+                }
 
                 return;
             }
@@ -493,8 +517,13 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                 const key = row.salesChannelId
                     ? 'merchant-quote-agent.assignment.duplicatePinChannel'
                     : 'merchant-quote-agent.assignment.duplicatePinGlobal';
+                const message = this.$t(key, { customer: customerName });
 
-                this.assignmentError = this.$t(key, { customer: customerName });
+                if (this.assignmentServerIds.has(row.id)) {
+                    await this.loadAssignments();
+                }
+
+                this.assignmentError = message;
 
                 return;
             }
@@ -504,11 +533,13 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             try {
                 await this.assignmentRepository.save(row, Shopware.Context.api);
             } catch (error) {
-                // No reload on failure: this page's own state is still the
-                // merchant's unsaved edit, and reloading would discard it in
-                // favour of whatever the server still has for this row (see
-                // load()'s own try/catch for the same pattern).
-                this.assignmentError = this.messageFor(error);
+                const message = this.messageFor(error);
+
+                if (this.assignmentServerIds.has(row.id)) {
+                    await this.loadAssignments();
+                }
+
+                this.assignmentError = message;
 
                 return;
             }
