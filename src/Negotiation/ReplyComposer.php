@@ -74,6 +74,32 @@ final readonly class ReplyComposer
     }
 
     /**
+     * The reply to a comment that held no ask (see PassedOver): the quote as
+     * it stands, posted as written. No model call, so there is no rewording
+     * for RewordingGuard to check and no reply prompt hash to record.
+     *
+     * No already-answered guard, unlike reply(): PassedOver only gets here
+     * with an interpreted ask, and AskInterpreter only interprets a buyer
+     * comment newer than every agent one. A retry after this comment landed
+     * reads the agent as newest and never arrives.
+     *
+     * Same order as reply(): comment, record, then the transition that makes
+     * the standing offer acceptable again.
+     */
+    public function acknowledge(QuoteGatewayInterface $gateway, QuoteSnapshot $snapshot): void
+    {
+        $text = ReplyTemplate::acknowledges(
+            $snapshot->totals->buyerFacingTotal(),
+            $snapshot->identity->currencyIso,
+            $snapshot->lifecycle->expiresAt,
+        );
+
+        $gateway->addComment($snapshot->identity->quoteId, $text);
+        $this->recorder->recordReply($text, null);
+        $this->send($gateway, $snapshot->identity->quoteId, $snapshot->lifecycle->stateTechnicalName);
+    }
+
+    /**
      * The buyer's own ask above the template, or the template alone when
      * there is none.
      *
