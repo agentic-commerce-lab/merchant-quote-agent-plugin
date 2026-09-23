@@ -186,3 +186,10 @@ false for it: the agent did write something.
 - `StructuredAskGateTest`'s pinned limit (a comment that merely points at an
   already-granted price) now gets the ack instead of silence — which is the fix
   the #180 memory predicted.
+- An escalated quote stays silent even after a human merchant has answered it:
+  the escalation marker is released only by a pass that answered
+  (`answeredTheBuyer()`), so when the buyer then writes "ok, thanks" the quote
+  is parked in `change_requested` exactly as quote 1056 was. The marker records
+  the reason, not when it was set, so this branch cannot tell "a human is still
+  deciding" from "a human already answered". Tracked as a follow-up: release or
+  re-read the marker once a merchant's reply is newer than the escalation.

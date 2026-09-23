@@ -58,8 +58,9 @@ final class RecordedBuyerAskTest extends TestCase
         // Nothing counted how OFTEN the agent decides a comment holds no ask,
         // and that count is the only early warning there is: an over-escalating
         // agent is loud, a silent one is not, so an extract prompt that
-        // regresses (#22 changes the prompt by design) shows up as quotes
-        // quietly going unanswered and nothing else.
+        // regresses (#22 changes the prompt by design) shows up only as more
+        // comments acknowledged instead of answered, and this log line is what
+        // counts them.
         $harness = PipelineHarness::with(['{}']);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('Nice, thanks!', '2026-09-18 09:58:40'),
@@ -73,10 +74,13 @@ final class RecordedBuyerAskTest extends TestCase
         );
 
         $context = $harness->logger->contextOf('Nothing to answer on this quote');
-        self::assertNotNull($context, 'The silent path must announce itself; nothing else does.');
+        self::assertNotNull(
+            $context,
+            'A read comment with no ask must be logged; this line is what counts how often the agent finds no ask.',
+        );
         self::assertTrue(
             $context['commentRead'] ?? null,
-            'A human wrote something and the agent said nothing. That is the case worth alerting on, '
+            'A human wrote something and the agent found no ask in it. That is the case worth alerting on, '
             . 'and it has to be distinguishable from an ordinary duplicate trigger.',
         );
         self::assertTrue(

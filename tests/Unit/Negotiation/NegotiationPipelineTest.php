@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * @mago-expect lint:too-many-methods
- * Thirteen cases, one per branch of NegotiationPipeline::negotiate() and the
+ * Eighteen cases, one per branch of NegotiationPipeline::negotiate() and the
  * outcomes it can return -- the count grows with the pipeline's own branches,
  * not with unrelated concerns that belong in a separate class. Same shape as
  * the existing suppression on QuoteBaselineTest (fifteen cases plus six
@@ -261,6 +261,12 @@ final class NegotiationPipelineTest extends TestCase
         self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
         self::assertSame([], $harness->gateway->comments);
         self::assertSame([], $harness->gateway->transitions);
+        $context = $harness->logger->contextOf('Nothing to answer on this quote');
+        self::assertTrue($context['commentRead'] ?? null);
+        self::assertFalse(
+            $context['acknowledged'] ?? null,
+            'An escalated quote is left to the human, and the log must say so.',
+        );
     }
 
     public function testAReplyPostedByADeadPassStillReachesReplied(): void

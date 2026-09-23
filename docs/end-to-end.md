@@ -446,8 +446,8 @@ revision it read, the band and the outcome, the discount granted against the cap
 in force, totals before and after, the model, host, token counts and latency,
 the three prompt hashes, the interpreted asks, the raw proposal, the violations,
 the writes, the error chain, and `replyToBuyer` — **the agent's message to the
-buyer**. The buyer's own words are never stored; their ask survives only in
-structured form.
+buyer**. The newest buyer comment a pass read is stored in `buyer_ask`; logs
+never carry it.
 
 Four columns are not written by the pass: `terminalState` / `terminalAt`, stamped
 by `TerminalOutcomeSubscriber` when the quote reaches a state that ends a

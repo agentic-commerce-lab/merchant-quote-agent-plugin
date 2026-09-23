@@ -391,7 +391,7 @@ which of the two you just produced on every run, so a redirected export is never
 ambiguous about what is in the file.
 
 **Reading one kind of decision.** `--outcome` narrows the file to a single kind,
-and the run says so on screen. The one worth looking at now and then is
+and the run says so on screen. The two worth looking at now and then are
 
 ```
 bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 \
@@ -406,11 +406,10 @@ bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 \
 The first gives you every pass that read a customer's message and found nothing
 in it to act on. The agent answered each one by restating the quote and sending
 it back for acceptance, so the customer is never left waiting — but if one of
-those messages was a real question, this is where you find it.
+those messages was a real question, this is where you find it, and the agent's
+reading of comments is what needs adjusting, which is worth telling us about.
 `--outcome=nothing_to_do` lists the passes that stayed silent: no new message,
-or a quote already escalated to your team. If any of them read like a real
-question, the agent's reading of comments is what needs adjusting, and that is
-worth telling us about.
+or a quote already escalated to your team.
 
 **One oddity you will see and should not report as a bug.** The `modelHost`
 field sometimes reads `unparsable-host`. That means the AI base URL in your

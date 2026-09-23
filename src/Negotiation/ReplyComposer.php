@@ -255,7 +255,7 @@ final readonly class ReplyComposer
         try {
             $gateway->transition($quoteId, $action);
         } catch (IllegalTransitionException $e) {
-            $this->logger->error('The quote could not be moved to replied; the buyer has a discount they cannot accept.', [
+            $this->logger->error('The quote could not be moved to replied; the buyer cannot accept the offer standing on it.', [
                 'quoteId' => $quoteId,
                 'state' => $state,
                 'action' => $action->value,
