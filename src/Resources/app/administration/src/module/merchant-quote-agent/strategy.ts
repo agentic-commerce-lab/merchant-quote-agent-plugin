@@ -11,6 +11,7 @@
 export interface StrategyLike {
     id: string;
     name: string;
+    archivedAt?: string | null;
 }
 
 export const BUILT_IN_IDS = [
@@ -43,4 +44,56 @@ export function sortStrategies<T extends StrategyLike>(strategies: T[]): T[] {
     };
 
     return [...strategies].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
+/**
+ * The strategies a select may offer. Two kinds are left out, because assigning
+ * either makes StrategyResolver throw UnknownStrategy and the servicing
+ * preflight escalate every quote that assignment matches:
+ *
+ * - an archived strategy;
+ * - one with no version yet, which has no prompt to resolve. `versionedIds`
+ *   comes from the version table, since the strategy row itself cannot say.
+ *
+ * Order is left untouched: sortStrategies runs before or after, either order.
+ */
+export function selectableStrategies<T extends StrategyLike>(strategies: T[], versionedIds: ReadonlySet<string>): T[] {
+    return strategies.filter((strategy) => !strategy.archivedAt && versionedIds.has(strategy.id));
+}
+
+/** The name of the `terms` aggregation over the version table's `strategyId`. */
+export const VERSIONED_AGGREGATION = 'versioned';
+
+/**
+ * The strategy ids in that aggregation: every strategy with at least one
+ * version. A missing aggregation reads as none, so a picker offers nothing
+ * rather than something it cannot vouch for.
+ */
+export function versionedIds(aggregations: unknown): Set<string> {
+    const buckets = (aggregations as Record<string, { buckets?: { key: string }[] }> | null | undefined)?.[
+        VERSIONED_AGGREGATION
+    ]?.buckets;
+
+    return new Set((buckets ?? []).map((bucket) => bucket.key));
+}
+
+/**
+ * One `_action/sync` payload writing a new strategy and its version 1. The
+ * sync API extracts and validates every operation before it inserts anything,
+ * then inserts them in one transaction -- so a refused prompt leaves no
+ * strategy row behind, where two separate saves left one with no version.
+ */
+export function newStrategySync(strategyId: string, versionId: string, name: string, prompt: string): object {
+    return {
+        'merchant-quote-agent-strategy': {
+            entity: 'merchant_quote_agent_strategy',
+            action: 'upsert',
+            payload: [{ id: strategyId, name }],
+        },
+        'merchant-quote-agent-strategy-version': {
+            entity: 'merchant_quote_agent_strategy_version',
+            action: 'upsert',
+            payload: [{ id: versionId, strategyId, version: 1, prompt }],
+        },
+    };
 }

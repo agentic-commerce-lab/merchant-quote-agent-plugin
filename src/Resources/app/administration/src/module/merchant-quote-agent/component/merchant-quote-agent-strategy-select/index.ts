@@ -1,5 +1,12 @@
 import template from './merchant-quote-agent-strategy-select.html.twig';
-import { builtInSnippetKey, isBuiltIn, sortStrategies } from '../../strategy.ts';
+import {
+    builtInSnippetKey,
+    isBuiltIn,
+    selectableStrategies,
+    sortStrategies,
+    versionedIds,
+    VERSIONED_AGGREGATION,
+} from '../../strategy.ts';
 
 const { Criteria } = Shopware.Data;
 
@@ -116,14 +123,21 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
 
             try {
                 const criteria = new Criteria(1, 100);
-                // Archived strategies are not offered. One already selected
-                // still resolves server-side -- and refuses loudly, which is
-                // the intended behaviour, not something to paper over here.
+                // Archived and versionless strategies are not offered. One
+                // already selected still resolves server-side -- and refuses
+                // loudly, which is the intended behaviour, not something to
+                // paper over here.
                 criteria.addFilter(Criteria.equals('archivedAt', null));
 
-                const result = await this.repository.search(criteria, Shopware.Context.api);
+                const versioned = new Criteria(1, 1);
+                versioned.addAggregation(Criteria.terms(VERSIONED_AGGREGATION, 'strategyId'));
 
-                this.strategies = sortStrategies([...result]);
+                const [result, versions] = await Promise.all([
+                    this.repository.search(criteria, Shopware.Context.api),
+                    this.versionRepository.search(versioned, Shopware.Context.api),
+                ]);
+
+                this.strategies = selectableStrategies(sortStrategies([...result]), versionedIds(versions.aggregations));
                 await this.loadPrompt();
             } catch (error) {
                 this.error = error?.response?.data?.errors?.[0]?.detail ?? this.$tc('merchant-quote-agent.strategy.loadFailed');

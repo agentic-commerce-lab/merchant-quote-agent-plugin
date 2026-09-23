@@ -57,6 +57,12 @@
                         <mt-badge :variant="rowIsBuiltIn(item) ? 'info' : 'neutral'">
                             {{ rowIsBuiltIn(item) ? $tc('merchant-quote-agent.strategy.builtInBadge') : $tc('merchant-quote-agent.strategy.custom') }}
                         </mt-badge>
+                        <mt-badge
+                            v-if="!hasVersion(item)"
+                            variant="critical"
+                        >
+                            {{ $tc('merchant-quote-agent.strategy.noVersion') }}
+                        </mt-badge>
                     </template>
 
                     <template #column-description="{ item }">
@@ -100,6 +106,13 @@
                there is nothing here it could ever persist. #}
             {% block merchant_quote_agent_strategies_editor_card %}
             <sw-card v-if="selected" :title="displayName(selected)">
+                <mt-banner
+                    v-if="!hasVersion(selected)"
+                    variant="attention"
+                >
+                    {{ $tc('merchant-quote-agent.strategy.noVersionHint') }}
+                </mt-banner>
+
                 <p v-if="currentVersion !== null" class="mqa-strategy__version">
                     {{ $t('merchant-quote-agent.strategy.currentVersion', { version: currentVersion }) }}
                 </p>
@@ -116,7 +129,7 @@
                 <mt-button
                     v-if="!selectedIsBuiltIn"
                     variant="primary"
-                    :disabled="!canEdit || isSaving"
+                    :disabled="!canEdit || isSaving || prompt.trim() === ''"
                     @click="save"
                 >
                     {{ $tc('merchant-quote-agent.strategy.saveNewVersion') }}
@@ -125,7 +138,9 @@
             {% endblock %}
 
             {# Create, duplicate and rename all resolve to one name, taken once
-               and confirmed the same way -- see confirmName(). #}
+               and confirmed the same way -- see confirmName(). Create and
+               duplicate also take the first prompt here: the strategy and its
+               version 1 are written together, and the DAL refuses an empty one. #}
             {% block merchant_quote_agent_strategies_name_modal %}
             <sw-modal
                 v-if="nameModalOpen"
@@ -140,6 +155,13 @@
                     @update:model-value="(value) => { nameDraft = value; }"
                 />
 
+                <mt-textarea
+                    v-if="nameModalIntent !== 'rename'"
+                    :label="$tc('merchant-quote-agent.strategy.firstPromptLabel')"
+                    :model-value="promptDraft"
+                    @update:model-value="(value) => { promptDraft = value; }"
+                />
+
                 <template #modal-footer>
                     <mt-button size="small" variant="secondary" @click="nameModalOpen = false">
                         {{ $tc('global.default.cancel') }}
@@ -147,7 +169,7 @@
                     <mt-button
                         size="small"
                         variant="primary"
-                        :disabled="!canEdit || nameDraft.trim() === '' || isSaving"
+                        :disabled="!canEdit || nameModalIncomplete() || isSaving"
                         @click="confirmName"
                     >
                         {{ nameModalLabel }}
