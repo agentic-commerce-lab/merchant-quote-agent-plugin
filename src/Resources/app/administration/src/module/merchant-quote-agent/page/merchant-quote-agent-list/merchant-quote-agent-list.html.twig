@@ -214,6 +214,16 @@
                             <span v-if="item.mixedQuotes > 0" class="mqa-cell__aside">
                                 {{ $t('merchant-quote-agent.strategyComparison.mixedFootnote', { count: item.mixedQuotes }) }}
                             </span>
+                            {# The assignment spread: which rung of pin / rule / split / config
+                               chose this strategy, and how often. This is the only place a
+                               merchant can see the rule rung skipping itself silently and
+                               falling through to the next one. Empty when every pass predates
+                               the column. #}
+                            <span v-if="item.assignment.length" class="mqa-cell__aside">
+                                {{ $t('merchant-quote-agent.strategyComparison.assignmentSpread', {
+                                    spread: item.assignment.map((entry) => `${assignmentSourceLabel(entry.source)}: ${entry.count}`).join(', '),
+                                }) }}
+                            </span>
                         </div>
                     </template>
 

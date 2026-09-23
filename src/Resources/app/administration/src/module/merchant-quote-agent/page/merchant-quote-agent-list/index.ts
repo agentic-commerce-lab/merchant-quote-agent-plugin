@@ -339,6 +339,24 @@ Shopware.Component.register('merchant-quote-agent-list', {
         },
 
         /**
+         * Which rung of the assignment ladder — pin, rule, split, config —
+         * chose a strategy, translated rather than shown as the raw enum
+         * value the row's `assignment` spread carries.
+         */
+        assignmentSourceLabel(source) {
+            const keys = {
+                pin: 'sourcePin',
+                rule: 'sourceRule',
+                split: 'sourceSplit',
+                config: 'sourceConfig',
+            };
+
+            const key = keys[source];
+
+            return key ? this.$tc(`merchant-quote-agent.strategyComparison.${key}`) : source;
+        },
+
+        /**
          * A version id resolved to the strategy it belongs to: its strategy id, the
          * strategy's display name, and the version's own number — via the version's
          * strategyId.
