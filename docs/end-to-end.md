@@ -58,15 +58,21 @@ enabled-but-unbanded channel escalates everything.
 Neither plugin is a Composer dependency; both are detected at runtime. That is
 ADR 0001, and it is why a shop with neither installs this plugin happily.
 
-**The two probes are different on purpose.** SwagCommercial is gated on
-`class_exists()`. Agentic Commerce is gated on whether its `UcpSdkBundle` is in
-`kernel.bundles` (`Ucp\UcpAvailability::isRegistered()`), because
-`class_exists()` is wrong for it: both plugins normally arrive via `composer
-require` into `vendor/`, so Composer's autoloader keeps the namespace loadable
-after a deactivation. A class-existence gate therefore went on registering
-services against an SDK bundle that was no longer there, and the deactivation
-itself died in `DecoratorServicePass`. The bundle list is derived from what the
-container is being built from, so it has no such lag.
+**Both probes read `kernel.bundles`, for the same reason.** SwagCommercial is
+gated on whether `QuoteManagement` — the bundle that owns the quote entities,
+since SwagCommercial registers each feature as its own bundle — is in
+`kernel.bundles` (`Bridge\Commercial\CommercialAvailability::isRegistered()`).
+Agentic Commerce is gated on whether its `UcpSdkBundle` is in `kernel.bundles`
+(`Ucp\UcpAvailability::isRegistered()`). Neither is gated on `class_exists()`
+alone, because that is wrong for both: both plugins normally arrive via
+`composer require` into `vendor/`, so Composer's autoloader keeps the
+namespace loadable after a deactivation. A class-existence gate therefore went
+on registering services against a bundle that was no longer there, and the
+deactivation itself died in `DecoratorServicePass`. The bundle list is derived
+from what the container is being built from, so it has no such lag.
+`CommercialAvailability` keeps a class check as its second stage, against the
+`@internal` classes this bridge is written to — a listed bundle without them
+is a SwagCommercial this bridge was not written for.
 
 One consequence worth knowing: `Resources/config/routes.php` receives a
 `RoutingConfigurator` and no container, so it cannot ask. The gated route

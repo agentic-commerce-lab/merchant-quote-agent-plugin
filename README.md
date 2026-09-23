@@ -48,10 +48,13 @@ person, what it costs, and what reaches your AI provider.
   layer. Everything else runs without it.
 
 Neither plugin is a Composer dependency; both are detected at runtime, so this
-one installs and runs on a shop that has neither. The probes differ, and
-deliberately: SwagCommercial by class existence, Agentic Commerce by whether
-its `UcpSdkBundle` is in `kernel.bundles` — a class stays loadable after a
-`composer require`d plugin is deactivated, a registered bundle does not. See
+one installs and runs on a shop that has neither. Both probes read
+`kernel.bundles` — SwagCommercial for `QuoteManagement` (the bundle that owns
+the quote entities; SwagCommercial registers each feature as its own bundle),
+Agentic Commerce for `UcpSdkBundle` — because a class stays loadable after a
+`composer require`d plugin is deactivated, a registered bundle does not. The
+SwagCommercial gate also keeps a class check on the side, against the
+`@internal` classes this bridge is written to. See
 [ADR 0001](docs/adr/0001-runtime-plugin-dependencies.md) and its 2026-09-10
 amendment.
 

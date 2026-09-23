@@ -16,9 +16,12 @@ final class CommercialAvailabilityTest extends TestCase
     }
 
     /**
-     * The gate reads the bundle list, like UcpAvailability's, and keys on the
-     * quote bundle rather than the SwagCommercial umbrella: the umbrella alone
-     * says nothing about whether `quote.repository` exists.
+     * This suite runs without SwagCommercial's classes, so every one of these
+     * shapes must answer false regardless of the bundle logic: no container,
+     * no `kernel.bundles` parameter, and the SwagCommercial umbrella listed
+     * without the quote bundle. That the gate actually keys on the quote
+     * bundle rather than the umbrella is pinned by GateMatrix's fifth shop
+     * (`vendoredButInactive`), not here.
      */
     public function testRegistrationNeedsTheQuoteBundle(): void
     {
