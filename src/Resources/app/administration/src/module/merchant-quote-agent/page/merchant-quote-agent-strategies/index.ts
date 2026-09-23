@@ -8,7 +8,7 @@ import {
     VERSIONED_AGGREGATION,
     type StrategyLike,
 } from '../../strategy.ts';
-import { groupedSplitShares, isDuplicatePin, isSavable, mergeUnsaved } from '../../assignment.ts';
+import { groupedSplitShares, isDuplicatePin, isDuplicateRule, isSavable, mergeUnsaved } from '../../assignment.ts';
 
 /**
  * Same ceiling and the same reason as PASS_LIMIT/QUOTE_LIMIT in the list
@@ -459,15 +459,17 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          * what a cleared sw-entity-single-select can hand back, so a second,
          * looser check here would only create a place for the two to disagree.
          *
-         * The duplicate-pin check is separate from completeness on purpose --
-         * a complete row can still be a duplicate -- and is gated on
-         * `kind === 'pin'` rather than folded into isSavable, because it is
+         * The duplicate-pin and duplicate-rule checks are separate from
+         * completeness on purpose -- a complete row can still be a duplicate.
+         * isDuplicatePin is gated on `kind === 'pin'` and isDuplicateRule on
+         * `kind === 'rule'` rather than folded into isSavable, because each is
          * the admin's only defence against a gap the database itself cannot
-         * close (see isDuplicatePin's docblock): MySQL accepts two global
-         * pins for the same customer, since NULL is distinct from NULL in a
-         * unique index. The customer's name is looked up here, not carried by
-         * `row`, because naming which customer is a merchant-facing detail
-         * this pure check has no business knowing.
+         * close (see their own docblocks in assignment.ts): MySQL accepts two
+         * global pins for the same customer, since NULL is distinct from NULL
+         * in a unique index, and there is no unique index on rule_id at all.
+         * The customer's/rule's name is looked up here, not carried by `row`,
+         * because naming which one is a merchant-facing detail these pure
+         * checks have no business knowing.
          *
          * Every refusal or failed write below restores a row that was already
          * on the server by reloading BEFORE showing the message -- see the
@@ -518,6 +520,27 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
                     ? 'merchant-quote-agent.assignment.duplicatePinChannel'
                     : 'merchant-quote-agent.assignment.duplicatePinGlobal';
                 const message = this.$t(key, { customer: customerName });
+
+                if (this.assignmentServerIds.has(row.id)) {
+                    await this.loadAssignments();
+                }
+
+                this.assignmentError = message;
+
+                return;
+            }
+
+            if (row.kind === 'rule' && isDuplicateRule(row, this.rules)) {
+                // ruleNames is already populated by loadAssignments() for
+                // every rule row this page has seen -- unlike the customer
+                // lookup above, no extra request is needed here, except the
+                // rare case of two brand-new rows picking the same rule
+                // before either has ever been saved, hence the fallback.
+                const ruleName = this.ruleNames[row.ruleId]?.name ?? this.$tc('merchant-quote-agent.assignment.unknownRule');
+                const key = row.salesChannelId
+                    ? 'merchant-quote-agent.assignment.duplicateRuleChannel'
+                    : 'merchant-quote-agent.assignment.duplicateRuleGlobal';
+                const message = this.$t(key, { rule: ruleName });
 
                 if (this.assignmentServerIds.has(row.id)) {
                     await this.loadAssignments();

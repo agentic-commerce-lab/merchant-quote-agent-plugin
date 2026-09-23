@@ -15,7 +15,7 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ASSIGNMENT_KINDS, ASSIGNMENT_SOURCES, ASSIGNMENT_SOURCE_SNIPPET_KEYS, groupedSplitShares, isDuplicatePin, isSavable, mergeUnsaved, splitShares, spreadLabel } from './assignment.ts';
+import { ASSIGNMENT_KINDS, ASSIGNMENT_SOURCES, ASSIGNMENT_SOURCE_SNIPPET_KEYS, groupedSplitShares, isDuplicatePin, isDuplicateRule, isSavable, mergeUnsaved, splitShares, spreadLabel } from './assignment.ts';
 
 /**
  * Extracts the PHP enum's case values, in declaration order, straight from
@@ -167,6 +167,30 @@ assert.equal(
     isDuplicatePin(globalPin, [{ ...globalPin, kind: 'rule', ruleId: 'r' }]),
     false,
     'a rule row that happens to carry the same customer and scope is not a pin, so it cannot collide with one',
+);
+
+// isDuplicateRule: the admin-side guard for the gap the table cannot close at
+// all -- no unique index on rule_id -- mirroring isDuplicatePin, except a
+// cross-scope pair (global + channel) is now valid, since the resolver makes
+// the channel one win rather than being ambiguous with the global one.
+const globalRule = { kind: 'rule', customerId: null, ruleId: 'r1', weight: null, strategyId: 's1', salesChannelId: null };
+const channelRule = { kind: 'rule', customerId: null, ruleId: 'r1', weight: null, strategyId: 's1', salesChannelId: 'ch1' };
+
+assert.equal(isDuplicateRule(globalRule, [globalRule]), false, 'a row is not its own duplicate');
+assert.equal(isDuplicateRule({ ...globalRule }, [globalRule]), true, 'the same rule bound twice at the same (global) scope');
+assert.equal(isDuplicateRule({ ...globalRule, salesChannelId: '' }, [globalRule]), true, "'' and null are the same scope");
+assert.equal(isDuplicateRule(channelRule, [globalRule]), false, 'a channel binding alongside a global one is now the intended override, not a duplicate');
+assert.equal(isDuplicateRule({ ...channelRule }, [channelRule]), true, 'the same rule bound twice on the same channel');
+assert.equal(isDuplicateRule({ ...globalRule, ruleId: 'r2' }, [globalRule]), false, 'a different rule');
+assert.equal(
+    isDuplicateRule({ ...globalRule, kind: 'pin', customerId: 'c' }, [globalRule]),
+    false,
+    'a pin row sharing the id (customerId happens to equal ruleId) cannot collide with a rule row',
+);
+assert.equal(
+    isDuplicateRule(globalRule, [{ ...globalRule, kind: 'pin', customerId: 'r1' }]),
+    false,
+    'a pin cannot be a duplicate rule binding either way round',
 );
 
 // mergeUnsaved: what loadAssignments() must do instead of

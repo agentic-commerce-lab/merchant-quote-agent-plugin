@@ -112,6 +112,34 @@ export function isDuplicatePin(row: AssignmentLike, existing: AssignmentLike[]):
 }
 
 /**
+ * Whether `row` duplicates an already-known rule binding at the same scope --
+ * same shape as isDuplicatePin above, for the other half of the gap the table
+ * cannot close: there is no unique index on `rule_id` at all, so two rows can
+ * bind the SAME rule at the SAME scope, and which one the resolver honours is
+ * merely deterministic, not meaningful. Unlike isDuplicatePin, cross-scope
+ * duplicates are never flagged, because a channel binding is now the intended
+ * override for a global one (see StrategyAssignmentResolver's channel-first
+ * walk) -- refusing that pair would refuse the normal way to scope a rule.
+ *
+ * Compared by object identity, not id, for the same reason isDuplicatePin is.
+ */
+export function isDuplicateRule(row: AssignmentLike, existing: AssignmentLike[]): boolean {
+    if (row.kind !== 'rule') {
+        return false;
+    }
+
+    const scope = (salesChannelId: string | null): string => salesChannelId ?? '';
+
+    return existing.some(
+        (other) =>
+            other !== row &&
+            other.kind === 'rule' &&
+            other.ruleId === row.ruleId &&
+            scope(other.salesChannelId) === scope(row.salesChannelId),
+    );
+}
+
+/**
  * Each arm's share of the arms' OWN sum, so a merchant typing 1 and 4 sees 20%
  * and 80% instead of a validation error demanding they total 100. Rounded to
  * one decimal for display only -- the resolver buckets on the raw integers, so
