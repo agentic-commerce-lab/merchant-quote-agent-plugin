@@ -4,7 +4,7 @@ Date: 2026-09-23
 
 ## Status
 
-Proposed. 2026-09-23.
+Implemented. 2026-09-23.
 
 ## Context
 
@@ -150,7 +150,7 @@ The four supports from #180 stay:
 
 `decision.ts` gets `acknowledged` in the outcome variant map (`neutral`), the
 disposition map, and a pass note; `en.json`/`de.json` get a label ("Acknowledged"
-/ "Bestätigt"). `decision.check.mjs` asserts each, and that
+/ "Angebot bekräftigt"). `decision.check.mjs` asserts each, and that
 `answeredTheBuyer('acknowledged')` is false. The detail page's `isNoop` stays
 false for it: the agent did write something.
 
