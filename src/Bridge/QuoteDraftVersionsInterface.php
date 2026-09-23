@@ -18,9 +18,17 @@ interface QuoteDraftVersionsInterface
     /** @throws DraftVersionUnavailable */
     public function gateway(string $versionId): QuoteGatewayInterface;
 
-    /** Replays the version onto the live quote; the version is gone afterwards. */
+    /**
+     * Replays the version onto the live quote; the version is gone afterwards.
+     *
+     * @throws NotADraftVersion
+     */
     public function merge(string $versionId): void;
 
-    /** Discards the version. A version that is already gone is not an error. */
+    /**
+     * Discards the version. A version that is already gone is not an error.
+     *
+     * @throws NotADraftVersion
+     */
     public function delete(string $quoteId, string $versionId): void;
 }

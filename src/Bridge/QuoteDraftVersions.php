@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Bridge;
 
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
  * Create, merge and delete mirror SwagCommercial's
@@ -25,7 +27,7 @@ final readonly class QuoteDraftVersions implements QuoteDraftVersionsInterface
     public function __construct(
         private EntityRepository $quotes,
         private EntityRepository $versions,
-        private QuoteGatewayFactory $gateways,
+        private ContextBoundGateways $gateways,
     ) {}
 
     #[\Override]
@@ -47,13 +49,35 @@ final readonly class QuoteDraftVersions implements QuoteDraftVersionsInterface
     #[\Override]
     public function merge(string $versionId): void
     {
-        $this->quotes->merge($versionId, AgentContext::create());
+        $this->quotes->merge(self::draft($versionId), AgentContext::create());
     }
 
     #[\Override]
     public function delete(string $quoteId, string $versionId): void
     {
-        $this->quotes->delete([['id' => $quoteId]], AgentContext::forVersion($versionId));
-        $this->versions->delete([['id' => $versionId]], Context::createDefaultContext());
+        $draft = self::draft($versionId);
+        $this->quotes->delete([['id' => $quoteId]], AgentContext::forVersion($draft));
+        $this->versions->delete([['id' => $draft]], Context::createDefaultContext());
+    }
+
+    /**
+     * Mirrors StorefrontQuoteDraftVersionManager::assertDraftVersionId(). A
+     * delete in the live version's context deletes the live quote, and a merge
+     * of the snapshot lane replays SwagCommercial's "last sent" copy over it.
+     * Our ids only ever come from create(), but they are stored and read back.
+     *
+     * @throws NotADraftVersion
+     */
+    private static function draft(string $versionId): string
+    {
+        if (
+            !Uuid::isValid($versionId)
+            || $versionId === Defaults::LIVE_VERSION
+            || $versionId === QuoteVersionResolver::SNAPSHOT_VERSION_ID
+        ) {
+            throw NotADraftVersion::forId($versionId);
+        }
+
+        return $versionId;
     }
 }
