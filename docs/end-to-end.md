@@ -244,9 +244,14 @@ from the response DTOs. It extracts **only what the buyer explicitly asked**:
 Earlier `[merchant]` comments in the thread are the agent's own previous
 replies, used as context and never as buyer asks.
 
-If there is no ask at all and no unmet structured target price, the pass ends as
-`nothing_to_do` — first finishing a stranded `in_review → replied` transition,
-but only when the agent's own comment is the newest one on the quote.
+If there is no ask at all and no unmet structured target price, a pass that read
+a buyer comment ends as `acknowledged`: it posts `ReplyTemplate::acknowledges()`
+— the buyer-facing total and expiry as the quote holds them, no model call, no
+price write — and moves the quote to `replied` (`sent`, or `admin_resend` from
+the renegotiation states). On an escalated quote, or with no comment read, it
+ends as `nothing_to_do` instead — first finishing a stranded
+`in_review → replied` transition, but only when the agent's own comment is the
+newest one on the quote.
 
 ### 4.2 The gate — what the agent refuses to answer itself
 
@@ -441,8 +446,8 @@ revision it read, the band and the outcome, the discount granted against the cap
 in force, totals before and after, the model, host, token counts and latency,
 the three prompt hashes, the interpreted asks, the raw proposal, the violations,
 the writes, the error chain, and `replyToBuyer` — **the agent's message to the
-buyer**. The buyer's own words are never stored; their ask survives only in
-structured form.
+buyer**. The newest buyer comment a pass read is stored in `buyer_ask`; logs
+never carry it.
 
 Four columns are not written by the pass: `terminalState` / `terminalAt`, stamped
 by `TerminalOutcomeSubscriber` when the quote reaches a state that ends a

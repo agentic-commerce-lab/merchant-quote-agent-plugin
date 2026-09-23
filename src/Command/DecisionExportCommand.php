@@ -66,7 +66,7 @@ final class DecisionExportCommand extends Command
             'outcome',
             null,
             InputOption::VALUE_REQUIRED,
-            'Only records with this outcome (e.g. nothing_to_do, escalated, offered, countered, clarified).'
+            'Only records with this outcome (e.g. acknowledged, nothing_to_do, escalated, offered, countered, clarified).'
             . ' An unknown value exports nothing.',
         );
     }

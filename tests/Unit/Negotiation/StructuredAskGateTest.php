@@ -45,7 +45,7 @@ final class StructuredAskGateTest extends TestCase
         self::assertSame(2, $harness->spy->calls, 'A structured ask needs no extraction call.');
     }
 
-    public function testACommentPointingAtPricesAlreadyGrantedIsAnsweredWithSilence(): void
+    public function testACommentPointingAtPricesAlreadyGrantedIsAcknowledged(): void
     {
         // The one empty extraction the extract prompt asks for BY NAME: "a
         // comment that merely POINTS at [a requested price] ... send
@@ -54,15 +54,13 @@ final class StructuredAskGateTest extends TestCase
         // read the line directly, which ClarificationGateTest pins.
         //
         // Once the target has been granted, the line reads 98 against a quoted
-        // 98, so isUnmet() is false and the same comment lands in #177's gate:
-        // the buyer asked something and gets nothing back. Deliberate rather
-        // than overlooked — there is no concession left to make, and answering
-        // it would mean either a reply with no offer in it or an escalation
-        // for a quote nobody needs to look at.
+        // 98, so isUnmet() is false and the same comment lands in #177's gate.
+        // There is no concession left to make, and an escalation would hand a
+        // human a quote nobody needs to look at.
         //
-        // ponytail: the buyer's question goes unacknowledged. The fix is a
-        // confirming reply with no price movement in it, which is a new
-        // ReplyTemplate shape and a new outcome, not a change to this gate.
+        // The known limit #180 pinned here is now answered: a comment that
+        // merely points at an already-granted price gets the acknowledgement
+        // that restates it, not silence.
         $harness = PipelineHarness::with(['{}']);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('can you do these prices?', '2026-08-28 09:00:00'),
@@ -75,10 +73,10 @@ final class StructuredAskGateTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
         self::assertSame(1, $harness->spy->calls, 'The extract call ran; nothing after it did.');
         // The record is what makes this reviewable at all: the row says which
-        // comment went unanswered, which is the whole point of #177's
+        // comment was acknowledged, which is the whole point of #177's
         // buyer_ask column.
         self::assertSame('can you do these prices?', $harness->writer->drafts[0]->buyerAsk);
     }

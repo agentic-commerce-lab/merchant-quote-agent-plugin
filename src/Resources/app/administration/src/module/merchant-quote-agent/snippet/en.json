@@ -11,7 +11,8 @@
             "clarified": "Question asked",
             "escalated": "Needs review",
             "nothing_to_do": "No action needed",
-            "handed_over": "Left to you"
+            "handed_over": "Left to you",
+            "acknowledged": "Acknowledged"
         },
         "escalation": {
             "discount_limit_exceeded": "Discount above the cap",
@@ -343,8 +344,9 @@
         },
         "note": {
             "attemptRetried": "An earlier attempt on this quote crashed before it finished ({count} so far). This pass started over.",
-            "nothingToDo": "There was nothing to answer: no new customer request the agent could read, and no open price target on any line. The quote was left untouched.",
+            "nothingToDo": "There was nothing for the agent to answer: either no new customer message it could read and no open price target on any line, or the quote is already with your team after an escalation. The quote was left untouched.",
             "handedOver": "Someone from your team had already answered this quote more recently than the customer wrote, so the agent left it alone. It will pick the conversation up again if the customer replies.",
+            "acknowledged": "The customer's message held no request the agent could act on, so it replied by restating the quote as it stands and sent it back for acceptance. Nothing on the quote changed.",
             "notAuthorized": "The agent proposed terms your policies do not allow, so nothing was authorised and the quote was left untouched.",
             "notVerified": "The quote was changed, but re-reading it afterwards did not match what had been authorised.",
             "needsAttention": "This pass reported success but did not finish cleanly. Check the quote before relying on it."

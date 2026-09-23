@@ -115,9 +115,11 @@ final readonly class DecisionExportStream
         ]));
 
         // One outcome at a time, because the question this answers is about
-        // one: #177's gate answers a comment it reads as empty with silence,
-        // and settling whether that is right means reading the
-        // `nothing_to_do` rows and their buyer comments — which is this
+        // one: a comment the agent reads as empty is `acknowledged` — the
+        // quote restated and sent back to `replied` — while a pass with no
+        // comment read, or on an escalated quote, is a silent `nothing_to_do`.
+        // Settling whether a comment was passed over rightly means reading
+        // both outcomes' rows and their buyer comments — which is this
         // export, filtered, and was a row-by-row hunt through every outcome
         // before. Unvalidated on purpose: an unknown value returns nothing,
         // which is a truthful answer, and a list of outcomes here would be a

@@ -8,14 +8,17 @@ use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use PHPUnit\Framework\TestCase;
 
 /**
- * What a pass leaves behind when it answers a buyer with silence.
+ * What a pass leaves behind when it finds no ask in a buyer comment.
  *
- * #177 ends a pass whose extraction is empty in every field as `NothingToDo`,
+ * #177 stops a pass whose extraction is empty in every field before the band,
  * and `ServiceQuoteHandler` stamps the servicing fingerprint whatever the
- * outcome — so a question a model mis-reads as empty is answered with silence,
- * once. That trade-off was accepted on the condition that those rows can be
- * reviewed, and until this column existed the row held the ask only in
- * `interpreted_asks`, which is exactly null on them.
+ * outcome. A read comment is now acknowledged -- the quote restated, no offer,
+ * no escalation -- so a question a model mis-reads as empty gets a polite
+ * restatement instead of an answer, once. A silent `nothing_to_do` is left for
+ * a pass that read no comment, or one on an escalated quote. That trade-off
+ * holds on the condition that those rows can be reviewed, and until this
+ * column existed the row held the ask only in `interpreted_asks`, which is
+ * exactly null on them.
  *
  * Two pieces of evidence, for two different readers: the record explains one
  * quote to someone already looking at it, and the log line is what makes the
@@ -37,12 +40,11 @@ final class RecordedBuyerAskTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
         self::assertSame(
             'Nice, thanks!',
             $harness->writer->drafts[0]->buyerAsk,
-            'A nothing_to_do row that does not say which comment it passed over cannot be reviewed, '
-            . 'and reviewing them is what makes answering with silence acceptable.',
+            'A pass that found no ask must still say which comment it read, or the acknowledged rows cannot be reviewed.',
         );
         self::assertNull(
             $harness->writer->drafts[0]->interpretedAsks['price']['additionalDiscountPercent'] ?? null,
@@ -50,14 +52,15 @@ final class RecordedBuyerAskTest extends TestCase
         );
     }
 
-    public function testAPassThatAnsweredACommentWithSilenceSaysSoInTheLog(): void
+    public function testAPassThatFoundNoAskSaysSoInTheLog(): void
     {
         // The audit row explains one quote to someone already looking at it.
         // Nothing counted how OFTEN the agent decides a comment holds no ask,
         // and that count is the only early warning there is: an over-escalating
         // agent is loud, a silent one is not, so an extract prompt that
-        // regresses (#22 changes the prompt by design) shows up as quotes
-        // quietly going unanswered and nothing else.
+        // regresses (#22 changes the prompt by design) shows up only as more
+        // comments acknowledged instead of answered, and this log line is what
+        // counts them.
         $harness = PipelineHarness::with(['{}']);
         $snapshot = NegotiationFixture::snapshot(comments: [
             NegotiationFixture::buyerComment('Nice, thanks!', '2026-09-18 09:58:40'),
@@ -71,11 +74,19 @@ final class RecordedBuyerAskTest extends TestCase
         );
 
         $context = $harness->logger->contextOf('Nothing to answer on this quote');
-        self::assertNotNull($context, 'The silent path must announce itself; nothing else does.');
+        self::assertNotNull(
+            $context,
+            'A read comment with no ask must be logged; this line is what counts how often the agent finds no ask.',
+        );
         self::assertTrue(
             $context['commentRead'] ?? null,
-            'A human wrote something and the agent said nothing. That is the case worth alerting on, '
+            'A human wrote something and the agent found no ask in it. That is the case worth alerting on, '
             . 'and it has to be distinguishable from an ordinary duplicate trigger.',
+        );
+        self::assertTrue(
+            $context['acknowledged'] ?? null,
+            'The count that matters is still countable once the comment is answered: '
+            . 'acknowledged separates a read comment the agent restated the quote for from a silent pass.',
         );
         self::assertArrayNotHasKey(
             'comment',
@@ -103,6 +114,7 @@ final class RecordedBuyerAskTest extends TestCase
         );
 
         self::assertFalse($harness->logger->contextOf('Nothing to answer on this quote')['commentRead'] ?? null);
+        self::assertFalse($harness->logger->contextOf('Nothing to answer on this quote')['acknowledged'] ?? null);
     }
 
     public function testAModelFailureStillCarriesTheQuestionItFailedOn(): void

@@ -26,10 +26,12 @@ use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
  * nothing happening at all.
  *
  * Not answeredTheBuyer() either, which covers only Offered and Countered.
- * Clarified put an agent-written question in front of the buyer. Escalated is
- * included even on a sales channel where the buyer notice is switched off and
- * the buyer sees no agent message: the agent still made a determination about
- * their quote, and that determination is what is being disclosed.
+ * Clarified put an agent-written question in front of the buyer.
+ * Acknowledged restated the quote to the buyer in an agent-written comment.
+ * Escalated is included even on a sales channel where the buyer notice is
+ * switched off and the buyer sees no agent message: the agent still made a
+ * determination about their quote, and that determination is what is being
+ * disclosed.
  *
  * So: did the agent ACT on this quote.
  *
@@ -58,6 +60,7 @@ final class AgentDisclosure
             NegotiationOutcome::Countered,
             NegotiationOutcome::Clarified,
             NegotiationOutcome::Escalated,
+            NegotiationOutcome::Acknowledged,
                 => [self::MARKER_KEY => true],
             NegotiationOutcome::HandedOver, NegotiationOutcome::NothingToDo => [],
         };

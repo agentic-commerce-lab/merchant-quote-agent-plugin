@@ -237,6 +237,12 @@ final readonly class OfferRound
         $this->reply->send($gateway, $snapshot->identity->quoteId, $snapshot->lifecycle->stateTechnicalName);
     }
 
+    /** Public for PassedOver, which holds this round but not its reply composer. */
+    public function acknowledge(QuoteGatewayInterface $gateway, QuoteSnapshot $snapshot): void
+    {
+        $this->reply->acknowledge($gateway, $snapshot);
+    }
+
     /** A quote the agent has answered before carries the servicing fingerprint. */
     private static function servicedBefore(QuoteSnapshot $snapshot): bool
     {

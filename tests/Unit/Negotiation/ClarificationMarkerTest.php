@@ -49,6 +49,7 @@ final class ClarificationMarkerTest extends TestCase
         self::assertSame([], ClarificationMarker::releaseFor(NegotiationOutcome::Clarified));
         self::assertSame([], ClarificationMarker::releaseFor(NegotiationOutcome::Escalated));
         self::assertSame([], ClarificationMarker::releaseFor(NegotiationOutcome::NothingToDo));
+        self::assertSame([], ClarificationMarker::releaseFor(NegotiationOutcome::Acknowledged));
 
         // A stand-down did not answer the buyer either: the merchant is
         // already handling this quote, and releasing the marker would let a

@@ -132,11 +132,13 @@ final class DecisionRecorder
      * extract call so a model that fails, or one that finds nothing, still
      * leaves the question behind.
      *
-     * That ordering is the point of the column. Since #177 an extraction empty
-     * in every field ends the pass as `NothingToDo`, and the servicing
-     * fingerprint is stamped whatever the outcome — so a mis-read question is
-     * answered with silence, and `interpreted_asks` records the emptiness that
-     * caused it, not the words that were passed over.
+     * That ordering is the point of the column. An extraction empty in every
+     * field ends the pass as `Acknowledged` — the quote restated, back to
+     * `replied` — and the servicing fingerprint is stamped whatever the
+     * outcome, so a mis-read question gets a restatement instead of an
+     * answer, and `interpreted_asks` records the emptiness that caused it, not
+     * the words that were passed over. Silent `NothingToDo` remains for a pass
+     * with no comment read or on an escalated quote.
      */
     public function recordBuyerAsk(string $comment): void
     {

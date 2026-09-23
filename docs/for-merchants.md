@@ -253,8 +253,8 @@ the average.
 ### A record of every quote
 
 The list shows each quote it touched: what the customer asked, what was granted,
-and the outcome — *Offer sent*, *Counter sent*, *Question asked*, *Needs review*,
-or *No action needed*.
+and the outcome — *Offer sent*, *Counter sent*, *Question asked*, *Acknowledged*,
+*Needs review*, or *No action needed*.
 
 Open one and you get the whole negotiation in order: what the customer asked,
 what the agent did, what changed on the quote, and why. Including the exact reply
@@ -391,17 +391,25 @@ which of the two you just produced on every run, so a redirected export is never
 ambiguous about what is in the file.
 
 **Reading one kind of decision.** `--outcome` narrows the file to a single kind,
-and the run says so on screen. The one worth looking at now and then is
+and the run says so on screen. The two worth looking at now and then are
+
+```
+bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 \
+    --outcome=acknowledged --include-comments
+```
 
 ```
 bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 \
     --outcome=nothing_to_do --include-comments
 ```
 
-which gives you every pass that read a customer's message and decided it asked
-for nothing — a "thanks, that works" needs no answer, so most of them are
-correct. If any of them read like a real question, the agent's reading of
-comments is what needs adjusting, and that is worth telling us about.
+The first gives you every pass that read a customer's message and found nothing
+in it to act on. The agent answered each one by restating the quote and sending
+it back for acceptance, so the customer is never left waiting — but if one of
+those messages was a real question, this is where you find it, and the agent's
+reading of comments is what needs adjusting, which is worth telling us about.
+`--outcome=nothing_to_do` lists the passes that stayed silent: no new message,
+or a quote already escalated to your team.
 
 **One oddity you will see and should not report as a bug.** The `modelHost`
 field sometimes reads `unparsable-host`. That means the AI base URL in your
