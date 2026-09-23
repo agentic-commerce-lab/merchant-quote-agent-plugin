@@ -463,7 +463,19 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             }
 
             this.assignmentError = null;
-            await this.assignmentRepository.save(row, Shopware.Context.api);
+
+            try {
+                await this.assignmentRepository.save(row, Shopware.Context.api);
+            } catch (error) {
+                // No reload on failure: this page's own state is still the
+                // merchant's unsaved edit, and reloading would discard it in
+                // favour of whatever the server still has for this row (see
+                // load()'s own try/catch for the same pattern).
+                this.assignmentError = this.messageFor(error);
+
+                return;
+            }
+
             await this.loadAssignments();
         },
 
@@ -482,7 +494,18 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          */
         async removeAssignment(row) {
             if (row.id !== undefined && !row.isNew()) {
-                await this.assignmentRepository.delete(row.id, Shopware.Context.api);
+                try {
+                    await this.assignmentRepository.delete(row.id, Shopware.Context.api);
+                } catch (error) {
+                    // No reload here either -- see saveAssignment()'s own
+                    // comment. A failed delete leaves the row exactly where
+                    // it was, with the reason shown instead of silently
+                    // vanishing from an unhandled rejection.
+                    this.assignmentError = this.messageFor(error);
+
+                    return;
+                }
+
                 await this.loadAssignments();
 
                 return;
