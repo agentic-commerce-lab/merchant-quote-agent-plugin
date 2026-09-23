@@ -306,7 +306,8 @@
             "columnShare": "Share",
             "addArm": "Add an arm",
             "weightsAreRelative": "Weights are relative, not percentages: they don't need to add up to 100. Typing 1 and 4 gives the first arm 20% and the second 80%. The share shown is only against the other arms in the same sales channel.",
-            "stickyPerCustomer": "A customer keeps the same arm across every quote they send, so one buyer never meets two different negotiating postures. Changing a weight reshuffles which customers land in which arm, so weigh that before tuning an experiment that is already running."
+            "stickyPerCustomer": "A customer keeps the same arm across every quote they send, so one buyer never meets two different negotiating postures. Changing a weight reshuffles which customers land in which arm, so weigh that before tuning an experiment that is already running.",
+            "splitScopeNote": "Global arms (no sales channel chosen) only apply to a sales channel that has no split arms of its own — once a channel has any arm here, its customers are placed only among that channel's own arms."
         },
         "disposition": {
             "needsReview": "Needs review",
