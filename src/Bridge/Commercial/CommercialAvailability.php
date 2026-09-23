@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Bridge\Commercial;
 
+use Symfony\Component\DependencyInjection\ContainerInterface;
+
 /**
  * The two-stage gate from ADR 0001: class existence decides whether the
  * gateway is built, the license toggle decides whether it can serve.
@@ -63,6 +65,41 @@ final class CommercialAvailability
     public const CUSTOMER_SPECIFIC_FEATURE_SERVICE = 'Shopware\\Commercial\\B2B\\CustomerSpecificFeatures\\Domain\\CustomerSpecificFeature\\CustomerSpecificFeatureService';
 
     private const LICENSE_CLASS = 'Shopware\\Commercial\\Licensing\\License';
+
+    /**
+     * The bundle's name in `kernel.bundles`. SwagCommercial registers each
+     * feature as a bundle of its own; this is the one that owns the quote
+     * entities — so `quote.repository` — and every service the bridge
+     * injects. Verified on the 7.13 test shop and the 6.7.12 b2bseller shop.
+     */
+    private const QUOTE_BUNDLE = 'QuoteManagement';
+
+    /**
+     * Stage one of ADR 0001's gate: is SwagCommercial's quote bundle in THIS
+     * container, and does it carry the classes the bridge is written against?
+     *
+     * The bundle rather than the classpath, for the reason
+     * UcpAvailability::isRegistered() records: SwagCommercial is
+     * composer-installed into vendor/, so its classes stay loadable after a
+     * merchant deactivates it. A class-only gate then registers services
+     * against a `quote.repository` that left with the bundle — a container
+     * that does not compile and a shop that does not boot (#152).
+     *
+     * The class check stays as the second half: a listed bundle without the
+     * `@internal` classes is a SwagCommercial this bridge was not written for.
+     */
+    public static function isRegistered(?ContainerInterface $container): bool
+    {
+        // Null, or a ContainerBuilder assembled by hand in a test, has no
+        // kernel parameters at all: absent, the safe answer.
+        if ($container === null || !$container->hasParameter('kernel.bundles')) {
+            return false;
+        }
+
+        $bundles = $container->getParameter('kernel.bundles');
+
+        return \is_array($bundles) && \array_key_exists(self::QUOTE_BUNDLE, $bundles) && self::isAvailableByClass();
+    }
 
     /**
      * Checked on the two `@internal` classes plus License rather than on all
