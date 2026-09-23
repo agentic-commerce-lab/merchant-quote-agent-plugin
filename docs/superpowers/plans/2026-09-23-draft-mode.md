@@ -4313,7 +4313,7 @@ final class DraftModeFlowTest extends IntegrationTestCase
 
     private function sender(): DraftSender
     {
-        return new DraftSender($this->versions(), static::gatewayFactory()->forContext(...), $this->store());
+        return new DraftSender($this->versions(), static::gatewayFactory(), $this->store());
     }
 }
 ```
