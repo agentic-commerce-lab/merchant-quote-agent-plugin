@@ -6,7 +6,7 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
-use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
 
 /**
  * What a pass with nothing to answer does instead: acknowledge the buyer, or
@@ -21,10 +21,13 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
  *
  * Silent `NothingToDo` is left for two cases. No comment was read at all (a
  * duplicate trigger, or a reply stranded in `in_review`, which is finished
- * here as before). Or the quote is escalated: a human owns it, the buyer
- * already has the escalation notice, and moving it to `replied` would make
- * `SellerActPublisher::recordApproval()` read the unreleased marker as a human
- * standing behind terms nobody approved. The marker test is that method's own.
+ * here as before). Or the escalation still awaits a human: they own the
+ * quote, the buyer already has the escalation notice, and moving it to
+ * `replied` would make `SellerActPublisher::recordApproval()` read the
+ * unreleased marker as a human standing behind terms nobody approved. Once a
+ * merchant has sent an answer since the escalation, the terms are theirs and
+ * the buyer's "thanks" is acknowledged like any other -- see
+ * PendingEscalation::awaitsAHuman().
  *
  * Static and handed the round, like ClarificationRound, because the pipeline,
  * OfferRound and ReplyComposer are each at their class complexity limit.
@@ -40,9 +43,7 @@ final class PassedOver
         ?InterpretedAsk $ask,
         OfferRound $round,
     ): NegotiationPass {
-        $escalation = $snapshot->lifecycle->customFields[QuoteEscalator::MARKER_KEY] ?? null;
-
-        if ($ask === null || \is_string($escalation) && $escalation !== '') {
+        if ($ask === null || PendingEscalation::awaitsAHuman($snapshot->lifecycle)) {
             $round->finishStrandedReply($gateway, $snapshot, $conversation);
 
             return new NegotiationPass(NegotiationOutcome::NothingToDo, extractHash: $ask?->promptHash);

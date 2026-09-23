@@ -409,7 +409,8 @@ it back for acceptance, so the customer is never left waiting — but if one of
 those messages was a real question, this is where you find it, and the agent's
 reading of comments is what needs adjusting, which is worth telling us about.
 `--outcome=nothing_to_do` lists the passes that stayed silent: no new message,
-or a quote already escalated to your team.
+or a quote escalated to your team that nobody has sent an answer on yet. Once
+you have sent one, the customer's "thanks" is acknowledged like any other.
 
 **One oddity you will see and should not report as a bug.** The `modelHost`
 field sometimes reads `unparsable-host`. That means the AI base URL in your

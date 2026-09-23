@@ -45,9 +45,13 @@ final readonly class MerchantActionReader
         private EntityRepository $historyRepository,
     ) {}
 
-    public function lastTransitionAt(string $quoteId, Context $context): ?\DateTimeImmutable
+    /**
+     * @return array{0: \DateTimeImmutable, 1: ?string}|null when, and into which state
+     */
+    public function lastTransition(string $quoteId, Context $context): ?array
     {
         $criteria = new Criteria();
+        $criteria->addAssociation('toStateMachineState');
         $criteria->addFilter(new EqualsFilter('entityName', 'quote'));
         $criteria->addFilter(new EqualsFilter('referencedId', $quoteId));
         // Deliberately NOT filtered on referencedVersionId: SwagCommercial
@@ -61,6 +65,16 @@ final readonly class MerchantActionReader
         $row = $this->historyRepository->search($criteria, $context)->getEntities()->first();
         $createdAt = $row instanceof Entity ? $row->get('createdAt') : null;
 
-        return $createdAt instanceof \DateTimeInterface ? \DateTimeImmutable::createFromInterface($createdAt) : null;
+        if (!$createdAt instanceof \DateTimeInterface) {
+            return null;
+        }
+
+        $to = $row?->get('toStateMachineState');
+        $technicalName = $to instanceof Entity ? $to->get('technicalName') : null;
+
+        return [
+            \DateTimeImmutable::createFromInterface($createdAt),
+            \is_string($technicalName) ? $technicalName : null,
+        ];
     }
 }

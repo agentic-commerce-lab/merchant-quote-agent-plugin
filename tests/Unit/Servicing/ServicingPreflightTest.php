@@ -67,8 +67,8 @@ final class ServicingPreflightTest extends TestCase
             'A merchant who turned the buyer notice off gets no comment.',
         );
         self::assertSame(
-            [QuoteEscalator::MARKER_KEY => 'not_configured'],
-            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
+            'not_configured',
+            ServicingHandlerFixture::lastCustomFieldWrite($gateway)[QuoteEscalator::MARKER_KEY] ?? null,
         );
         self::assertEmpty($gateway->comments);
     }
@@ -93,8 +93,8 @@ final class ServicingPreflightTest extends TestCase
         self::assertNull($result);
         self::assertSame(['addComment', 'updateQuote'], $gateway->calls);
         self::assertSame(
-            [QuoteEscalator::MARKER_KEY => 'not_configured'],
-            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
+            'not_configured',
+            ServicingHandlerFixture::lastCustomFieldWrite($gateway)[QuoteEscalator::MARKER_KEY] ?? null,
         );
         self::assertStringNotContainsString('API key', implode("\n", $gateway->comments));
     }
@@ -160,8 +160,8 @@ final class ServicingPreflightTest extends TestCase
 
         self::assertNull($result);
         self::assertSame(
-            [QuoteEscalator::MARKER_KEY => 'not_configured'],
-            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
+            'not_configured',
+            ServicingHandlerFixture::lastCustomFieldWrite($gateway)[QuoteEscalator::MARKER_KEY] ?? null,
             'The escalation must stand even when its record does not.',
         );
     }
@@ -219,8 +219,8 @@ final class ServicingPreflightTest extends TestCase
 
         self::assertNull($result);
         self::assertSame(
-            [QuoteEscalator::MARKER_KEY => 'not_configured'],
-            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
+            'not_configured',
+            ServicingHandlerFixture::lastCustomFieldWrite($gateway)[QuoteEscalator::MARKER_KEY] ?? null,
         );
     }
 

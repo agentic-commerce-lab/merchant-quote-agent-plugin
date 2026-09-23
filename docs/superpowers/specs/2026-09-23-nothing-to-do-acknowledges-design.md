@@ -186,10 +186,13 @@ false for it: the agent did write something.
 - `StructuredAskGateTest`'s pinned limit (a comment that merely points at an
   already-granted price) now gets the ack instead of silence — which is the fix
   the #180 memory predicted.
-- An escalated quote stays silent even after a human merchant has answered it:
-  the escalation marker is released only by a pass that answered
-  (`answeredTheBuyer()`), so when the buyer then writes "ok, thanks" the quote
-  is parked in `change_requested` exactly as quote 1056 was. The marker records
-  the reason, not when it was set, so this branch cannot tell "a human is still
-  deciding" from "a human already answered". Tracked as a follow-up: release or
-  re-read the marker once a merchant's reply is newer than the escalation.
+- ~~An escalated quote stays silent even after a human merchant has answered
+  it.~~ Fixed in the follow-up: `QuoteEscalator` now stamps
+  `merchant_quote_agent_escalated_at` beside the marker, `MerchantActionReader`
+  reads the target state of the newest admin transition, and
+  `PendingEscalation::awaitsAHuman()` is false once a merchant has SENT the
+  quote (a transition into `replied`) after the escalation. Only a send counts:
+  a merchant who moved it to `in_review` may have half-edited prices, which the
+  acknowledgement's move to `replied` would receipt as approved. The same
+  reason escalating again after a send is a new escalation (fresh notice, fresh
+  time). A marker written before this change carries no time and stays silent.

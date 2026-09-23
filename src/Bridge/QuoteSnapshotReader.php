@@ -74,7 +74,7 @@ final readonly class QuoteSnapshotReader
                 discount: $this->discountMapper->map($quote->get('discount')),
                 totalGross: (float) $quote->get('amountTotal'),
             ),
-            lifecycle: $this->readLifecycle($quote, $this->merchantActions->lastTransitionAt(
+            lifecycle: $this->readLifecycle($quote, $this->merchantActions->lastTransition(
                 $quoteId,
                 $versionedContext,
             )),
@@ -118,7 +118,8 @@ final readonly class QuoteSnapshotReader
         );
     }
 
-    private function readLifecycle(Entity $quote, ?\DateTimeImmutable $lastAdminTransitionAt): QuoteLifecycle
+    /** @param array{0: \DateTimeImmutable, 1: ?string}|null $lastAdminTransition */
+    private function readLifecycle(Entity $quote, ?array $lastAdminTransition): QuoteLifecycle
     {
         $state = $quote->get('stateMachineState');
         $expiresAt = $quote->get('expirationDate');
@@ -133,7 +134,8 @@ final readonly class QuoteSnapshotReader
                 ? \DateTimeImmutable::createFromInterface($expiresAt)
                 : null,
             customFields: $normalizedCustomFields,
-            lastAdminTransitionAt: $lastAdminTransitionAt,
+            lastAdminTransitionAt: $lastAdminTransition[0] ?? null,
+            lastAdminTransitionTo: $lastAdminTransition[1] ?? null,
         );
     }
 }
