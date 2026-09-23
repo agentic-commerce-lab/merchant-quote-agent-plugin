@@ -29,7 +29,7 @@ use Ucp\Sdk\Exception\ValidationException;
  * customer's sales-channel context, so contract prices and rules behave exactly
  * as if the customer acted themselves. The routes are typed as `object` because
  * SwagCommercial is a runtime-detected soft dependency — this service is only
- * registered when its classes exist (see CommercialAvailability).
+ * registered when SwagCommercial's quote bundle is (see CommercialAvailability).
  *
  * @mago-expect lint:too-many-methods
  * Seven interface methods plus the snapshot/load pair and the routes-wired

@@ -246,7 +246,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
             'priority' => -256,
         ]);
 
-        if (CommercialAvailability::isAvailableByClass()) {
+        if (CommercialAvailability::isRegistered($container)) {
             // Stamps the A2CN session id onto a new quote so the inbound act
             // route can resolve a session back to its quote — SessionId is a
             // one-way UUIDv5, so the mapping has to be stored somewhere.
@@ -580,14 +580,16 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     }
     // --- end A2CN / Protocol ---------------------------------------------
 
-    // Stage one of ADR 0001's two-stage gate: class existence decides whether
-    // the bridge is REGISTERED at all. Shopware only registers an active
-    // plugin's autoloader, so this is false both when SwagCommercial is absent
-    // and when it is installed but inactive — in either case nothing below is
-    // in the container and the quote capability is simply not advertised
-    // (issue #1 owns that). Stage two, the license toggle, is runtime and
-    // lives in QuoteGatewayFactory.
-    if (!CommercialAvailability::isAvailableByClass()) {
+    // Stage one of ADR 0001's two-stage gate: is SwagCommercial's quote bundle
+    // in this container? The bundle, not the classpath: SwagCommercial is
+    // composer-installed, so its classes stay loadable after a merchant
+    // deactivates it, and registering the block below against a
+    // `quote.repository` that left with the bundle is a container that does
+    // not compile (#152; see CommercialAvailability::isRegistered()). Absent
+    // or inactive, nothing below is in the container and the quote capability
+    // is simply not advertised (issue #1 owns that). Stage two, the license
+    // toggle, is runtime and lives in QuoteGatewayFactory.
+    if (!CommercialAvailability::isRegistered($container)) {
         return;
     }
 
@@ -617,7 +619,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(QuoteWriter::class)->args([service('quote.repository')]);
     $services->set(QuoteStateTransitioner::class);
 
-    // Company history (#100). Registered here, inside the isAvailableByClass()
+    // Company history (#100). Registered here, inside the isRegistered()
     // guard, because `quote.repository` is SwagCommercial's — and the whole
     // negotiation stack below is guarded the same way, so OfferProposer can
     // take the factory as a plain non-nullable dependency.
@@ -694,8 +696,9 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // Buyer-side counterpart of the merchant gateway. Every commercial route is
     // an ignore-on-invalid reference, so the container compiles on a shop
     // without SwagCommercial and the capability reports itself unsupported.
-    // (No `isAvailableByClass()` guard here: the early return above already
-    // means SwagCommercial's classes provably exist past this point.)
+    // (No `isRegistered()` guard here: the early return above already means
+    // SwagCommercial's quote bundle and classes are provably present past
+    // this point.)
     $services->set(CommercialQuoteSnapshotMapper::class)->args([service(CommercialCapabilities::class)]);
 
     // "May this buyer request be served at all, and on whose behalf" —

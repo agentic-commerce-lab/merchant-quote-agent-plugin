@@ -26,8 +26,16 @@ final class OrderHistoryLocatorConfigurationTest extends TestCase
         bool $expected,
     ): void {
         self::makeCommercialClassesAvailable();
+        // With the classes loadable, a null container must still shut the
+        // gate — the classpath alone is never enough (#152).
+        self::assertFalse(CommercialAvailability::isRegistered(null));
+
         $container = new ContainerBuilder();
         $container->setParameter('kernel.environment', $kernelEnvironment);
+        $container->setParameter('kernel.bundles', [
+            'QuoteManagement' => 'Shopware\\Commercial\\B2B\\QuoteManagement\\QuoteManagement',
+        ]);
+        self::assertTrue(CommercialAvailability::isRegistered($container));
         $pluginRoot = \dirname(__DIR__, levels: 3);
         (new MerchantQuoteAgentPlugin(active: true, basePath: $pluginRoot))->build($container);
 
@@ -63,8 +71,9 @@ final class OrderHistoryLocatorConfigurationTest extends TestCase
 
     private static function makeCommercialClassesAvailable(): void
     {
-        // Configuration only checks class existence; it never instantiates
-        // these placeholders. Process isolation prevents leaking them to tests.
+        // The gate checks class existence alongside the bundle list; it never
+        // instantiates these placeholders. Process isolation prevents leaking
+        // them to tests.
         $placeholder = new class {};
         foreach ([
             CommercialAvailability::QUOTE_MANIPULATION,

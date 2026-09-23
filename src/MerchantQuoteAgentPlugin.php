@@ -129,7 +129,7 @@ class MerchantQuoteAgentPlugin extends Plugin
         parent::configureRoutes($routes, $environment);
 
         if (UcpAvailability::isRegistered($this->container)) {
-            AgentFacingRoutes::import($routes, $this->getPath());
+            AgentFacingRoutes::import($routes, $this->getPath(), $this->container);
         }
     }
 

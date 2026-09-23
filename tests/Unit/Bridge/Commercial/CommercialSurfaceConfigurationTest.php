@@ -21,6 +21,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 /**
  * The SwagCommercial half of the gate in `src/Resources/config/services.php`,
@@ -59,11 +60,11 @@ final class CommercialSurfaceConfigurationTest extends TestCase
      * gate, so what is true of them — and what matters here — is that they need
      * no SwagCommercial.
      *
-     * Does not itself assert `CommercialAvailability::isAvailableByClass()` is
-     * false: `CommercialAvailabilityTest::testReportsUnavailableWhenSwagCommercialIsAbsent`
-     * already covers that claim, and GateMatrix has aliased the commercial
-     * classes into existence process-wide by the time this method runs, so a
-     * second probe here would only read back its own fixture.
+     * Does not itself assert `CommercialAvailability::isRegistered()` is
+     * false: `CommercialAvailabilityTest` already covers the probe, and
+     * GateMatrix has aliased the commercial classes into existence
+     * process-wide by the time this method runs, so a second probe here would
+     * only read back its own fixture.
      */
     public function testTheEvidenceLayerBuildsWithoutSwagCommercial(): void
     {
@@ -111,6 +112,26 @@ final class CommercialSurfaceConfigurationTest extends TestCase
             );
             self::assertTrue($shops['withBoth']->has($id), $id . ' should return with SwagCommercial');
         }
+    }
+
+    /**
+     * #152, stated directly. A composer-installed SwagCommercial that a
+     * merchant deactivates leaves its classes loadable and its bundle gone;
+     * the gate must build exactly the shop it builds when SwagCommercial was
+     * never there. The two dependency tests below state the consequence — no
+     * `service('quote.repository')` left dangling — this states the cause.
+     */
+    public function testAVendoredButInactiveShopRegistersWhatAnAbsentOneDoes(): void
+    {
+        $shops = GateMatrix::build()->shops;
+        $ids = static function (ContainerBuilder $container): array {
+            $all = array_merge(array_keys($container->getDefinitions()), array_keys($container->getAliases()));
+            sort($all);
+
+            return $all;
+        };
+
+        self::assertSame($ids($shops['withoutCommercial']), $ids($shops['vendoredButInactive']));
     }
 
     /**
@@ -191,6 +212,7 @@ final class CommercialSurfaceConfigurationTest extends TestCase
         yield 'neither SwagCommercial nor the UCP SDK bundle' => ['withoutEither'];
         yield 'the UCP SDK bundle but no SwagCommercial' => ['withoutCommercial'];
         yield 'SwagCommercial but no UCP SDK bundle' => ['withoutUcp'];
+        yield 'SwagCommercial vendored but deactivated' => ['vendoredButInactive'];
         // A control, not a check: every registration in services.php sits
         // inside an `if` with no `else`, so the shop with both gates open is a
         // superset of the other three and its removed set is structurally

@@ -40,7 +40,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * A missing signing key answers `503 {"status":"signing_key_missing"}`
  * rather than a stack trace: a shop that never generated a key should say
  * so, not 500. Registered OUTSIDE the CommercialAvailability gate (see
- * routes.php) — the mandate does not need the quote backend to be
+ * AgentFacingRoutes) — the mandate does not need the quote backend to be
  * publishable.
  *
  * Identity resolution (shared by all three routes) and mandate assembly
