@@ -121,6 +121,12 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
             // `assignmentServerIds` with a snapshot missing the row the newer
             // reload just saw -- see loadAssignments() itself.
             assignmentLoadToken: 0,
+            // ids of rows with a save currently in flight, so a second edit
+            // to the same row (e.g. double-clicking a new arm's weight
+            // stepper, which emits update:model-value on every step) does
+            // not fire a second POST while the row is still `isNew()` -- see
+            // saveAssignment() and isRowSaving().
+            assignmentSavingIds: new Set(),
         };
     },
 
@@ -492,101 +498,125 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
          * calls loadAssignments(), which clears assignmentError as its first
          * line, so setting the message first would erase it immediately.
          */
+        /** Whether `row` has a save in flight -- see saveAssignment() and assignmentSavingIds in data(). */
+        isRowSaving(row) {
+            return this.assignmentSavingIds.has(row.id);
+        },
+
         async saveAssignment(row) {
-            if (!isSavable(row)) {
-                if (this.assignmentServerIds.has(row.id)) {
-                    await this.loadAssignments();
-                    this.assignmentError = this.$tc(INCOMPLETE_SNIPPET_KEYS[row.kind]);
-                }
-
+            // A second edit to the same row while its save is still in
+            // flight -- e.g. double-clicking a new arm's weight stepper,
+            // which emits update:model-value on every step -- must not fire
+            // a second POST: the row is still isNew() (Shopware never clears
+            // it after a save), so a second create races the first and the
+            // server refuses it with a 400. The row's inputs are also
+            // disabled while isRowSaving() is true (see the template); this
+            // guards the same window for an event already queued before that
+            // takes effect.
+            if (this.isRowSaving(row)) {
                 return;
             }
 
-            if (row.kind === 'pin' && isDuplicatePin(row, this.pins)) {
-                // The refusal itself is load-bearing; the customer's name in it is a
-                // courtesy. A failed lookup (deleted customer, unreadable under the
-                // viewer's ACL) must still refuse the save, just with a generic label
-                // instead of leaving this an unhandled rejection that shows nothing.
-                let customerName = this.$tc('merchant-quote-agent.assignment.unknownCustomer');
-
-                try {
-                    const customer = await this.customerRepository.get(row.customerId, Shopware.Context.api);
-                    customerName = this.customerLabel(customer);
-                } catch {
-                    // fall back to the generic label above
-                }
-
-                const key = row.salesChannelId
-                    ? 'merchant-quote-agent.assignment.duplicatePinChannel'
-                    : 'merchant-quote-agent.assignment.duplicatePinGlobal';
-                const message = this.$t(key, { customer: customerName });
-
-                if (this.assignmentServerIds.has(row.id)) {
-                    await this.loadAssignments();
-                }
-
-                this.assignmentError = message;
-
-                return;
-            }
-
-            if (row.kind === 'rule' && isDuplicateRule(row, this.rules)) {
-                // ruleNames is already populated by loadAssignments() for
-                // every rule row this page has seen -- unlike the customer
-                // lookup above, no extra request is needed here, except the
-                // rare case of two brand-new rows picking the same rule
-                // before either has ever been saved, hence the fallback.
-                const ruleName = this.ruleNames[row.ruleId]?.name ?? this.$tc('merchant-quote-agent.assignment.unknownRule');
-                const key = row.salesChannelId
-                    ? 'merchant-quote-agent.assignment.duplicateRuleChannel'
-                    : 'merchant-quote-agent.assignment.duplicateRuleGlobal';
-                const message = this.$t(key, { rule: ruleName });
-
-                if (this.assignmentServerIds.has(row.id)) {
-                    await this.loadAssignments();
-                }
-
-                this.assignmentError = message;
-
-                return;
-            }
-
-            this.assignmentError = null;
+            this.assignmentSavingIds.add(row.id);
 
             try {
-                await this.assignmentRepository.save(row, Shopware.Context.api);
-            } catch (error) {
-                const message = this.messageFor(error);
+                if (!isSavable(row)) {
+                    if (this.assignmentServerIds.has(row.id)) {
+                        await this.loadAssignments();
+                        this.assignmentError = this.$tc(INCOMPLETE_SNIPPET_KEYS[row.kind]);
+                    }
 
-                if (this.assignmentServerIds.has(row.id)) {
-                    await this.loadAssignments();
+                    return;
                 }
 
-                this.assignmentError = message;
+                if (row.kind === 'pin' && isDuplicatePin(row, this.pins)) {
+                    // The refusal itself is load-bearing; the customer's name in it is a
+                    // courtesy. A failed lookup (deleted customer, unreadable under the
+                    // viewer's ACL) must still refuse the save, just with a generic label
+                    // instead of leaving this an unhandled rejection that shows nothing.
+                    let customerName = this.$tc('merchant-quote-agent.assignment.unknownCustomer');
 
-                return;
-            }
+                    try {
+                        const customer = await this.customerRepository.get(row.customerId, Shopware.Context.api);
+                        customerName = this.customerLabel(customer);
+                    } catch {
+                        // fall back to the generic label above
+                    }
 
-            // Closes the window between this save resolving and the reload
-            // below finishing: a Remove click landing in that gap read
-            // assignmentServerIds before loadAssignments() had repopulated
-            // it, saw a row the server has never heard of, and skipped the
-            // DELETE -- see removeAssignment()'s own docblock.
-            this.assignmentServerIds.add(row.id);
+                    const key = row.salesChannelId
+                        ? 'merchant-quote-agent.assignment.duplicatePinChannel'
+                        : 'merchant-quote-agent.assignment.duplicatePinGlobal';
+                    const message = this.$t(key, { customer: customerName });
 
-            await this.loadAssignments();
+                    if (this.assignmentServerIds.has(row.id)) {
+                        await this.loadAssignments();
+                    }
 
-            if (!this.assignmentServerIds.has(row.id)) {
-                // Core's sendChanges() (core/data/repository.data.ts)
-                // resolves instead of rejecting when the error response
-                // carries no `errors` body -- a network failure, an HTML 502
-                // -- so the save above did not throw even though nothing was
-                // written. loadAssignments() just rebuilt assignmentServerIds
-                // from a fresh server search, so its absence here is the
-                // server's own word that the write never landed, not a stale
-                // local copy: the optimistic add above is already gone,
-                // overwritten by that fresh set.
-                this.assignmentError = this.$tc('merchant-quote-agent.assignment.notSaved');
+                    this.assignmentError = message;
+
+                    return;
+                }
+
+                if (row.kind === 'rule' && isDuplicateRule(row, this.rules)) {
+                    // ruleNames is already populated by loadAssignments() for
+                    // every rule row this page has seen -- unlike the customer
+                    // lookup above, no extra request is needed here, except the
+                    // rare case of two brand-new rows picking the same rule
+                    // before either has ever been saved, hence the fallback.
+                    const ruleName = this.ruleNames[row.ruleId]?.name ?? this.$tc('merchant-quote-agent.assignment.unknownRule');
+                    const key = row.salesChannelId
+                        ? 'merchant-quote-agent.assignment.duplicateRuleChannel'
+                        : 'merchant-quote-agent.assignment.duplicateRuleGlobal';
+                    const message = this.$t(key, { rule: ruleName });
+
+                    if (this.assignmentServerIds.has(row.id)) {
+                        await this.loadAssignments();
+                    }
+
+                    this.assignmentError = message;
+
+                    return;
+                }
+
+                this.assignmentError = null;
+
+                try {
+                    await this.assignmentRepository.save(row, Shopware.Context.api);
+                } catch (error) {
+                    const message = this.messageFor(error);
+
+                    if (this.assignmentServerIds.has(row.id)) {
+                        await this.loadAssignments();
+                    }
+
+                    this.assignmentError = message;
+
+                    return;
+                }
+
+                // Closes the window between this save resolving and the reload
+                // below finishing: a Remove click landing in that gap read
+                // assignmentServerIds before loadAssignments() had repopulated
+                // it, saw a row the server has never heard of, and skipped the
+                // DELETE -- see removeAssignment()'s own docblock.
+                this.assignmentServerIds.add(row.id);
+
+                await this.loadAssignments();
+
+                if (!this.assignmentServerIds.has(row.id)) {
+                    // Core's sendChanges() (core/data/repository.data.ts)
+                    // resolves instead of rejecting when the error response
+                    // carries no `errors` body -- a network failure, an HTML 502
+                    // -- so the save above did not throw even though nothing was
+                    // written. loadAssignments() just rebuilt assignmentServerIds
+                    // from a fresh server search, so its absence here is the
+                    // server's own word that the write never landed, not a stale
+                    // local copy: the optimistic add above is already gone,
+                    // overwritten by that fresh set.
+                    this.assignmentError = this.$tc('merchant-quote-agent.assignment.notSaved');
+                }
+            } finally {
+                this.assignmentSavingIds.delete(row.id);
             }
         },
 
