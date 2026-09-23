@@ -99,18 +99,24 @@ answered more recently than the buyer wrote stays `HandedOver`.
 
 ### The write path
 
-`ReplyComposer::acknowledge(QuoteGatewayInterface, QuoteSnapshot, BuyerConversation): void`,
+The silence-or-acknowledge choice lives in a new stateless
+`Negotiation\PassedOver::handle()`, handed the `OfferRound` the pipeline already
+holds (the `ClarificationRound` pattern): the pipeline, `OfferRound` and
+`ReplyComposer` are each at their class complexity limit, measured. It calls
+`OfferRound::acknowledge()` → `ReplyComposer::acknowledge(QuoteGatewayInterface, QuoteSnapshot): void`,
 beside `reply()`:
 
-1. The same already-answered guard `reply()` has — an agent comment newer than
-   the buyer's newest ask means a retry, and a second message is the one thing a
-   retry must never produce.
-2. `addComment()` with the template.
-3. `DecisionRecorder::recordReply($text, null)` — `reply_to_buyer` holds it, no
+1. `addComment()` with the template.
+2. `DecisionRecorder::recordReply($text, null)` — `reply_to_buyer` holds it, no
    reply prompt hash (no model call).
-4. `send()` — the existing transition picker: `sent` from `open`/`in_review`,
+3. `send()` — the existing transition picker: `sent` from `open`/`in_review`,
    `admin_resend` from `change_requested`/`reopen`. A refused transition is
    already logged at error level and recorded as an incomplete pass.
+
+No already-answered guard is needed: an acknowledgement needs an interpreted
+ask, and `AskInterpreter` interprets only a buyer comment newer than every
+agent one — so a retry after the comment landed reads the agent as newest,
+gets no ask, and stays silent.
 
 Nothing is written to line prices, discounts or expiry.
 
@@ -158,8 +164,8 @@ false for it: the agent did write something.
   `NothingToDo` as today.
 - **Unit, template:** the wording, the omitted-date variant, and
   `RewordingGuard::unsafeBecause()` returning null for both.
-- **Unit, composer:** the already-answered guard stops a second comment;
-  `recordReply()` gets a null hash.
+- **Unit, composer:** the ack posts the template and records it with a null
+  hash; a retry with the agent speaking last stays `NothingToDo`.
 - **Unit, outcome readers:** `answeredTheBuyer()` false, both `releaseFor()`
   empty, `AgentDisclosure` stamps.
 - **Existing tests** that pin `NothingToDo` for a read, empty comment
