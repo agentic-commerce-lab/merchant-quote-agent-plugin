@@ -54,6 +54,7 @@ final class AgentDisclosureServicingTest extends TestCase
         yield 'countered' => [NegotiationOutcome::Countered, true];
         yield 'clarified' => [NegotiationOutcome::Clarified, true];
         yield 'escalated' => [NegotiationOutcome::Escalated, true];
+        yield 'acknowledged' => [NegotiationOutcome::Acknowledged, true];
         yield 'handed over' => [NegotiationOutcome::HandedOver, false];
         yield 'nothing to do' => [NegotiationOutcome::NothingToDo, false];
     }

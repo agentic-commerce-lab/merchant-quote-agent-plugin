@@ -38,6 +38,8 @@ final class AgentDisclosureTest extends TestCase
         // Included even where the buyer notice is off and the buyer sees no
         // agent message: the agent still made a determination on their quote.
         yield 'escalated - the agent decided to hand off' => [NegotiationOutcome::Escalated, true];
+        // The agent put a comment in front of the buyer.
+        yield 'acknowledged - the agent restated the quote' => [NegotiationOutcome::Acknowledged, true];
         // A human was already on the quote and the agent wrote nothing.
         // Disclosing here would tell the buyer an AI handled what a person did.
         yield 'handed over - a human was already handling it' => [NegotiationOutcome::HandedOver, false];

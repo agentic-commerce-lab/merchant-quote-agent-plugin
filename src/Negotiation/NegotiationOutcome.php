@@ -15,6 +15,11 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
  * false for it and neither the escalation nor the clarification marker is
  * released -- deliberately: the merchant is already handling this quote, and
  * releasing either marker would let a later pass answer on top of them.
+ * `Acknowledged` read a buyer comment that held no ask and answered it by
+ * restating the quote as it stands, then moved it back to `replied` so the
+ * buyer can accept or counter again. It is not an offer, so
+ * `answeredTheBuyer()` stays false: it releases neither marker and carries
+ * no figures for the admin's offer column.
  */
 enum NegotiationOutcome: string
 {
@@ -24,6 +29,7 @@ enum NegotiationOutcome: string
     case NothingToDo = 'nothing_to_do';
     case Clarified = 'clarified';
     case HandedOver = 'handed_over';
+    case Acknowledged = 'acknowledged';
 
     public function answeredTheBuyer(): bool
     {

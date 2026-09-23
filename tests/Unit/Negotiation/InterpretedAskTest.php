@@ -49,6 +49,11 @@ final class InterpretedAskTest extends TestCase
         // escalation marker and the next pass re-escalates a quote a human
         // is holding.
         self::assertFalse(NegotiationOutcome::HandedOver->answeredTheBuyer());
+
+        // An acknowledgement restates the standing quote; it is not an offer.
+        // True here would release the escalation and clarification markers
+        // and put a figure-less pass in the admin's "Agent Offer" column.
+        self::assertFalse(NegotiationOutcome::Acknowledged->answeredTheBuyer());
     }
 
     public function testAnAskIsNotStructuralWhenQuantityMatchesExistingSnapshot(): void
