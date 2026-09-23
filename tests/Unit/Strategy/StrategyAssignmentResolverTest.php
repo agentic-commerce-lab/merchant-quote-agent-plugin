@@ -41,6 +41,8 @@ final class StrategyAssignmentResolverTest extends TestCase
 
     private const CHANNEL = '22222222222222222222222222222222';
 
+    private const OTHER_CHANNEL = '55555555555555555555555555555555';
+
     private const PINNED = '3333333333333333333333333333aaaa';
 
     private const RULED = '3333333333333333333333333333bbbb';
@@ -52,6 +54,19 @@ final class StrategyAssignmentResolverTest extends TestCase
     private const RULE_GLOBAL_STRATEGY = '3333333333333333333333333333eeee';
 
     private const RULE_CHANNEL_STRATEGY = '3333333333333333333333333333ffff';
+
+    /**
+     * Sorts after ARM_ONE and ARM_TWO by strategyId, and SplitBucket::of
+     * (CUSTOMER, CHANNEL) is 939 (frozen alongside SplitBucketTest's own
+     * fixtures). Those two facts matter together: if the old pooled query
+     * ever came back, the cumulative walk over [ARM_ONE:1, ARM_TWO:1,
+     * ARM_CHANNEL:2] (total 4) would give target = intdiv(939 * 4, 10000) =
+     * 0, landing on ARM_ONE (seen=1 after it) rather than on ARM_CHANNEL --
+     * so testAChannelWithItsOwnSplitArmsIsNeverPooledWithGlobalArms fails
+     * loudly under the bug instead of passing by the coincidence of ARM_
+     * CHANNEL happening to sort first.
+     */
+    private const ARM_CHANNEL = '3333333333333333333333333333gggg';
 
     public function testAPinBeatsEverythingBelowIt(): void
     {
@@ -172,6 +187,60 @@ final class StrategyAssignmentResolverTest extends TestCase
 
         self::assertNotNull($assigned);
         self::assertSame(StrategyAssignmentSource::Split, $assigned->source);
+    }
+
+    /**
+     * Global arms A:1, B:1 and a channel arm C:2 must not be pooled: the
+     * channel's own arm set is used exclusively when it has one, so a quote
+     * on that channel always gets C, never A or B, regardless of the bucket
+     * -- C is the only arm in its own set, so any bucket in [0, 9999] lands
+     * on it (see the single-arm reasoning in the boundary test above).
+     */
+    public function testAChannelWithItsOwnSplitArmsIsNeverPooledWithGlobalArms(): void
+    {
+        $rows = [
+            $this->row('split', self::ARM_ONE, weight: 1),
+            $this->row('split', self::ARM_TWO, weight: 1),
+            $this->row('split', self::ARM_CHANNEL, weight: 2, salesChannelId: self::CHANNEL),
+        ];
+
+        $onChannel = $this->resolver($rows)->assign(
+            self::QUOTE,
+            self::CUSTOMER,
+            self::CHANNEL,
+            Context::createDefaultContext(),
+        );
+
+        self::assertNotNull($onChannel);
+        self::assertSame(self::ARM_CHANNEL, $onChannel->strategy->versionId);
+
+        $elsewhere = $this->resolver($rows)->assign(
+            self::QUOTE,
+            self::CUSTOMER,
+            self::OTHER_CHANNEL,
+            Context::createDefaultContext(),
+        );
+
+        self::assertNotNull($elsewhere);
+        self::assertContains($elsewhere->strategy->versionId, [self::ARM_ONE, self::ARM_TWO]);
+    }
+
+    /**
+     * A channel whose only arm is zero-weight is treated as having none of
+     * its own -- see splitArms()'s docblock for the choice -- so the quote
+     * falls back to the global arms rather than being stranded with no
+     * assignment.
+     */
+    public function testAZeroWeightChannelFallsBackToTheGlobalArms(): void
+    {
+        $assigned = $this->resolver([
+            $this->row('split', self::ARM_ONE, weight: 1),
+            $this->row('split', self::ARM_TWO, weight: 1),
+            $this->row('split', self::ARM_CHANNEL, weight: 0, salesChannelId: self::CHANNEL),
+        ])->assign(self::QUOTE, self::CUSTOMER, self::CHANNEL, Context::createDefaultContext());
+
+        self::assertNotNull($assigned);
+        self::assertContains($assigned->strategy->versionId, [self::ARM_ONE, self::ARM_TWO]);
     }
 
     public function testAZeroWeightArmIsNeverChosen(): void

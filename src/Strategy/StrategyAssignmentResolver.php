@@ -211,23 +211,7 @@ class StrategyAssignmentResolver
      */
     private function split(string $customerId, string $salesChannelId, Context $context): ?string
     {
-        $criteria = $this->scoped(StrategyAssignmentSource::Split->value, $salesChannelId);
-        $criteria->addSorting(new FieldSorting('strategyId', FieldSorting::ASCENDING));
-
-        /** @var list<StrategyAssignment> $arms */
-        $arms = [];
-        $total = 0;
-
-        foreach ($this->assignments->search($criteria, $context)->getElements() as $row) {
-            // weight > 0 is domain logic, not a re-filter of what the
-            // Criteria already scoped: a configured zero-weight arm is a
-            // live row (kind, channel and all) that this rung must still
-            // never pick, per the brief.
-            if ($row instanceof StrategyAssignment && $row->weight !== null && $row->weight > 0) {
-                $arms[] = $row;
-                $total += $row->weight;
-            }
-        }
+        [$arms, $total] = $this->splitArms($salesChannelId, $context);
 
         if ($total === 0) {
             return null;
@@ -260,6 +244,62 @@ class StrategyAssignmentResolver
         // 10000 -- but kept as a safety net rather than an assertion, since a
         // wrong assumption here would otherwise throw on a real negotiation.
         return $last?->strategyId;
+    }
+
+    /**
+     * The channel's own arms, or -- only when the channel has none usable --
+     * the global arms. Never pooled: a global A/B split and a channel's own
+     * arm are two different experiments, and per the design spec a row
+     * naming a channel wins over a NULL row rather than sharing traffic with
+     * it.
+     *
+     * Two exact queries (channel, then global) rather than one broad query
+     * filtered in PHP, so each Criteria stays honest about what it asks for
+     * and a test can catch a wrong scope by asserting on the query alone.
+     *
+     * A channel whose only arms are zero-weight (or net non-positive) counts
+     * as having none of its own: that is the same "usable" guard `split()`
+     * already applies per arm, so a channel override left at 0 falls back to
+     * the global split instead of stranding every quote on that channel with
+     * no assignment.
+     *
+     * @return array{0: list<StrategyAssignment>, 1: int}
+     */
+    private function splitArms(string $salesChannelId, Context $context): array
+    {
+        [$channelArms, $channelTotal] = $this->weightedArms($salesChannelId, $context);
+
+        if ($channelTotal > 0) {
+            return [$channelArms, $channelTotal];
+        }
+
+        return $this->weightedArms(null, $context);
+    }
+
+    /** @return array{0: list<StrategyAssignment>, 1: int} */
+    private function weightedArms(?string $salesChannelId, Context $context): array
+    {
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('kind', StrategyAssignmentSource::Split->value));
+        $criteria->addFilter(new EqualsFilter('salesChannelId', $salesChannelId));
+        $criteria->addSorting(new FieldSorting('strategyId', FieldSorting::ASCENDING));
+
+        /** @var list<StrategyAssignment> $arms */
+        $arms = [];
+        $total = 0;
+
+        foreach ($this->assignments->search($criteria, $context)->getElements() as $row) {
+            // weight > 0 is domain logic, not a re-filter of what the
+            // Criteria already scoped: a configured zero-weight arm is a
+            // live row (kind, channel and all) that this rung must still
+            // never pick, per the brief.
+            if ($row instanceof StrategyAssignment && $row->weight !== null && $row->weight > 0) {
+                $arms[] = $row;
+                $total += $row->weight;
+            }
+        }
+
+        return [$arms, $total];
     }
 
     /**
