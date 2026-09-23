@@ -15,7 +15,7 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ASSIGNMENT_KINDS, ASSIGNMENT_SOURCES, groupedSplitShares, isDuplicatePin, isSavable, mergeUnsaved, splitShares, spreadLabel } from './assignment.ts';
+import { ASSIGNMENT_KINDS, ASSIGNMENT_SOURCES, ASSIGNMENT_SOURCE_SNIPPET_KEYS, groupedSplitShares, isDuplicatePin, isSavable, mergeUnsaved, splitShares, spreadLabel } from './assignment.ts';
 
 /**
  * Extracts the PHP enum's case values, in declaration order, straight from
@@ -30,11 +30,40 @@ function phpEnumValues() {
     return [...source.matchAll(/case\s+\w+\s*=\s*'([a-z]+)'\s*;/g)].map((m) => m[1]);
 }
 
+/** Reads this module's own compiled snippet file for one locale, the same way phpEnumValues() reads the PHP source. */
+function snippetLocale(locale) {
+    const source = readFileSync(new URL(`./snippet/${locale}.json`, import.meta.url), 'utf8');
+
+    return JSON.parse(source);
+}
+
 const php = phpEnumValues();
 assert.ok(php.length === 4, `expected 4 enum cases in the PHP source, found ${php.length}`);
 assert.deepEqual([...ASSIGNMENT_SOURCES], php, 'ASSIGNMENT_SOURCES must equal the PHP enum, in order');
 assert.deepEqual([...ASSIGNMENT_KINDS], php.filter((v) => v !== 'config'),
     'ASSIGNMENT_KINDS is every source except config, which is the absence of a row');
+
+// ASSIGNMENT_SOURCE_SNIPPET_KEYS: the chain this closes end to end is PHP enum
+// -> ASSIGNMENT_SOURCES -> this map -> a real key in both locale files. Admin
+// vocabulary drifting from a backend enum has shipped twice in this project;
+// this is the third vocabulary (after ASSIGNMENT_SOURCES/KINDS above) pinned
+// against its source of truth rather than trusted by inspection.
+for (const source of ASSIGNMENT_SOURCES) {
+    assert.ok(
+        Object.hasOwn(ASSIGNMENT_SOURCE_SNIPPET_KEYS, source),
+        `ASSIGNMENT_SOURCE_SNIPPET_KEYS has no snippet key for enum value '${source}'`,
+    );
+}
+
+const enSnippets = snippetLocale('en')['merchant-quote-agent'].strategyComparison;
+const deSnippets = snippetLocale('de')['merchant-quote-agent'].strategyComparison;
+
+for (const [source, key] of Object.entries(ASSIGNMENT_SOURCE_SNIPPET_KEYS)) {
+    assert.ok(typeof enSnippets[key] === 'string' && enSnippets[key] !== '',
+        `snippet/en.json is missing merchant-quote-agent.strategyComparison.${key}, mapped from source '${source}'`);
+    assert.ok(typeof deSnippets[key] === 'string' && deSnippets[key] !== '',
+        `snippet/de.json is missing merchant-quote-agent.strategyComparison.${key}, mapped from source '${source}'`);
+}
 
 // isSavable: the admin is the ONLY guard against a rule row with no rule id,
 // because PR #185 had to drop rule_id from the table's CHECK constraint: such

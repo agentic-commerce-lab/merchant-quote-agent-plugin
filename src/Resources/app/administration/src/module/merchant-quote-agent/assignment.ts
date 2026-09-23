@@ -13,6 +13,23 @@ export const ASSIGNMENT_SOURCES = ['pin', 'rule', 'split', 'config'] as const;
 /** Every source except `config`, which is the absence of a row, never a row. */
 export const ASSIGNMENT_KINDS = ['pin', 'rule', 'split'] as const;
 
+/**
+ * Which snippet key names each assignment source in the measures list (see
+ * `spreadLabel` below and the list page's `assignmentSourceLabel`). Kept as
+ * one exported map, not a literal object duplicated in the list page, so
+ * assignment.check.mjs can pin it end to end: PHP enum -> ASSIGNMENT_SOURCES
+ * -> this map -> a real key in both snippet/en.json and snippet/de.json. A
+ * fifth PHP enum case with no entry here would previously have rendered as
+ * the raw enum value with nothing failing -- admin vocabulary drifting from a
+ * backend enum has shipped twice in this project.
+ */
+export const ASSIGNMENT_SOURCE_SNIPPET_KEYS: Record<(typeof ASSIGNMENT_SOURCES)[number], string> = {
+    pin: 'sourcePin',
+    rule: 'sourceRule',
+    split: 'sourceSplit',
+    config: 'sourceConfig',
+};
+
 export interface AssignmentLike {
     kind: string;
     customerId: string | null;
