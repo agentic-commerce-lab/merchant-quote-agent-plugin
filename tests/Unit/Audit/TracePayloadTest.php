@@ -31,6 +31,28 @@ final class TracePayloadTest extends TestCase
         self::assertStringContainsString("\u{FFFD}", $out['body']);
     }
 
+    public function testAThrowingSerializerYieldsAnEmptyPayloadRatherThanThrowing(): void
+    {
+        // json_encode propagates an exception from jsonSerialize() even with
+        // JSON_PARTIAL_OUTPUT_ON_ERROR, and of() runs mid-pass.
+        $boom = new class implements \JsonSerializable {
+            #[\Override]
+            public function jsonSerialize(): never
+            {
+                throw new \RuntimeException('serializer failed');
+            }
+        };
+
+        self::assertSame([], TracePayload::of(['a' => $boom]));
+    }
+
+    public function testAFloatWithAZeroFractionStaysAFloat(): void
+    {
+        // The DAL's own Json::encode preserves it; a round trip that did not
+        // would turn a 950.0 total into int 950.
+        self::assertSame(['totalNet' => 950.0], TracePayload::of(['totalNet' => 950.0]));
+    }
+
     public function testAStringOverTheCapIsCutAtACharacterBoundaryAndItsPathReported(): void
     {
         $long = str_repeat('ä', TracePayload::MAX_STRING_BYTES); // 2 bytes each, so 2x the cap

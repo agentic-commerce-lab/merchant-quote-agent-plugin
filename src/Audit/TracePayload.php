@@ -24,11 +24,25 @@ final class TracePayload
 
     private function __construct() {}
 
-    /** @return array<array-key, mixed> */
+    /**
+     * Keeps a zero fraction (950.0 stays a float), as the DAL's own
+     * Json::encode does. The catch is not redundant with the flags:
+     * json_encode still propagates what a JsonSerializable throws, and an
+     * unusable value records as `[]` rather than failing the pass.
+     *
+     * @return array<array-key, mixed>
+     */
     public static function of(array|object $value): array
     {
-        $encoded = json_encode($value, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
-        $decoded = \is_string($encoded) ? json_decode($encoded, true) : null;
+        try {
+            $encoded = json_encode(
+                $value,
+                JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION,
+            );
+            $decoded = \is_string($encoded) ? json_decode($encoded, true) : null;
+        } catch (\Throwable) {
+            return [];
+        }
 
         return \is_array($decoded) ? $decoded : [];
     }
