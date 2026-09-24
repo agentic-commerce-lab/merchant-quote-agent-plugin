@@ -335,6 +335,15 @@ final class OfferRoundTest extends TestCase
 
         self::assertSame(NegotiationOutcome::Escalated, $pass->outcome);
         self::assertSame(QuoteEscalationReason::NoFurtherConcession, $pass->escalationReason);
+        self::assertContains(
+            QuoteEscalationReason::NoFurtherConcession->value,
+            array_column($gateway->customFieldWrites, QuoteEscalator::MARKER_KEY),
+            'The escalation marker must be stamped on the quote.',
+        );
+        self::assertNotNull(
+            $logger->contextOf('This pass conceded nothing on a price ask; a human takes it.'),
+            'The hand-off must be logged.',
+        );
         foreach ($gateway->comments as $comment) {
             self::assertStringNotContainsString('stands at', $comment, 'No hold reply reaches the buyer.');
         }

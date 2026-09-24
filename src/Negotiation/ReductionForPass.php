@@ -46,8 +46,8 @@ final class ReductionForPass
         }
 
         // A hold is what the SENTENCE would say, not only what the write did.
-        // `PostWriteOutcome` has already checked that the total moved at all,
-        // is a different question from whether the figure announcing it says
+        // `PostWriteOutcome` has already checked that the total moved at all;
+        // that is a different question from whether the figure announcing it says
         // anything: `percent()` prints two decimals, so 0.50 EUR off a
         // 34456.73 quote -- a per-line cut on one small line of a large
         // quote, the very size #175 was filed from -- is a real write that
