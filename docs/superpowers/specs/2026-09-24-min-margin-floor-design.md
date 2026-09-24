@@ -110,7 +110,7 @@ there).
    ```php
    // Policy\MarginFloors::of(QuoteSnapshot $live, array $purchaseNetByProduct, float $marginPercent)
    // => array<string lineItemId, float effectiveFloorNet>
-   effectiveFloor = min(floor, roundMoney(liveUnitNet × goodsFactor(live)))
+   effectiveFloor = min(floor, MoneyMath::floorToCent(liveUnitNet × goodsFactor(live)))
    ```
 
    - Only positive lines with a purchase price get an entry.
@@ -127,8 +127,9 @@ there).
      `OfferApplier`'s never-raise check would escalate.
 
 2. **Clamp before the write.** A new pure Policy class,
-   `Policy\MarginFloorClamp::clamp(ProposedOffer $offer, list<QuoteLineSnapshot> $liveLines, array $floors): ?ProposedOffer`,
-   works out the effective price each positive line would land at:
+   `Policy\MarginFloorClamp::clamp(ProposedOffer $offer, list<QuoteLineSnapshot> $liveLines, list<QuoteLineSnapshot> $referenceLines, array $floors): ?ProposedOffer`,
+   first decides whether the floor BINDS, from the effective price each
+   positive line would land at on the LIVE quote (`Policy\OfferLanding`):
 
    | Offer | Effective price of line *i* |
    |---|---|
@@ -137,10 +138,31 @@ there).
    | per-line, line not named | `live_i × goodsFactor(live)` |
 
    If every line with a floor lands at or above it (within `Epsilon::MONEY`),
-   it returns **null** and the offer is written exactly as today. Otherwise it
-   returns a **complete per-line offer**: every positive line priced at
-   `max(roundMoney(effective_i), floor_i)` (lines without a floor keep their
-   effective price). Then `OfferApplier::write()`:
+   it returns **null** and the offer is written exactly as today. That is what
+   the percentage write would actually do, so the null path stays safe.
+   Otherwise it returns a **complete per-line offer**: every positive line
+   priced at `max(MoneyMath::floorToCent(converted_i), floor_i)` (lines without
+   a floor keep their converted price), where the conversion
+   (`Policy\OfferConversion`) is:
+
+   | Offer | Converted price of line *i* |
+   |---|---|
+   | quote-wide `p` | `min(reference_i × (1 − p/100), live_i × goodsFactor(live))` |
+   | per-line, line named | `offered_i × goodsFactor(live)` — as above |
+   | per-line, line not named | `live_i × goodsFactor(live)` — as above |
+
+   `reference_i` is the line's BASELINE-ANCHORED unit price
+   (`QuoteBaselineLines::anchor()`, the same reference the verifier reads; the
+   live price on a first pass, or for a line the baseline does not know).
+   Binding is measured on live, the conversion on the anchored reference:
+   measured on live, "15% off" on round two, or on a retry of the pass, would
+   take 15% off prices round one already cut and compound (a line at 102 after
+   round one would go to 86.70, 27.75% off its baseline). Anchored, a repeat
+   reproduces round one's prices and nothing moves. The `min` with
+   `live_i × goodsFactor` keeps a line a human lowered from being raised. Per-line
+   offers are absolute already and convert unchanged. Prices round DOWN to the
+   cent, so re-expressing the quote in line prices can only lower its total.
+   Then `OfferApplier::write()`:
 
    - writes only the lines whose price differs from their live unit price
      (rewriting an unchanged price through the gross conversion could move it
@@ -214,6 +236,8 @@ below a floor.
 | Line already at or below its floor | No further discount on it; never raised |
 | Buyer asks less than the floor allows | Nothing binds; offer written as today |
 | Ask exceeds the counter band | Escalates as today — the floor never runs |
+| Buyer repeats the ask, or the pass is retried | Nothing moves: the quote-wide conversion is anchored on the baseline, so it reproduces the prices already written; the reply says the quote stands |
+| Pass dies after `updateLineItems`, before the `updateQuote` 0% reset | Known gap, not fixed: the retry reads the line at its floor with the old discount still stacked on it; the floor's `min(…, today's price)` accepts that as today's price, so the stacked discount stays below the floor undetected until a human looks (documented on `OfferApplier::write()`) |
 | A negative line that is not the quote discount (a manual credit) | Counted in `goodsFactor` like a discount, and not removed by the reset — conservative: at worst the verifier escalates |
 
 ## Testing
@@ -226,7 +250,10 @@ Unit (Policy, no kernel):
 - `MarginFloorClamp`: the worked example (15% quote-wide on one line → a
   per-line offer at 110); the multi-line case (A keeps 15%, B at its floor);
   nothing binds → null; per-line offer clamped; unnamed lines carry the old
-  discount into their price.
+  discount into their price; a repeated quote-wide ask on round one's prices
+  moves nothing, and never raises a line a human lowered
+  (`MarginFloorClampAnchoringTest`, and `OfferApplierMarginFloorRepeatTest`
+  through the applier).
 - `MarginFloorVerifier`: passes at the floor; fails a cent below; stacked
   discount under the floor fails.
 - `QuoteLimits`: `withMaxDiscountPercent()` keeps `minMarginPercent`;

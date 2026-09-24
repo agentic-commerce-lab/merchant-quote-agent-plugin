@@ -286,10 +286,13 @@ bands:
 | `escalate` | Above the counter ceiling, or no counter band configured. |
 
 **Minimum-margin floor.** With `minMarginPercent` set, `OfferApplier` never
-writes a line below `purchase price × (1 + minMarginPercent/100)`. It does not
+LOWERS a line below `purchase price × (1 + minMarginPercent/100)`; a line
+already below its floor (a loss leader, say) is left where it is. It does not
 escalate: a deeper offer is raised to the floor, per line, and a quote-wide
-percentage that would undercut any floor is written as line prices with the
-quote discount reset to 0%. A post-write check escalates as
+percentage that would undercut any floor is written as line prices. Whenever
+the floor re-prices an offer, quote-wide or per-line, the quote-level discount
+is reset to 0% and folded into the line prices. A buyer who repeats the ask
+gets the same prices again: the quote stands. A post-write check escalates as
 `verification_failed` if the database still lands a line below its floor. The
 purchase price and the floor never reach the model or the buyer; the buyer's
 reply reports the reduction the database actually shows.

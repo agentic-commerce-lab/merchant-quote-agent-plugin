@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-24-min-margin-floor-design.md` — read it before starting any task.
 
+**Changed in execution:** prices round DOWN with `MoneyMath::floorToCent` (not `roundMoney`), `OfferLanding`/`OfferWrite` (and `OfferConversion`) were split out, and the quote-wide conversion is anchored on the baseline — the spec is authoritative; this plan body is not rewritten.
+
 ## Global Constraints
 
 - `declare(strict_types=1)` in every file; target PHP 8.3.
