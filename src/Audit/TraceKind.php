@@ -25,6 +25,7 @@ enum TraceKind: string
     case PolicyVerdict = 'policy_verdict';
     case QuoteBefore = 'quote_before';
     case QuoteAfter = 'quote_after';
+    case Skip = 'skip';
 
     /** @return list<string> */
     public function metaKeys(): array
@@ -59,6 +60,7 @@ enum TraceKind: string
                 'escalationReasons',
             ],
             self::QuoteBefore, self::QuoteAfter => ['lineCount'],
+            self::Skip => ['source', 'reason', 'trigger', 'attempt'],
         };
     }
 }
