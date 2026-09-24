@@ -5,6 +5,8 @@ import './page/merchant-quote-agent-detail';
 import './page/merchant-quote-agent-access';
 import './page/merchant-quote-agent-strategies';
 import './component/merchant-quote-agent-strategy-select';
+import './component/merchant-quote-agent-draft-review';
+import './component/merchant-quote-agent-feedback-modal';
 
 import deDE from './snippet/de.json';
 import enGB from './snippet/en.json';

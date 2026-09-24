@@ -1,5 +1,6 @@
 import template from './merchant-quote-agent-list.html.twig';
 import {
+    answeredNetAfter,
     answeredTheBuyer,
     askSummary,
     dispositionVariant,
@@ -13,6 +14,7 @@ import {
     ORDER_PLACED_TERMINAL_STATE,
     outcomeLabel,
     outcomeVariant,
+    quoteDiscountPercent,
 } from '../../decision';
 import {
     autoExecutionRate,
@@ -26,6 +28,18 @@ import { strategyRows } from '../../strategy-measures';
 import { ASSIGNMENT_SOURCE_SNIPPET_KEYS } from '../../assignment.ts';
 
 const { Criteria } = Shopware.Data;
+
+interface PriceQuote {
+    netBefore: number | null;
+    latest: {
+        outcome: string | null;
+        reviewStatus?: string | null;
+        discountPercentGranted?: number | null;
+        totalNetAfter?: number | null;
+        currencyIso: string;
+        sentChanges?: { totalNet?: number | null } | null;
+    };
+}
 
 /**
  * ponytail: the page reads every pass in the period in one request and folds it
@@ -313,6 +327,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
     },
 
     methods: {
+        answeredNetAfter,
         formatCurrency,
         formatDate,
         formatDateShort,
@@ -601,18 +616,27 @@ Shopware.Component.register('merchant-quote-agent-list', {
          * the outcome rather than on the column being non-null: an escalated
          * pass can carry a recalculated total it never offered anyone.
          */
-        grantedLabel(quote) {
+        grantedLabel(quote: PriceQuote) {
             const pass = quote.latest;
 
             if (!answeredTheBuyer(pass.outcome, pass.reviewStatus ?? null)) {
                 return '–';
             }
 
+            if (pass.reviewStatus === 'sent') {
+                const actual = answeredNetAfter(pass);
+                const reduction = quoteDiscountPercent(quote.netBefore, actual);
+
+                return reduction !== null ? formatPercent(reduction) : actual !== null ? formatCurrency(actual, pass.currencyIso) : '–';
+            }
+
             if (pass.discountPercentGranted !== null && pass.discountPercentGranted !== undefined) {
                 return formatPercent(pass.discountPercentGranted);
             }
 
-            return pass.totalNetAfter !== null ? formatCurrency(pass.totalNetAfter, pass.currencyIso) : '–';
+            const net = answeredNetAfter(pass);
+
+            return net !== null ? formatCurrency(net, pass.currencyIso) : '–';
         },
 
         openQuote(quote) {

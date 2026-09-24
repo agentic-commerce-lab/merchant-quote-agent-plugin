@@ -15,6 +15,7 @@ export const REVIEW_PRIVILEGE = 'merchant_quote_agent_drafts.review';
 export interface DraftView {
     pricing: 'lines' | 'discount' | null;
     reply: string;
+    previewEdited: boolean;
     discountPercent: { live: number | null; draft: number | null };
     lines: Array<{ id: string; draft: number }>;
     expiresAt: { live: string | null; draft: string | null };
@@ -80,6 +81,15 @@ export function wasEdited(view: DraftView, form: DraftForm): boolean {
     return form.reply.trim() !== view.reply.trim() || Object.keys(editsPayload(view, form)).length > 0;
 }
 
+/** A persisted Preview edit still needs a reply check after a page reload. */
+export function needsReplyReview(view: DraftView | null, form: DraftForm | null, replyTouched: boolean, replyChecked: boolean): boolean {
+    if (view === null || form === null || replyTouched) {
+        return false;
+    }
+
+    return wasEdited(view, form) || (view.previewEdited && !replyChecked);
+}
+
 /** Merchant cap is advisory here; it binds the agent, not the human reviewer. */
 export function exceedsCap(discount: number | null, cap: number | null): boolean {
     return discount !== null && cap !== null && discount > cap + CENT;
@@ -97,8 +107,22 @@ export function reviewStatusVariant(status: string | null): string {
 }
 
 /** Error code returned by DraftReviewController, if this response came from it. */
-export function errorCode(error: any): string | null {
-    const code = error?.response?.data?.code;
+export function errorCode(error: unknown): string | null {
+    if (typeof error !== 'object' || error === null || !('response' in error)) {
+        return null;
+    }
 
-    return typeof code === 'string' ? code : null;
+    const response = error.response;
+
+    if (typeof response !== 'object' || response === null || !('data' in response)) {
+        return null;
+    }
+
+    const data = response.data;
+
+    if (typeof data !== 'object' || data === null || !('code' in data)) {
+        return null;
+    }
+
+    return typeof data.code === 'string' ? data.code : null;
 }

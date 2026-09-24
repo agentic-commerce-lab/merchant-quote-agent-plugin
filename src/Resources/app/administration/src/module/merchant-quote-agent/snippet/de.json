@@ -178,7 +178,7 @@
             },
             "openQuote": "Angebot öffnen",
             "fromCustomer": "Kunde",
-            "fromMerchant": "Interne Notiz",
+            "fromMerchant": "Nachricht des Händlers",
             "openOrder": "Bestellung öffnen",
             "orderPlacedAt": "Bestellung ausgelöst am {at}",
             "historyTitle": "Verlauf",
@@ -323,6 +323,7 @@
             "orderPlaced": "Bestellung ausgelöst"
         },
         "review": {
+            "statusLabel": "Prüfung",
             "title": "Entwurf wartet auf Ihre Prüfung",
             "intro": "Der Entwurfsmodus ist aktiv: Der Agent hat dies vorbereitet, aber nichts gesendet. Prüfen und anpassen, dann senden oder verwerfen.",
             "introClarification": "Der Agent möchte dem Käufer eine Frage stellen. Es wurde nichts gesendet.",
@@ -338,6 +339,8 @@
             "overCap": "Über Ihrem konfigurierten Maximum von {cap}. Der Agent hätte das nicht anbieten dürfen – Sie dürfen.",
             "updatePreview": "Vorschau aktualisieren",
             "replyLabel": "Antwort an den Käufer",
+            "checkReplyAfterEdit": "Sie haben den Entwurf geändert. Prüfen Sie, ob die Antwort noch zu Preisen und Datum passt, oder aktualisieren Sie die Vorschau für einen neuen Formulierungsvorschlag.",
+            "draftReplyLabel": "Antwortentwurf des Agenten",
             "useRedraft": "Neu formulierte Antwort übernehmen",
             "send": "An Käufer senden",
             "reject": "Entwurf verwerfen",
@@ -346,7 +349,7 @@
             "readOnly": "Sie sehen diesen Entwurf, dürfen ihn aber nicht senden oder verwerfen. Fragen Sie nach der Berechtigung „Angebotsagent: Entwürfe prüfen“.",
             "error": {
                 "stale": "Der Käufer hat erneut geschrieben oder das Angebot hat sich seit dem Entwurf geändert. Verwerfen Sie ihn – der Agent entwirft bei der nächsten Nachricht neu.",
-                "gone": "Das Angebot zu diesem Entwurf existiert nicht mehr. Er kann weder gesendet noch verworfen werden.",
+                "gone": "Die vorbereiteten Preise dieses Entwurfs existieren nicht mehr. Verwerfen Sie ihn und bearbeiten Sie das Angebot in SwagCommercial.",
                 "not_pending": "Dieser Entwurf wurde bereits bearbeitet oder ersetzt.",
                 "busy": "Der Agent bearbeitet dieses Angebot gerade. Bitte in ein paar Sekunden erneut versuchen.",
                 "unavailable": "Angebote können nicht bearbeitet werden, weil SwagCommercial nicht lizenziert ist.",

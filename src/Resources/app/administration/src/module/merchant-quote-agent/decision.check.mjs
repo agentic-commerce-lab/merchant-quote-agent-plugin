@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { historySummary, historyReads } from './history.ts';
 import {
     DISPOSITION_CLASSES,
+    answeredNetAfter,
     answeredTheBuyer,
     askItems,
     askSummary,
@@ -35,6 +36,9 @@ import {
     writeLabels,
 } from './decision.ts';
 
+assert.equal(answeredNetAfter({ reviewStatus: 'sent', totalNetAfter: 90, sentChanges: { totalNet: 80 } }), 80);
+assert.equal(answeredNetAfter({ reviewStatus: 'pending', totalNetAfter: 90, sentChanges: { totalNet: 80 } }), 90);
+
 /**
  * $tc/$t return the last path segment, so assertions read as labels. $t also
  * echoes the interpolated values, which is what lets the escalation-sentence
@@ -45,6 +49,8 @@ const vm = {
     $tc: (key) => key.split('.').pop(),
     $t: (key, values) => `${Object.values(values ?? {}).join(' / ')} ${key.split('.').pop()}`,
 };
+
+assert.equal(roundChange(vm, { reviewStatus: 'sent', totalNetBefore: 100, totalNetAfter: 90, sentChanges: { totalNet: 80 }, discountPercentGranted: 10, currencyIso: 'EUR' }), '+20.0 roundChange · 100.00 EUR → 80.00 EUR');
 
 const current = {
     price: { bestPriceRequested: false, additionalDiscountPercent: 8 },

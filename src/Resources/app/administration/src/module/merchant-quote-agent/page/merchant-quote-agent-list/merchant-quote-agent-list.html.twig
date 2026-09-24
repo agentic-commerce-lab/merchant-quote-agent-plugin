@@ -370,10 +370,10 @@
                         <div class="mqa-cell">
                             <span class="mqa-cell__value">{{ grantedLabel(item) }}</span>
                             <span
-                                v-if="answeredTheBuyer(item.latest.outcome, item.latest.reviewStatus) && item.latest.totalNetAfter !== null"
+                                v-if="answeredTheBuyer(item.latest.outcome, item.latest.reviewStatus) && answeredNetAfter(item.latest) !== null"
                                 class="mqa-cell__aside"
                             >
-                                {{ formatCurrency(item.latest.totalNetAfter, item.latest.currencyIso) }}
+                                {{ formatCurrency(answeredNetAfter(item.latest), item.latest.currencyIso) }}
                             </span>
                         </div>
                     </template>

@@ -7,6 +7,7 @@ import {
     errorCode,
     exceedsCap,
     feedbackPayload,
+    needsReplyReview,
     reviewStatusVariant,
     wasEdited,
 } from './review.ts';
@@ -23,6 +24,7 @@ assert.equal(feedbackPayload([], 'x'.repeat(FEEDBACK_COMMENT_MAX + 1)), null);
 const view = {
     pricing: 'discount',
     reply: 'We can offer 5%.',
+    previewEdited: false,
     discountPercent: { live: null, draft: 5 },
     lines: [{ id: 'l1', draft: 9 }],
     expiresAt: { live: null, draft: '2026-10-07' },
@@ -34,6 +36,10 @@ const edited = { ...untouched, discountPercent: 8 };
 assert.deepEqual(editsPayload(view, edited), { discountPercent: 8 });
 assert.equal(wasEdited(view, edited), true);
 assert.equal(wasEdited(view, { ...untouched, reply: 'Something else' }), true);
+assert.equal(needsReplyReview(view, edited, false, false), true);
+assert.equal(needsReplyReview({ ...view, previewEdited: true }, untouched, false, false), true);
+assert.equal(needsReplyReview({ ...view, previewEdited: true }, untouched, false, true), false);
+assert.equal(needsReplyReview({ ...view, previewEdited: true }, untouched, true, false), false);
 const lines = { ...view, pricing: 'lines', lines: [{ id: 'l1', draft: 9 }, { id: 'l2', draft: 4 }] };
 assert.deepEqual(editsPayload(lines, { ...untouched, discountPercent: 99, linePrices: { l1: 9, l2: 3.5 } }), { linePrices: { l2: 3.5 } });
 assert.deepEqual(editsPayload({ ...view, pricing: null }, { ...untouched, discountPercent: 8 }), {});

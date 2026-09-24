@@ -65,7 +65,7 @@
                     <div class="mqa-figure">
                         <span class="mqa-figure__label">{{ $tc('merchant-quote-agent.detail.offeredNet') }}</span>
                         <span class="mqa-figure__value">
-                            {{ latestOffer ? formatCurrency(latestOffer.raw.totalNetAfter, latestOffer.raw.currencyIso) : '–' }}
+                            {{ latestOffer ? formatCurrency(answeredNetAfter(latestOffer.raw), latestOffer.raw.currencyIso) : '–' }}
                         </span>
                     </div>
 
@@ -90,6 +90,15 @@
                     :subline="$tc('merchant-quote-agent.detail.missingSubline')"
                 />
             </sw-card>
+            {% endblock %}
+
+            {% block merchant_quote_agent_detail_draft_review %}
+            <merchant-quote-agent-draft-review
+                v-if="pendingDraftId"
+                :decision-id="pendingDraftId"
+                @reviewed="onReviewed"
+                @rejected="onRejected"
+            />
             {% endblock %}
 
             {# One card, one sequence. The conversation and the timeline were
@@ -120,7 +129,7 @@
                         :class="[`mqa-entry--${entry.kind}`, `mqa-entry--${entry.variant}`]"
                     >
                         {# What the customer actually said, or the merchant's own
-                           internal note (fromMerchant). The pass below shows
+                           merchant message (fromMerchant). The pass below shows
                            what the agent made of a customer's message, which is
                            unreadable without this: an ask recorded as
                            "discount: 8.0%" was a sentence first, and a merchant
@@ -150,7 +159,9 @@
                             <div class="mqa-entry__header">
                                 <span class="mqa-run__index">#{{ entry.run.index }}</span>
                                 <h4 class="mqa-entry__title">{{ $tc('merchant-quote-agent.detail.agentTitle') }}</h4>
-                                <mt-badge :variant="entry.run.outcomeVariant">{{ entry.run.outcomeLabel }}</mt-badge>
+                                <mt-badge :variant="entry.run.reviewStatusLabel ? entry.run.reviewStatusVariant : entry.run.outcomeVariant">
+                                    {{ entry.run.reviewStatusLabel ?? entry.run.outcomeLabel }}
+                                </mt-badge>
                                 <span class="mqa-entry__time">{{ entry.run.timestamp }}</span>
                             </div>
 
@@ -231,10 +242,42 @@
                                 {# The agent's own sentence, in the pass that
                                    composed it rather than in a second card. #}
                                 <template v-if="entry.run.reply">
-                                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.replyLabel') }}</dt>
+                                    <dt class="mqa-run__fact-label">{{ entry.run.replyLabel }}</dt>
                                     <dd class="mqa-run__fact-value mqa-run__message">{{ entry.run.reply }}</dd>
                                 </template>
+
+                                <template v-if="entry.run.reviewStatusLabel">
+                                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.review.statusLabel') }}</dt>
+                                    <dd class="mqa-run__fact-value">
+                                        <mt-badge :variant="entry.run.reviewStatusVariant">{{ entry.run.reviewStatusLabel }}</mt-badge>
+                                    </dd>
+                                </template>
+
+                                <template v-if="entry.run.sentReply">
+                                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.review.sentReplyLabel') }}</dt>
+                                    <dd class="mqa-run__fact-value mqa-run__message">{{ entry.run.sentReply }}</dd>
+                                </template>
+
+                                <template v-if="entry.run.feedbackReasons.length || entry.run.feedbackComment">
+                                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.feedback.savedLabel') }}</dt>
+                                    <dd class="mqa-run__fact-value">
+                                        <ul v-if="entry.run.feedbackReasons.length" class="mqa-changes">
+                                            <li v-for="reason in entry.run.feedbackReasons" :key="reason">{{ reason }}</li>
+                                        </ul>
+                                        <span v-if="entry.run.feedbackComment" class="mqa-run__message">{{ entry.run.feedbackComment }}</span>
+                                    </dd>
+                                </template>
                             </dl>
+
+                            <mt-button
+                                v-if="acl.can('merchant_quote_agent_drafts.review')"
+                                size="small"
+                                variant="secondary"
+                                class="mqa-run__feedback"
+                                @click="openFeedback(entry.run.raw)"
+                            >
+                                {{ entry.run.feedbackReasons.length || entry.run.feedbackComment ? $tc('merchant-quote-agent.feedback.edit') : $tc('merchant-quote-agent.feedback.open') }}
+                            </mt-button>
 
                             <details class="mqa-tech">
                                 <summary>{{ $tc('merchant-quote-agent.detail.technicalDetails') }}</summary>
@@ -290,6 +333,15 @@
                 </ol>
             </sw-card>
             {% endblock %}
+            <merchant-quote-agent-feedback-modal
+                v-if="feedbackFor"
+                :decision-id="feedbackFor.id"
+                :reasons="feedbackFor.feedbackReasons ?? []"
+                :comment="feedbackFor.feedbackComment ?? ''"
+                :prompt="feedbackPrompt"
+                @close="feedbackFor = null"
+                @saved="onFeedbackSaved"
+            />
         </sw-card-view>
     </template>
     {% endblock %}

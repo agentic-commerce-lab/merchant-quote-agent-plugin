@@ -132,7 +132,13 @@ export function splitDeals(
  */
 function agentDiscountPercent(quote: any): number | null {
     const original = Number(quote.netBefore ?? 0);
-    const realized = quote.latestAnswered?.totalNetAfter;
+    const pass: unknown = quote.latestAnswered;
+    const record = typeof pass === 'object' && pass !== null ? pass as Record<string, unknown> : null;
+    const changes = record?.sentChanges;
+    const sentNet = record?.reviewStatus === 'sent' && typeof changes === 'object' && changes !== null
+        ? (changes as Record<string, unknown>).totalNet
+        : null;
+    const realized = typeof sentNet === 'number' && Number.isFinite(sentNet) ? sentNet : record?.totalNetAfter;
 
     if (!(original > 0) || realized === null || realized === undefined) {
         return null;

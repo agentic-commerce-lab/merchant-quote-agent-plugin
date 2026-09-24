@@ -178,7 +178,7 @@
             },
             "openQuote": "Open quote",
             "fromCustomer": "Customer",
-            "fromMerchant": "Internal note",
+            "fromMerchant": "Merchant message",
             "openOrder": "Open order",
             "orderPlacedAt": "Order placed {at}",
             "historyTitle": "History",
@@ -323,6 +323,7 @@
             "orderPlaced": "Order placed"
         },
         "review": {
+            "statusLabel": "Review",
             "title": "Draft awaiting your review",
             "intro": "Draft Mode is on: the agent prepared this but sent nothing. Check it, change what you like, then send it or reject it.",
             "introClarification": "The agent wants to ask the buyer a question. Nothing was sent.",
@@ -338,6 +339,8 @@
             "overCap": "Above your configured maximum of {cap}. The agent could not have offered this — you can.",
             "updatePreview": "Update preview",
             "replyLabel": "Reply to the buyer",
+            "checkReplyAfterEdit": "You changed the draft. Check that the reply still matches the prices and date, or update the preview for suggested wording.",
+            "draftReplyLabel": "Agent's draft reply",
             "useRedraft": "Use the re-drafted reply",
             "send": "Send to buyer",
             "reject": "Reject draft",
@@ -346,7 +349,7 @@
             "readOnly": "You can see this draft but not send or reject it. Ask for the “Quote agent: review drafts” permission.",
             "error": {
                 "stale": "The buyer wrote again or the quote changed since this draft. Reject it — the agent drafts again on the buyer's next message.",
-                "gone": "This draft's quote no longer exists. It cannot be sent or rejected.",
+                "gone": "The prepared prices for this draft no longer exist. Reject it and handle the quote in SwagCommercial.",
                 "not_pending": "This draft was already handled or replaced.",
                 "busy": "The agent is working on this quote right now. Try again in a few seconds.",
                 "unavailable": "Quotes cannot be edited because SwagCommercial is not licensed.",
