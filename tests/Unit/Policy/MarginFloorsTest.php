@@ -81,6 +81,18 @@ final class MarginFloorsTest extends TestCase
         self::assertSame(['a' => 55.0, 'b' => 95.0], $floors);
     }
 
+    public function testTheLiveCapRoundsDownSoItNeverExceedsTodaysPrice(): void
+    {
+        // 10.01 × 0.95 = 9.5095 today: capped at 9.50, never rounded up to 9.51.
+        $floors = MarginFloors::of(
+            self::quote([self::line('b', 10.01, 100), self::line('d', -50.05, 1, null)]),
+            ['prod-b' => 10.0],
+            10.0,
+        );
+
+        self::assertSame(['b' => 9.5], $floors);
+    }
+
     public function testLinesWithoutAPurchasePriceHaveNoFloor(): void
     {
         $floors = MarginFloors::of(

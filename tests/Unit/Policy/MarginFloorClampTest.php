@@ -110,4 +110,31 @@ final class MarginFloorClampTest extends TestCase
 
         self::assertSame(['a' => 92.0], self::prices($clamped));
     }
+
+    public function testUnflooredLinesRoundDownSoTheTotalNeverRises(): void
+    {
+        // Per-unit rounding to the nearest cent would write b at 9.51
+        // (10.01 × 0.95 = 9.5095) and lift the total by 0.05 once the discount
+        // is reset; rounding down writes 9.50 and the total can only fall.
+        $live = [
+            MarginFloorsTest::line('a', 100.0),
+            MarginFloorsTest::line('b', 10.01, 100),
+            MarginFloorsTest::line('d', -55.05, 1, null),
+        ];
+        $prices = self::prices(MarginFloorClamp::clamp(self::perLine(['a' => 90.0]), $live, ['a' => 95.0]));
+
+        self::assertSame(['a' => 95.0, 'b' => 9.5], $prices);
+        $written = $prices['a'] + ($prices['b'] * 100); // quantities 1 and 100
+        $effective = array_sum(array_map(static fn($line): float => $line->unitPriceNet * $line->quantity, $live));
+        self::assertLessThanOrEqual($effective, $written);
+
+        // Quote-wide 10%: b has no floor and lands at 29.997, written at 29.99.
+        $clamped = MarginFloorClamp::clamp(
+            self::quoteWide(10.0),
+            [MarginFloorsTest::line('a', 100.0), MarginFloorsTest::line('b', 33.33)],
+            ['a' => 95.0],
+        );
+
+        self::assertSame(['a' => 95.0, 'b' => 29.99], self::prices($clamped));
+    }
 }

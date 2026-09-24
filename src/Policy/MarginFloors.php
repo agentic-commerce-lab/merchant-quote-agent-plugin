@@ -9,9 +9,9 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 /**
  * The lowest net unit price each line may be offered at (spec 2026-09-24):
  * `purchase × (1 + margin/100)`, rounded UP to the cent, and never above what
- * the line costs the buyer today. That `min` is what keeps the floor from ever
- * raising a price: a line already priced below its floor gets no further
- * discount, but is not pushed back up either.
+ * the line costs the buyer today, rounded DOWN to the cent. That `min` is what
+ * keeps the floor from ever raising a price: a line already priced below its
+ * floor gets no further discount, but is not pushed back up either.
  */
 final class MarginFloors
 {
@@ -36,7 +36,7 @@ final class MarginFloors
 
             $floors[$line->lineItemId()] = min(
                 self::ceilToCent($purchase * (1 + ($marginPercent / 100))),
-                MoneyMath::roundMoney($line->unitPriceNet * $goodsFactor),
+                MoneyMath::floorToCent($line->unitPriceNet * $goodsFactor),
             );
         }
 

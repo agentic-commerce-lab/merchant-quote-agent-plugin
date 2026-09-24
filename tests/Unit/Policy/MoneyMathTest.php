@@ -24,4 +24,11 @@ final class MoneyMathTest extends TestCase
     {
         self::assertSame(0.01, MoneyMath::roundMoney(0.005));
     }
+
+    public function testFloorsToTheCentWithoutTrippingOnFloatNoise(): void
+    {
+        self::assertSame(9.5, MoneyMath::floorToCent(9.5095));
+        self::assertSame(110.0, MoneyMath::floorToCent(100 * 1.1)); // 110.00000000000001
+        self::assertSame(10.0, MoneyMath::floorToCent(10.0));
+    }
 }

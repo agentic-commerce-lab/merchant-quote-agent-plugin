@@ -18,7 +18,9 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
  * returns null and the offer goes out exactly as proposed. Otherwise it returns
  * a complete per-line offer, with the old discount folded into every line's own
  * price, so the caller can reset that discount to 0% without taking anything
- * away from the buyer.
+ * away from the buyer. Prices round DOWN to the cent: rounding each unit to the
+ * nearest cent could lift the quote total by up to half a cent per unit, which
+ * OfferApplier's never-raise check would escalate.
  */
 final class MarginFloorClamp
 {
@@ -39,7 +41,7 @@ final class MarginFloorClamp
         $prices = [];
         foreach ($landing as $lineItemId => $price) {
             $prices[] = new QuoteLinePrice(lineItemId: $lineItemId, unitPriceNet: max(
-                MoneyMath::roundMoney($price),
+                MoneyMath::floorToCent($price),
                 $floors[$lineItemId] ?? 0.0,
             ));
         }
