@@ -28,7 +28,7 @@ use Psr\Log\NullLogger;
 /** The minimum-margin floor at the one place offers are written (spec 2026-09-24). */
 final class OfferApplierMarginFloorTest extends TestCase
 {
-    private static function applier(FakePurchasePrices $prices): OfferApplier
+    public static function applier(FakePurchasePrices $prices): OfferApplier
     {
         return new OfferApplier(
             new OfferVerifier(),
@@ -38,7 +38,7 @@ final class OfferApplierMarginFloorTest extends TestCase
         );
     }
 
-    private static function settings(?float $minMarginPercent): QuoteAgentSettings
+    public static function settings(?float $minMarginPercent): QuoteAgentSettings
     {
         $settings = NegotiationFixture::settings(maxDiscountPercent: 25.0);
 
@@ -49,20 +49,9 @@ final class OfferApplierMarginFloorTest extends TestCase
         )));
     }
 
-    private static function quoteWide(float $percent): ProposedOffer
+    public static function quoteWide(float $percent): ProposedOffer
     {
         return new ProposedOffer(orderTotalNet: 1000.0, price: new OfferedPrice(discountPercent: $percent));
-    }
-
-    private static function withQuoteDiscount(QuoteSnapshot $snapshot): QuoteSnapshot
-    {
-        return new QuoteSnapshot(
-            identity: $snapshot->identity,
-            revision: $snapshot->revision,
-            totals: new QuoteTotals(1000.0, new Discount(DiscountType::Percentage, 5.0), 1000.0),
-            lifecycle: $snapshot->lifecycle,
-            content: $snapshot->content,
-        );
     }
 
     public function testAQuoteWideOfferBelowTheFloorIsWrittenAsLinePricesAtTheFloor(): void
@@ -81,14 +70,41 @@ final class OfferApplierMarginFloorTest extends TestCase
 
     public function testAFlooredOfferResetsAnExistingQuoteDiscount(): void
     {
-        $snapshot = self::withQuoteDiscount(NegotiationFixture::snapshot());
+        // A 5% quote discount is on (the -100 line, so every line costs 95% of
+        // its price). Naming line-1 at 80 lands at 76, under its floor of 88,
+        // so the clamp writes line-1 at 88 AND line-2 at 95 -- the old
+        // discount folded into its own price -- then resets the discount.
+        // A quote-wide ask cannot show the fold on a first pass: a line only
+        // keeps the old discount when it is deeper than the ask, and then the
+        // floor (capped at today's price) cannot bind.
+        $base = NegotiationFixture::snapshot(totalNet: 2000.0);
+        $snapshot = new QuoteSnapshot(
+            identity: $base->identity,
+            revision: $base->revision,
+            totals: new QuoteTotals(1900.0, new Discount(DiscountType::Percentage, 5.0), 1900.0),
+            lifecycle: $base->lifecycle,
+            content: new QuoteContent(lines: [
+                new QuoteLineSnapshot(new QuoteLineIdentity('line-1', 'Widget', 'prod-1'), 10, 100.0, 1000.0),
+                new QuoteLineSnapshot(new QuoteLineIdentity('line-2', 'Gadget', 'prod-2'), 10, 100.0, 1000.0),
+                new QuoteLineSnapshot(new QuoteLineIdentity('discount', 'Discount', null), 1, -100.0, -100.0),
+            ], comments: []),
+        );
         $gateway = new FakeQuoteGateway([$snapshot]);
+        $offer = new ProposedOffer(orderTotalNet: 1900.0, price: new OfferedPrice(linePricesNet: [
+            new QuoteLinePrice('line-1', 80.0),
+        ]));
 
         self::applier(new FakePurchasePrices(['prod-1' => 80.0]))
-            ->apply($gateway, $snapshot, self::settings(10.0), self::quoteWide(15.0));
+            ->apply($gateway, $snapshot, self::settings(10.0), $offer);
 
+        $written = [];
+        foreach ($gateway->lineItemChanges as $change) {
+            $written[$change->lineItemId] = $change->unitPriceNet;
+        }
+        self::assertSame(['line-1' => 88.0, 'line-2' => 95.0], $written);
         self::assertSame(DiscountType::Percentage, $gateway->quoteUpdates[0]->discount?->type);
         self::assertSame(0.0, $gateway->quoteUpdates[0]->discount?->value);
+        self::assertSame($snapshot->revision, $gateway->firstExpectedRevision);
     }
 
     public function testAnOfferAboveTheFloorIsWrittenExactlyAsProposed(): void

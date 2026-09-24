@@ -9,9 +9,15 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
 
 /**
  * The net unit price each positive line would actually cost the buyer once an
- * offer is written: a quote-wide percentage REPLACES any existing quote
- * discount, while a per-line write keeps it on top. Split out of
- * MarginFloorClamp to keep per-class cyclomatic complexity within the gate.
+ * offer is written as proposed: a quote-wide percentage REPLACES any existing
+ * quote discount and acts on the LIVE prices, while a per-line write keeps the
+ * discount on top. Split out of MarginFloorClamp to keep per-class cyclomatic
+ * complexity within the gate.
+ *
+ * This is the BINDING question only -- whether the floor fires. It is what the
+ * write does when the clamp returns null, so the null path stays safe. What
+ * the clamp writes once it fires is OfferConversion's answer, which differs
+ * for a quote-wide offer on purpose (idempotence across rounds and retries).
  */
 final class OfferLanding
 {
@@ -31,7 +37,7 @@ final class OfferLanding
 
         // An empty per-line list is written as a quote-wide discount
         // (OfferApplier::write()), so it is priced as one here too.
-        $factor = $named === [] ? 1 - (($offer->price->discountPercent ?? 0.0) / 100) : GoodsFactor::of($liveLines);
+        $factor = $named === [] ? self::quoteWideFactor($offer) : GoodsFactor::of($liveLines);
 
         $landing = [];
         foreach ($liveLines as $line) {
@@ -43,5 +49,11 @@ final class OfferLanding
         }
 
         return $landing;
+    }
+
+    /** What a quote-wide "p% off" leaves of a price: 1 − p/100. */
+    public static function quoteWideFactor(ProposedOffer $offer): float
+    {
+        return 1 - (($offer->price->discountPercent ?? 0.0) / 100);
     }
 }

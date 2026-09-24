@@ -62,11 +62,16 @@ final readonly class OfferApplier
         $reference = $gateway->fetchSnapshot($quoteId);
         $live = SnapshotAdapter::toPolicy($reference);
 
-        // The minimum-margin floor (spec 2026-09-24), measured on the LIVE
-        // quote because that is what a percentage write acts on. A null clamp
-        // means nothing binds and the offer goes out exactly as proposed.
+        // The minimum-margin floor (spec 2026-09-24). Whether it binds is
+        // measured on the LIVE quote, because that is what a percentage write
+        // acts on; a null clamp means nothing binds and the offer goes out
+        // exactly as proposed. Once it binds, a quote-wide ask is converted
+        // into line prices from the baseline-anchored reference (the same one
+        // the verifier reads below), so a repeated ask or a retried pass
+        // reproduces round one's prices instead of compounding on them.
         $floors = $this->marginFloors->floors($live, $limits);
-        $floored = MarginFloorClamp::clamp($offer, $live->lines, $floors);
+        $anchored = QuoteBaseline::read($reference)?->anchor($live) ?? $live;
+        $floored = MarginFloorClamp::clamp($offer, $live->lines, $anchored->lines, $floors);
         if ($floored !== null) {
             $this->logger->info('The offer was raised to the minimum-margin floor.', ['quoteId' => $quoteId]);
         }
@@ -80,8 +85,6 @@ final readonly class OfferApplier
         $gateway->recalculate($quoteId);
         $writes[] = 'recalculate';
 
-        $baselineLines = QuoteBaseline::read($reference);
-
         $after = $gateway->fetchSnapshot($quoteId);
         $violations = $this->verifier->verify(new VerifyOfferInput(
             // #49: the baseline when the quote has one, so the line check, the
@@ -93,7 +96,7 @@ final readonly class OfferApplier
             // to read the STORED lines while the proposer read them merged
             // with the live ones, so a line added after the stamp was bounded
             // on one side and skipped entirely on the other.
-            reference: $baselineLines?->anchor($live) ?? $live,
+            reference: $anchored,
             final: SnapshotAdapter::toPolicy($after),
             limits: $limits,
             now: new \DateTimeImmutable(),
@@ -173,6 +176,13 @@ final readonly class OfferApplier
      * rather than stack a second discount onto the first. Only the first
      * write of the pass carries the revision precondition; a buyer edit
      * between our read and our write must lose, loudly, exactly once.
+     *
+     * Known crash window on a floored write (spec 2026-09-24): if the pass
+     * dies after updateLineItems and before updateQuote resets the quote
+     * discount to 0%, the retry reads the line at its floor with the old
+     * discount still stacked on it. The floor's min(…, today's price) then
+     * accepts that as today's price, so the stacked discount stays below the
+     * floor undetected until a human looks.
      *
      * @return list<string> the write names performed, for the audit trail
      */
