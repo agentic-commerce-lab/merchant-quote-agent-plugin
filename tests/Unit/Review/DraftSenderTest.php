@@ -14,6 +14,7 @@ use MerchantQuoteAgentPlugin\Review\PendingDraft;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\QuoteSnapshotFixture;
 use PHPUnit\Framework\TestCase;
+use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 
 final class DraftSenderTest extends TestCase
@@ -30,7 +31,7 @@ final class DraftSenderTest extends TestCase
                 new PendingDraft(self::record('0190aaaa0000700080000000000000aa'), $open, $versions->draft, false),
                 ' We can offer 5%. ',
                 new DraftEdits(),
-                Context::createDefaultContext(),
+                new Context(new AdminApiSource('user-1')),
             );
 
         self::assertSame(['0190aaaa0000700080000000000000aa'], $versions->merged);

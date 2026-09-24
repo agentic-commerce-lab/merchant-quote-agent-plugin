@@ -34,6 +34,11 @@ final readonly class DraftSender
             throw InvalidReviewRequest::because('The reply to the buyer is empty.');
         }
 
+        $this->publish($pending, $reply, $edits, MerchantSendContext::from($merchant));
+    }
+
+    private function publish(PendingDraft $pending, string $reply, DraftEdits $edits, Context $merchant): void
+    {
         $gateway = $this->gateways->forContext($merchant) ?? throw DraftNotReviewable::unavailable();
         $quoteId = $pending->record->quoteId;
         $versionId = $pending->record->draftVersionId;
