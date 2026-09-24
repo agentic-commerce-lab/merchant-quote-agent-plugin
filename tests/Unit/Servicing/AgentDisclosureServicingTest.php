@@ -62,25 +62,36 @@ final class AgentDisclosureServicingTest extends TestCase
     /**
      * @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions
      *
-     * In Draft Mode the merchant reviews and sends what the buyer reads, so
-     * even an outcome that would otherwise disclose stamps nothing.
+     * In Draft Mode a pass that drafted a reply is withheld: the merchant
+     * reviews and sends what the buyer reads. An escalation drafts nothing
+     * and still discloses, exactly as outside Draft Mode.
      */
-    public function testADraftModePassDisclosesNothing(): void
-    {
+    #[DataProvider('draftModeOutcomes')]
+    public function testADraftModePassDisclosesOnlyWhatItDidNotDraft(
+        NegotiationOutcome $outcome,
+        bool $expectDisclosed,
+    ): void {
         $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
         $base = ServicingSettingsFixture::settings();
         $settings = new QuoteAgentSettings($base->policy, $base->llm, null, draftMode: true);
 
         ServicingHandlerFixture::handler(
             $gateway,
-            ServicingHandlerFixture::countingPipeline(NegotiationOutcome::Offered),
+            ServicingHandlerFixture::countingPipeline($outcome),
             preflight: ServicingSettingsFixture::preflightReturning($settings),
         )(ServicingHandlerFixture::message());
 
-        self::assertArrayNotHasKey(
-            AgentDisclosure::MARKER_KEY,
-            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
-        );
+        $stamp = ServicingHandlerFixture::lastCustomFieldWrite($gateway);
+        self::assertSame($expectDisclosed, $stamp[AgentDisclosure::MARKER_KEY] ?? false);
+    }
+
+    /** @return iterable<string, array{NegotiationOutcome, bool}> */
+    public static function draftModeOutcomes(): iterable
+    {
+        yield 'offered - drafted' => [NegotiationOutcome::Offered, false];
+        yield 'countered - drafted' => [NegotiationOutcome::Countered, false];
+        yield 'clarified - drafted' => [NegotiationOutcome::Clarified, false];
+        yield 'escalated - nothing drafted, still disclosed' => [NegotiationOutcome::Escalated, true];
     }
 
     /**

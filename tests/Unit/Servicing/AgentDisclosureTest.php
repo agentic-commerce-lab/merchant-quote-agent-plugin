@@ -52,11 +52,6 @@ final class AgentDisclosureTest extends TestCase
         self::assertSame($expectedFragment, AgentDisclosure::stampFor($outcome));
     }
 
-    public function testADraftedPassDisclosesNothing(): void
-    {
-        self::assertSame([], AgentDisclosure::stampFor(NegotiationOutcome::Offered, drafted: true));
-    }
-
     public function testEveryEnumCaseIsCovered(): void
     {
         // The provider is hand-written so a new case fails rather than

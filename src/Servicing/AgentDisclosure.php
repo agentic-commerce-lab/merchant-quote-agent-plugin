@@ -33,9 +33,6 @@ use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
  *
  * So: did the agent ACT on this quote.
  *
- * A drafted pass discloses nothing: a human reviewed and sent what the buyer
- * reads.
- *
  * QuoteWriter shallow-merges customFields, so this cannot disturb the A2CN act
  * chain or the markers already there.
  */
@@ -52,14 +49,12 @@ final class AgentDisclosure
      * The fragment that discloses agent handling, to be spread into a servicing
      * pass's stamp.
      *
+     * ServiceQuoteHandler withholds it for a Draft Mode pass that drafted a reply.
+     *
      * @return array<string, true> empty when the agent did not act on the quote
      */
-    public static function stampFor(NegotiationOutcome $outcome, bool $drafted = false): array
+    public static function stampFor(NegotiationOutcome $outcome): array
     {
-        if ($drafted) {
-            return [];
-        }
-
         return match ($outcome) {
             NegotiationOutcome::Offered,
             NegotiationOutcome::Countered,

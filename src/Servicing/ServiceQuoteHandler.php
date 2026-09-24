@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Servicing;
 
+use MerchantQuoteAgentPlugin\Audit\ReviewStatus;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
@@ -21,6 +22,12 @@ use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 /**
  * Claims a quote, decides whether anything actually needs servicing, and hands
  * it to #18. Never runs in the triggering request — LLM latency is seconds.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * The rule aggregates per class (threshold 10). The handler sat exactly at it,
+ * and Draft Mode's disclosure gate in servicePass() is the one branch past it.
+ * It stays here because this is where every marker a pass stamps or releases
+ * is decided, each by its owner's rule.
  */
 #[AsMessageHandler]
 final readonly class ServiceQuoteHandler
@@ -200,7 +207,9 @@ final readonly class ServiceQuoteHandler
         // agent acted on it, which stays true. It has its own outcome gate
         // (not every completed pass is an agent acting - see AgentDisclosure),
         // and it is spread last so a future release fragment cannot null it by
-        // accident.
+        // accident. A Draft Mode pass that drafted a reply withholds it — the
+        // merchant sends what the buyer reads — while an escalation, which
+        // drafts nothing, still discloses.
         $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
             ServicingFingerprint::MARKER_KEY => ServicingFingerprint::stamp(
                 $snapshot,
@@ -209,7 +218,9 @@ final readonly class ServiceQuoteHandler
             self::ATTEMPTS_KEY => null,
             ...QuoteEscalator::releaseFor($outcome),
             ...ClarificationMarker::releaseFor($outcome),
-            ...AgentDisclosure::stampFor($outcome, $settings->draftMode),
+            ...(
+                $settings->draftMode && ReviewStatus::awaitsReview($outcome) ? [] : AgentDisclosure::stampFor($outcome)
+            ),
         ]));
     }
 
