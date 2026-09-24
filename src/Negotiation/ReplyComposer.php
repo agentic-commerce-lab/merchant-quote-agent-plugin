@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Audit\TraceKind;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
@@ -176,6 +177,18 @@ final readonly class ReplyComposer
         $unsafe = RewordingGuard::unsafeBecause($reworded, $reductionPercent, $total, $validUntil);
 
         if ($unsafe !== null) {
+            // The reason goes to content, not meta: RewordingGuard quotes the
+            // model's own words in it ("it names a concession nobody
+            // authorised: 10%"), and meta leaves in every export.
+            $this->recorder->trace(
+                TraceKind::ReplyGuard,
+                ['accepted' => false],
+                [
+                    'reason' => $unsafe,
+                    'reworded' => $reworded,
+                ],
+            );
+
             // Logged with the reason, not just the text: the fallback is a
             // correct reply, so an over-firing guard fails nothing and shows
             // up nowhere except as replies that never sound reworded. The
