@@ -14,7 +14,6 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteVersion;
 use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersionsInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteRevisionMismatch;
-use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 
 /**
  * The gateway one Draft Mode pass runs against, so the pipeline itself does
@@ -55,6 +54,11 @@ final class DraftingQuoteGateway implements QuoteGatewayInterface
 
     private ?QuoteGatewayInterface $draft = null;
 
+    private ?QuoteSnapshot $liveBeforeVersion = null;
+
+    /** @var array<string, true> */
+    private array $mirroredLineIds = [];
+
     public function __construct(
         private readonly QuoteGatewayInterface $live,
         private readonly QuoteDraftVersionsInterface $versions,
@@ -84,6 +88,12 @@ final class DraftingQuoteGateway implements QuoteGatewayInterface
     {
         if (self::onlyAsks($changes)) {
             $this->live->updateLineItems($quoteId, $changes, $expected);
+
+            foreach ($changes as $change) {
+                if ($change->requestedUnitPriceNet !== null) {
+                    $this->mirroredLineIds[$change->lineItemId] = true;
+                }
+            }
 
             return;
         }
@@ -138,10 +148,13 @@ final class DraftingQuoteGateway implements QuoteGatewayInterface
         // pass's read and its first write must lose, loudly, exactly as it
         // does outside Draft Mode. The version is fresh, so it has nothing
         // to compare against.
-        if ($expected !== null && !$this->live->fetchSnapshot($quoteId)->revision->matches($expected)) {
+        $liveBeforeVersion = $this->live->fetchSnapshot($quoteId);
+
+        if ($expected !== null && !$liveBeforeVersion->revision->matches($expected)) {
             throw QuoteRevisionMismatch::forId($quoteId);
         }
 
+        $this->liveBeforeVersion = $liveBeforeVersion;
         $this->versionId = $this->versions->create($quoteId);
         $draft = $this->versions->gateway($this->versionId);
         $this->draft = $draft;
@@ -154,7 +167,11 @@ final class DraftingQuoteGateway implements QuoteGatewayInterface
     {
         $this->recorder->recordDraft(
             $this->versionId,
-            ServicingFingerprint::review($this->serviced, $this->live->fetchSnapshot($quoteId)),
+            ReviewFingerprint::atDraft(
+                $this->serviced,
+                $this->liveBeforeVersion ?? $this->live->fetchSnapshot($quoteId),
+                array_keys($this->mirroredLineIds),
+            ),
         );
     }
 

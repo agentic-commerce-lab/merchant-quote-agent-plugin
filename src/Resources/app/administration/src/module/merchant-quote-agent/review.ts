@@ -16,6 +16,7 @@ export interface DraftView {
     pricing: 'lines' | 'discount' | null;
     reply: string;
     previewEdited: boolean;
+    replyRedrafted: boolean;
     discountPercent: { live: number | null; draft: number | null };
     lines: Array<{ id: string; draft: number }>;
     expiresAt: { live: string | null; draft: string | null };
@@ -88,6 +89,10 @@ export function needsReplyReview(view: DraftView | null, form: DraftForm | null,
     }
 
     return wasEdited(view, form) || (view.previewEdited && !replyChecked);
+}
+
+export function replyCheckedAfterPreview(view: DraftView, replyTouched: boolean): boolean {
+    return view.replyRedrafted && !replyTouched;
 }
 
 /** Merchant cap is advisory here; it binds the agent, not the human reviewer. */

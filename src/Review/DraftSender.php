@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Review;
 
+use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Bridge\ContextBoundGateways;
-use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
-use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersionsInterface;
+use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\Uuid\Uuid;
 
 final readonly class DraftSender
 {
@@ -16,6 +18,7 @@ final readonly class DraftSender
         private QuoteDraftVersionsInterface $versions,
         private ContextBoundGateways $gateways,
         private DraftSendCompletion $completion,
+        private Connection $connection,
     ) {}
 
     /** @throws DraftNotReviewable|InvalidReviewRequest */
@@ -39,31 +42,59 @@ final readonly class DraftSender
         $gateway = $this->gateways->forContext($merchant) ?? throw DraftNotReviewable::unavailable();
         $quoteId = $pending->record->quoteId;
         $versionId = $pending->record->draftVersionId;
-        $sentChanges = null;
+        $edited = $pending->wasEditedByMerchant($edits, $reply);
 
         if ($versionId !== null) {
-            $sentChanges = self::sentChanges(
-                DraftEditor::apply($pending, $edits),
-                $pending->wasEditedByMerchant($edits, $reply),
-            );
-            $this->versions->merge($versionId);
+            $this->mergeReviewedDraft($pending, $edits, $gateway, $versionId);
         }
 
-        $this->completion->complete($pending, $gateway, $reply, $sentChanges);
+        $this->completion->complete($pending, $gateway, $reply, $edited);
     }
 
-    /** @return array<string, mixed> */
-    private static function sentChanges(QuoteSnapshot $after, bool $edited): array
-    {
-        $discount = $after->totals->discount;
+    private function mergeReviewedDraft(
+        PendingDraft $pending,
+        DraftEdits $edits,
+        QuoteGatewayInterface $gateway,
+        string $versionId,
+    ): void {
+        try {
+            $this->connection->transactional(
+                /** @throws \Doctrine\DBAL\Exception */ function () use ($pending, $edits, $gateway, $versionId): void {
+                    $quoteId = $pending->record->quoteId;
+                    $this->lockLivePricing($quoteId);
+                    $live = $gateway->fetchSnapshot($quoteId);
 
-        return [
-            'discountPercent' =>
-                $discount !== null && $discount->type === DiscountType::Percentage ? $discount->value : null,
-            'totalNet' => $after->totals->totalNet,
-            'totalGross' => $after->totals->totalGross,
-            'expiresAt' => $after->lifecycle->expiresAt?->format(\DateTimeInterface::ATOM),
-            'editedByMerchant' => $edited,
+                    if (ReviewFingerprint::current($live) !== $pending->record->reviewFingerprint) {
+                        throw DraftNotReviewable::stale();
+                    }
+
+                    $current = new PendingDraft($pending->record, $live, $pending->draft, false);
+                    $after = DraftEditor::apply($current, $edits);
+                    DraftPriceGuard::reduction($current, $after);
+                    $this->versions->merge($versionId);
+                },
+            );
+        } catch (InvalidReviewRequest|DraftNotReviewable $error) {
+            throw $error;
+        } catch (\Throwable $error) {
+            throw DraftSendFailed::after($error);
+        }
+    }
+
+    /** @throws \Doctrine\DBAL\Exception */
+    private function lockLivePricing(string $quoteId): void
+    {
+        $ids = [
+            'quoteId' => Uuid::fromHexToBytes($quoteId),
+            'liveVersion' => Uuid::fromHexToBytes(Defaults::LIVE_VERSION),
         ];
+        $this->connection->fetchFirstColumn(
+            'SELECT id FROM `quote` WHERE id = :quoteId AND version_id = :liveVersion FOR UPDATE',
+            $ids,
+        );
+        $this->connection->fetchFirstColumn(
+            'SELECT id FROM `quote_line_item` WHERE quote_id = :quoteId AND quote_version_id = :liveVersion FOR UPDATE',
+            $ids,
+        );
     }
 }

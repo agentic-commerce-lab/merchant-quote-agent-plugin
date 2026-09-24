@@ -10,6 +10,7 @@ use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Audit\DecisionReviewStore;
 use MerchantQuoteAgentPlugin\Bridge\Data\Discount;
 use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersions;
@@ -18,7 +19,10 @@ use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
 use MerchantQuoteAgentPlugin\Review\DraftEdits;
 use MerchantQuoteAgentPlugin\Review\DraftingQuoteGateway;
 use MerchantQuoteAgentPlugin\Review\DraftNotReviewable;
+use MerchantQuoteAgentPlugin\Review\DraftPreviewer;
 use MerchantQuoteAgentPlugin\Review\DraftRejecter;
+use MerchantQuoteAgentPlugin\Review\DraftReply;
+use MerchantQuoteAgentPlugin\Review\DraftReviewController;
 use MerchantQuoteAgentPlugin\Review\DraftSendCompletion;
 use MerchantQuoteAgentPlugin\Review\DraftSender;
 use MerchantQuoteAgentPlugin\Review\PendingDraft;
@@ -26,10 +30,12 @@ use MerchantQuoteAgentPlugin\Review\PendingDrafts;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
+use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\Uuid\Uuid;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\Store\InMemoryStore;
 
@@ -45,7 +51,7 @@ final class DraftModeFlowTest extends IntegrationTestCase
             $before->content->comments,
         ));
 
-        $userId = $this->anyAdminUserId();
+        $userId = QuoteFixture::adminUserId(static::getContainer());
         $merchant = new Context(new AdminApiSource($userId));
         $this->pendingDrafts()->with($decisionId, fn(PendingDraft $pending) => $this->sender()->send(
             $pending,
@@ -65,6 +71,47 @@ final class DraftModeFlowTest extends IntegrationTestCase
         self::assertSame($userId, $posted[0]->createdById);
         self::assertSame('sent', $this->store()->find($decisionId)?->reviewStatus);
         self::assertNull($this->store()->find($decisionId)?->draftVersionId);
+        self::assertEqualsWithDelta(
+            $after->totals->totalNet,
+            $this->store()->find($decisionId)?->sentChanges['totalNet'],
+            0.01,
+        );
+    }
+
+    public function testInterveningMerchantPriceEditBlocksSendWithoutOverwritingLive(): void
+    {
+        [$quoteId, $decisionId] = $this->draftAQuote();
+        $before = static::gateway()->fetchSnapshot($quoteId);
+        $line = $before->content->lines[0] ?? null;
+        self::assertNotNull($line);
+        $merchantUnitPrice = round($line->unitPriceNet * 1.05, 2);
+        static::gateway()
+            ->updateLineItems($quoteId, [new QuoteLineItemChange(
+                $line->identity->lineItemId,
+                unitPriceNet: $merchantUnitPrice,
+            )]);
+        static::gateway()->recalculate($quoteId);
+        $editedLive = static::gateway()->fetchSnapshot($quoteId);
+        self::assertSame(ServicingFingerprint::of($before), ServicingFingerprint::of($editedLive));
+
+        try {
+            $this->pendingDrafts()->with($decisionId, fn(PendingDraft $pending) => $this->sender()->send(
+                $pending,
+                'We can offer 10%.',
+                new DraftEdits(),
+                new Context(new AdminApiSource(QuoteFixture::adminUserId(static::getContainer()))),
+            ));
+            self::fail('Send overwrote an intervening merchant price edit.');
+        } catch (DraftNotReviewable $caught) {
+            self::assertSame('stale', $caught->reason);
+        }
+
+        self::assertEqualsWithDelta(
+            $merchantUnitPrice,
+            static::gateway()->fetchSnapshot($quoteId)->content->lines[0]->unitPriceNet,
+            0.01,
+        );
+        self::assertSame('pending', $this->store()->find($decisionId)?->reviewStatus);
     }
 
     public function testRejectDiscardsTheVersionAndPreservesLivePrices(): void
@@ -88,27 +135,12 @@ final class DraftModeFlowTest extends IntegrationTestCase
     public function testANewBuyerCommentMakesTheDraftStale(): void
     {
         [$quoteId, $decisionId] = $this->draftAQuote();
-        $this->addBuyerComment($quoteId);
-
-        $this->expectException(DraftNotReviewable::class);
-
-        $this->pendingDrafts()->with($decisionId, fn(PendingDraft $pending) => $this->sender()->send(
-            $pending,
-            'We can offer 10%.',
-            new DraftEdits(),
-            new Context(new AdminApiSource($this->anyAdminUserId())),
-        ));
-    }
-
-    private function addBuyerComment(string $quoteId): void
-    {
         $connection = static::getContainer()->get(Connection::class);
         $customerId = $connection->fetchOne('SELECT customer_id FROM quote WHERE id = UNHEX(:quoteId) AND version_id = UNHEX(:versionId)', [
             'quoteId' => $quoteId,
             'versionId' => \Shopware\Core\Defaults::LIVE_VERSION,
         ]);
         self::assertIsString($customerId);
-
         $connection->insert('quote_comment', [
             'id' => Uuid::randomBytes(),
             'version_id' => Uuid::fromHexToBytes(\Shopware\Core\Defaults::LIVE_VERSION),
@@ -118,12 +150,82 @@ final class DraftModeFlowTest extends IntegrationTestCase
             'customer_id' => $customerId,
             'created_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s.v'),
         ]);
+
+        $this->expectException(DraftNotReviewable::class);
+
+        $this->pendingDrafts()->with($decisionId, fn(PendingDraft $pending) => $this->sender()->send(
+            $pending,
+            'We can offer 10%.',
+            new DraftEdits(),
+            new Context(new AdminApiSource(QuoteFixture::adminUserId(static::getContainer()))),
+        ));
+    }
+
+    public function testFailedPriceIncreasePreviewLeavesTheDraftUnchanged(): void
+    {
+        [$quoteId, $decisionId] = $this->draftAQuote();
+        $versionId = $this->store()->find($decisionId)?->draftVersionId;
+        self::assertNotNull($versionId);
+        $before = $this->versions()->gateway($versionId)->fetchSnapshot($quoteId);
+        $line = $before->content->lines[0] ?? null;
+        self::assertNotNull($line);
+        $body = json_encode(['linePrices' => [
+            $line->identity->lineItemId => $line->unitPriceNet * 2,
+        ]], JSON_THROW_ON_ERROR);
+        $request = Request::create('/preview', 'POST', server: ['CONTENT_TYPE' => 'application/json'], content: $body);
+        $controller = new DraftReviewController(
+            $this->pendingDrafts(),
+            new DraftPreviewer(
+                static::getContainer()->get(Connection::class),
+                static::getContainer()->get(DraftReply::class),
+                $this->store(),
+            ),
+            $this->sender(),
+            new DraftRejecter($this->versions(), static::gateway(), $this->store()),
+            $this->store(),
+        );
+
+        self::assertSame(400, $controller->preview($decisionId, $request)->getStatusCode());
+        self::assertEqualsWithDelta(
+            $before->totals->totalNet,
+            $this->versions()->gateway($versionId)->fetchSnapshot($quoteId)->totals->totalNet,
+            0.01,
+            'A rejected preview persisted the merchant edit.',
+        );
+        self::assertNull($this->store()->find($decisionId)?->sentChanges);
+
+        $send = Request::create('/send', 'POST', server: ['CONTENT_TYPE' => 'application/json'], content: json_encode([
+            'linePrices' => [$line->identity->lineItemId => $line->unitPriceNet * 2],
+            'reply' => 'A higher price.',
+        ], JSON_THROW_ON_ERROR));
+        self::assertSame(
+            400,
+            $controller
+                ->send(
+                    $decisionId,
+                    $send,
+                    new Context(new AdminApiSource(QuoteFixture::adminUserId(static::getContainer()))),
+                )
+                ->getStatusCode(),
+        );
+        self::assertEqualsWithDelta(
+            $before->totals->totalNet,
+            $this->versions()->gateway($versionId)->fetchSnapshot($quoteId)->totals->totalNet,
+            0.01,
+            'A rejected Send persisted the merchant edit.',
+        );
+        self::assertSame('pending', $this->store()->find($decisionId)?->reviewStatus);
     }
 
     /** @return array{string, string} */
     private function draftAQuote(): array
     {
-        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'open');
+        $quoteId = QuoteFixture::quoteIdInStateWithoutUnmetPriceAsk(
+            static::getContainer(),
+            Context::createDefaultContext(),
+            'open',
+            static::gateway(),
+        );
         $snapshot = static::gateway()->fetchSnapshot($quoteId);
         $recorder = new DecisionRecorder(new DecisionRecordWriter(static::getContainer()->get(
             'merchant_quote_agent_decision.repository',
@@ -152,14 +254,6 @@ final class DraftModeFlowTest extends IntegrationTestCase
         self::assertIsString($decisionId);
 
         return [$quoteId, $decisionId];
-    }
-
-    private function anyAdminUserId(): string
-    {
-        $id = static::getContainer()->get(Connection::class)->fetchOne('SELECT LOWER(HEX(id)) FROM `user` LIMIT 1');
-        self::assertIsString($id);
-
-        return $id;
     }
 
     private function versions(): QuoteDraftVersions
@@ -194,6 +288,7 @@ final class DraftModeFlowTest extends IntegrationTestCase
             $this->versions(),
             static::gatewayFactory(),
             new DraftSendCompletion($this->store(), new NullLogger()),
+            static::getContainer()->get(Connection::class),
         );
     }
 }

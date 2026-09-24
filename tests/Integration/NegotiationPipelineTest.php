@@ -127,7 +127,12 @@ final class NegotiationPipelineTest extends IntegrationTestCase
         // the newest, so the interpreter returns null and nothing was left to
         // finish the transition.
         $gateway = static::gateway();
-        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'open');
+        $quoteId = QuoteFixture::quoteIdInStateWithoutUnmetPriceAsk(
+            static::getContainer(),
+            Context::createDefaultContext(),
+            'open',
+            $gateway,
+        );
         self::writeBuyerComment($quoteId, 'Could you do 5% off?');
 
         // Exactly what a dead pass leaves behind: the quote moved to in_review

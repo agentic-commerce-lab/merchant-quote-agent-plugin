@@ -350,6 +350,7 @@
             "error": {
                 "stale": "Der Käufer hat erneut geschrieben oder das Angebot hat sich seit dem Entwurf geändert. Verwerfen Sie ihn – der Agent entwirft bei der nächsten Nachricht neu.",
                 "gone": "Die vorbereiteten Preise dieses Entwurfs existieren nicht mehr. Verwerfen Sie ihn und bearbeiten Sie das Angebot in SwagCommercial.",
+                "published": "Eine Antwort des Händlers könnte für den Käufer bereits sichtbar sein. Prüfen Sie das Angebot in SwagCommercial, bevor Sie diese Prüfung ändern.",
                 "not_pending": "Dieser Entwurf wurde bereits bearbeitet oder ersetzt.",
                 "busy": "Der Agent bearbeitet dieses Angebot gerade. Bitte in ein paar Sekunden erneut versuchen.",
                 "unavailable": "Angebote können nicht bearbeitet werden, weil SwagCommercial nicht lizenziert ist.",

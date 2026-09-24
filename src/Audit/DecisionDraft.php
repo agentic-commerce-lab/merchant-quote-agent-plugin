@@ -118,7 +118,7 @@ final class DecisionDraft
     /** Null for an autonomous pass — see ReviewStatus. */
     public ?string $reviewStatus = null;
 
-    /** What the buyer's side of the quote looked like when drafted — see ServicingFingerprint::review(). */
+    /** Buyer input and live pricing when drafted — see Review\ReviewFingerprint. */
     public ?string $reviewFingerprint = null;
 
     public float $startedAt = 0.0;

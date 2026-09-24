@@ -145,6 +145,11 @@ Only on a `pending` row with a draft version.
 3. Return `{ totals: {net, gross, before: {net, gross}}, expiresAt, reply }`.
 
 Preview is a convenience; Send does not require it.
+Edits and the preview marker commit together only after repricing and reply
+composition succeed; a failed preview leaves the stored draft unchanged.
+Preview and Send reject an edited total that exceeds the current live total.
+If configuration is unavailable, Preview does not claim the existing reply
+was freshly checked.
 
 ### Send — `POST …/send`
 
@@ -153,18 +158,23 @@ under the same per-quote lock servicing uses, so a pass and a Send cannot
 interleave.
 
 1. **Refuse (409) if stale:** the row is no longer `pending`, the quote is not
-   in a state the agent would serve, or the buyer wrote again or changed
-   requested prices since the draft pass. The last check is exactly the
-   comparison `ServiceQuoteHandler` uses to decide "nothing has happened since
-   the last pass" (`ServicingFingerprint::of()` against the stamp), extracted
-   so both call one function. The plan must first confirm that comparison
-   holds right after a pass whose AskMirror rewrote requested prices
-   (`stampedAsks()` / `asksOf()` exist for that case) — a Send that is always
-   stale would be useless.
-   Merchant edits made in SwagCommercial's own editor meanwhile are not
-   detected: merge overwrites only the fields the draft version changed, and
-   the panel shows the live values next to the drafted ones.
+   in a state the agent would serve, the buyer wrote again or changed
+   requested prices, or the live quote's line prices, quantities, discount,
+   totals or validity changed since the draft was prepared. The buyer-input
+   half uses `ServicingFingerprint::review()` at draft time and
+   `ServicingFingerprint::of()` at review time; the pricing half is a sorted,
+   normalized snapshot of live fields. Neither half includes the plugin's
+   bookkeeping writes. On released SwagCommercial 6.7.12, DAL merge overwrites
+   an intervening live merchant line-price edit even if the draft changed only
+   the quote discount; the former assumption that it would survive is false.
+   Blocking Send is the safe supported-lane behavior. Reject the stale draft
+   and handle the quote in SwagCommercial or wait for a fresh buyer ask.
+   Send locks the live quote and its lines, rechecks this fingerprint, and
+   merges in one database transaction so a concurrent merchant edit cannot
+   land between the final check and merge.
 2. Apply any edits to the draft version and recalculate (same code as Preview).
+   This edit stage is atomic: an invalid price increase does not leave a changed
+   private draft behind.
 3. Merge the draft version into live.
 4. Claim (`process`) if the quote is still `open`.
 5. Post the reply **in the logged-in admin user's context**, so SwagCommercial
@@ -179,6 +189,12 @@ A `clarified` draft has no version: Send posts the question (steps 1, 5, 7).
 A failure after the merge is logged with the exception and surfaced to the
 admin as an error. The row stays `pending` so the failure is visible; there is
 no rollback, the same stance `OfferApplier` takes.
+Send records the merchant-comment count before publishing. If a failure leaves
+the row pending but a new merchant-authored comment is visible, subsequent
+review actions return `published` (409), rather than allowing a duplicate Send
+or misleading Reject. The merchant must inspect and reconcile the quote.
+The `sent_changes` totals come from the live quote after merge and publication,
+so unrelated live merchant edits retained by the merge are represented.
 
 ### Reject — `POST …/reject`
 
@@ -209,7 +225,7 @@ like `Migration1789700000AddBuyerAskToDecision`:
 |---|---|---|
 | `draft_version_id` | `BINARY(16)` | the drafting pass (via `DecisionDraft`) |
 | `review_status` | `VARCHAR(16)` | drafting pass; Send / Reject / supersede |
-| `review_fingerprint` | `VARCHAR(64)` | drafting pass; Send compares it with the live quote |
+| `review_fingerprint` | `LONGTEXT` | drafting pass; Send compares it with the live quote |
 | `reviewed_at` | `DATETIME(3)` | Send / Reject |
 | `sent_reply` | `LONGTEXT` | Send |
 | `sent_changes` | `JSON` | Send — `{discountPercent, totalNet, totalGross, expiresAt, editedByMerchant}` |
@@ -235,7 +251,7 @@ redeliver the servicing pass.
 ### Deviations recorded during planning
 
 1. The fork is a `DraftModePipeline` decorator and a `DraftingQuoteGateway`, not branches inside negotiation rounds. This keeps Shopware out of `Negotiation`; the observable outcome table above is unchanged.
-2. A separate `review_fingerprint` captures buyer comments and live asks after mirroring. The handler's pre-mirror stamp cannot serve as the Send staleness check.
+2. A separate `review_fingerprint` captures the buyer comments and asks the pass serviced (excluding the pass's own mirrored asks), plus the live pricing snapshot. The handler's stamp alone cannot serve as the Send staleness check, and the pricing component prevents an older supported DAL merge from overwriting an intervening merchant edit.
 3. The review card and Preview consume one backend view (`GET /decision/{id}/draft`) of live versus drafted values, rather than reading a DAL version in the administration.
 4. `sent_changes` records totals-level values and whether the merchant edited the proposal, not per-line identifiers.
 5. Any new pass supersedes a pending draft, including `nothing_to_do`, because a new buyer message makes it stale.

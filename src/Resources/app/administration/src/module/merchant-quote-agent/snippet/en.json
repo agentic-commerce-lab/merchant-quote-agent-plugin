@@ -350,6 +350,7 @@
             "error": {
                 "stale": "The buyer wrote again or the quote changed since this draft. Reject it — the agent drafts again on the buyer's next message.",
                 "gone": "The prepared prices for this draft no longer exist. Reject it and handle the quote in SwagCommercial.",
+                "published": "A merchant reply may already be visible to the buyer. Check the quote in SwagCommercial before changing this review.",
                 "not_pending": "This draft was already handled or replaced.",
                 "busy": "The agent is working on this quote right now. Try again in a few seconds.",
                 "unavailable": "Quotes cannot be edited because SwagCommercial is not licensed.",

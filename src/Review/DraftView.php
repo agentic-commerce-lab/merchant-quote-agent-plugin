@@ -39,6 +39,7 @@ final class DraftView
                 'draft' => $draft->lifecycle->expiresAt?->format('Y-m-d'),
             ],
             'reply' => $reply ?? $record->replyToBuyer ?? '',
+            'replyRedrafted' => $reply !== null,
         ];
     }
 

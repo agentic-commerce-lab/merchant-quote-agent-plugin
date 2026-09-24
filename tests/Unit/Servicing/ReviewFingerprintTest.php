@@ -4,24 +4,51 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 
+use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use PHPUnit\Framework\TestCase;
 
 final class ReviewFingerprintTest extends TestCase
 {
     /**
-     * The reason review() exists: AskMirror writes the buyer's ask onto the
-     * line DURING the pass, so of(live) right after a draft differs from the
-     * handler's stamp. review() takes the asks from the live read, so a Send
-     * straight after the draft is not stale.
+     * The read model hides AskMirror's own line write. Both the pass snapshot
+     * and the later live read therefore expose only buyer-originated asks.
      */
     public function testAMirroredAskDoesNotMakeTheDraftStale(): void
     {
         $comment = QuoteSnapshotFixture::buyerComment('2026-09-23 10:00:00.000');
         $serviced = QuoteSnapshotFixture::snapshot(comments: [$comment], lines: [QuoteSnapshotFixture::line(null)]);
-        $mirrored = QuoteSnapshotFixture::snapshot(comments: [$comment], lines: [QuoteSnapshotFixture::line(9.0)]);
+        $mirrored = QuoteSnapshotFixture::snapshot(comments: [$comment], lines: [QuoteSnapshotFixture::line(null)]);
 
         self::assertSame(ServicingFingerprint::of($mirrored), ServicingFingerprint::review($serviced, $mirrored));
+    }
+
+    public function testStructuredAskMirroredByTheAgentDoesNotMakeTheDraftStale(): void
+    {
+        $serviced = QuoteSnapshotFixture::snapshot(lines: [QuoteSnapshotFixture::line(9.0)]);
+        $mirrored = QuoteSnapshotFixture::snapshot(
+            customFields: MirroredAsks::stamp([], ['line-1' => 9.0]),
+            lines: [QuoteSnapshotFixture::line(null)],
+        );
+
+        self::assertSame(
+            ServicingFingerprint::of($mirrored),
+            ServicingFingerprint::review($serviced, $mirrored, ['line-1']),
+        );
+    }
+
+    public function testNewMirrorOverAnOlderStructuredAskDoesNotMakeTheDraftStale(): void
+    {
+        $serviced = QuoteSnapshotFixture::snapshot(lines: [QuoteSnapshotFixture::line(8.0)]);
+        $mirrored = QuoteSnapshotFixture::snapshot(
+            customFields: MirroredAsks::stamp([], ['line-1' => 7.0]),
+            lines: [QuoteSnapshotFixture::line(null)],
+        );
+
+        self::assertSame(
+            ServicingFingerprint::of($mirrored),
+            ServicingFingerprint::review($serviced, $mirrored, ['line-1']),
+        );
     }
 
     public function testANewBuyerCommentMakesTheDraftStale(): void

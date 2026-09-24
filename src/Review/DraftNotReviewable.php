@@ -6,7 +6,7 @@ namespace MerchantQuoteAgentPlugin\Review;
 
 /**
  * The draft cannot be acted on right now; `$reason` is the machine code the
- * review card switches on (not_pending, stale, busy, gone, unavailable). Answered 409.
+ * review card switches on (not_pending, stale, busy, gone, published, unavailable). Answered 409.
  */
 final class DraftNotReviewable extends \RuntimeException
 {
@@ -43,6 +43,14 @@ final class DraftNotReviewable extends \RuntimeException
         return new self(
             'gone',
             'The prepared prices for this draft no longer exist. Reject it and handle the quote in SwagCommercial.',
+        );
+    }
+
+    public static function published(): self
+    {
+        return new self(
+            'published',
+            'A merchant reply may already be visible to the buyer. Check the quote in SwagCommercial before changing this review.',
         );
     }
 

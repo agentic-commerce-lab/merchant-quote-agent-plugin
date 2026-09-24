@@ -7,10 +7,8 @@ namespace MerchantQuoteAgentPlugin\Review;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
-use MerchantQuoteAgentPlugin\Negotiation\ReductionForPass;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
-use MerchantQuoteAgentPlugin\Policy\Epsilon;
 use Psr\Log\LoggerInterface;
 
 final readonly class DraftReply
@@ -28,6 +26,8 @@ final readonly class DraftReply
             return null;
         }
 
+        $percent = DraftPriceGuard::reduction($pending, $after);
+
         try {
             $settings = $this->settings->forSalesChannel($pending->live->identity->salesChannelId);
         } catch (InvalidQuoteAgentConfiguration $e) {
@@ -41,17 +41,6 @@ final readonly class DraftReply
 
         if ($settings === null) {
             return null;
-        }
-
-        $granted = abs($after->totals->totalNet - $pending->live->totals->totalNet) > Epsilon::MONEY;
-        [$percent, $disagreed] = ReductionForPass::of(
-            SnapshotAdapter::anchored($pending->live)->totalNet,
-            $after->totals->totalNet,
-            $granted,
-        );
-
-        if ($disagreed) {
-            throw InvalidReviewRequest::because('These prices would raise the total above what the quote shows now.');
         }
 
         [$text] = $this->composer->reword(

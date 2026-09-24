@@ -9,7 +9,7 @@ namespace MerchantQuoteAgentPlugin\Bridge\Data;
  * lines (the quote-discount line) are legitimately negative.
  *
  * @mago-expect lint:excessive-parameter-list
- * Seven promoted properties on a data carrier, not seven arguments to a behaviour:
+ * Eight promoted properties on a data carrier, not eight arguments to a behaviour:
  * the threshold guards call sites that have to be read in order, and every one
  * of these is named at construction. The alternative — folding the money into
  * a value object — would rewrite every line read in the bridge, the adapter
@@ -40,5 +40,7 @@ final readonly class QuoteLineSnapshot
          * requested price differs from the stamped fingerprint.
          */
         public ?\DateTimeImmutable $updatedAt = null,
+        /** The exact stored line total, before conversion to net for policy checks. */
+        public ?float $totalInQuotePriceSpace = null,
     ) {}
 }

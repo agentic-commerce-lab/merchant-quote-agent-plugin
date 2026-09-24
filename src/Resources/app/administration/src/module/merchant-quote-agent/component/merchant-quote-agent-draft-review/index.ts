@@ -1,6 +1,6 @@
 import template from './merchant-quote-agent-draft-review.html.twig';
 import { formatCurrency, formatPercent } from '../../decision';
-import { REVIEW_PRIVILEGE, editsPayload, errorCode, exceedsCap, needsReplyReview, wasEdited } from '../../review';
+import { REVIEW_PRIVILEGE, editsPayload, errorCode, exceedsCap, needsReplyReview, replyCheckedAfterPreview, wasEdited } from '../../review';
 import type { DraftForm, DraftView } from '../../review';
 
 interface ReviewResponse extends DraftView {
@@ -145,11 +145,11 @@ Shopware.Component.register('merchant-quote-agent-draft-review', {
                 const touched = this.replyTouched;
                 this.adopt(response.data);
                 this.everEdited = this.everEdited || edited;
-                this.replyChecked = !touched;
+                this.replyChecked = replyCheckedAfterPreview(response.data, touched);
 
                 // Never overwrite a merchant's reply; offer the re-draft beside it.
                 if (touched) {
-                    this.redraft = response.data.reply;
+                    this.redraft = response.data.replyRedrafted ? response.data.reply : null;
                     if (this.form) {
                         this.form.reply = reply;
                     }
@@ -216,7 +216,7 @@ Shopware.Component.register('merchant-quote-agent-draft-review', {
         fail(error: unknown) {
             const code = errorCode(error);
 
-            if (['stale', 'gone', 'not_pending', 'unavailable'].includes(code ?? '')) {
+            if (['stale', 'gone', 'published', 'not_pending', 'unavailable'].includes(code ?? '')) {
                 this.blockedBy = code;
 
                 return;

@@ -284,7 +284,7 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $reviewStatus = null;
 
-    /** Internal staleness check for Send — see ServicingFingerprint::review(). Never exported. */
+    /** Internal buyer/pricing staleness check for Send — see Review\ReviewFingerprint. Never exported. */
     #[Field(type: FieldType::TEXT, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $reviewFingerprint = null;

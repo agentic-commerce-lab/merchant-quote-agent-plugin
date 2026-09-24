@@ -11,10 +11,12 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
+use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use MerchantQuoteAgentPlugin\Bridge\QuoteRevisionMismatch;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
 use MerchantQuoteAgentPlugin\Review\DraftingQuoteGateway;
+use MerchantQuoteAgentPlugin\Review\ReviewFingerprint;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
@@ -83,6 +85,46 @@ final class DraftingQuoteGatewayTest extends TestCase
         $gateway->fetchSnapshot('q1');
 
         self::assertSame(['updateQuote', 'fetchSnapshot'], $versions->draft->calls);
+    }
+
+    public function testPricingBaselineIsCapturedBeforeTheDraftVersionIsCloned(): void
+    {
+        $before = QuoteSnapshotFixture::snapshot(lines: [QuoteSnapshotFixture::line(null, unitPriceNet: 10.0)]);
+        $changed = QuoteSnapshotFixture::snapshot(lines: [QuoteSnapshotFixture::line(null, unitPriceNet: 11.0)]);
+        $live = new FakeQuoteGateway([$before]);
+        $versions = new FakeDraftVersions(new FakeQuoteGateway([$before]));
+        $versions->onCreate = static fn() => $live->replaceSnapshots([$changed]);
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+        $recorder->begin($before, new PassContext(ServicingTriggerReason::CommentWritten, 0));
+        $gateway = new DraftingQuoteGateway($live, $versions, $recorder, $before);
+
+        $gateway->updateQuote('q1', new QuoteUpdate(discount: new Discount(DiscountType::Percentage, 5.0)));
+        $gateway->addComment('q1', 'We can offer 5%.');
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        self::assertSame(ReviewFingerprint::atDraft($before, $before), $writer->drafts[0]->reviewFingerprint);
+    }
+
+    public function testThePassesOwnMirrorIsRecordedByLineRatherThanByOldAskValue(): void
+    {
+        $serviced = QuoteSnapshotFixture::snapshot(lines: [QuoteSnapshotFixture::line(8.0)]);
+        $liveSnapshot = QuoteSnapshotFixture::snapshot(
+            customFields: MirroredAsks::stamp([], ['line-1' => 7.0]),
+            lines: [QuoteSnapshotFixture::line(null)],
+        );
+        $live = new FakeQuoteGateway([$liveSnapshot]);
+        $versions = new FakeDraftVersions(new FakeQuoteGateway([$liveSnapshot]));
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+        $recorder->begin($serviced, new PassContext(ServicingTriggerReason::CommentWritten, 0));
+        $gateway = new DraftingQuoteGateway($live, $versions, $recorder, $serviced);
+
+        $gateway->updateLineItems('q1', [new QuoteLineItemChange('line-1', requestedUnitPriceNet: 7.0)]);
+        $gateway->updateQuote('q1', new QuoteUpdate(discount: new Discount(DiscountType::Percentage, 5.0)));
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        self::assertSame(ReviewFingerprint::current($liveSnapshot), $writer->drafts[0]->reviewFingerprint);
     }
 
     /** The precondition protects the LIVE quote: a buyer edit between the read and the write must still lose. */

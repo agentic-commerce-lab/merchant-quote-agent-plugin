@@ -33,6 +33,14 @@ final class DraftViewTest extends TestCase
             $view['lines'],
         );
         self::assertSame('We can do 9.00 per unit.', $view['reply']);
+        self::assertFalse($view['replyRedrafted']);
+        self::assertTrue(
+            DraftView::of(
+                new PendingDraft($record, $live, new FakeQuoteGateway([$draft]), false),
+                $draft,
+                'We can do 9.00 per unit today.',
+            )['replyRedrafted'],
+        );
         self::assertFalse($view['stale']);
         self::assertFalse($view['previewEdited']);
 

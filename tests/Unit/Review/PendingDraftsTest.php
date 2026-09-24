@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Review\DecisionNotFound;
 use MerchantQuoteAgentPlugin\Review\DraftNotReviewable;
 use MerchantQuoteAgentPlugin\Review\PendingDraft;
 use MerchantQuoteAgentPlugin\Review\PendingDrafts;
+use MerchantQuoteAgentPlugin\Review\ReviewFingerprint;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
@@ -25,7 +26,11 @@ final class PendingDraftsTest extends TestCase
     {
         $live = QuoteSnapshotFixture::snapshot();
         $store = new FakeReviewStore();
-        $store->record = self::record('pending', '0190aaaa0000700080000000000000aa', ServicingFingerprint::of($live));
+        $store->record = self::record(
+            'pending',
+            '0190aaaa0000700080000000000000aa',
+            ReviewFingerprint::atDraft($live, $live),
+        );
         $versions = new FakeDraftVersions(new FakeQuoteGateway([$live]));
 
         $seen = self::drafts($store, $versions, $live)->with('rec', static fn(PendingDraft $d): PendingDraft => $d);
@@ -40,7 +45,8 @@ final class PendingDraftsTest extends TestCase
             '2026-09-23 12:00:00.000',
         )]);
         $store = new FakeReviewStore();
-        $store->record = self::record('pending', null, ServicingFingerprint::of(QuoteSnapshotFixture::snapshot()));
+        $atDraft = QuoteSnapshotFixture::snapshot();
+        $store->record = self::record('pending', null, ReviewFingerprint::atDraft($atDraft, $atDraft));
 
         $seen = self::drafts($store, new FakeDraftVersions(new FakeQuoteGateway([$live])), $live)
             ->with('rec', static fn(PendingDraft $d): PendingDraft => $d);
@@ -138,6 +144,18 @@ final class PendingDraftsTest extends TestCase
 
         self::assertNull($seen->draft);
         self::assertSame(self::VERSION, $seen->record->draftVersionId);
+
+        $withReply = QuoteSnapshotFixture::snapshot(comments: [QuoteSnapshotFixture::merchantComment(
+            '2026-09-23 12:00:00.000',
+        )]);
+        $store->record->sentChanges = ['publishingMerchantCommentCount' => 0];
+
+        try {
+            self::drafts($store, $versions, $withReply)->withAnyDraft('rec', static fn(PendingDraft $d): bool => true);
+            self::fail('A buyer-visible send was made rejectable.');
+        } catch (DraftNotReviewable $caught) {
+            self::assertSame('published', $caught->reason);
+        }
     }
 
     public function testWithAnyDraftHandsOverADraftThatStillExists(): void

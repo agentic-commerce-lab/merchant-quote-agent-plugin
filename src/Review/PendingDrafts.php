@@ -10,7 +10,6 @@ use MerchantQuoteAgentPlugin\Audit\ReviewStatus;
 use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersionsInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
-use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 
 /**
  * Opens a pending draft for one review action, under the SAME per-quote lock
@@ -92,15 +91,20 @@ final readonly class PendingDrafts
                 throw DraftNotReviewable::notPending();
             }
 
-            $draft = $this->draft($quoteId, $record->draftVersionId, $requireDraft);
             $live = $gateway->fetchSnapshot($quoteId);
+
+            if (PublishingReply::visible($record, $live)) {
+                throw DraftNotReviewable::published();
+            }
+
+            $draft = $this->draft($quoteId, $record->draftVersionId, $requireDraft);
 
             return $work(
                 new PendingDraft(
                     $record,
                     $live,
                     $draft,
-                    ServicingFingerprint::of($live) !== $record->reviewFingerprint,
+                    ReviewFingerprint::current($live) !== $record->reviewFingerprint,
                 ),
             );
         } finally {

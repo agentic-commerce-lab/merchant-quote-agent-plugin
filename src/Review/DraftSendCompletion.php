@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Review;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionReviewStoreInterface;
+use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
@@ -18,27 +20,48 @@ final readonly class DraftSendCompletion
         private LoggerInterface $logger,
     ) {}
 
-    /** @param array<string, mixed>|null $sentChanges */
     public function complete(
         PendingDraft $pending,
         QuoteGatewayInterface $gateway,
         string $reply,
-        ?array $sentChanges,
+        bool $editedByMerchant,
     ): void {
         try {
+            $before = $gateway->fetchSnapshot($pending->record->quoteId);
+            $this->store->markPublishing(
+                $pending->record->id,
+                PublishingReply::merchantCommentCount($before),
+                $editedByMerchant,
+            );
             $this->publish($pending, $gateway, $reply);
+            $sentChanges = $pending->record->draftVersionId === null
+                ? null
+                : self::sentChanges($gateway->fetchSnapshot($pending->record->quoteId), $editedByMerchant);
             $this->store->markSent($pending->record->id, $reply, $sentChanges);
         } catch (\Throwable $error) {
-            if ($pending->record->draftVersionId !== null) {
-                $this->logger->error('Draft send failed after merging its prices; review remains pending.', [
-                    'decisionId' => $pending->record->id,
-                    'quoteId' => $pending->record->quoteId,
-                    'exception' => $error,
-                ]);
-            }
+            $this->logger->error('Draft send failed; review remains pending. Inspect the quote before retrying.', [
+                'decisionId' => $pending->record->id,
+                'quoteId' => $pending->record->quoteId,
+                'exception' => $error,
+            ]);
 
             throw DraftSendFailed::after($error);
         }
+    }
+
+    /** @return array<string, mixed> */
+    private static function sentChanges(QuoteSnapshot $after, bool $edited): array
+    {
+        $discount = $after->totals->discount;
+
+        return [
+            'discountPercent' =>
+                $discount !== null && $discount->type === DiscountType::Percentage ? $discount->value : null,
+            'totalNet' => $after->totals->totalNet,
+            'totalGross' => $after->totals->totalGross,
+            'expiresAt' => $after->lifecycle->expiresAt?->format(\DateTimeInterface::ATOM),
+            'editedByMerchant' => $edited,
+        ];
     }
 
     private function publish(PendingDraft $pending, QuoteGatewayInterface $gateway, string $reply): void

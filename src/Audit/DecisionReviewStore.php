@@ -85,6 +85,15 @@ final readonly class DecisionReviewStore implements DecisionReviewStoreInterface
     }
 
     #[\Override]
+    public function markPublishing(string $decisionId, int $merchantCommentCount, bool $editedByMerchant): void
+    {
+        $this->write($decisionId, ['sentChanges' => [
+            'editedByMerchant' => $editedByMerchant,
+            'publishingMerchantCommentCount' => $merchantCommentCount,
+        ]]);
+    }
+
+    #[\Override]
     public function markSent(string $decisionId, string $sentReply, ?array $sentChanges): void
     {
         $this->write($decisionId, [

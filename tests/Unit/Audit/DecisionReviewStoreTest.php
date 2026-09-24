@@ -13,6 +13,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenContainerEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 
 final class DecisionReviewStoreTest extends TestCase
 {
@@ -27,6 +28,13 @@ final class DecisionReviewStoreTest extends TestCase
         self::assertSame(
             [['id' => $pending->id, 'reviewStatus' => 'superseded', 'draftVersionId' => null, 'sentChanges' => null]],
             $repository->updates[0],
+        );
+        self::assertEquals(
+            [
+                new EqualsFilter('quoteId', 'quote-1'),
+                new EqualsFilter('reviewStatus', 'pending'),
+            ],
+            $repository->searched?->getFilters(),
         );
     }
 
@@ -97,6 +105,8 @@ final class DecisionReviewStoreTest extends TestCase
             /** @var list<list<array<string, mixed>>> */
             public array $updates = [];
 
+            public ?Criteria $searched = null;
+
             /** @param list<QuoteDecisionRecord> $records */
             public function __construct(
                 private readonly array $records,
@@ -105,6 +115,7 @@ final class DecisionReviewStoreTest extends TestCase
             #[\Override]
             public function search(Criteria $criteria, Context $context): EntitySearchResult
             {
+                $this->searched = $criteria;
                 $entities = new EntityCollection($this->records);
 
                 return new EntitySearchResult(

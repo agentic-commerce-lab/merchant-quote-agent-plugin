@@ -21,6 +21,10 @@ final readonly class DraftRejecter
     /** @throws DraftNotReviewable */
     public function reject(PendingDraft $pending): void
     {
+        if (PublishingReply::visible($pending->record, $pending->live)) {
+            throw DraftNotReviewable::published();
+        }
+
         $versionId = $pending->record->draftVersionId;
 
         if ($versionId !== null) {

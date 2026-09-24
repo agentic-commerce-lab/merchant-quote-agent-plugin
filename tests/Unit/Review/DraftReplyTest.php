@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsSource;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Review\DraftReply;
+use MerchantQuoteAgentPlugin\Review\InvalidReviewRequest;
 use MerchantQuoteAgentPlugin\Review\PendingDraft;
 use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
@@ -42,6 +43,17 @@ final class DraftReplyTest extends TestCase
             self::reply($client, NegotiationFixture::settings())
                 ->compose(new PendingDraft(self::record(), $live, null, false), $live),
         );
+    }
+
+    public function testAPriceIncreaseIsRefusedEvenWhenSettingsAreDisabled(): void
+    {
+        $live = NegotiationFixture::snapshot(totalNet: 1000.0);
+        $after = NegotiationFixture::snapshot(totalNet: 1100.0);
+        [$client] = ScriptedClient::spy([]);
+
+        $this->expectException(InvalidReviewRequest::class);
+
+        self::reply($client, null)->compose(self::pending($live, $after), $after);
     }
 
     private static function reply(

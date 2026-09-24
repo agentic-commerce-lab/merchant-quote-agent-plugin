@@ -22,6 +22,8 @@ final class FakeDraftVersions implements QuoteDraftVersionsInterface
     /** @var list<string> version ids exists() denies, as if their rows were gone */
     public array $missing = [];
 
+    public ?\Closure $onCreate = null;
+
     public function __construct(
         public readonly FakeQuoteGateway $draft,
     ) {}
@@ -29,6 +31,7 @@ final class FakeDraftVersions implements QuoteDraftVersionsInterface
     #[\Override]
     public function create(string $quoteId): string
     {
+        $this->onCreate && ($this->onCreate)();
         $id = sprintf('0190aaaa00007000800000000000%04d', \count($this->created) + 1);
         $this->created[] = $id;
 

@@ -8,6 +8,7 @@ import {
     exceedsCap,
     feedbackPayload,
     needsReplyReview,
+    replyCheckedAfterPreview,
     reviewStatusVariant,
     wasEdited,
 } from './review.ts';
@@ -40,6 +41,9 @@ assert.equal(needsReplyReview(view, edited, false, false), true);
 assert.equal(needsReplyReview({ ...view, previewEdited: true }, untouched, false, false), true);
 assert.equal(needsReplyReview({ ...view, previewEdited: true }, untouched, false, true), false);
 assert.equal(needsReplyReview({ ...view, previewEdited: true }, untouched, true, false), false);
+assert.equal(replyCheckedAfterPreview({ ...view, replyRedrafted: false }, false), false);
+assert.equal(replyCheckedAfterPreview({ ...view, replyRedrafted: true }, false), true);
+assert.equal(replyCheckedAfterPreview({ ...view, replyRedrafted: true }, true), false);
 const lines = { ...view, pricing: 'lines', lines: [{ id: 'l1', draft: 9 }, { id: 'l2', draft: 4 }] };
 assert.deepEqual(editsPayload(lines, { ...untouched, discountPercent: 99, linePrices: { l1: 9, l2: 3.5 } }), { linePrices: { l2: 3.5 } });
 assert.deepEqual(editsPayload({ ...view, pricing: null }, { ...untouched, discountPercent: 8 }), {});

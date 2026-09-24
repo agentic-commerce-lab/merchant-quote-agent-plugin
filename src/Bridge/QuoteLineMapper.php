@@ -78,6 +78,7 @@ final readonly class QuoteLineMapper
             updatedAt: $updatedAt instanceof \DateTimeInterface
                 ? \DateTimeImmutable::createFromInterface($updatedAt)
                 : null,
+            totalInQuotePriceSpace: (float) $lineItem->get('totalPrice'),
         );
     }
 

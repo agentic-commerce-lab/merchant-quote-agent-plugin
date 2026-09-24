@@ -21,6 +21,11 @@ final class FakeReviewStore implements DecisionReviewStoreInterface
     /** @var list<string> */
     public array $previewEdited = [];
 
+    /** @var list<array{string, int, bool}> */
+    public array $publishing = [];
+
+    public ?\Throwable $markSentThrows = null;
+
     /** @var list<array{string, list<string>, string}> */
     public array $feedback = [];
 
@@ -47,9 +52,18 @@ final class FakeReviewStore implements DecisionReviewStoreInterface
         $this->previewEdited[] = $decisionId;
     }
 
+    public function markPublishing(string $decisionId, int $merchantCommentCount, bool $editedByMerchant): void
+    {
+        $this->publishing[] = [$decisionId, $merchantCommentCount, $editedByMerchant];
+    }
+
     #[\Override]
     public function markSent(string $decisionId, string $sentReply, ?array $sentChanges): void
     {
+        if ($this->markSentThrows !== null) {
+            throw $this->markSentThrows;
+        }
+
         $this->sent[] = [$decisionId, $sentReply, $sentChanges];
     }
 

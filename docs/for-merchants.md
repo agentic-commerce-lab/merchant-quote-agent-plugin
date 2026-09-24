@@ -161,7 +161,10 @@ then open a quote. The review card compares the live quote with the draft.
 You can change its price or discount, validity date and reply. **Update
 preview** recalculates the proposed totals and offers a reworded reply without
 replacing any text you typed. A warning appears if your discount exceeds the
-agent's configured cap; a person may still choose to send it.
+agent's configured cap; a person may still choose to send it. Preview rejects
+a price change that would raise the quote above its current live total, and
+an unsuccessful preview or Send saves none of its price edits. If the agent
+cannot reword the reply, check the existing text yourself before sending.
 
 **Send to buyer** applies the reviewed prices to the live quote, posts your
 reply with *you* as its author, and moves the quote to replied. Your usual
@@ -174,13 +177,17 @@ the comment and sent reply are included only when you opt into free text (see
 [Costs and data](#costs-and-data)).
 
 Sending is blocked if the buyer wrote again, changed a requested price, or
-the quote's state changed after the draft was prepared. Edits made directly
-in SwagCommercial's quote editor are not detected by this check, so compare
-the live and proposed values before sending. Reject a stale draft; a new buyer
-message starts a new pass. Anyone with the Quote agent viewer role can see a draft, but only a
-user granted the additional **Quote agent: review drafts** permission may
-preview, send, reject or save feedback. Switching Draft Mode off leaves
-existing drafts reviewable; new passes answer on their own again.
+the quote's state changed after the draft was prepared. It is also blocked if
+someone changed the live quote's line prices, quantities, discount, totals or
+validity in SwagCommercial. This protects those edits from being overwritten
+by the draft on older supported Shopware versions. Reject a stale draft; a new
+buyer message starts a new pass. Anyone with the Quote agent viewer role can
+see a draft, but only a user granted the additional **Quote agent: review
+drafts** permission may preview, send, reject or save feedback. Switching Draft
+Mode off leaves existing drafts reviewable; new passes answer on their own again.
+If Send reports an error, check the quote before retrying: its reply may
+already be visible to the buyer. When the system detects that situation, it
+blocks further review actions until the quote is checked and reconciled.
 
 If you use the Agentic Commerce extension, a sales channel in Draft Mode
 advertises 0% automatic-grant authority in its signed A2CN mandate. Buyers'
@@ -423,8 +430,8 @@ and company names — the agent's record does not hold them to begin with. The
 quote number. The details behind a history lookup: which past quotes and orders
 the agent read, their numbers, products and prices, and which product it asked
 about. A draft's internal bookkeeping: `draftVersionId`, the working copy of the
-quote it was prepared in, and `reviewFingerprint`, which records line ids and
-comment times.
+quote it was prepared in, and `reviewFingerprint`, which records a fingerprint
+of buyer input and live pricing at draft time.
 
 **The comments are the part to decide about, and the two ways round differ.** The
 customer's own message, the agent's replies, the model's raw answers, the reasons

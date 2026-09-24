@@ -46,6 +46,7 @@ final class QuoteLineMapperTest extends TestCase
         ])));
 
         self::assertNull($lines[0]->requestedUnitPrice);
+        self::assertSame(119.0, $lines[0]->totalInQuotePriceSpace);
     }
 
     public function testARequestedPriceTheBUYERPlacedIsReadAsAlways(): void

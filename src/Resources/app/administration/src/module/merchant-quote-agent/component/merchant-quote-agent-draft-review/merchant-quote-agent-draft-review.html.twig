@@ -107,7 +107,7 @@
         </div>
 
         <div v-if="canReview" class="mqa-review__actions">
-            <mt-button variant="secondary" :disabled="isSaving || blockedBy === 'not_pending'" @click="reject">
+            <mt-button variant="secondary" :disabled="isSaving || blockedBy === 'not_pending' || blockedBy === 'published'" @click="reject">
                 {{ $tc('merchant-quote-agent.review.reject') }}
             </mt-button>
             <mt-button variant="primary" :disabled="blocked || isSaving || form.reply.trim() === ''" @click="send">

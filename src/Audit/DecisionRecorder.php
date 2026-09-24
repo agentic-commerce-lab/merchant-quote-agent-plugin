@@ -227,7 +227,7 @@ final class DecisionRecorder
 
     /**
      * A Draft Mode pass drafted something: its version (null for a
-     * clarification, which changes no price) and the buyer-side fingerprint
+     * clarification, which changes no price) and the buyer/pricing fingerprint
      * a Send checks staleness against. Called by DraftingQuoteGateway on its
      * first draft write and again on the reply; the first fingerprint is the
      * one taken after AskMirror and before anything else, so it wins.

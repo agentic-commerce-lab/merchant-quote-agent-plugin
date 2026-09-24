@@ -24,6 +24,9 @@ interface DecisionReviewStoreInterface
     /** Remember a successful price/date preview across page reloads until Send. */
     public function markPreviewEdited(string $decisionId): void;
 
+    /** Persist an attempt marker before publishing a buyer-visible comment. */
+    public function markPublishing(string $decisionId, int $merchantCommentCount, bool $editedByMerchant): void;
+
     /** @param array<string, mixed>|null $sentChanges null for a clarification, which changes no price */
     public function markSent(string $decisionId, string $sentReply, ?array $sentChanges): void;
 

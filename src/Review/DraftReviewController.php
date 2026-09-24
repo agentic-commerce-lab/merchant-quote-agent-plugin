@@ -30,7 +30,7 @@ final readonly class DraftReviewController
 
     public function __construct(
         private PendingDrafts $drafts,
-        private DraftReply $reply,
+        private DraftPreviewer $previewer,
         private DraftSender $sender,
         private DraftRejecter $rejecter,
         private DecisionReviewStoreInterface $store,
@@ -62,16 +62,10 @@ final readonly class DraftReviewController
         return self::answer(function () use ($decisionId, $request): array {
             $edits = self::edits($request);
 
-            return $this->drafts->with($decisionId, function (PendingDraft $pending) use ($edits): array {
-                $after = DraftEditor::apply($pending, $edits);
-
-                if (!$edits->isEmpty()) {
-                    $this->store->markPreviewEdited($pending->record->id);
-                    $pending->record->sentChanges = ['editedByMerchant' => true];
-                }
-
-                return DraftView::of($pending, $after, $this->reply->compose($pending, $after));
-            });
+            return $this->drafts->with($decisionId, fn(PendingDraft $pending): array => $this->previewer->preview(
+                $pending,
+                $edits,
+            ));
         });
     }
 
