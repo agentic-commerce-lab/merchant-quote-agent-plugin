@@ -28,6 +28,8 @@ final class QuoteNegotiatePromptTest extends TestCase
         self::assertStringContainsString('at most twice', $prompt);
         self::assertStringContainsString('a third request sends the quote to a human', $prompt);
         self::assertStringContainsString('"historyRequest": {"kind": null, "productId": null}', $prompt);
+        self::assertStringContainsString('Never answer a price ask with no concession', $prompt);
+        self::assertStringContainsString('"buyer asks per unit net"', $prompt);
     }
 
     public function testThePromptSeparatesThisQuoteFromTheAccountHistory(): void
