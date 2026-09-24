@@ -152,6 +152,16 @@
                                 <h4 class="mqa-entry__title">{{ $tc('merchant-quote-agent.detail.agentTitle') }}</h4>
                                 <mt-badge :variant="entry.run.outcomeVariant">{{ entry.run.outcomeLabel }}</mt-badge>
                                 <span class="mqa-entry__time">{{ entry.run.timestamp }}</span>
+                                {# Which strategy sent this pass, by name only: the
+                                   version and wording stay in the fold. An
+                                   unavailable one shows nothing here — the fold
+                                   says so in full. #}
+                                <span
+                                    v-if="entry.run.strategy && !entry.run.strategy.unavailable"
+                                    class="mqa-entry__time"
+                                >
+                                    {{ $t('merchant-quote-agent.detail.strategyInPass', { name: entry.run.strategy.name }) }}
+                                </span>
                             </div>
 
                             {# The headline caveat about this pass, above its
@@ -227,13 +237,6 @@
                                         </span>
                                     </dd>
                                 </template>
-
-                                {# The agent's own sentence, in the pass that
-                                   composed it rather than in a second card. #}
-                                <template v-if="entry.run.reply">
-                                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.detail.replyLabel') }}</dt>
-                                    <dd class="mqa-run__fact-value mqa-run__message">{{ entry.run.reply }}</dd>
-                                </template>
                             </dl>
 
                             <details class="mqa-tech">
@@ -285,6 +288,18 @@
                                     </details>
                                 </template>
                             </details>
+
+                            {# The agent's own sentence, in the pass that
+                               composed it rather than in a second card, and in
+                               the same bubble as the customer's comment: both
+                               are what one side said to the other. Last in the
+                               pass, below the fold, so the fold reads as the
+                               footnote to the reasoning above it rather than
+                               to the reply. #}
+                            <template v-if="entry.run.reply">
+                                <span class="mqa-msg__label">{{ $tc('merchant-quote-agent.detail.replyLabel') }}</span>
+                                <p class="mqa-msg">{{ entry.run.reply }}</p>
+                            </template>
                         </template>
                     </li>
                 </ol>
