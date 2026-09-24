@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Audit\Export\DecisionExportStream;
 use MerchantQuoteAgentPlugin\Command\DecisionExportCommand;
+use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -160,6 +162,28 @@ final class DecisionExportTest extends IntegrationTestCase
             'Account history',
             $row['trace'][0]['content']['request']['messages'][0]['content'],
         );
+    }
+
+    public function testAViewerRoleExportCarriesTheTrace(): void
+    {
+        // The dashboard exports under the viewer's context, which grants
+        // read access to both decision records and their trace events.
+        $this->seed(Uuid::randomHex());
+        $source = new AdminApiSource(Uuid::randomHex());
+        $source->setIsAdmin(false);
+        $source->setPermissions(['merchant_quote_agent_decision:read', 'merchant_quote_agent_trace:read']);
+        $context = new Context($source);
+
+        $stream = static::getContainer()->get(DecisionExportStream::class);
+        self::assertInstanceOf(DecisionExportStream::class, $stream);
+        $lines = iterator_to_array(
+            $stream->lines(new \DateTimeImmutable('2031-05-05'), new \DateTimeImmutable('2031-05-06'), false, $context),
+            false,
+        );
+
+        self::assertNotSame([], $lines);
+        $row = json_decode($lines[0], true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('model_call', $row['trace'][0]['kind'] ?? null);
     }
 
     public function testTheJsonlStreamIsCleanEnoughToRedirect(): void
