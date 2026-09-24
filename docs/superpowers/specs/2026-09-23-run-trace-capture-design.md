@@ -242,6 +242,10 @@ and `AppliedOffer::$after` at `recordApplied()`.
   `identity.companyName` and `identity.orderId`, which `Audit\QuoteTrace` drops
   at recording: neither is needed to measure a strategy, and the company name
   would sit next to the customer's pseudonym in every export with comments.
+  Of `lifecycle.customFields`, only the plugin's own keys are kept (those
+  starting `merchant_quote_agent_`, `merchantQuoteAgent` or `a2cn_`: the
+  agent's state markers and the A2CN session and acts). Every other key is a
+  field the merchant defined, which can hold a contact's name or e-mail.
 
 ### Outside a pass (PR 2)
 
