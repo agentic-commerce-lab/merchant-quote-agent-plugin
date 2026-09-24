@@ -29,6 +29,20 @@ final class AnonymizedTraceTest extends TestCase
         self::assertSame(['request' => ['messages' => [['content' => 'anna@acme.example']]]], $line['content']);
     }
 
+    public function testStoredMetaIsRestrictedToTheKindsExportKeys(): void
+    {
+        $event = self::event();
+        $event->meta = [
+            'purpose' => 'extract',
+            'buyerEmail' => 'anna@acme.example',
+            'truncated' => ['request.messages.0.content'],
+        ];
+
+        $line = AnonymizedTrace::of($event, freeText: false);
+
+        self::assertSame(['purpose' => 'extract', 'truncated' => ['request.messages.0.content']], $line['meta']);
+    }
+
     public function testTheDecisionsOwnIdsInsideContentLeaveAsTheirPseudonyms(): void
     {
         // A quote snapshot and a prompt carry the raw quote, customer and
