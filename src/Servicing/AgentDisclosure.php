@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Servicing;
 
+use MerchantQuoteAgentPlugin\Audit\ReviewStatus;
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 
 /**
@@ -49,7 +51,7 @@ final class AgentDisclosure
      * The fragment that discloses agent handling, to be spread into a servicing
      * pass's stamp.
      *
-     * ServiceQuoteHandler withholds it for a Draft Mode pass that drafted a reply.
+     * stampForPass() withholds it for a Draft Mode pass that drafted a reply.
      *
      * @return array<string, true> empty when the agent did not act on the quote
      */
@@ -63,5 +65,22 @@ final class AgentDisclosure
                 => [self::MARKER_KEY => true],
             NegotiationOutcome::HandedOver, NegotiationOutcome::NothingToDo => [],
         };
+    }
+
+    /**
+     * stampFor(), except for a Draft Mode pass that drafted a reply: the
+     * merchant reviews and sends what the buyer reads, so it was not the agent
+     * that told the buyer anything. An escalation drafts nothing and still
+     * discloses, because the agent's determination stands either way.
+     *
+     * @return array<string, true>
+     */
+    public static function stampForPass(NegotiationOutcome $outcome, QuoteAgentSettings $settings): array
+    {
+        if ($settings->draftMode && ReviewStatus::awaitsReview($outcome)) {
+            return [];
+        }
+
+        return self::stampFor($outcome);
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\AgentDisclosure;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -50,6 +51,34 @@ final class AgentDisclosureTest extends TestCase
         $expectedFragment = $expected ? [AgentDisclosure::MARKER_KEY => true] : [];
 
         self::assertSame($expectedFragment, AgentDisclosure::stampFor($outcome));
+    }
+
+    /**
+     * Draft Mode withholds only a pass that drafted a reply; an escalation
+     * drafts nothing and still discloses.
+     *
+     * @return iterable<string, array{bool, NegotiationOutcome, bool}>
+     */
+    public static function passes(): iterable
+    {
+        yield 'draft mode, offered - drafted, withheld' => [true, NegotiationOutcome::Offered, false];
+        yield 'draft mode, escalated - still disclosed' => [true, NegotiationOutcome::Escalated, true];
+        yield 'autonomous, offered - disclosed' => [false, NegotiationOutcome::Offered, true];
+    }
+
+    #[DataProvider('passes')]
+    public function testAPassDisclosesUnlessDraftModeDraftedIt(
+        bool $draftMode,
+        NegotiationOutcome $outcome,
+        bool $expected,
+    ): void {
+        $base = ServicingSettingsFixture::settings();
+        $settings = new QuoteAgentSettings($base->policy, $base->llm, null, draftMode: $draftMode);
+
+        self::assertSame(
+            $expected ? [AgentDisclosure::MARKER_KEY => true] : [],
+            AgentDisclosure::stampForPass($outcome, $settings),
+        );
     }
 
     public function testEveryEnumCaseIsCovered(): void
