@@ -39,6 +39,7 @@ use MerchantQuoteAgentPlugin\Bridge\History\DecisionAggregate;
 use MerchantQuoteAgentPlugin\Bridge\History\OrderHistoryReads;
 use MerchantQuoteAgentPlugin\Bridge\History\QuoteHistoryReads;
 use MerchantQuoteAgentPlugin\Bridge\MerchantActionReader;
+use MerchantQuoteAgentPlugin\Bridge\PurchasePriceReader;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -83,12 +84,14 @@ use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
+use MerchantQuoteAgentPlugin\Negotiation\MarginFloorGuard;
 use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
 use MerchantQuoteAgentPlugin\Negotiation\OfferRound;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
+use MerchantQuoteAgentPlugin\Negotiation\PurchasePricesInterface;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
@@ -643,6 +646,16 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     ]);
     $services->alias(CustomerHistoryFactoryInterface::class, CustomerHistoryFactory::class);
 
+    // The merchant's purchase prices, for the minimum-margin floor.
+    // Registered behind the SwagCommercial gate like MarginFloorGuard, its only
+    // consumer (used by OfferApplier): a consumer registered above that gate
+    // would be a missing service on a shop without SwagCommercial.
+    $services->set(PurchasePriceReader::class)->args([
+        service('product.repository'),
+        service('currency.repository'),
+    ]);
+    $services->alias(PurchasePricesInterface::class, PurchasePriceReader::class);
+
     // The five commercial services, referenced by the string ids on
     // CommercialAvailability because their classes are not ours to name with
     // `::class`. ignoreOnInvalid() rather than a plain reference because an
@@ -881,6 +894,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
 
     $services->set(AskInterpreter::class);
     $services->set(OfferProposer::class);
+    $services->set(MarginFloorGuard::class);
     $services->set(OfferApplier::class);
     $services->set(ReplyComposer::class);
     $services->set(OfferRound::class);

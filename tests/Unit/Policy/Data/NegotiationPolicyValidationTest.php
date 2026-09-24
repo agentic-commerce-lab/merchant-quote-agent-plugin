@@ -65,6 +65,38 @@ final class NegotiationPolicyValidationTest extends TestCase
         self::assertSame(['price.validityDays'], self::paths(self::validator()->validate($policy)));
     }
 
+    public function testANegativeMinimumMarginIsRejected(): void
+    {
+        $policy = new NegotiationPolicy(price: new QuoteLimits(
+            maxDiscountPercent: 5.0,
+            validityDays: 14,
+            minMarginPercent: -1.0,
+        ));
+
+        self::assertSame(['price.minMarginPercent'], self::paths(self::validator()->validate($policy)));
+    }
+
+    public function testAZeroMinimumMarginIsValidAndMeansNeverBelowCost(): void
+    {
+        $policy = new NegotiationPolicy(price: new QuoteLimits(
+            maxDiscountPercent: 5.0,
+            validityDays: 14,
+            minMarginPercent: 0.0,
+        ));
+
+        self::assertSame([], self::paths(self::validator()->validate($policy)));
+    }
+
+    public function testTighteningTheDiscountCapKeepsTheMinimumMargin(): void
+    {
+        // CappedAuthority rebuilds the limits through withMaxDiscountPercent()
+        // on every round where the buyer asks for less than the cap. Dropping
+        // the margin there would switch the floor off on exactly those rounds.
+        $limits = new QuoteLimits(maxDiscountPercent: 15.0, validityDays: 14, minMarginPercent: 10.0);
+
+        self::assertSame(10.0, $limits->withMaxDiscountPercent(5.0)->minMarginPercent);
+    }
+
     private static function validator(): ValidatorInterface
     {
         return Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();

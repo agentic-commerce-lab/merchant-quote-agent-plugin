@@ -12,6 +12,7 @@ use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
+use MerchantQuoteAgentPlugin\Negotiation\MarginFloorGuard;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
@@ -25,6 +26,7 @@ use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\FakePurchasePrices;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\ScriptedClient;
 use Psr\Log\NullLogger;
 use Shopware\Core\Defaults;
@@ -120,7 +122,7 @@ trait PipelineFixture
 
         $round = new OfferRound(
             new OfferProposer($client, $prompts, $authorizer, $recorder, $historyFactory),
-            new OfferApplier($verifier, $logger, $recorder),
+            new OfferApplier($verifier, $logger, $recorder, new MarginFloorGuard(new FakePurchasePrices())),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             $escalator,
             $logger,

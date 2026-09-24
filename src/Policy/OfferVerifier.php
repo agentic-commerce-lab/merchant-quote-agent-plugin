@@ -21,6 +21,7 @@ final class OfferVerifier
         private readonly TotalsOfferVerifier $totals = new TotalsOfferVerifier(),
         private readonly LineOfferVerifier $lines = new LineOfferVerifier(),
         private readonly ExpirationOfferVerifier $expiration = new ExpirationOfferVerifier(),
+        private readonly MarginFloorVerifier $floors = new MarginFloorVerifier(),
     ) {}
 
     /** @return list<string> */
@@ -35,6 +36,7 @@ final class OfferVerifier
             ),
             ...$this->lines->verify($input->reference, $input->final, $input->limits),
             ...$this->expiration->verify($input->final, $input->limits, $input->now),
+            ...$this->floors->verify($input->final, $input->floors),
         ];
     }
 }
