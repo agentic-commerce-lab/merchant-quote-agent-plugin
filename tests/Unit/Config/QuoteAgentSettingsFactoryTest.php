@@ -199,7 +199,12 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
 
     public function testABlankMinimumMarginMeansNoFloor(): void
     {
-        self::assertNull(self::build()?->policy->price->minMarginPercent);
-        self::assertNull(self::build(['minMarginPercent' => null])?->policy->price->minMarginPercent);
+        $absent = self::build();
+        self::assertNotNull($absent);
+        self::assertNull($absent->policy->price->minMarginPercent);
+
+        $cleared = self::build(['minMarginPercent' => null]);
+        self::assertNotNull($cleared);
+        self::assertNull($cleared->policy->price->minMarginPercent);
     }
 }
