@@ -37,6 +37,19 @@ final class DraftMirrorsEntityTest extends TestCase
      */
     private const WRITTEN_BY_THE_ESCALATION_RESOLUTION_SUBSCRIBER = ['resolvedAt', 'resolvedState'];
 
+    /**
+     * Written by the review endpoints (Review\*, through DecisionReviewStore)
+     * after a merchant sends, rejects or comments on a draft, never by a pass.
+     */
+    private const WRITTEN_BY_THE_REVIEW_STORE = [
+        'reviewedAt',
+        'sentReply',
+        'sentChanges',
+        'feedbackReasons',
+        'feedbackComment',
+        'feedbackAt',
+    ];
+
     /** The draft's own stopwatch; DecisionRecordWriter excludes it, not a column. */
     private const DRAFT_ONLY_WORKING_FIELDS = ['startedAt'];
 
@@ -56,6 +69,7 @@ final class DraftMirrorsEntityTest extends TestCase
             self::ID_IS_WRITER_GENERATED,
             ...self::WRITTEN_BY_THE_TERMINAL_SUBSCRIBER,
             ...self::WRITTEN_BY_THE_ESCALATION_RESOLUTION_SUBSCRIBER,
+            ...self::WRITTEN_BY_THE_REVIEW_STORE,
         ];
 
         self::assertEmpty(

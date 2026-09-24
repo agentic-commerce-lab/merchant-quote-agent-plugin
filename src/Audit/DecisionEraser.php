@@ -28,7 +28,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
  * merchant's own record of their business, and none of it needs a person in it.
  *
  * WHAT IS CLEARED is the classification the export already made. Its
- * FREE_TEXT list is the four columns that can carry the buyer's words, and its
+ * FREE_TEXT list is the six columns that can carry the buyer's words, and its
  * three JSON reshapers are what the same question answers for a column that is
  * half structure and half prose -- so this asks AnonymizedDecision rather than
  * deciding a second time and drifting. The only difference is when the
@@ -80,11 +80,15 @@ final readonly class DecisionEraser implements DecisionEraserInterface
             'id' => $record->id,
             // The buyer's own words, the agent's words to them, the model's raw
             // answer and the escalation prose -- AnonymizedDecision::FREE_TEXT,
-            // the same four.
+            // the same six.
             'buyerAsk' => null,
             'replyToBuyer' => null,
             'rawProposal' => null,
             'violations' => null,
+            // What the merchant sent in the buyer's conversation, and what
+            // they wrote about it -- either can quote the buyer.
+            'sentReply' => null,
+            'feedbackComment' => null,
             // Structured asks stay: a price, a quantity and a band are the
             // merchant's own record of what they decided. The two lists of
             // sentences the extract model wrote are not structured at all.

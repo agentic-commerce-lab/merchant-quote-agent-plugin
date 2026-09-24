@@ -356,6 +356,14 @@ link on purpose.
 - The type of any error and where in the code it happened — not its message.
 - How the quote ended and when, and when someone on your team resolved an
   escalation and how.
+- In Draft Mode, how each draft was reviewed:
+  - `reviewStatus` — `pending`, `sent`, `rejected` or `superseded`; empty for a
+    pass the agent answered on its own.
+  - `reviewedAt` — when you sent or rejected the draft.
+  - `sentChanges` — the totals you actually sent, and whether you edited the
+    agent's draft first.
+  - `feedbackReasons` — the reason codes you picked.
+  - `feedbackAt` — when you left that feedback.
 - **If the agent looked up the customer's history, a summary of the account**: how
   many past quotes, how many became orders or were lost, offers made and accepted,
   the last discount granted, the number of orders, **lifetime order value**, and
@@ -368,15 +376,19 @@ link on purpose.
 and company names — the agent's record does not hold them to begin with. The
 quote number. The details behind a history lookup: which past quotes and orders
 the agent read, their numbers, products and prices, and which product it asked
-about.
+about. A draft's internal bookkeeping: `draftVersionId`, the working copy of the
+quote it was prepared in, and `reviewFingerprint`, which records line ids and
+comment times.
 
 **The comments are the part to decide about, and the two ways round differ.** The
 customer's own message, the agent's replies, the model's raw answers, the reasons
 it gave for escalating, the questions it raised and the full text of any error
-messages are the most useful part of the data and the most sensitive. The
-customer's message is stored word for word, and anything they typed — a
-signature, a phone number, an order reference — is in it, and can come back a
-second time in the model's own words.
+messages are the most useful part of the data and the most sensitive. In Draft
+Mode they also include the reply you actually sent (`sentReply`) and the
+feedback you wrote about the agent's draft (`feedbackComment`) — either can
+quote the customer. The customer's message is stored word for word, and
+anything they typed — a signature, a phone number, an order reference — is in
+it, and can come back a second time in the model's own words.
 
 The agent keeps that message so that a decision can be explained afterwards:
 when it reads a comment and concludes there was nothing to answer, the record of

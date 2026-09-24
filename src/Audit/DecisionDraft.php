@@ -14,8 +14,9 @@ namespace MerchantQuoteAgentPlugin\Audit;
  *
  * Mirrors QuoteDecisionRecord's columns one-for-one, minus `id` (the writer
  * generates it), minus `terminalState`/`terminalAt` (written later, via
- * TerminalOutcomeSubscriber and TerminalOutcomeWriter, never by a pass), plus
- * `startedAt` (a stopwatch the writer excludes from the payload).
+ * TerminalOutcomeSubscriber and TerminalOutcomeWriter, never by a pass), minus
+ * the six review columns (written by DecisionReviewStore), plus `startedAt` (a
+ * stopwatch the writer excludes from the payload).
  *
  * @mago-expect lint:too-many-properties
  * The gate fires above 10 and these properties mirror a table's columns
@@ -110,6 +111,15 @@ final class DecisionDraft
 
     /** Which rung of the ladder chose that version — see StrategyAssignmentSource. */
     public ?string $strategyAssignmentSource = null;
+
+    /** The DAL version holding a Draft Mode proposal — see Review\DraftingQuoteGateway. */
+    public ?string $draftVersionId = null;
+
+    /** Null for an autonomous pass — see ReviewStatus. */
+    public ?string $reviewStatus = null;
+
+    /** What the buyer's side of the quote looked like when drafted — see ServicingFingerprint::review(). */
+    public ?string $reviewFingerprint = null;
 
     public float $startedAt = 0.0;
 }
