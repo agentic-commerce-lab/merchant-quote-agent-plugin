@@ -47,6 +47,7 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
         'maxQuoteValueNet',
         'validityDays',
         'notifyBuyerOnEscalation',
+        'draftMode',
     ];
 
     public function __construct(
@@ -86,12 +87,22 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
      * BuyerNotificationPreference. `!== false` rather than `=== true` so an
      * unset key means notify, matching config.xml's defaultValue and the
      * identical rule in QuoteAgentSettingsFactory — only an explicit false
-     * silences the notice.
+     * silences the notice. Draft Mode silences it too: in Draft Mode the agent
+     * says nothing to the buyer at all.
      */
     #[\Override]
     public function notifyBuyerOnEscalation(?string $salesChannelId): bool
     {
-        return $this->config->get(self::DOMAIN . 'notifyBuyerOnEscalation', $salesChannelId) !== false;
+        return (
+            $this->config->get(self::DOMAIN . 'notifyBuyerOnEscalation', $salesChannelId) !== false
+            && !$this->draftMode($salesChannelId)
+        );
+    }
+
+    /** Default off: only an explicit true holds the agent's output back for review. */
+    public function draftMode(?string $salesChannelId): bool
+    {
+        return $this->config->get(self::DOMAIN . 'draftMode', $salesChannelId) === true;
     }
 
     /** Default off: absent or false both mean the assistant may not act for the buyer. */

@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Config;
 
 use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
+use MerchantQuoteAgentPlugin\Strategy\ResolvedStrategy;
 use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -13,7 +14,7 @@ use Symfony\Component\Validator\Validation;
 
 /**
  * @mago-expect lint:too-many-methods
- * Nine cases plus the shared `build()` fixture builder and the
+ * Ten cases plus the shared `build()` fixture builder and the
  * `invalidConfigurations()` data provider, covering every branch of a
  * factory that maps a whole flat config array onto validated settings.
  */
@@ -190,5 +191,17 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         $settingsBlank = self::build(['negotiationStrategyVersionId' => '   ']);
         self::assertNotNull($settingsBlank);
         self::assertNull($settingsBlank->strategyAssignmentSource);
+    }
+
+    public function testDraftModeSurvivesWithPolicyAndWithStrategy(): void
+    {
+        $settings = self::build(['draftMode' => true]);
+        self::assertNotNull($settings);
+
+        self::assertTrue($settings->withPolicy($settings->policy)->draftMode);
+        self::assertTrue($settings->withStrategy(
+            new ResolvedStrategy(versionId: '0000000000000000000000000000cccc', prompt: 'p'),
+            StrategyAssignmentSource::Config,
+        )->draftMode);
     }
 }
