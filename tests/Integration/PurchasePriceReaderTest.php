@@ -17,7 +17,7 @@ final class PurchasePriceReaderTest extends IntegrationTestCase
 {
     public function testAVariantInheritsItsParentsPurchasePrice(): void
     {
-        $variantId = self::variantPricedOnlyOnItsParent(40.0);
+        $variantId = self::variantPricedOnlyOnItsParent([self::price(Defaults::CURRENCY, 40.0)]);
 
         $prices = self::reader()->netUnitPrices([$variantId], self::defaultCurrency()->getIsoCode());
 
@@ -26,7 +26,7 @@ final class PurchasePriceReaderTest extends IntegrationTestCase
 
     public function testADefaultCurrencyOnlyPriceIsConvertedByTheQuoteCurrencysFactor(): void
     {
-        $variantId = self::variantPricedOnlyOnItsParent(40.0);
+        $variantId = self::variantPricedOnlyOnItsParent([self::price(Defaults::CURRENCY, 40.0)]);
         $usd = self::currency('USD');
 
         $prices = self::reader()->netUnitPrices([$variantId], 'USD');
@@ -34,9 +34,27 @@ final class PurchasePriceReaderTest extends IntegrationTestCase
         self::assertEqualsWithDelta(40.0 * $usd->getFactor(), $prices[$variantId] ?? null, 0.0001);
     }
 
+    public function testAPriceInTheQuoteCurrencyIsUsedAsStoredNotConverted(): void
+    {
+        $usd = self::currency('USD');
+        $variantId = self::variantPricedOnlyOnItsParent([
+            self::price(Defaults::CURRENCY, 40.0),
+            self::price($usd->getId(), 50.0),
+        ]);
+
+        self::assertSame([$variantId => 50.0], self::reader()->netUnitPrices([$variantId], 'USD'));
+    }
+
+    public function testAProductWithNoPurchasePriceAnywhereIsLeftOut(): void
+    {
+        $variantId = self::variantPricedOnlyOnItsParent(null);
+
+        self::assertSame([], self::reader()->netUnitPrices([$variantId], 'EUR'));
+    }
+
     public function testNonProductIdsAndUnknownCurrenciesYieldNothing(): void
     {
-        $variantId = self::variantPricedOnlyOnItsParent(40.0);
+        $variantId = self::variantPricedOnlyOnItsParent([self::price(Defaults::CURRENCY, 40.0)]);
 
         self::assertSame([], self::reader()->netUnitPrices(['not-a-uuid', ''], 'EUR'));
         self::assertSame([], self::reader()->netUnitPrices([$variantId], 'XXX'));
@@ -50,8 +68,12 @@ final class PurchasePriceReaderTest extends IntegrationTestCase
         return $reader;
     }
 
-    /** A variant with no purchase price of its own, whose parent's is `$net` in the default currency only. */
-    private static function variantPricedOnlyOnItsParent(float $net): string
+    /**
+     * A variant with no purchase price of its own, whose parent carries `$parentPrices`.
+     *
+     * @param list<array<string, mixed>>|null $parentPrices
+     */
+    private static function variantPricedOnlyOnItsParent(?array $parentPrices): string
     {
         $criteria = (new Criteria())
             ->addFilter(new NotFilter(NotFilter::CONNECTION_AND, [new EqualsFilter('parentId', null)]))
@@ -68,17 +90,18 @@ final class PurchasePriceReaderTest extends IntegrationTestCase
             ->update([
                 [
                     'id' => $parentId,
-                    'purchasePrices' => [[
-                        'currencyId' => Defaults::CURRENCY,
-                        'net' => $net,
-                        'gross' => $net,
-                        'linked' => false,
-                    ]],
+                    'purchasePrices' => $parentPrices,
                 ],
                 ['id' => $variantId, 'purchasePrices' => null],
             ], Context::createDefaultContext());
 
         return $variantId;
+    }
+
+    /** @return array<string, mixed> one purchase-price row; Shopware requires one in the default currency */
+    private static function price(string $currencyId, float $net): array
+    {
+        return ['currencyId' => $currencyId, 'net' => $net, 'gross' => $net, 'linked' => false];
     }
 
     private static function defaultCurrency(): CurrencyEntity

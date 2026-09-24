@@ -645,8 +645,10 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     ]);
     $services->alias(CustomerHistoryFactoryInterface::class, CustomerHistoryFactory::class);
 
-    // The merchant's purchase prices, for the minimum-margin floor. Core
-    // repositories only, so this exists whether or not SwagCommercial does.
+    // The merchant's purchase prices, for the minimum-margin floor.
+    // Registered behind the SwagCommercial gate like OfferApplier, its only
+    // consumer: a consumer registered above that gate would be a missing
+    // service on a shop without SwagCommercial.
     $services->set(PurchasePriceReader::class)->args([
         service('product.repository'),
         service('currency.repository'),
