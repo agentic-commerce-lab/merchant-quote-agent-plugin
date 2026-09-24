@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 
+use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\AgentDisclosure;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -56,6 +57,30 @@ final class AgentDisclosureServicingTest extends TestCase
         yield 'escalated' => [NegotiationOutcome::Escalated, true];
         yield 'handed over' => [NegotiationOutcome::HandedOver, false];
         yield 'nothing to do' => [NegotiationOutcome::NothingToDo, false];
+    }
+
+    /**
+     * @throws \Throwable the handler's own declared surface, per #18's unknown pipeline exceptions
+     *
+     * In Draft Mode the merchant reviews and sends what the buyer reads, so
+     * even an outcome that would otherwise disclose stamps nothing.
+     */
+    public function testADraftModePassDisclosesNothing(): void
+    {
+        $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
+        $base = ServicingSettingsFixture::settings();
+        $settings = new QuoteAgentSettings($base->policy, $base->llm, null, draftMode: true);
+
+        ServicingHandlerFixture::handler(
+            $gateway,
+            ServicingHandlerFixture::countingPipeline(NegotiationOutcome::Offered),
+            preflight: ServicingSettingsFixture::preflightReturning($settings),
+        )(ServicingHandlerFixture::message());
+
+        self::assertArrayNotHasKey(
+            AgentDisclosure::MARKER_KEY,
+            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
+        );
     }
 
     /**

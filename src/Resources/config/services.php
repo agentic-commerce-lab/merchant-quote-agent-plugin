@@ -140,6 +140,7 @@ use MerchantQuoteAgentPlugin\Protocol\Record\TransactionRecord;
 use MerchantQuoteAgentPlugin\Protocol\Store\ActStoreInterface;
 use MerchantQuoteAgentPlugin\Protocol\Store\DbalActStore;
 use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
+use MerchantQuoteAgentPlugin\Review\DraftModePipeline;
 use MerchantQuoteAgentPlugin\Servicing\EscalationFlowEventSubscriber;
 use MerchantQuoteAgentPlugin\Servicing\EscalationNotifierInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
@@ -905,8 +906,19 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(OfferRound::class);
     $services->set(NegotiationPipeline::class);
 
+    // Draft Mode wraps the pipeline rather than living inside it: see
+    // DraftModePipeline. Out of Draft Mode it only retires pending drafts
+    // before handing over unchanged.
+    $services->set(DraftModePipeline::class)->args([
+        service(NegotiationPipeline::class),
+        service(QuoteDraftVersionsInterface::class),
+        service(DecisionRecorder::class),
+        service(DecisionReviewStoreInterface::class),
+        service(EscalationNotifierInterface::class),
+    ]);
+
     // The one line that turns the agent on.
-    $services->alias(QuoteServicingPipelineInterface::class, NegotiationPipeline::class);
+    $services->alias(QuoteServicingPipelineInterface::class, DraftModePipeline::class);
 
     // The gateway argument is the null-returning factory registered above; the
     // pipeline is the alias just above it. Both ignoreOnInvalid() so an absent

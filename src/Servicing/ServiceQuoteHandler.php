@@ -209,7 +209,7 @@ final readonly class ServiceQuoteHandler
             self::ATTEMPTS_KEY => null,
             ...QuoteEscalator::releaseFor($outcome),
             ...ClarificationMarker::releaseFor($outcome),
-            ...AgentDisclosure::stampFor($outcome),
+            ...AgentDisclosure::stampFor($outcome, $settings->draftMode),
         ]));
     }
 

@@ -1,0 +1,52 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Tests\Unit\Review;
+
+use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersionsInterface;
+use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
+
+final class FakeDraftVersions implements QuoteDraftVersionsInterface
+{
+    /** @var list<string> */
+    public array $created = [];
+
+    /** @var list<string> */
+    public array $merged = [];
+
+    /** @var list<string> */
+    public array $deleted = [];
+
+    public function __construct(
+        public readonly FakeQuoteGateway $draft,
+    ) {}
+
+    #[\Override]
+    public function create(string $quoteId): string
+    {
+        $id = sprintf('0190aaaa00007000800000000000%04d', \count($this->created) + 1);
+        $this->created[] = $id;
+
+        return $id;
+    }
+
+    #[\Override]
+    public function gateway(string $versionId): QuoteGatewayInterface
+    {
+        return $this->draft;
+    }
+
+    #[\Override]
+    public function merge(string $versionId): void
+    {
+        $this->merged[] = $versionId;
+    }
+
+    #[\Override]
+    public function delete(string $quoteId, string $versionId): void
+    {
+        $this->deleted[] = $versionId;
+    }
+}

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
-use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
+use MerchantQuoteAgentPlugin\Review\DraftModePipeline;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
@@ -63,13 +63,16 @@ final class ServicingWiringTest extends IntegrationTestCase
      * the handler takes its pipeline with ignoreOnInvalid(): drop the alias and
      * the handler still resolves, with a null pipeline, and every claimed quote
      * becomes a log line — which testTheHandlerAndLockResolve cannot see.
+     *
+     * The alias names the Draft Mode decorator, which hands every pass to
+     * NegotiationPipeline (see DraftModePipeline).
      */
-    public function testTheNegotiationPipelineIsTheRegisteredServicingPipeline(): void
+    public function testTheDraftModeDecoratorIsTheRegisteredServicingPipeline(): void
     {
         $pipeline = static::getContainer()->get(QuoteServicingPipelineInterface::class);
 
         self::assertInstanceOf(
-            NegotiationPipeline::class,
+            DraftModePipeline::class,
             $pipeline,
             'Nothing implements the servicing pipeline, so the agent never negotiates.',
         );

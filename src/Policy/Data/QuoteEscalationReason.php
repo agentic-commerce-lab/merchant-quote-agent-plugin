@@ -40,4 +40,8 @@ enum QuoteEscalationReason: string
     // Issue #169. The model could not place the buyer's ask on a line, and
     // the buyer was already asked once to clarify it. ClarificationRound.
     case UnplaceableAsk = 'unplaceable_ask';
+    // Draft Mode. Never recorded on a decision row: it names the NOTICE that a
+    // draft is waiting for the merchant, sent through the same channels as an
+    // escalation so the seeded escalation flow covers it without a new event.
+    case DraftReady = 'draft_ready';
 }
