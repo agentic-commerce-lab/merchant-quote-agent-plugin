@@ -4,7 +4,7 @@ Date: 2026-09-24
 
 ## Status
 
-Approved design. Not yet implemented.
+Implemented. 2026-09-24.
 
 ## Context
 
