@@ -21,7 +21,7 @@ Two live quotes on sw-ag.dev, read from `merchant_quote_agent_decision` and
 
 Both were the first pass (`trigger_reason: state_entered`), with no buyer
 comment, no extract call and no `buyer_ask`. They negotiated because
-`StructuredAsk::isUnmet()` saw a `requested_price` below the line price. Both
+`StructuredAsk::isUnmet()` (since renamed `isOpen()`) saw a `requested_price` below the line price. Both
 asks were inside the merchant's authority, and both buyers were answered with
 the unchanged quote.
 

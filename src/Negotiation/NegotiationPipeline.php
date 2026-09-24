@@ -192,7 +192,11 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         // `$ask === null` alone missed that case, because it only covers "no
         // extract call happened at all" (no new buyer comment). Both are the
         // same outcome once a structured ask isn't picking up the slack.
-        if (($ask === null || $ask->hasNoAsk()) && !StructuredAsk::isUnmet($snapshot)) {
+        // Only an OPEN one does: a storefront ask the last pass already
+        // answered (countered, say, so `requested_price` still sits below the
+        // line) is not new work, and a "thanks" on that quote is acknowledged
+        // here rather than sent back to a band with nothing left to move.
+        if (($ask === null || $ask->hasNoAsk()) && !StructuredAsk::isOpen($snapshot)) {
             // The one outcome nothing else counts. A comment the agent reads
             // as holding no ask is acknowledged, not escalated (PassedOver) --
             // so if the extract prompt ever regresses, the symptom is real
