@@ -209,20 +209,38 @@ like `Migration1789700000AddBuyerAskToDecision`:
 |---|---|---|
 | `draft_version_id` | `BINARY(16)` | the drafting pass (via `DecisionDraft`) |
 | `review_status` | `VARCHAR(16)` | drafting pass; Send / Reject / supersede |
+| `review_fingerprint` | `VARCHAR(64)` | drafting pass; Send compares it with the live quote |
 | `reviewed_at` | `DATETIME(3)` | Send / Reject |
 | `sent_reply` | `LONGTEXT` | Send |
-| `sent_changes` | `JSON` | Send — `{discountPercent?, linePricesNet?, expiresAt, totalNet, totalGross}` |
+| `sent_changes` | `JSON` | Send — `{discountPercent, totalNet, totalGross, expiresAt, editedByMerchant}` |
 | `feedback_reasons` | `JSON` | Feedback |
 | `feedback_comment` | `LONGTEXT` | Feedback |
 | `feedback_at` | `DATETIME(3)` | Feedback |
 
 `QuoteDecisionRecord` gains the fields, all admin-API-only and
 write-protected like the rest. `draft_version_id` and `review_status` are
-mirrored on `DecisionDraft`; the other six join the later-written exclusion
+mirrored on `DecisionDraft`; the other seven join the later-written exclusion
 list in `DraftMirrorsEntityTest`.
 
 `DecisionEraser` nulls `sent_reply` and `feedback_comment` along with the
-other free text.
+other free text. The export drops `draft_version_id` and `review_fingerprint`.
+Preview temporarily stores only `editedByMerchant: true` in `sent_changes`
+so the flag survives a page reload; the export shows `sentChanges` only once
+the review status is `sent`, when Send replaces the marker with actual totals.
+Before Send, the bridge requires both the draft version record and its quote
+row; Reject deletes them in one transaction so a partial deletion cannot be
+merged into the live quote. Draft cleanup failures are logged and do not
+redeliver the servicing pass.
+
+### Deviations recorded during planning
+
+1. The fork is a `DraftModePipeline` decorator and a `DraftingQuoteGateway`, not branches inside negotiation rounds. This keeps Shopware out of `Negotiation`; the observable outcome table above is unchanged.
+2. A separate `review_fingerprint` captures buyer comments and live asks after mirroring. The handler's pre-mirror stamp cannot serve as the Send staleness check.
+3. The review card and Preview consume one backend view (`GET /decision/{id}/draft`) of live versus drafted values, rather than reading a DAL version in the administration.
+4. `sent_changes` records totals-level values and whether the merchant edited the proposal, not per-line identifiers.
+5. Any new pass supersedes a pending draft, including `nothing_to_do`, because a new buyer message makes it stale.
+6. Review access is the additional permission `merchant_quote_agent_drafts.review`; the existing `editor` role continues to mean strategy editing.
+7. Pending, rejected and superseded drafts do not count as buyer answers on the dashboard. Every drafted pass counts against auto-execution, and pending drafts have the `awaitingReview` disposition.
 
 ## Admin
 

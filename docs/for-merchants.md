@@ -143,6 +143,52 @@ agent is completely silent: it queues nothing and writes nothing.
 
 ---
 
+## Draft Mode: approve each reply yourself
+
+Turn on **Draft Mode: review every reply before it is sent** under **Agent
+activation** for any sales channel where you want the agent to prepare work
+without contacting the buyer. It is off by default. The agent still checks
+your limits and prepares an offer, counter-offer or clarifying question, but
+keeps proposed prices in a private working copy of the quote. Neither the
+price nor the reply reaches the buyer until a person sends it. In this mode it
+also sends no automatic escalation notice to the buyer.
+If you enabled the seeded escalation mail flow in Flow Builder, it can still
+mail your team when a draft is ready (`draft_ready`); adjust that flow if you
+want a different notification for drafts.
+
+Open **Orders → Quote agent**, choose the **Draft awaiting review** filter,
+then open a quote. The review card compares the live quote with the draft.
+You can change its price or discount, validity date and reply. **Update
+preview** recalculates the proposed totals and offers a reworded reply without
+replacing any text you typed. A warning appears if your discount exceeds the
+agent's configured cap; a person may still choose to send it.
+
+**Send to buyer** applies the reviewed prices to the live quote, posts your
+reply with *you* as its author, and moves the quote to replied. Your usual
+Flow Builder mail can then run. **Reject draft** discards the private working
+copy without changing the live prices; finish that quote in SwagCommercial.
+The agent asks for feedback after rejection and offers it after you edit a
+draft before sending. You can also use **Give feedback** on any pass in the
+history. The decision export includes reason codes and totals actually sent;
+the comment and sent reply are included only when you opt into free text (see
+[Costs and data](#costs-and-data)).
+
+Sending is blocked if the buyer wrote again, changed a requested price, or
+the quote's state changed after the draft was prepared. Edits made directly
+in SwagCommercial's quote editor are not detected by this check, so compare
+the live and proposed values before sending. Reject a stale draft; a new buyer
+message starts a new pass. Anyone with the Quote agent viewer role can see a draft, but only a
+user granted the additional **Quote agent: review drafts** permission may
+preview, send, reject or save feedback. Switching Draft Mode off leaves
+existing drafts reviewable; new passes answer on their own again.
+
+If you use the Agentic Commerce extension, a sales channel in Draft Mode
+advertises 0% automatic-grant authority in its signed A2CN mandate. Buyers'
+assistants may have cached an older mandate until its expiry, so do not treat
+their cached copy as proof that an offer will be sent automatically.
+
+---
+
 ## How a negotiation actually runs
 
 The agent wakes up when a customer submits a quote request, asks for changes on
@@ -357,8 +403,8 @@ link on purpose.
 - How the quote ended and when, and when someone on your team resolved an
   escalation and how.
 - In Draft Mode, how each draft was reviewed:
-  - `reviewStatus` — `pending`, `sent`, `rejected` or `superseded`; empty for a
-    pass the agent answered on its own.
+  - `reviewStatus` — `pending`, `sent`, `rejected` or `superseded`; empty unless
+    the pass produced a draft.
   - `reviewedAt` — when you sent or rejected the draft.
   - `sentChanges` — the totals you actually sent, and whether you edited the
     agent's draft first.
