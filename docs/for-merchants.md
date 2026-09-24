@@ -324,13 +324,14 @@ bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 > sept
 ```
 
 Either way you get one line of JSON for every decision the agent recorded in that
-range — `--from` is included, `--to` is not, so the line above is exactly
-September. Nothing schedules either of them, nothing calls them, and neither
-sends anything anywhere: you get a file, and what you do with that file is your
-decision. We ask for it because negotiation strategies get better when they can be
-measured across more than one shop.
+range, each carrying the step-by-step trace of how the agent got there —
+`--from` is included, `--to` is not, so the line above is exactly September.
+Nothing schedules either of them, nothing calls them, and neither sends anything
+anywhere: you get a file, and what you do with that file is your decision. We
+ask for it because negotiation strategies get better when they can be measured
+across more than one shop.
 
-Three lists, and together they are the whole boundary.
+Four lists, and together they are the whole boundary.
 
 *Leaves, as a scrambled code.* The record itself, the quote, the customer, the
 sales channel, the quote revision and the strategy version. Each is replaced by a
@@ -353,6 +354,10 @@ link on purpose.
   changes it made to the quote.
 - Which prompt version ran, the model name and the host it was called on, token
   counts and timings.
+- **For every step of every decision:** which call it was, the model that
+  answered, token counts, timings, retries and whether it failed; the policy's
+  verdict and its figures; whether a reworded reply was rejected; and how many
+  lines the quote had before and after.
 - The type of any error and where in the code it happened — not its message.
 - How the quote ended and when, and when someone on your team resolved an
   escalation and how.
@@ -364,27 +369,38 @@ link on purpose.
   customer code rather than to a name, but it does describe that customer's
   relationship with you.
 
-*Does not leave, ever.* Names, e-mail addresses, postal addresses, phone numbers
-and company names — the agent's record does not hold them to begin with. The
-quote number. The details behind a history lookup: which past quotes and orders
-the agent read, their numbers, products and prices, and which product it asked
-about.
+*Does not leave, ever.* Names, e-mail addresses, postal addresses and phone
+numbers — the agent's record does not hold them to begin with.
+
+*Leaves only with the comments.* The quote number, your customer's company name
+and the details behind a history lookup — which past quotes and orders the agent
+read, their numbers, products and prices, and which product it asked about —
+never leave in their own fields. But the model's full prompts and the snapshots
+of the quote do contain them, because that is what the model was shown and what
+the agent read, and both are part of the comments below.
 
 **The comments are the part to decide about, and the two ways round differ.** The
-customer's own message, the agent's replies, the model's raw answers, the reasons
-it gave for escalating, the questions it raised and the full text of any error
-messages are the most useful part of the data and the most sensitive. The
-customer's message is stored word for word, and anything they typed — a
-signature, a phone number, an order reference — is in it, and can come back a
-second time in the model's own words.
+customer's own message, the agent's replies, the model's full prompts and raw
+answers, snapshots of the quote, the reasons it gave for escalating, the
+questions it raised and the full text of any error messages are the most useful
+part of the data and the most sensitive. The customer's message is stored word
+for word, and anything they typed — a signature, a phone number, an order
+reference — is in it, and can come back a second time in the model's own words.
 
 The agent keeps that message so that a decision can be explained afterwards:
 when it reads a comment and concludes there was nothing to answer, the record of
 what it read is the only way to check that it was right. Nothing shows it to
 anyone outside your shop unless you export it.
 
-The dashboard's **Export** includes them. To leave them out, use **Export without
-comments** in the menu beside that button.
+**The trace is kept, and nothing cleans it up.** Since this version the agent
+also stores, for every decision, exactly what it sent to the model and what came
+back — about 100 to 150 KB per decision. It stays in your shop, in its own table,
+until you uninstall the extension with "remove all data".
+`merchant-quote-agent:forget` clears it for one customer along with their
+comments.
+
+The dashboard's **Export** includes the comments. To leave them out, use **Export
+without comments or prompts** in the menu beside that button.
 
 The command leaves them out, and `--include-comments` puts them in. It prints
 which of the two you just produced on every run, so a redirected export is never

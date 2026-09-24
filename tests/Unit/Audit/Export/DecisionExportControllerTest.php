@@ -93,7 +93,11 @@ final class DecisionExportControllerTest extends TestCase
         $config->method('get')->with(ExportPseudonym::CONFIG_KEY)->willReturn('a-fixed-test-salt');
 
         return new DecisionExportController(
-            new DecisionExportStream($this->createMock(EntityRepository::class), $config),
+            new DecisionExportStream(
+                $this->createMock(EntityRepository::class),
+                $this->createMock(EntityRepository::class),
+                $config,
+            ),
         );
     }
 }

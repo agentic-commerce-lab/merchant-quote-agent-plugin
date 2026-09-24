@@ -419,6 +419,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // and both read the same stream.
     $services->set(DecisionExportStream::class)->args([
         service('merchant_quote_agent_decision.repository'),
+        service('merchant_quote_agent_trace.repository'),
         service(SystemConfigService::class),
     ]);
     $services->set(DecisionExportCommand::class)->tag('console.command');

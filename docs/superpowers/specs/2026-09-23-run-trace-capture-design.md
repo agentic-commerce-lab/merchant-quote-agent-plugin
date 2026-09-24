@@ -219,14 +219,19 @@ The existing decision columns (`model`, `promptTokens`, `completionTokens`,
   authorised: ' . reset($found)`).
 
 **`policy_verdict`**: the whole `NegotiationDecision`, recorded in
-`recordDecision()`.
+`recordDecision()` through `Audit\VerdictTrace`.
 
-- `meta`: `overall`, `price` (the `QuoteDecision` with its auto-reply or
-  escalation details) and `escalationReasons`, encoded the way
-  `InterpretationPayload` already encodes (`json_decode(json_encode())`). They
-  go into `meta` because they are enums and money. `PriceEscalationReasons`
-  builds its strings from an enum value (`'price: ' . reason->value`).
-- `content`: none.
+- `meta`: the decision's figures and enums, flattened one by one: `overall`,
+  `priceKind`, `escalationReason`, `requestedDiscountPercent`,
+  `discountPercent`, `perLineAsks` (a bool), `validityDays`,
+  `counteredRequestPercent` and `escalationReasons`. Those are enums, money and
+  flags. `escalationReasons` qualifies because `PriceEscalationReasons` builds
+  each string from an enum value (`'price: ' . reason->value`).
+- `content`: the whole encoded `NegotiationDecision`, encoded the way
+  `InterpretationPayload` already encodes (`json_decode(json_encode())`). The
+  tree cannot be `meta`: `QuoteEscalationDetails::$humanReviewRequests` are
+  sentences the extract model wrote, and `lineUnitPricesNet` is keyed by
+  line-item ids.
 
 **`quote_before`** and **`quote_after`**: the full `QuoteSnapshot` at `begin()`,
 and `AppliedOffer::$after` at `recordApplied()`.
@@ -374,6 +379,23 @@ snapshots.
 `docs/for-merchants.md` gets a section on traces. It covers what is stored, that
 it stays in the shop unless exported, how big it gets, and that nothing cleans
 it up.
+
+**This moves two things out of the "never leaves" list** in
+`docs/for-merchants.md`: the quote number and the details behind a history
+lookup. Neither leaves in its own field, but both are in the prompts the model
+was shown, and the prompts are free text. The chat choice was "same as
+comments", made knowing that traces carry customer history.
+
+A third follows for the same reason: the customer's company name, which the
+same list named. `quote_before` and `quote_after` content is the whole
+`Bridge\Data\QuoteSnapshot`, and `QuoteIdentity::$companyName` is part of it.
+It too leaves only with free text, and `docs/for-merchants.md` lists it under
+"Leaves only with the comments".
+
+The pseudonym promise does hold inside `content`: the decision's own ids
+(record, quote, customer, channel, revision, strategy version) are swapped
+for their pseudonyms in the encoded content at export time
+(`AnonymizedTrace`), because a quote snapshot carries them raw.
 
 ### Erasure
 

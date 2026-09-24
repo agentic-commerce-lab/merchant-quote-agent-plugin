@@ -40,11 +40,14 @@ use Symfony\Component\Console\Tester\CommandTester;
  * wide range would hand firstRow() a foreign record.
  *
  * @mago-expect lint:too-many-methods
- * Nine cases (the four Done-when guarantees above, the two stderr-notice cases
- * Task 3 could not cover, the JSONL-stream sanity check, and the two for the
- * --outcome filter #177 needs to review its silent passes) share five small
- * private helpers -- seed, seedSilentPass, export, runExport and firstRow --
- * rather than duplicating fixture and command-invocation code across files.
+ * Twelve cases (the four Done-when guarantees above, the two stderr-notice
+ * cases Task 3 could not cover, the JSONL-stream sanity check, the two for the
+ * --outcome filter #177 needs to review its silent passes, and the three for
+ * the nested run trace: every line a decision record carrying its trace, the
+ * trace's prompt kept behind by default, and let out with free text) share
+ * five small private helpers -- seed, seedSilentPass, export, runExport and
+ * firstRow -- rather than duplicating fixture and command-invocation code
+ * across files.
  */
 final class DecisionExportTest extends IntegrationTestCase
 {
@@ -106,10 +109,57 @@ final class DecisionExportTest extends IntegrationTestCase
 
         $jsonl = $this->export(freeText: true);
 
+        $row = $this->firstRow($jsonl);
+
+        // The raw customer id is in the trace's content too (the seeded
+        // snapshot identity); it must leave only as its pseudonym.
         self::assertStringNotContainsString($customerId, $jsonl);
-        self::assertStringNotContainsString(self::QUOTE_NUMBER, $jsonl);
-        self::assertStringNotContainsString(self::CUSTOMER_NUMBER, $this->firstRow($jsonl)['customer'] ?? '');
-        self::assertStringNotContainsString('order 10009', $jsonl, 'The account history block never leaves.');
+        self::assertArrayNotHasKey('quoteNumber', $row);
+        self::assertStringNotContainsString(self::CUSTOMER_NUMBER, $row['customer'] ?? '');
+        self::assertSame(
+            ['orders'],
+            $row['historyReads']['rounds'],
+            'The history column still exports only the kind of each read, never its result.',
+        );
+        self::assertStringContainsString(
+            'order 10009',
+            json_encode($row['trace'], JSON_THROW_ON_ERROR),
+            'With free text the full negotiate prompt leaves, and the prompt carries the history block (spec §3).',
+        );
+    }
+
+    public function testEveryLineIsADecisionRecordCarryingItsTrace(): void
+    {
+        $this->seed(Uuid::randomHex());
+
+        $row = $this->firstRow($this->export());
+
+        self::assertSame('decision', $row['record']);
+        self::assertSame('model_call', $row['trace'][0]['kind']);
+        self::assertSame(812, $row['trace'][0]['meta']['promptTokens']);
+        self::assertArrayNotHasKey('content', $row['trace'][0], 'Trace content is free text.');
+    }
+
+    public function testTheDefaultExportKeepsTheTracesPromptBehind(): void
+    {
+        $this->seed(Uuid::randomHex());
+
+        $jsonl = $this->export();
+
+        self::assertStringNotContainsString('Account history', $jsonl);
+        self::assertStringNotContainsString('order 10009', $jsonl);
+    }
+
+    public function testWithFreeTextTheTracesPromptLeaves(): void
+    {
+        $this->seed(Uuid::randomHex());
+
+        $row = $this->firstRow($this->export(freeText: true));
+
+        self::assertStringContainsString(
+            'Account history',
+            $row['trace'][0]['content']['request']['messages'][0]['content'],
+        );
     }
 
     public function testTheJsonlStreamIsCleanEnoughToRedirect(): void
@@ -218,15 +268,17 @@ final class DecisionExportTest extends IntegrationTestCase
         ]], Context::createDefaultContext());
     }
 
-    private function seed(string $customerId): void
+    private function seed(string $customerId): string
     {
         $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
         self::assertInstanceOf(EntityRepository::class, $repository);
+        $decisionId = Uuid::randomHex();
+        $quoteId = Uuid::randomHex();
 
         $repository->create(
             [[
-                'id' => Uuid::randomHex(),
-                'quoteId' => Uuid::randomHex(),
+                'id' => $decisionId,
+                'quoteId' => $quoteId,
                 'customerId' => $customerId,
                 'salesChannelId' => Uuid::randomHex(),
                 'quoteNumber' => self::QUOTE_NUMBER,
@@ -274,6 +326,37 @@ final class DecisionExportTest extends IntegrationTestCase
             ]],
             Context::createDefaultContext(),
         );
+
+        $traces = static::getContainer()->get('merchant_quote_agent_trace.repository');
+        self::assertInstanceOf(EntityRepository::class, $traces);
+        $traces->create(
+            [[
+                'id' => Uuid::randomHex(),
+                'decisionId' => $decisionId,
+                'quoteId' => $quoteId,
+                'customerId' => $customerId,
+                'kind' => 'model_call',
+                'position' => 0,
+                'occurredAt' => self::CREATED_AT,
+                'meta' => ['purpose' => 'negotiate', 'status' => 'ok', 'promptTokens' => 812],
+                // The negotiate prompt carries the rendered history block, which
+                // is exactly what free text now lets leave (spec §3).
+                'content' => [
+                    'request' => [
+                        'messages' => [[
+                            'role' => 'user',
+                            'content' =>
+                                'Account history: order 10009, quote ' . self::QUOTE_NUMBER . ', ' . self::EMAIL,
+                        ]],
+                    ],
+                    // What a quote_before snapshot really carries: the raw ids.
+                    'identity' => ['quoteId' => $quoteId, 'customerId' => $customerId],
+                ],
+            ]],
+            Context::createDefaultContext(),
+        );
+
+        return $decisionId;
     }
 
     private function export(bool $freeText = false, ?string $outcome = null): string
