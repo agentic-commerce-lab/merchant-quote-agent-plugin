@@ -39,6 +39,7 @@ use MerchantQuoteAgentPlugin\Bridge\History\DecisionAggregate;
 use MerchantQuoteAgentPlugin\Bridge\History\OrderHistoryReads;
 use MerchantQuoteAgentPlugin\Bridge\History\QuoteHistoryReads;
 use MerchantQuoteAgentPlugin\Bridge\MerchantActionReader;
+use MerchantQuoteAgentPlugin\Bridge\PurchasePriceReader;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -89,6 +90,7 @@ use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
 use MerchantQuoteAgentPlugin\Negotiation\OfferRound;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
+use MerchantQuoteAgentPlugin\Negotiation\PurchasePricesInterface;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
@@ -642,6 +644,14 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service(QuoteVersionResolver::class),
     ]);
     $services->alias(CustomerHistoryFactoryInterface::class, CustomerHistoryFactory::class);
+
+    // The merchant's purchase prices, for the minimum-margin floor. Core
+    // repositories only, so this exists whether or not SwagCommercial does.
+    $services->set(PurchasePriceReader::class)->args([
+        service('product.repository'),
+        service('currency.repository'),
+    ]);
+    $services->alias(PurchasePricesInterface::class, PurchasePriceReader::class)->public();
 
     // The five commercial services, referenced by the string ids on
     // CommercialAvailability because their classes are not ours to name with
