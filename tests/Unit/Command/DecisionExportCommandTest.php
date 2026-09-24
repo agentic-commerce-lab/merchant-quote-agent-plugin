@@ -70,6 +70,8 @@ final class DecisionExportCommandTest extends TestCase
         $config = $this->createMock(SystemConfigService::class);
         $config->method('get')->with(ExportPseudonym::CONFIG_KEY)->willReturn('a-fixed-test-salt');
 
-        return new DecisionExportCommand(new DecisionExportStream($repository, $config));
+        return new DecisionExportCommand(
+            new DecisionExportStream($repository, $this->createMock(EntityRepository::class), $config),
+        );
     }
 }

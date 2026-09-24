@@ -49,6 +49,6 @@ final class ActKey
 
     public static function isActKey(string $key): bool
     {
-        return str_starts_with($key, self::PREFIX);
+        return preg_match('/\A' . self::PREFIX . '(?!0000)[0-9]{4}_[bs]\z/', $key) === 1;
     }
 }

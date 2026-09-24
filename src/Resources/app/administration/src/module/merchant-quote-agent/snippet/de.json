@@ -11,7 +11,8 @@
             "clarified": "Rückfrage gestellt",
             "escalated": "Prüfung nötig",
             "nothing_to_do": "Kein Handlungsbedarf",
-            "handed_over": "An Ihr Team übergeben"
+            "handed_over": "An Ihr Team übergeben",
+            "acknowledged": "Angebot bekräftigt"
         },
         "escalation": {
             "discount_limit_exceeded": "Rabatt über dem Limit",
@@ -97,7 +98,7 @@
         },
         "export": {
             "button": "Exportieren",
-            "withoutComments": "Ohne Kommentare exportieren",
+            "withoutComments": "Ohne Kommentare und Prompts exportieren",
             "failed": "Der Export konnte nicht erstellt werden."
         },
         "figures": {
@@ -406,8 +407,9 @@
         },
         "note": {
             "attemptRetried": "Ein früherer Durchlauf zu diesem Angebot ist abgebrochen, bevor er fertig war (bisher {count}). Dieser Durchlauf hat neu begonnen.",
-            "nothingToDo": "Es gab nichts zu beantworten: keine neue Kundenanfrage, die der Agent lesen konnte, und kein offener Preiswunsch auf einer Position. Das Angebot blieb unverändert.",
+            "nothingToDo": "Es gab nichts, worauf der Agent antworten sollte: entweder keine neue Kundennachricht, die er lesen konnte, und kein offener Preiswunsch auf einer Position, oder das Angebot liegt nach einer Eskalation bereits bei Ihrem Team. Das Angebot blieb unverändert.",
             "handedOver": "Jemand aus Ihrem Team hatte dieses Angebot zuletzt beantwortet, neuer als die Nachricht des Kunden. Der Agent hat es deshalb nicht angefasst und meldet sich erst wieder, wenn der Kunde antwortet.",
+            "acknowledged": "Die Nachricht des Kunden enthielt keine Anfrage, auf die der Agent reagieren konnte. Er hat das Angebot deshalb unverändert erneut vorgelegt und zur Annahme freigegeben. Am Angebot hat sich nichts geändert.",
             "notAuthorized": "Der Agent hat Konditionen vorgeschlagen, die Ihre Richtlinien nicht erlauben. Es wurde nichts freigegeben, das Angebot blieb unverändert.",
             "notVerified": "Das Angebot wurde geändert, aber die anschließende Prüfung stimmte nicht mit dem Freigegebenen überein.",
             "needsAttention": "Dieser Durchlauf meldet Erfolg, ist aber nicht sauber zu Ende gelaufen. Prüfen Sie das Angebot, bevor Sie sich darauf verlassen."

@@ -7,7 +7,6 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\NullLogger;
 use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
@@ -30,7 +29,7 @@ final class ServiceQuoteHandlerRefusalTest extends TestCase
         $pipeline = ServicingHandlerFixture::countingPipeline();
         $handler = new ServiceQuoteHandler(
             $locks,
-            new NullLogger(),
+            ServicingTestJournal::create(),
             ServicingSettingsFixture::preflightReturning(ServicingSettingsFixture::settings()),
             null,
             $pipeline,

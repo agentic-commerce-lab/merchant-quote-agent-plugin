@@ -138,8 +138,8 @@ final class EscalationNotificationTest extends TestCase
 
         self::assertSame(['addComment', 'updateQuote'], $gateway->calls);
         self::assertSame(
-            [QuoteEscalator::MARKER_KEY => QuoteEscalationReason::NeedsHumanReview->value],
-            ServicingHandlerFixture::lastCustomFieldWrite($gateway),
+            QuoteEscalationReason::NeedsHumanReview->value,
+            ServicingHandlerFixture::lastCustomFieldWrite($gateway)[QuoteEscalator::MARKER_KEY] ?? null,
             'The marker was not stamped, so this quote will escalate again.',
         );
     }

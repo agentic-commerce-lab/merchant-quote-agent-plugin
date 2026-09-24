@@ -245,6 +245,7 @@ class MerchantQuoteAgentPlugin extends Plugin
             'merchant_quote_agent_a2cn_receipt',
             'merchant_quote_agent_a2cn_violation',
             'merchant_quote_agent_a2cn_act',
+            'merchant_quote_agent_trace',
             'merchant_quote_agent_decision',
             'merchant_quote_agent_pending_authorization',
             'merchant_quote_agent_strategy_assignment',
@@ -383,9 +384,7 @@ class MerchantQuoteAgentPlugin extends Plugin
 
     private function logKeyGenerationFailure(\Throwable $error): void
     {
-        // has() before get(): this method exists precisely because a service
-        // id can be absent, and a logger fetch that throws would defeat the
-        // catch that called us.
+        // A missing logger must not defeat the catch that called us.
         $container = $this->container;
         $logger = $container?->has(self::LIFECYCLE_LOGGER_ID) === true
             ? $container->get(self::LIFECYCLE_LOGGER_ID)

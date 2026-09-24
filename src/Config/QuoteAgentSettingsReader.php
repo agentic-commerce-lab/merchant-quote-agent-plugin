@@ -44,6 +44,7 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
         'negotiationStrategyId',
         'maxDiscountPercent',
         'counterOfferMaxPercent',
+        'minMarginPercent',
         'maxQuoteValueNet',
         'validityDays',
         'notifyBuyerOnEscalation',

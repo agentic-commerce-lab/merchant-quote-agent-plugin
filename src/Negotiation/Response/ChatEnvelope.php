@@ -18,6 +18,9 @@ use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
  */
 final class ChatEnvelope
 {
+    /** Only documented chat-completion machine values may leave with always-exported trace metadata. */
+    private const FINISH_REASONS = ['stop', 'length', 'tool_calls', 'content_filter', 'function_call'];
+
     private function __construct() {}
 
     /**
@@ -27,7 +30,7 @@ final class ChatEnvelope
      */
     public static function content(array $decoded): string
     {
-        $content = $decoded['choices'][0]['message']['content'] ?? null;
+        $content = self::at($decoded, 'choices', 0, 'message', 'content');
 
         if (!\is_string($content) || $content === '') {
             throw new ModelUnavailable('The model returned no usable message content.');
@@ -39,14 +42,58 @@ final class ChatEnvelope
     /**
      * The `usage` block is OpenAI's shape and not every provider sends it, so a
      * missing count is null rather than an error — a model call that happened
-     * is worth recording even when its cost is unknown.
+     * is worth recording even when its cost is unknown. A path reaches the
+     * nested detail blocks (`prompt_tokens_details.cached_tokens`).
      *
      * @param array<array-key, mixed> $decoded
      */
-    public static function usage(array $decoded, string $key): ?int
+    public static function usage(array $decoded, string ...$path): ?int
     {
-        $value = $decoded['usage'][$key] ?? null;
+        $value = self::at($decoded, 'usage', ...$path);
 
         return \is_int($value) ? $value : null;
+    }
+
+    /**
+     * Unknown provider values stay in the raw response behind the free-text
+     * gate. Compatible gateways may send arbitrary strings here.
+     *
+     * @param array<array-key, mixed> $decoded
+     */
+    public static function finishReason(array $decoded): ?string
+    {
+        $reason = self::at($decoded, 'choices', 0, 'finish_reason');
+
+        return \is_string($reason) && \in_array($reason, self::FINISH_REASONS, strict: true) ? $reason : null;
+    }
+
+    /**
+     * The model that actually answered, which a router or an alias can make
+     * different from the one requested.
+     *
+     * @param array<array-key, mixed> $decoded
+     */
+    public static function servedModel(array $decoded): ?string
+    {
+        $model = self::at($decoded, 'model');
+
+        return \is_string($model) ? $model : null;
+    }
+
+    /**
+     * The leaf a path leads to, or null wherever it breaks off: a missing key
+     * and a non-array on the way both mean the provider did not send it.
+     *
+     * @param array<array-key, mixed> $decoded
+     */
+    private static function at(array $decoded, int|string ...$path): mixed
+    {
+        $value = $decoded;
+
+        foreach ($path as $key) {
+            $value = \is_array($value) ? $value[$key] ?? null : null;
+        }
+
+        return $value;
     }
 }

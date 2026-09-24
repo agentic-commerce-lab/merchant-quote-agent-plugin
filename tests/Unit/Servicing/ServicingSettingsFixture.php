@@ -14,6 +14,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Servicing\ServicingJournal;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Strategy\AssignedStrategy;
 use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentResolver;
@@ -51,6 +52,7 @@ final class ServicingSettingsFixture
         ?QuoteEscalator $escalator = null,
         ?DecisionRecordWriterInterface $writer = null,
         ?StrategyAssignmentResolver $assignments = null,
+        ?ServicingJournal $journal = null,
     ): ServicingPreflight {
         $source = new class($outcome) implements QuoteAgentSettingsSource {
             /** @param \Closure(): ?QuoteAgentSettings $outcome */
@@ -68,7 +70,10 @@ final class ServicingSettingsFixture
         return new ServicingPreflight(
             $source,
             $escalator ?? new QuoteEscalator(buyerNotification: new FakeBuyerNotification(notify: false)),
-            new NullLogger(),
+            $journal ?? new ServicingJournal(
+                new NullLogger(),
+                new \MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeTraceWriter(),
+            ),
             new DecisionRecorder($writer ?? new FakeDecisionWriter()),
             $assignments ?? self::assigning(null),
         );

@@ -115,6 +115,9 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         PassContext $context,
     ): void {
         try {
+            // Read before finish(): finish() closes the pass and the id with it.
+            $decisionId = $this->recorder->decisionId();
+
             try {
                 $this->recorder->finish($pass, $error);
             } catch (\Throwable $e) {
@@ -128,6 +131,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             // issue: #19 reads these, and #22 needs the hashes to attribute
             // an outcome to the prompt versions that produced it.
             $this->logger->info('A quote negotiation pass finished.', [
+                'decisionId' => $decisionId,
                 'outcome' => $pass?->outcome->value,
                 'trigger' => $context->reason->value,
                 'attempt' => $context->attempt,
@@ -189,27 +193,27 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         // extract call happened at all" (no new buyer comment). Both are the
         // same outcome once a structured ask isn't picking up the slack.
         if (($ask === null || $ask->hasNoAsk()) && !StructuredAsk::isUnmet($snapshot)) {
-            // The one outcome nothing else announces. An over-escalating agent
-            // is loud -- a human reads every one of them -- but a pass that
-            // decides a comment held no ask writes no reply, no escalation and
-            // no notification, so the buyer cannot tell it apart from being
-            // ignored and the merchant is told nothing at all. If the extract
-            // prompt ever regresses, the symptom is quotes quietly going
-            // unanswered, and this line is the only thing that counts them.
+            // The one outcome nothing else counts. A comment the agent reads
+            // as holding no ask is acknowledged, not escalated (PassedOver) --
+            // so if the extract prompt ever regresses, the symptom is real
+            // questions getting a polite restatement of the quote, and this
+            // line is the only thing that counts them.
             //
             // `commentRead` is what makes the count worth alerting on: false
             // is an ordinary duplicate trigger or a stranded reply, true is a
-            // human writing something the agent answered with silence. The
-            // words themselves stay out of the log and go to the audit record
-            // instead (`buyer_ask`) -- logs are the wrong place for them.
-            $this->logger->info('Nothing to answer on this quote; standing down.', [
+            // human writing something the agent found no ask in.
+            // `acknowledged` says whether they were answered or, on an
+            // escalated quote, left to the human. The words themselves stay
+            // out of the log and go to the audit record instead (`buyer_ask`).
+            $pass = PassedOver::handle($gateway, $snapshot, $conversation, $ask, $this->round);
+
+            $this->logger->info('Nothing to answer on this quote.', [
                 'quoteId' => $snapshot->identity->quoteId,
                 'commentRead' => $ask !== null,
+                'acknowledged' => $pass->outcome === NegotiationOutcome::Acknowledged,
             ]);
 
-            $this->round->finishStrandedReply($gateway, $snapshot, $conversation);
-
-            return new NegotiationPass(NegotiationOutcome::NothingToDo, extractHash: $ask?->promptHash);
+            return $pass;
         }
 
         // Before the gate on purpose: an escalated or clarified pass must

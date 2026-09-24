@@ -17,9 +17,12 @@ use Shopware\Core\Framework\Migration\MigrationStep;
  * structured form, in `interpreted_asks`. That was tolerable while every pass
  * that read a comment also answered it.
  *
- * #177 changed that: an extraction empty in every field now ends the pass as
+ * #177 changed that: an extraction empty in every field ended the pass as
  * `NothingToDo` and the servicing fingerprint is stamped anyway, so a question
- * the model mis-reads as empty is answered with silence. The trade-off was
+ * the model mis-reads as empty went unanswered. Such a pass is now
+ * `Acknowledged` — the quote restated, back to `replied` — and silent
+ * `NothingToDo` remains for no comment read or an escalated quote; either way
+ * the question itself is not answered. The trade-off was
  * accepted on the grounds that a merchant can review those rows and see what
  * the agent decided not to answer — which needs the comment to be on the row,
  * and `interpreted_asks` is null on exactly those rows.

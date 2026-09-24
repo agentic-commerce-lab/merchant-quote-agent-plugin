@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Assistant;
 
+use MerchantQuoteAgentPlugin\Audit\TraceKind;
+use MerchantQuoteAgentPlugin\Audit\TraceWrite;
+use MerchantQuoteAgentPlugin\Audit\TraceWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Symfony\AI\Agent\Toolbox\Attribute\AsTool;
@@ -73,6 +76,7 @@ final class RequestQuoteTool
         private readonly BuyerQuoteGatewayInterface $gateway,
         private readonly SalesChannelContext $context,
         private readonly AssistantAskStamp $askStamp,
+        private readonly ?TraceWriterInterface $traces = null,
     ) {}
 
     /**
@@ -100,6 +104,12 @@ final class RequestQuoteTool
         array $targetUnitPrices = [],
         string $targetSource = 'buyer_stated',
     ): array {
+        $input = [
+            'comment' => $comment,
+            'targetProductIds' => $targetProductIds,
+            'targetUnitPrices' => $targetUnitPrices,
+            'targetSource' => $targetSource,
+        ];
         try {
             if (!\in_array($targetSource, self::SOURCES, true)) {
                 throw new ValidationException('Unknown target source.', [
@@ -115,22 +125,51 @@ final class RequestQuoteTool
                 mb_substr(trim($comment), 0, self::MAX_COMMENT),
             );
         } catch (ValidationException $error) {
-            return [
+            return $this->record($input, [
                 'quote_number' => '',
                 'state' => 'not_created',
                 'note' => $error->getMessage() . ' ' . self::NOTE_NOT_CREATED_SUFFIX,
-            ];
+            ]);
         }
 
         if ([] !== $targetProductIds || 'assistant_proposed' === $targetSource) {
             $this->askStamp->stamp($snapshot, $targetSource);
         }
 
-        return [
-            'quote_number' => $snapshot->quoteNumber,
-            'state' => $snapshot->state ?? 'open',
-            'note' => self::NOTE,
-        ];
+        return $this->record(
+            $input,
+            [
+                'quote_number' => $snapshot->quoteNumber,
+                'state' => $snapshot->state ?? 'open',
+                'note' => self::NOTE,
+            ],
+            $snapshot->id,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @param array{quote_number: string, state: string, note: string} $output
+     *
+     * @return array{quote_number: string, state: string, note: string}
+     */
+    private function record(array $input, array $output, ?string $quoteId = null): array
+    {
+        try {
+            $this->traces?->write(
+                new TraceWrite(
+                    TraceKind::AssistantTool,
+                    ['tool' => 'request_quote', 'status' => $output['state']],
+                    ['input' => $input, 'output' => $output],
+                    $quoteId,
+                    $this->context->getCustomer()?->getId(),
+                ),
+            );
+        } catch (\Throwable) {
+            // Evidence cannot change a tool response after the gateway has run.
+        }
+
+        return $output;
     }
 
     /**

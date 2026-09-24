@@ -227,9 +227,13 @@ final class DraftModeFlowTest extends IntegrationTestCase
             static::gateway(),
         );
         $snapshot = static::gateway()->fetchSnapshot($quoteId);
-        $recorder = new DecisionRecorder(new DecisionRecordWriter(static::getContainer()->get(
-            'merchant_quote_agent_decision.repository',
-        )));
+        $recorder = new DecisionRecorder(
+            new DecisionRecordWriter(
+                static::getContainer()->get('merchant_quote_agent_decision.repository'),
+                static::getContainer()->get('merchant_quote_agent_trace.repository'),
+                new \Psr\Log\NullLogger(),
+            ),
+        );
         $recorder->begin($snapshot, new PassContext(ServicingTriggerReason::CommentWritten, 0));
 
         $drafting = new DraftingQuoteGateway(static::gateway(), $this->versions(), $recorder, $snapshot);

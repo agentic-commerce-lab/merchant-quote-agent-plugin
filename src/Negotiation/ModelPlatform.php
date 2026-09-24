@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Audit\TraceKind;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Negotiation\Response\ChatEnvelope;
 use MerchantQuoteAgentPlugin\Negotiation\Response\ModelAnswerSerializer;
@@ -48,6 +49,10 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * attempt. At most 2s backoff is admitted. Five logical calls (extraction,
  * three negotiate calls, reply) therefore budget at most 160s for the model,
  * leaving time for DAL reads and writes inside the 300s quote lock TTL.
+ *
+ * Every logical call leaves one `model_call` trace event (ModelCallTrace),
+ * including a call that failed and one whose answer did not map — the two a
+ * merchant most needs to read afterwards.
  */
 final readonly class ModelPlatform
 {
@@ -56,6 +61,8 @@ final readonly class ModelPlatform
     private const MAX_RETRIES = 1;
 
     private HttpClientInterface $http;
+
+    private ModelRetryStrategy $retries;
 
     public function __construct(
         HttpClientInterface $http,
@@ -69,9 +76,10 @@ final readonly class ModelPlatform
         //
         // One consequence worth knowing when reading the audit trail: a retried
         // call's modelLatencyMs includes the failed attempt and the backoff.
+        $this->retries = new ModelRetryStrategy();
         $this->http = new RetryableHttpClient(
             $http->withOptions(['timeout' => self::TIMEOUT_SECONDS, 'max_duration' => self::TIMEOUT_SECONDS]),
-            new ModelRetryStrategy(),
+            $this->retries,
             self::MAX_RETRIES,
             $logger,
         );
@@ -80,7 +88,12 @@ final readonly class ModelPlatform
     /** @throws ModelUnavailable */
     public function text(ModelAccess $access, string $system, string $user): string
     {
-        return $this->send($access, $system, $user, options: []);
+        return $this->call(
+            ModelCallPurpose::Reply,
+            $access,
+            self::payload($access, $system, $user, []),
+            static fn(string $answer): string => $answer,
+        );
     }
 
     /**
@@ -101,8 +114,125 @@ final readonly class ModelPlatform
     public function object(ModelAccess $access, string $system, string $user, string $type): object
     {
         $format = (new ResponseFormatFactory())->create($type);
-        $answer = $this->send($access, $system, $user, ['response_format' => $format]);
 
+        return $this->call(
+            ModelCallPurpose::answering($type),
+            $access,
+            self::payload($access, $system, $user, ['response_format' => $format]),
+            static fn(string $answer): object => self::mapped($answer, $type),
+        );
+    }
+
+    /**
+     * One logical call, traced whatever happens to it. `$read` turns the
+     * message content into the caller's answer and may throw
+     * ModelUnavailable: that is the `unusable_answer` case, where the call
+     * worked and its answer is what went wrong.
+     *
+     * @template R
+     *
+     * @param array<string, mixed> $payload
+     * @param \Closure(string): R $read
+     *
+     * @return R
+     *
+     * @throws ModelUnavailable
+     */
+    private function call(ModelCallPurpose $purpose, ModelAccess $access, array $payload, \Closure $read): mixed
+    {
+        // ModelAccess is built from merchant config where the model name may be
+        // left blank (RawConfigValue::llm reports that as a credential problem
+        // but still constructs the object). Escalating here beats POSTing an
+        // empty `model` and letting the provider decide what that means. No
+        // trace: no call happened.
+        if ($access->model === '') {
+            throw new ModelUnavailable('No model name is configured for this sales channel.');
+        }
+
+        $this->retries->reset();
+        $startedAt = microtime(true);
+
+        try {
+            [$httpStatus, $decoded] = $this->post($access, $payload);
+        } catch (ModelUnavailable $e) {
+            $this->recorder->trace(
+                TraceKind::ModelCall,
+                ...$this->traceOf($purpose, $access, $payload, $startedAt)->failed($e),
+            );
+
+            throw $e;
+        }
+
+        $trace = $this->traceOf($purpose, $access, $payload, $startedAt);
+
+        // The running totals on the decision row stay: the dashboard and
+        // bench-score.mjs read them. Not every OpenAI-compatible provider
+        // sends `usage`, so a missing count is null rather than an error.
+        $this->recorder->recordModelCall(
+            $access->model,
+            ModelCallTrace::host($access->baseUrl),
+            ChatEnvelope::usage($decoded, 'prompt_tokens'),
+            ChatEnvelope::usage($decoded, 'completion_tokens'),
+            $trace->latencyMs,
+        );
+
+        try {
+            $answer = $read(ChatEnvelope::content($decoded));
+        } catch (ModelUnavailable $e) {
+            $this->recorder->trace(TraceKind::ModelCall, ...$trace->answered($httpStatus, $decoded, $e));
+
+            throw $e;
+        }
+
+        $this->recorder->trace(TraceKind::ModelCall, ...$trace->answered($httpStatus, $decoded, null));
+
+        return $answer;
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function traceOf(
+        ModelCallPurpose $purpose,
+        ModelAccess $access,
+        array $payload,
+        float $startedAt,
+    ): ModelCallTrace {
+        return new ModelCallTrace(
+            $purpose,
+            $access,
+            $payload,
+            (int) round((microtime(true) - $startedAt) * 1000),
+            $this->retries->attempts(),
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $options extra top-level request body fields
+     *
+     * @return array<string, mixed>
+     */
+    private static function payload(ModelAccess $access, string $system, string $user, array $options): array
+    {
+        return [
+            ...$options,
+            'model' => $access->model,
+            'messages' => [
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => $user],
+            ],
+        ];
+    }
+
+    /**
+     * @template T of object
+     *
+     * @param class-string<T> $type
+     *
+     * @return T
+     *
+     * @throws ModelUnavailable
+     */
+    private static function mapped(string $answer, string $type): object
+    {
         try {
             $mapped = (new ModelAnswerSerializer())->deserialize($answer, $type, 'json');
         } catch (SerializerException|\JsonException $e) {
@@ -117,53 +247,12 @@ final readonly class ModelPlatform
     }
 
     /**
-     * @param array<string, mixed> $options extra top-level request body fields
-     *
-     * @throws ModelUnavailable
-     */
-    private function send(ModelAccess $access, string $system, string $user, array $options): string
-    {
-        // ModelAccess is built from merchant config where the model name may be
-        // left blank (RawConfigValue::llm reports that as a credential problem
-        // but still constructs the object). Escalating here beats POSTing an
-        // empty `model` and letting the provider decide what that means.
-        if ($access->model === '') {
-            throw new ModelUnavailable('No model name is configured for this sales channel.');
-        }
-
-        $startedAt = microtime(true);
-        $decoded = $this->post($access, [
-            ...$options,
-            'model' => $access->model,
-            'messages' => [
-                ['role' => 'system', 'content' => $system],
-                ['role' => 'user', 'content' => $user],
-            ],
-        ]);
-
-        // Only the attempt that reaches here gets recorded: a failed call throws
-        // out of post() above, so it never has a body to read tokens from. Not
-        // every OpenAI-compatible provider sends `usage`, so a missing count is
-        // null rather than an error — a model call that happened is worth
-        // recording even when its cost is unknown.
-        $this->recorder->recordModelCall(
-            $access->model,
-            self::hostOnly($access->baseUrl),
-            ChatEnvelope::usage($decoded, 'prompt_tokens'),
-            ChatEnvelope::usage($decoded, 'completion_tokens'),
-            (int) round((microtime(true) - $startedAt) * 1000),
-        );
-
-        return ChatEnvelope::content($decoded);
-    }
-
-    /**
      * ResponseInterface::toArray() is typed on array-key, but a JSON object
      * body decodes to string keys and a non-object body throws out of it.
      *
      * @param array<string, mixed> $payload
      *
-     * @return array<array-key, mixed>
+     * @return array{0: int, 1: array<array-key, mixed>}
      *
      * @throws ModelUnavailable
      */
@@ -172,28 +261,17 @@ final readonly class ModelPlatform
         try {
             // toArray() is what turns a non-2xx into an exception AND decodes
             // the body, so both failure modes land in the one catch below.
-            return $this->http->request('POST', rtrim($access->baseUrl, '/') . '/chat/completions', [
+            $response = $this->http->request('POST', rtrim($access->baseUrl, '/') . '/chat/completions', [
                 'auth_bearer' => $access->apiKey,
                 'json' => $payload,
-            ])->toArray();
+            ]);
+
+            return [$response->getStatusCode(), $response->toArray()];
         } catch (TransportException $e) {
             // The transport contract covers a connection that never landed, a
             // 4xx/5xx the retry could not rescue, and a body that would not
             // decode. Every one of them means the same thing here: escalate.
             throw new ModelUnavailable('The model could not be reached.', previous: $e);
         }
-    }
-
-    /**
-     * A scheme-less baseUrl (a merchant typo) makes parse_url() read the
-     * whole string as a path, so retry with an assumed scheme to recover the
-     * host anyway. Never fall back to the raw string: it can carry a key in
-     * its query, and this value lands in a merchant-readable audit column.
-     */
-    private static function hostOnly(string $baseUrl): string
-    {
-        $host = parse_url($baseUrl, PHP_URL_HOST) ?: parse_url('http://' . $baseUrl, PHP_URL_HOST);
-
-        return \is_string($host) ? $host : 'unparsable-host';
     }
 }

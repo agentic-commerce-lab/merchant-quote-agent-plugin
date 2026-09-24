@@ -11,11 +11,19 @@ namespace MerchantQuoteAgentPlugin\Policy\Data;
  */
 final readonly class VerifyOfferInput
 {
+    /**
+     * @mago-expect lint:excessive-parameter-list
+     * A data carrier's promoted properties ARE its interface, and every
+     * construction site uses named arguments (see OfferApplier), so the
+     * call-site complexity this rule exists to catch does not arise here.
+     */
     public function __construct(
         public QuoteSnapshot $reference,
         public QuoteSnapshot $final,
         public QuoteLimits $limits,
         public \DateTimeImmutable $now,
         public ?float $allowedExtraDiscountNet = null,
+        /** @var array<string, float> lineItemId => effective minimum-margin floor net; empty checks nothing */
+        public array $floors = [],
     ) {}
 }

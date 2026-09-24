@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Audit;
 
+use Shopware\Core\Framework\Uuid\Uuid;
+
 /**
  * The record under construction. Public and mutable on purpose: stages append
  * to it as the pass runs, so a pass that dies halfway still carries everything
@@ -12,11 +14,11 @@ namespace MerchantQuoteAgentPlugin\Audit;
  * Deliberately dumb — no behaviour, no validation. DecisionRecorder owns the
  * lifecycle and DecisionRecordWriter owns the mapping.
  *
- * Mirrors QuoteDecisionRecord's columns one-for-one, minus `id` (the writer
- * generates it), minus `terminalState`/`terminalAt` (written later, via
- * TerminalOutcomeSubscriber and TerminalOutcomeWriter, never by a pass), minus
- * the six review columns (written by DecisionReviewStore), plus `startedAt` (a
- * stopwatch the writer excludes from the payload).
+ * Mirrors the pass-written QuoteDecisionRecord fields. `id` is generated here
+ * so trace events and the log line can name the row before it exists. Terminal
+ * outcome and merchant-review completion fields are written later by their
+ * respective owners. `startedAt` and `trace` are working fields excluded from
+ * the record payload.
  *
  * @mago-expect lint:too-many-properties
  * The gate fires above 10 and these properties mirror a table's columns
@@ -25,6 +27,9 @@ namespace MerchantQuoteAgentPlugin\Audit;
  */
 final class DecisionDraft
 {
+    /** Generated at construction, not at write time: see the class docblock. */
+    public string $id;
+
     public string $quoteId = '';
 
     public ?string $quoteNumber = null;
@@ -121,5 +126,18 @@ final class DecisionDraft
     /** Buyer input and live pricing when drafted — see Review\ReviewFingerprint. */
     public ?string $reviewFingerprint = null;
 
+    /**
+     * The pass's trace events, in order. Not a column: DecisionRecordWriter
+     * writes them to `merchant_quote_agent_trace`.
+     *
+     * @var list<TraceDraft>
+     */
+    public array $trace = [];
+
     public float $startedAt = 0.0;
+
+    public function __construct()
+    {
+        $this->id = Uuid::randomHex();
+    }
 }

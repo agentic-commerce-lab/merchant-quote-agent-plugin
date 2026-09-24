@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Audit\TraceDraft;
+use MerchantQuoteAgentPlugin\Audit\TraceKind;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
@@ -434,6 +438,68 @@ final class ReplyComposerTest extends TestCase
             . NegotiationFixture::expires()
             . '.',
             $gateway->comments[0],
+        );
+    }
+
+    public function testARejectedRewordingIsTracedWithTheGuardsReasonAndTheModelsText(): void
+    {
+        // Until now the rejected text and the reason lived only in a warning
+        // log. They are what shows whether the guard over-fires.
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+        $recorder->begin(NegotiationFixture::snapshot(), NegotiationFixture::context());
+        [$client] = ScriptedClient::spy(['Thanks for your interest! We will be in touch soon.'], $recorder);
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $after = self::after();
+
+        (new ReplyComposer($client, self::prompts(), new NullLogger(), $recorder))->reply(
+            $gateway,
+            $after,
+            NegotiationFixture::settings(),
+            5.0,
+            SnapshotAdapter::conversation($after),
+        );
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        $guards = array_values(array_filter(
+            $writer->drafts[0]->trace,
+            static fn(TraceDraft $t): bool => $t->kind === TraceKind::ReplyGuard,
+        ));
+        self::assertCount(1, $guards);
+        self::assertSame(['accepted' => false], $guards[0]->meta);
+        self::assertSame(
+            'Thanks for your interest! We will be in touch soon.',
+            $guards[0]->content['reworded'] ?? null,
+        );
+        self::assertIsString($guards[0]->content['reason'] ?? null);
+    }
+
+    public function testAnAcceptedRewordingLeavesNoGuardEvent(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+        $recorder->begin(NegotiationFixture::snapshot(), NegotiationFixture::context());
+        $reworded =
+            'We can bring this quote down by 5% to 950.00 EUR, valid until ' . NegotiationFixture::expires() . '.';
+        [$client] = ScriptedClient::spy([$reworded], $recorder);
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $after = self::after();
+
+        (new ReplyComposer($client, self::prompts(), new NullLogger(), $recorder))->reply(
+            $gateway,
+            $after,
+            NegotiationFixture::settings(),
+            5.0,
+            SnapshotAdapter::conversation($after),
+        );
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        self::assertSame(
+            [],
+            array_filter(
+                $writer->drafts[0]->trace,
+                static fn(TraceDraft $t): bool => $t->kind === TraceKind::ReplyGuard,
+            ),
         );
     }
 }

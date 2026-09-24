@@ -16,7 +16,6 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
-use Psr\Log\NullLogger;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\LockInterface;
 use Symfony\Component\Lock\Store\InMemoryStore;
@@ -41,7 +40,7 @@ final class ServicingHandlerFixture
     ): ServiceQuoteHandler {
         return new ServiceQuoteHandler(
             $locks ?? self::locks(),
-            new NullLogger(),
+            ServicingTestJournal::create(),
             $preflight ?? ServicingSettingsFixture::preflightReturning(ServicingSettingsFixture::settings()),
             $gateway,
             $pipeline,

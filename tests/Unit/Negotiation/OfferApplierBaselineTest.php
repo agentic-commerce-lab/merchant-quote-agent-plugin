@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineIdentity;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Negotiation\MarginFloorGuard;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Negotiation\QuoteBaseline;
 use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
@@ -26,7 +27,12 @@ final class OfferApplierBaselineTest extends TestCase
 {
     private static function applier(): OfferApplier
     {
-        return new OfferApplier(new OfferVerifier(), new NullLogger(), new DecisionRecorder(new FakeDecisionWriter()));
+        return new OfferApplier(
+            new OfferVerifier(),
+            new NullLogger(),
+            new DecisionRecorder(new FakeDecisionWriter()),
+            new MarginFloorGuard(new FakePurchasePrices()),
+        );
     }
 
     private static function quoteWideOffer(): ProposedOffer

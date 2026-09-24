@@ -71,7 +71,8 @@ final class DecisionForgetCommand extends Command
             !(bool) $input->getOption('force')
             && !$io->confirm(
                 'This permanently removes that customer\'s comments, the agent\'s replies to them and their id from'
-                . ' every decision record. The decisions themselves stay. Continue?',
+                . ' every decision record and its trace, including the prompts sent to the model.'
+                . ' The decisions themselves stay. Continue?',
                 false,
             )
         ) {
@@ -80,12 +81,16 @@ final class DecisionForgetCommand extends Command
             return Command::SUCCESS;
         }
 
-        $changed = $this->eraser->forget($customerId);
+        $erased = $this->eraser->forget($customerId);
 
         // Zero is an answer, not a failure: a customer the agent never
         // negotiated with has nothing here, and a merchant answering an
         // erasure request needs to be able to say so.
-        $io->success(\sprintf('%d decision record(s) no longer identify that customer.', $changed));
+        $io->success(\sprintf(
+            '%d decision record(s) and %d trace event(s) no longer identify that customer.',
+            $erased->decisions,
+            $erased->traces,
+        ));
 
         return Command::SUCCESS;
     }

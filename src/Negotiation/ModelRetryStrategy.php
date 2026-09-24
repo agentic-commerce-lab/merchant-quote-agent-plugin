@@ -8,10 +8,20 @@ use Symfony\Component\HttpClient\Response\AsyncContext;
 use Symfony\Component\HttpClient\Retry\GenericRetryStrategy;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
-/** Symfony honors Retry-After independently of strategy delays; refuse waits beyond our lock budget. */
+/**
+ * Symfony honors Retry-After independently of strategy delays; refuse waits beyond our lock budget.
+ *
+ * Also remembers each attempt it sent round again, for the call's trace
+ * (ModelPlatform resets it per logical call). Mutable on a shared service,
+ * which is safe for the reason DecisionRecorder gives: a worker runs one pass,
+ * and one call, at a time.
+ */
 final class ModelRetryStrategy extends GenericRetryStrategy
 {
     private const DELAY_SECONDS = 2;
+
+    /** @var list<array{httpStatus: int, transportError: bool}> */
+    private array $attempts = [];
 
     public function __construct()
     {
@@ -24,6 +34,17 @@ final class ModelRetryStrategy extends GenericRetryStrategy
         );
     }
 
+    public function reset(): void
+    {
+        $this->attempts = [];
+    }
+
+    /** @return list<array{httpStatus: int, transportError: bool}> */
+    public function attempts(): array
+    {
+        return $this->attempts;
+    }
+
     #[\Override]
     public function shouldRetry(
         AsyncContext $context,
@@ -31,12 +52,18 @@ final class ModelRetryStrategy extends GenericRetryStrategy
         ?TransportExceptionInterface $exception,
     ): ?bool {
         $after = $context->getHeaders()['retry-after'][0] ?? null;
+        $retry =
+            $after !== null && (!is_string($after) || self::exceedsBudget($after))
+                ? false
+                : parent::shouldRetry($context, $responseContent, $exception);
 
-        if ($after !== null && (!is_string($after) || self::exceedsBudget($after))) {
-            return false;
+        // Only an attempt that is tried again: the last one's fate is the
+        // call's own status, recorded by ModelPlatform. 0 is "no response".
+        if ($retry === true) {
+            $this->attempts[] = ['httpStatus' => $context->getStatusCode(), 'transportError' => $exception !== null];
         }
 
-        return parent::shouldRetry($context, $responseContent, $exception);
+        return $retry;
     }
 
     private static function exceedsBudget(string $after): bool

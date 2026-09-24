@@ -58,15 +58,16 @@ final class DecisionExportCommand extends Command
             'include-comments',
             null,
             InputOption::VALUE_NONE,
-            'Also export free text: the buyer\'s own comments, the agent\'s replies, the model\'s raw answers and'
-            . ' questions, escalation prose and error messages. Withheld by default: these are the buyer\'s'
-            . ' words, verbatim or repeated back by a model.',
+            'Also export free text: the buyer\'s own comments, the agent\'s replies, the model\'s full prompts and'
+            . ' raw answers, snapshots of the quote, escalation prose and error messages. Withheld by default:'
+            . ' these are the buyer\'s words, verbatim or repeated back by a model, and the prompts carry the'
+            . ' account history the agent read.',
         );
         $this->addOption(
             'outcome',
             null,
             InputOption::VALUE_REQUIRED,
-            'Only records with this outcome (e.g. nothing_to_do, escalated, offered, countered, clarified).'
+            'Only records with this outcome (e.g. acknowledged, nothing_to_do, escalated, offered, countered, clarified).'
             . ' An unknown value exports nothing.',
         );
     }
@@ -151,18 +152,21 @@ final class DecisionExportCommand extends Command
         // method's to compose.
         $errors = $io->getErrorStyle();
         $errors->writeln(\sprintf(
-            '%d record(s). Customer, quote, channel, revision and strategy ids are pseudonymized with this shop\'s'
-            . ' salt; names, addresses and the quote number are not exported at all.',
+            '%d export line(s), including decisions with their trace and outside-pass events. Customer, quote, channel,'
+            . ' revision and strategy ids are'
+            . ' pseudonymized with this shop\'s salt; names, addresses and the quote number are never exported in'
+            . ' their own fields.',
             $written,
         ));
 
         $errors->writeln(
             $freeText
                 ? 'Free text IS included (--include-comments): the buyer\'s own comments, exactly as they were'
-                . ' written, the agent\'s replies, the model\'s raw answers and questions, escalation prose and'
-                . ' error messages.'
-                : 'Free text is excluded: the buyer\'s own comments, the agent\'s replies, the model\'s raw answers and'
-                . ' questions, escalation prose and error messages. Pass --include-comments to include them.',
+                . ' written, the agent\'s replies, the model\'s full prompts and raw answers (including the account'
+                . ' history it read), snapshots of the quote, escalation prose and error messages.'
+                : 'Free text is excluded: the buyer\'s own comments, the agent\'s replies, the model\'s full prompts'
+                . ' and raw answers, snapshots of the quote, escalation prose and error messages. Pass'
+                . ' --include-comments to include them.',
         );
     }
 }

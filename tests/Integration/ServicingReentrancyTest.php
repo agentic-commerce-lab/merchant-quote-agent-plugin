@@ -16,7 +16,7 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
-use Psr\Log\NullLogger;
+use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\ServicingTestJournal;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -98,7 +98,13 @@ final class ServicingReentrancyTest extends IntegrationTestCase
             }
         };
 
-        $handler = new ServiceQuoteHandler($locks, new NullLogger(), static::preflight(), $gateway, $pipeline);
+        $handler = new ServiceQuoteHandler(
+            $locks,
+            ServicingTestJournal::create(),
+            static::preflight(),
+            $gateway,
+            $pipeline,
+        );
         $pipeline->handler = $handler;
         $pipeline->replay = $message;
 
@@ -136,7 +142,13 @@ final class ServicingReentrancyTest extends IntegrationTestCase
             }
         };
 
-        $handler = new ServiceQuoteHandler($locks, new NullLogger(), static::preflight(), $gateway, $pipeline);
+        $handler = new ServiceQuoteHandler(
+            $locks,
+            ServicingTestJournal::create(),
+            static::preflight(),
+            $gateway,
+            $pipeline,
+        );
 
         $handler($message);
         $handler($message);
@@ -209,7 +221,13 @@ final class ServicingReentrancyTest extends IntegrationTestCase
             }
         };
 
-        $handler = new ServiceQuoteHandler($locks, new NullLogger(), static::preflight(), $gateway, $pipeline);
+        $handler = new ServiceQuoteHandler(
+            $locks,
+            ServicingTestJournal::create(),
+            static::preflight(),
+            $gateway,
+            $pipeline,
+        );
 
         $handler($message);
         $handler($message);

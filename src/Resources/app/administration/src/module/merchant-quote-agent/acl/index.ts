@@ -4,6 +4,10 @@ export const privileges = {
     key: 'merchant_quote_agent',
     roles: {
         viewer: {
+            // `merchant_quote_agent_trace:read` because a decision's trace is
+            // part of the decision record: the export reads it under the
+            // viewer's own context.
+            //
             // `quote:read` because the dashboard's discount-retention and
             // deal-cycle-time measures read the quote entity for accepted
             // quotes. Without it that read 403s and both tiles report
@@ -48,6 +52,7 @@ export const privileges = {
             // discovering on their own.
             privileges: [
                 'merchant_quote_agent_decision:read',
+                'merchant_quote_agent_trace:read',
                 'quote:read',
                 'order:read',
                 'quote_comment:read',

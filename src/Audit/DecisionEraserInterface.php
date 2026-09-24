@@ -13,6 +13,6 @@ use Shopware\Core\Framework\Context;
  */
 interface DecisionEraserInterface
 {
-    /** @return int the number of records changed */
-    public function forget(string $customerId, ?Context $context = null): int;
+    /** The decision records and trace events changed. */
+    public function forget(string $customerId, ?Context $context = null): Erasure;
 }

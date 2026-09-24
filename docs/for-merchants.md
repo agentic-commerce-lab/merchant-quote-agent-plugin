@@ -306,8 +306,8 @@ the average.
 ### A record of every quote
 
 The list shows each quote it touched: what the customer asked, what was granted,
-and the outcome — *Offer sent*, *Counter sent*, *Question asked*, *Needs review*,
-or *No action needed*.
+and the outcome — *Offer sent*, *Counter sent*, *Question asked*, *Acknowledged*,
+*Needs review*, or *No action needed*.
 
 Open one and you get the whole negotiation in order: what the customer asked,
 what the agent did, what changed on the quote, and why. Including the exact reply
@@ -377,20 +377,25 @@ bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 > sept
 ```
 
 Either way you get one line of JSON for every decision the agent recorded in that
-range — `--from` is included, `--to` is not, so the line above is exactly
-September. Nothing schedules either of them, nothing calls them, and neither
-sends anything anywhere: you get a file, and what you do with that file is your
-decision. We ask for it because negotiation strategies get better when they can be
-measured across more than one shop.
+range, each carrying the step-by-step trace of how the agent got there. Separate
+event lines follow for attempts that stopped before a decision, such as a paused
+agent, a busy quote or an unavailable gateway. Each event says why it stopped.
+`--from` is included, `--to` is not, so the line above is exactly September.
+Nothing schedules either of them, nothing calls them, and neither sends anything
+anywhere: you get a file, and what you do with that file is your decision. We
+ask for it because negotiation strategies get better when they can be measured
+across more than one shop.
 
-Three lists, and together they are the whole boundary.
+Four lists, and together they are the whole boundary.
 
-*Leaves, as a scrambled code.* The record itself, the quote, the customer, the
+*Leaves, as a scrambled code.* The record or event itself, the quote, the customer, the
 sales channel, the quote revision and the strategy version. Each is replaced by a
 code computed from a secret unique to your shop. The same customer is the same
 code in every export you make, so repeat-buyer patterns are still visible, and a
 different code from every other shop's, so nobody can line your customers up
-against anyone else's — or against your own database. The secret is created the
+against anyone else's — or against your own database. One exception: with the
+comments included, the model's prompts can carry the quote number, so an export
+with comments can be matched to your own records. The secret is created the
 first time you export and kept in your shop's configuration. If you delete it,
 future exports stop lining up with past ones, which is also how you sever that
 link on purpose.
@@ -406,6 +411,10 @@ link on purpose.
   changes it made to the quote.
 - Which prompt version ran, the model name and the host it was called on, token
   counts and timings.
+- **For every step of every decision:** which call it was, the model that
+  answered, token counts, timings, retries and whether it failed; the policy's
+  verdict and its figures; whether a reworded reply was rejected; and how many
+  lines the quote had before and after.
 - The type of any error and where in the code it happened — not its message.
 - How the quote ended and when, and when someone on your team resolved an
   escalation and how.
@@ -426,47 +435,69 @@ link on purpose.
   relationship with you.
 
 *Does not leave, ever.* Names, e-mail addresses, postal addresses, phone numbers
-and company names — the agent's record does not hold them to begin with. The
-quote number. The details behind a history lookup: which past quotes and orders
-the agent read, their numbers, products and prices, and which product it asked
-about. A draft's internal bookkeeping: `draftVersionId`, the working copy of the
-quote it was prepared in, and `reviewFingerprint`, which records a fingerprint
-of buyer input and live pricing at draft time.
+and company names — the agent's record does not hold them to begin with.
+A draft's internal bookkeeping also stays in the shop: `draftVersionId`, the
+working copy of the quote it was prepared in, and `reviewFingerprint`, which
+records buyer input and live pricing at draft time.
+
+*Leaves only with the comments.* The quote number and the details behind a
+history lookup — which past quotes and orders the agent read, their numbers,
+products and prices, and which product it asked about — never leave in their
+own fields. But the model's full prompts do contain them, because that is what
+the model was shown, and the full prompts are part of the comments below.
 
 **The comments are the part to decide about, and the two ways round differ.** The
-customer's own message, the agent's replies, the model's raw answers, the reasons
-it gave for escalating, the questions it raised and the full text of any error
-messages are the most useful part of the data and the most sensitive. In Draft
-Mode they also include the reply you actually sent (`sentReply`) and the
-feedback you wrote about the agent's draft (`feedbackComment`) — either can
-quote the customer. The customer's message is stored word for word, and
-anything they typed — a signature, a phone number, an order reference — is in
-it, and can come back a second time in the model's own words.
+customer's own message, the agent's replies, the model's full prompts and raw
+answers, snapshots of the quote, the reasons it gave for escalating, the
+questions it raised and the full text of any error messages are the most useful
+part of the data and the most sensitive. In Draft Mode they also include the
+reply you actually sent (`sentReply`) and the feedback you wrote about the
+agent's draft (`feedbackComment`) — either can quote the customer. The
+customer's message is stored word for word, and anything they typed — a
+signature, a phone number, an order reference — is in it, and can come back a
+second time in the model's own words.
 
 The agent keeps that message so that a decision can be explained afterwards:
 when it reads a comment and concludes there was nothing to answer, the record of
 what it read is the only way to check that it was right. Nothing shows it to
 anyone outside your shop unless you export it.
 
-The dashboard's **Export** includes them. To leave them out, use **Export without
-comments** in the menu beside that button.
+**The trace is kept, and nothing cleans it up.** Since this version the agent
+also stores, for every decision, exactly what it sent to the model and what came
+back — about 100 to 150 KB per decision. It stays in your shop, in its own table,
+until you uninstall the extension with "remove all data".
+`merchant-quote-agent:forget` clears it for one customer along with their
+comments.
+
+The dashboard's **Export** includes the comments. To leave them out, use **Export
+without comments or prompts** in the menu beside that button.
 
 The command leaves them out, and `--include-comments` puts them in. It prints
 which of the two you just produced on every run, so a redirected export is never
 ambiguous about what is in the file.
 
-**Reading one kind of decision.** `--outcome` narrows the file to a single kind,
-and the run says so on screen. The one worth looking at now and then is
+**Reading one kind of decision.** `--outcome` narrows the file to a single kind.
+Events that stopped before a decision have no outcome and are omitted from a
+filtered file; the run says so on screen. The two worth looking at now and then are
+
+```
+bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 \
+    --outcome=acknowledged --include-comments
+```
 
 ```
 bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 \
     --outcome=nothing_to_do --include-comments
 ```
 
-which gives you every pass that read a customer's message and decided it asked
-for nothing — a "thanks, that works" needs no answer, so most of them are
-correct. If any of them read like a real question, the agent's reading of
-comments is what needs adjusting, and that is worth telling us about.
+The first gives you every pass that read a customer's message and found nothing
+in it to act on. The agent answered each one by restating the quote and sending
+it back for acceptance, so the customer is never left waiting — but if one of
+those messages was a real question, this is where you find it, and the agent's
+reading of comments is what needs adjusting, which is worth telling us about.
+`--outcome=nothing_to_do` lists the passes that stayed silent: no new message,
+or a quote escalated to your team that nobody has sent an answer on yet. Once
+you have sent one, the customer's "thanks" is acknowledged like any other.
 
 **One oddity you will see and should not report as a bug.** The `modelHost`
 field sometimes reads `unparsable-host`. That means the AI base URL in your

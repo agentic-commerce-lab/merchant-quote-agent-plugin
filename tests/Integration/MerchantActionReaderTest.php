@@ -38,14 +38,14 @@ final class MerchantActionReaderTest extends IntegrationTestCase
         $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), $context);
 
         self::assertNull(
-            $reader->lastTransitionAt($quoteId, $context),
+            $reader->lastTransition($quoteId, $context)[0] ?? null,
             'Precondition: this fixture quote must carry no admin-authored history before this test writes one.',
         );
 
         $this->writeHistoryRow($quoteId, $context, userId: null, integrationId: null);
 
         self::assertNull(
-            $reader->lastTransitionAt($quoteId, $context),
+            $reader->lastTransition($quoteId, $context)[0] ?? null,
             'A row with neither a user nor an integration is not a human transition.',
         );
     }
@@ -68,12 +68,17 @@ final class MerchantActionReaderTest extends IntegrationTestCase
         $this->writeHistoryRow($quoteId, $context, userId: $userId, integrationId: null, createdAt: $older);
         $this->writeHistoryRow($quoteId, $context, userId: $userId, integrationId: null, createdAt: $newer);
 
-        $found = $reader->lastTransitionAt($quoteId, $context);
+        $found = $reader->lastTransition($quoteId, $context)[0] ?? null;
         self::assertNotNull($found, 'A history row carrying a user id is a human merchant acting.');
         self::assertSame(
             $newer->format('Y-m-d H:i:s'),
             $found->format('Y-m-d H:i:s'),
             'Newest admin transition must win; an inverted sort would silently return the oldest one.',
+        );
+        self::assertSame(
+            'open',
+            $reader->lastTransition($quoteId, $context)[1] ?? null,
+            'The target state is what tells a sent answer (`replied`) from a merchant still working.',
         );
     }
 
@@ -98,7 +103,7 @@ final class MerchantActionReaderTest extends IntegrationTestCase
         self::assertInstanceOf(MerchantActionReader::class, $reader);
 
         self::assertNull(
-            $reader->lastTransitionAt($quoteId, $context),
+            $reader->lastTransition($quoteId, $context)[0] ?? null,
             'Precondition: this fixture quote must carry no admin-authored history before this test writes one.',
         );
 
@@ -116,7 +121,7 @@ final class MerchantActionReaderTest extends IntegrationTestCase
         $registry->transition(new Transition('quote', $quoteId, $actionName, 'stateId'), $adminContext);
 
         self::assertNotNull(
-            $reader->lastTransitionAt($quoteId, $context),
+            $reader->lastTransition($quoteId, $context)[0] ?? null,
             'A real admin-sourced transition was not found by the reader — check the entityName/referencedId/'
             . 'userId assumption MerchantActionReader\'s criteria relies on against what core actually wrote.',
         );
@@ -137,14 +142,14 @@ final class MerchantActionReaderTest extends IntegrationTestCase
         $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), $context);
 
         self::assertNull(
-            $reader->lastTransitionAt($quoteId, $context),
+            $reader->lastTransition($quoteId, $context)[0] ?? null,
             'Precondition: this fixture quote must carry no admin-authored history before this test writes one.',
         );
 
         $this->writeHistoryRow($quoteId, $context, userId: null, integrationId: static::anyIntegrationId($context));
 
         self::assertNull(
-            $reader->lastTransitionAt($quoteId, $context),
+            $reader->lastTransition($quoteId, $context)[0] ?? null,
             'An integration acting through the admin API is not a person.',
         );
     }

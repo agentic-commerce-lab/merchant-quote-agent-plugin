@@ -238,13 +238,16 @@ class QuoteDecisionRecord extends EntityStruct
      * re-trigger with nothing new, a preflight refusal — which is the same
      * "no extract call happened" the null `extract_prompt_hash` beside it says.
      *
-     * Here because of #177's trade-off: an extraction empty in every field now
-     * ends the pass as `NothingToDo` and consumes the comment, so a model that
-     * mis-reads a real question as empty answers it with silence. That is
-     * acceptable only while a merchant can SEE what was passed over, and until
-     * this column existed a `nothing_to_do` row held the buyer's ask in
-     * `interpreted_asks` — which is precisely null on those rows — and nowhere
-     * else. Reviewing them meant opening each quote and matching by timestamp.
+     * Here because of #177's trade-off: an extraction empty in every field
+     * consumes the comment, so a model that mis-reads a real question as empty
+     * never answers it. Such a pass is now `acknowledged` — the quote restated
+     * and back in `replied` — and silent `nothing_to_do` remains for a pass
+     * with no comment read or on an escalated quote; reviewing passed-over
+     * comments means reading both. That is acceptable only while a merchant
+     * can SEE what was passed over, and until this column existed those rows
+     * held the buyer's ask in `interpreted_asks` — which is precisely null on
+     * them — and nowhere else. Reviewing them meant opening each quote and
+     * matching by timestamp.
      *
      * Deliberately NOT named `buyer_comment`: that column existed until
      * 2026-09-04 holding the agent's reply, and a name that once meant the

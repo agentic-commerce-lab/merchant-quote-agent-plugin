@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Audit\TraceKind;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
@@ -71,6 +72,32 @@ final readonly class ReplyComposer
         $this->send($gateway, $after->identity->quoteId, $after->lifecycle->stateTechnicalName);
 
         return $hash;
+    }
+
+    /**
+     * The reply to a comment that held no ask (see PassedOver): the quote as
+     * it stands, posted as written. No model call, so there is no rewording
+     * for RewordingGuard to check and no reply prompt hash to record.
+     *
+     * No already-answered guard, unlike reply(): PassedOver only gets here
+     * with an interpreted ask, and AskInterpreter only interprets a buyer
+     * comment newer than every agent one. A retry after this comment landed
+     * reads the agent as newest and never arrives.
+     *
+     * Same order as reply(): comment, record, then the transition that makes
+     * the standing offer acceptable again.
+     */
+    public function acknowledge(QuoteGatewayInterface $gateway, QuoteSnapshot $snapshot): void
+    {
+        $text = ReplyTemplate::acknowledges(
+            $snapshot->totals->buyerFacingTotal(),
+            $snapshot->identity->currencyIso,
+            $snapshot->lifecycle->expiresAt,
+        );
+
+        $gateway->addComment($snapshot->identity->quoteId, $text);
+        $this->recorder->recordReply($text, null);
+        $this->send($gateway, $snapshot->identity->quoteId, $snapshot->lifecycle->stateTechnicalName);
     }
 
     /**
@@ -157,6 +184,18 @@ final readonly class ReplyComposer
         $unsafe = RewordingGuard::unsafeBecause($reworded, $reductionPercent, $total, $validUntil);
 
         if ($unsafe !== null) {
+            // The reason goes to content, not meta: RewordingGuard quotes the
+            // model's own words in it ("it names a concession nobody
+            // authorised: 10%"), and meta leaves in every export.
+            $this->recorder->trace(
+                TraceKind::ReplyGuard,
+                ['accepted' => false],
+                [
+                    'reason' => $unsafe,
+                    'reworded' => $reworded,
+                ],
+            );
+
             // Logged with the reason, not just the text: the fallback is a
             // correct reply, so an over-firing guard fails nothing and shows
             // up nowhere except as replies that never sound reworded. The
@@ -236,7 +275,7 @@ final readonly class ReplyComposer
         try {
             $gateway->transition($quoteId, $action);
         } catch (IllegalTransitionException $e) {
-            $this->logger->error('The quote could not be moved to replied; the buyer has a discount they cannot accept.', [
+            $this->logger->error('The quote could not be moved to replied; the buyer cannot accept the offer standing on it.', [
                 'quoteId' => $quoteId,
                 'state' => $state,
                 'action' => $action->value,

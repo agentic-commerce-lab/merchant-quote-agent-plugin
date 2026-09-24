@@ -98,6 +98,30 @@ final class ReplyTemplate
         );
     }
 
+    /**
+     * The answer to a comment that held no ask: the quote as it stands, and
+     * the two things the buyer can do with it. Without a reply the quote never
+     * leaves `change_requested`, and over UCP a buyer can neither accept nor
+     * counter from there (live quote 1056).
+     *
+     * The validity sentence is dropped rather than invented when the quote has
+     * no expiry: this restates the quote, it does not add a term to it.
+     */
+    public static function acknowledges(float $total, string $currencyIso, ?\DateTimeImmutable $validUntil): string
+    {
+        $validity = $validUntil === null
+            ? ''
+            : sprintf(' The offer remains valid until %s.', $validUntil->format('Y-m-d'));
+
+        return sprintf(
+            'Thank you for your message. This quote stands at %s %s.%s '
+            . 'You can accept it as it is, or tell us what you would like changed.',
+            self::money($total),
+            $currencyIso,
+            $validity,
+        );
+    }
+
     /** The figure the guard looks for, formatted once so both sides agree. */
     public static function percent(float $reductionPercent): string
     {

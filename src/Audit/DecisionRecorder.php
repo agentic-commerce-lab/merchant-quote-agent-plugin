@@ -114,6 +114,13 @@ final class DecisionRecorder
         $draft->totalNetBefore = $snapshot->totals->totalNet;
         $draft->startedAt = microtime(true);
 
+        // Position 0 of every row, refusals included: what the quote looked
+        // like when the agent picked it up is the one thing every later event
+        // is read against. Content, nearly all of it -- product labels and the
+        // quote's own identity are in there (see QuoteTrace for what is not).
+        [$meta, $content] = QuoteTrace::of($snapshot);
+        TraceDraft::appendTo($draft, TraceKind::QuoteBefore, $meta, $content);
+
         return $draft;
     }
 
@@ -128,15 +135,41 @@ final class DecisionRecorder
     }
 
     /**
+     * One event for the open pass's trace (see TraceKind). For the
+     * collaborators that are not the recorder's to map -- ModelPlatform and
+     * ReplyComposer build their own event. Dropped when no pass is open, like
+     * every other record* call.
+     *
+     * @param array<string, mixed> $meta
+     * @param array<array-key, mixed>|null $content
+     */
+    public function trace(TraceKind $kind, array $meta, ?array $content = null): void
+    {
+        if ($this->draft === null) {
+            return;
+        }
+
+        TraceDraft::appendTo($this->draft, $kind, $meta, $content);
+    }
+
+    /** The id the open pass's row will have, or null when no pass is open. */
+    public function decisionId(): ?string
+    {
+        return $this->draft?->id;
+    }
+
+    /**
      * The buyer's comment this pass is about to read, recorded BEFORE the
      * extract call so a model that fails, or one that finds nothing, still
      * leaves the question behind.
      *
-     * That ordering is the point of the column. Since #177 an extraction empty
-     * in every field ends the pass as `NothingToDo`, and the servicing
-     * fingerprint is stamped whatever the outcome — so a mis-read question is
-     * answered with silence, and `interpreted_asks` records the emptiness that
-     * caused it, not the words that were passed over.
+     * That ordering is the point of the column. An extraction empty in every
+     * field ends the pass as `Acknowledged` — the quote restated, back to
+     * `replied` — and the servicing fingerprint is stamped whatever the
+     * outcome, so a mis-read question gets a restatement instead of an
+     * answer, and `interpreted_asks` records the emptiness that caused it, not
+     * the words that were passed over. Silent `NothingToDo` remains for a pass
+     * with no comment read or on an escalated quote.
      */
     public function recordBuyerAsk(string $comment): void
     {
@@ -171,6 +204,9 @@ final class DecisionRecorder
         $this->draft->maxDiscountPercent = $maxDiscountPercent;
         $this->draft->strategyVersionId = $strategyVersionId;
         $this->draft->strategyAssignmentSource = $strategyAssignmentSource?->value;
+
+        [$meta, $content] = VerdictTrace::of($decision);
+        TraceDraft::appendTo($this->draft, TraceKind::PolicyVerdict, $meta, $content);
     }
 
     public function recordProposal(?string $rawResponse, ProposedAnswer $answer): void
@@ -213,6 +249,9 @@ final class DecisionRecorder
             $this->draft->totalNetBefore,
             $applied->after->totals->totalNet,
         );
+
+        [$meta, $content] = QuoteTrace::of($applied->after);
+        TraceDraft::appendTo($this->draft, TraceKind::QuoteAfter, $meta, $content);
     }
 
     public function recordReply(string $comment, ?string $promptHash): void

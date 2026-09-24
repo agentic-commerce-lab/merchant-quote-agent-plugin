@@ -14,6 +14,8 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenContainerEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\OrFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\IdSearchResult;
 
 /**
  * One buyer out of the decision records, with the decisions left standing.
@@ -29,9 +31,9 @@ final class DecisionEraserTest extends TestCase
         $record = self::record();
         $repository = self::repository($record);
 
-        $changed = (new DecisionEraser($repository))->forget('cust-1');
+        $changed = (new DecisionEraser($repository, self::traces()))->forget('cust-1');
 
-        self::assertSame(1, $changed);
+        self::assertSame(1, $changed->decisions);
         $payload = $repository->updates[0][0] ?? [];
 
         self::assertSame($record->id, $payload['id'], 'The row is rewritten, never deleted.');
@@ -52,7 +54,7 @@ final class DecisionEraserTest extends TestCase
     {
         $repository = self::repository(self::record());
 
-        (new DecisionEraser($repository))->forget('cust-1');
+        (new DecisionEraser($repository, self::traces()))->forget('cust-1');
         $payload = $repository->updates[0][0] ?? [];
 
         // Erasure, not deletion: what the agent decided and under which policy
@@ -73,7 +75,7 @@ final class DecisionEraserTest extends TestCase
     {
         $repository = self::repository(self::record());
 
-        (new DecisionEraser($repository))->forget('cust-1');
+        (new DecisionEraser($repository, self::traces()))->forget('cust-1');
         $payload = $repository->updates[0][0] ?? [];
 
         // A history round's result quotes that account's past quotes and
@@ -91,8 +93,48 @@ final class DecisionEraserTest extends TestCase
         // reports it, and no empty update may reach the DAL.
         $repository = self::repository();
 
-        self::assertSame(0, (new DecisionEraser($repository))->forget('cust-unknown'));
+        self::assertSame(0, (new DecisionEraser($repository, self::traces()))->forget('cust-unknown')->decisions);
         self::assertSame([], $repository->updates);
+    }
+
+    public function testTheCustomersTraceContentAndIdAreClearedAndItsMetaKept(): void
+    {
+        $traces = self::traces(['t1', 't2']);
+
+        $erased = (new DecisionEraser(self::repository(self::record()), $traces))->forget('cust-1');
+
+        self::assertSame(2, $erased->traces);
+        self::assertSame(
+            [
+                ['id' => 't1', 'content' => null, 'customerId' => null],
+                ['id' => 't2', 'content' => null, 'customerId' => null],
+            ],
+            $traces->updates[0],
+            'Meta stays because it records the merchant\'s figures, not the person.',
+        );
+    }
+
+    public function testTracesAreFoundByCustomerAndByTheCustomersQuotes(): void
+    {
+        $record = self::record();
+        $traces = self::traces(['t1']);
+
+        (new DecisionEraser(self::repository($record), $traces))->forget('cust-1');
+
+        $filter = $traces->criteria[0]->getFilters()[0] ?? null;
+        self::assertInstanceOf(OrFilter::class, $filter);
+        self::assertStringContainsString($record->quoteId, json_encode($filter, JSON_THROW_ON_ERROR));
+        self::assertStringContainsString('cust-1', json_encode($filter, JSON_THROW_ON_ERROR));
+    }
+
+    public function testNoTracesMeansNoTraceUpdate(): void
+    {
+        $traces = self::traces([]);
+
+        $erased = (new DecisionEraser(self::repository(self::record()), $traces))->forget('cust-1');
+
+        self::assertSame(0, $erased->traces);
+        self::assertSame([], $traces->updates);
     }
 
     private static function record(): QuoteDecisionRecord
@@ -101,6 +143,7 @@ final class DecisionEraserTest extends TestCase
         $record->id = 'rec-1';
         $record->setUniqueIdentifier('rec-1');
         $record->customerId = 'cust-1';
+        $record->quoteId = 'quote-1';
         $record->band = 'grant';
         $record->outcome = 'nothing_to_do';
         $record->totalNetAfter = 950.0;
@@ -148,6 +191,45 @@ final class DecisionEraserTest extends TestCase
                     $entities->count(),
                     $entities,
                     null,
+                    $criteria,
+                    $context,
+                );
+            }
+
+            /** @param array<int, array<string, mixed>> $data */
+            #[\Override]
+            public function update(array $data, Context $context): EntityWrittenContainerEvent
+            {
+                $this->updates[] = array_values($data);
+
+                return EntityWrittenContainerEvent::createWithWrittenEvents([], $context, []);
+            }
+        };
+    }
+
+    /** @param list<string> $ids */
+    private static function traces(array $ids = []): EntityRepository
+    {
+        return new class($ids) extends EntityRepository {
+            /** @var list<list<array<string, mixed>>> */
+            public array $updates = [];
+
+            /** @var list<Criteria> */
+            public array $criteria = [];
+
+            /** @param list<string> $ids */
+            public function __construct(
+                private readonly array $ids,
+            ) {}
+
+            #[\Override]
+            public function searchIds(Criteria $criteria, Context $context): IdSearchResult
+            {
+                $this->criteria[] = $criteria;
+
+                return new IdSearchResult(
+                    \count($this->ids),
+                    array_map(static fn(string $id): array => ['primaryKey' => $id, 'data' => []], $this->ids),
                     $criteria,
                     $context,
                 );

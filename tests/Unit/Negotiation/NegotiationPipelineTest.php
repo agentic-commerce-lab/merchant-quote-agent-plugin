@@ -5,16 +5,20 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLifecycle;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
+use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use PHPUnit\Framework\TestCase;
 
 /**
  * @mago-expect lint:too-many-methods
- * Thirteen cases, one per branch of NegotiationPipeline::negotiate() and the
+ * Eighteen cases, one per branch of NegotiationPipeline::negotiate() and the
  * outcomes it can return -- the count grows with the pipeline's own branches,
  * not with unrelated concerns that belong in a separate class. Same shape as
  * the existing suppression on QuoteBaselineTest (fifteen cases plus six
@@ -79,12 +83,12 @@ final class NegotiationPipelineTest extends TestCase
         // The mirror write comes first: a quote-wide 40% ask has no line of
         // its own, so AskMirror distributes it across the fixture's one line
         // (100.00 * 0.6 = 60.00) before the gate ever runs (#165).
+        $writes = $harness->gateway->customFieldWrites;
+        self::assertCount(2, $writes);
+        self::assertSame([MirroredAsks::KEY => ['line-1' => 60.0]], $writes[0]);
         self::assertSame(
-            [
-                [MirroredAsks::KEY => ['line-1' => 60.0]],
-                [QuoteEscalator::MARKER_KEY => QuoteEscalationReason::DiscountLimitExceeded->value],
-            ],
-            $harness->gateway->customFieldWrites,
+            QuoteEscalationReason::DiscountLimitExceeded->value,
+            $writes[1][QuoteEscalator::MARKER_KEY] ?? null,
             'The band gate must escalate with the price reason, not a generic one.',
         );
     }
@@ -159,16 +163,16 @@ final class NegotiationPipelineTest extends TestCase
         self::assertSame([], $harness->gateway->calls);
     }
 
-    public function testAnExtractionWithNoAskInAnyFieldEndsThePassAsNothingToDo(): void
+    public function testAnExtractionWithNoAskInAnyFieldAcknowledgesTheBuyer(): void
     {
-        // #177: quote 1039, a human merchant had already closed the
-        // negotiation. The buyer wrote "Nice, thanks!" and the extraction
-        // came back with every field null or empty -- no price ask, no
-        // structural ask, no negotiation ask, no clarification question, no
-        // human-review request. The pass still reached the band, landed in
-        // grant and made an unsolicited offer. It must stop here instead.
+        // #177: quote 1039, "Nice, thanks!" -- every field null or empty. The
+        // pass must not reach the band (no unsolicited offer) and must not
+        // escalate (#167). Live quote 1056 is why it must still ANSWER: the
+        // comment moved the quote to change_requested, only a reply moves it
+        // back to replied, and over UCP the buyer can neither accept nor
+        // counter until it does.
         $harness = PipelineHarness::with(['{}']);
-        $snapshot = NegotiationFixture::snapshot(comments: [
+        $snapshot = NegotiationFixture::snapshot(state: 'change_requested', comments: [
             NegotiationFixture::buyerComment('Nice, thanks!', '2026-09-18 09:58:40'),
         ]);
 
@@ -179,14 +183,132 @@ final class NegotiationPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
         self::assertSame(
             1,
             $harness->spy->calls,
             'The extract call still happens -- the extractor is what found nothing; negotiate and reply must not.',
         );
-        self::assertSame([], $harness->gateway->comments, 'An empty extraction must not become an unsolicited offer.');
-        self::assertSame([], $harness->gateway->calls);
+        self::assertSame(
+            [ReplyTemplate::acknowledges(
+                $snapshot->totals->buyerFacingTotal(),
+                'EUR',
+                $snapshot->lifecycle->expiresAt,
+            )],
+            $harness->gateway->comments,
+        );
+        self::assertSame([QuoteTransition::AdminResend], $harness->gateway->transitions);
+        self::assertSame([], $harness->gateway->lineItemChanges, 'An acknowledgement writes nothing to prices.');
+        self::assertSame([], $harness->gateway->quoteUpdates, 'Nor to the quote itself: no discount, no expiry.');
+    }
+
+    public function testAnAcknowledgementQuotesTheGrossTotalTheBuyerReads(): void
+    {
+        $harness = PipelineHarness::with(['{}']);
+        $snapshot = NegotiationFixture::grossSnapshot(comments: [
+            NegotiationFixture::buyerComment('Apply the disconut to the whole quote', '2026-09-23 12:43:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertStringContainsString('stands at 1000.00 EUR', $harness->gateway->comments[0] ?? '');
+    }
+
+    public function testAnEmptyExtractionOnAFreshQuoteIsSentAtItsCurrentPrices(): void
+    {
+        // "Every read comment" is the scope the user chose: an RFQ whose
+        // comment asks for nothing is sent as quoted -- always inside the
+        // merchant's authority, and what the buyer asked for.
+        $harness = PipelineHarness::with(['{}']);
+        $snapshot = NegotiationFixture::snapshot(state: 'open', comments: [
+            NegotiationFixture::buyerComment('Please send me a quote.', '2026-09-23 09:00:00'),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
+        self::assertSame([QuoteTransition::Sent], $harness->gateway->transitions);
+    }
+
+    public function testAnEscalatedQuoteStaysSilent(): void
+    {
+        // A human owns this quote and the buyer already has the escalation
+        // notice. Acknowledging would contradict it -- and moving the quote to
+        // replied makes SellerActPublisher::recordApproval() read the
+        // unreleased marker as a human standing behind terms nobody approved.
+        $harness = PipelineHarness::with(['{}']);
+        $snapshot = NegotiationFixture::withCustomFields(
+            NegotiationFixture::snapshot(state: 'change_requested', comments: [
+                NegotiationFixture::buyerComment('ok, thanks', '2026-09-23 09:00:00'),
+            ]),
+            [QuoteEscalator::MARKER_KEY => 'discount_limit_exceeded'],
+        );
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame([], $harness->gateway->comments);
+        self::assertSame([], $harness->gateway->transitions);
+        $context = $harness->logger->contextOf('Nothing to answer on this quote');
+        self::assertTrue($context['commentRead'] ?? null);
+        self::assertFalse(
+            $context['acknowledged'] ?? null,
+            'An escalated quote is left to the human, and the log must say so.',
+        );
+    }
+
+    public function testAnEscalatedQuoteAHumanHasAnsweredIsAcknowledged(): void
+    {
+        // The merchant sent an answer after the escalation, so the terms on
+        // the quote are theirs and a receipt for them is true. Silence here
+        // parked the quote in change_requested, where over UCP the buyer can
+        // neither accept nor counter -- quote 1056's dead end again.
+        $harness = PipelineHarness::with(['{}']);
+        $escalated = NegotiationFixture::snapshot(state: 'change_requested', comments: [
+            NegotiationFixture::buyerComment('ok, thanks', '2026-09-23 11:00:00'),
+        ]);
+        $snapshot = new QuoteSnapshot(
+            identity: $escalated->identity,
+            revision: $escalated->revision,
+            totals: $escalated->totals,
+            lifecycle: new QuoteLifecycle(
+                stateTechnicalName: 'change_requested',
+                customFields: [
+                    QuoteEscalator::MARKER_KEY => 'discount_limit_exceeded',
+                    PendingEscalation::ESCALATED_AT_KEY => (new \DateTimeImmutable('2026-09-23 09:00:00'))->format(
+                        'U.u',
+                    ),
+                ],
+                lastAdminTransitionAt: new \DateTimeImmutable('2026-09-23 10:00:00'),
+                lastAdminTransitionTo: 'replied',
+            ),
+            content: $escalated->content,
+        );
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
+        self::assertSame([QuoteTransition::AdminResend], $harness->gateway->transitions);
     }
 
     public function testAReplyPostedByADeadPassStillReachesReplied(): void

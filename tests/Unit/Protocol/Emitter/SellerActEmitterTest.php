@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Emitter;
 
+use MerchantQuoteAgentPlugin\Audit\TraceKind;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActKey;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\EmissionStatus;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeTraceWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\InMemoryActStore;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\ProtocolFixtures;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\RecordingQuoteGateway;
@@ -16,6 +18,25 @@ use PHPUnit\Framework\TestCase;
 final class SellerActEmitterTest extends TestCase
 {
     private const QUOTE_ID = '11111111111111111111111111111111';
+
+    public function testEachObservationRecordsItsOutcomeAndPublishedAct(): void
+    {
+        $writer = new FakeTraceWriter();
+        $store = new InMemoryActStore();
+        $emitter = SellerActEmitterFixture::emitter($store, new RecordingQuoteGateway(), writer: $writer);
+
+        $emitter->observe(ProtocolFixtures::snapshot(self::QUOTE_ID), ProtocolFixtures::at());
+        $emitter->observe(SellerActEmitterFixture::snapshotWithChain(), ProtocolFixtures::at());
+
+        self::assertCount(2, $writer->events);
+        self::assertSame(TraceKind::SellerAct, $writer->events[0]->kind);
+        self::assertSame('inert', $writer->events[0]->meta['result']);
+        self::assertNull($writer->events[0]->content);
+        self::assertSame('emitted', $writer->events[1]->meta['result']);
+        self::assertSame(2, $writer->events[1]->meta['seq']);
+        self::assertSame('counteroffer', $writer->events[1]->meta['actType']);
+        self::assertSame($writer->events[1]->meta['offerHash'], $writer->events[1]->content['protocol_act_hash']);
+    }
 
     public function testItIsInertWithoutASession(): void
     {

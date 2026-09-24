@@ -17,9 +17,6 @@ use Shopware\Core\Framework\DataAbstractionLayer\Attribute\Field;
  */
 final class DraftMirrorsEntityTest extends TestCase
 {
-    /** Written by DecisionRecordWriter itself, never a draft property. */
-    private const ID_IS_WRITER_GENERATED = 'id';
-
     /**
      * Written by TerminalOutcomeSubscriber, through TerminalOutcomeWriter,
      * after the quote reaches a terminal state, never by a pass. The
@@ -50,8 +47,8 @@ final class DraftMirrorsEntityTest extends TestCase
         'feedbackAt',
     ];
 
-    /** The draft's own stopwatch; DecisionRecordWriter excludes it, not a column. */
-    private const DRAFT_ONLY_WORKING_FIELDS = ['startedAt'];
+    /** The draft's own stopwatch and its buffered trace events; DecisionRecordWriter excludes both, neither is a column. */
+    private const DRAFT_ONLY_WORKING_FIELDS = ['startedAt', 'trace'];
 
     public function testEveryDraftPropertyIsAnEntityFieldOrExplicitlyExcluded(): void
     {
@@ -66,7 +63,6 @@ final class DraftMirrorsEntityTest extends TestCase
     public function testEveryEntityFieldIsADraftPropertyOrExplicitlyReserved(): void
     {
         $excluded = [
-            self::ID_IS_WRITER_GENERATED,
             ...self::WRITTEN_BY_THE_TERMINAL_SUBSCRIBER,
             ...self::WRITTEN_BY_THE_ESCALATION_RESOLUTION_SUBSCRIBER,
             ...self::WRITTEN_BY_THE_REVIEW_STORE,

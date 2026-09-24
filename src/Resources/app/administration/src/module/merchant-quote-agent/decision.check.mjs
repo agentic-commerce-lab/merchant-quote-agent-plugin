@@ -118,6 +118,7 @@ assert.equal(outcomeVariant('countered'), 'positive');
 assert.equal(outcomeVariant('replied'), 'positive');
 assert.equal(outcomeVariant('escalated'), 'critical');
 assert.equal(outcomeVariant('nothing_to_do'), 'neutral');
+assert.equal(outcomeVariant('acknowledged'), 'neutral');
 // Documents intent, not a pin: outcomeVariant's own fallback for an unmapped
 // value is already 'neutral' (see below and outcomeVariant's return), so this
 // holds whether or not `handed_over` is in OUTCOME_VARIANTS. disposition() and
@@ -132,6 +133,8 @@ assert.equal(answeredTheBuyer('countered'), true);
 assert.equal(answeredTheBuyer('replied'), true);
 assert.equal(answeredTheBuyer('escalated'), false);
 assert.equal(answeredTheBuyer('nothing_to_do'), false);
+// Restates the quote; not an offer (mirrors NegotiationOutcome::answeredTheBuyer()).
+assert.equal(answeredTheBuyer('acknowledged'), false);
 // Documents intent, not a pin on THIS task: answeredTheBuyer is a plain
 // allow-list with no fallback, so this passes only because `handed_over` is
 // not on it today, unchanged by this task's edits. Unlike outcomeVariant
@@ -150,6 +153,8 @@ assert.equal(disposition('replied'), 'answered');
 assert.equal(disposition('escalated'), 'needsReview');
 assert.equal(disposition('clarified'), 'awaitingBuyer');
 assert.equal(disposition('nothing_to_do'), 'noAction');
+// The quote is back in `replied` with the standing offer in front of the buyer.
+assert.equal(disposition('acknowledged'), 'answered');
 assert.equal(disposition('handed_over'), 'noAction');
 assert.equal(disposition('some_future_outcome'), 'other');
 assert.equal(disposition(null), 'other');
@@ -423,6 +428,7 @@ assert.deepEqual(passNotes(vm, { outcome: 'offered', attempt: 2 }).map((note) =>
 
 // A pass with nothing to answer says so, rather than showing one bare header.
 assert.deepEqual(passNotes(vm, { outcome: 'nothing_to_do', attempt: 0 }).map((note) => note.key), ['nothingToDo']);
+assert.deepEqual(passNotes(vm, { outcome: 'acknowledged', attempt: 0 }).map((note) => note.key), ['acknowledged']);
 assert.deepEqual(passNotes(vm, { outcome: 'handed_over', attempt: 0 }).map((note) => note.key), ['handedOver']);
 
 // A pass that did its job has nothing to add.

@@ -198,6 +198,7 @@ final class NegotiationFixture
                 expiresAt: $snapshot->lifecycle->expiresAt,
                 customFields: $customFields,
                 lastAdminTransitionAt: $snapshot->lifecycle->lastAdminTransitionAt,
+                lastAdminTransitionTo: $snapshot->lifecycle->lastAdminTransitionTo,
             ),
             content: $snapshot->content,
         );

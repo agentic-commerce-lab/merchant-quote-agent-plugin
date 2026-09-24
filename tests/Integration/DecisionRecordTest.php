@@ -16,6 +16,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Bucket
 use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Metric\AvgResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 final class DecisionRecordTest extends IntegrationTestCase
@@ -137,7 +138,11 @@ final class DecisionRecordTest extends IntegrationTestCase
         $repository = static::getContainer()->get('merchant_quote_agent_decision.repository');
         self::assertInstanceOf(EntityRepository::class, $repository);
 
-        $writer = new DecisionRecordWriter($repository);
+        $writer = new DecisionRecordWriter(
+            $repository,
+            static::getContainer()->get('merchant_quote_agent_trace.repository'),
+            new \Psr\Log\NullLogger(),
+        );
 
         $draft = new DecisionDraft();
         $draft->quoteId = Uuid::randomHex();
@@ -199,7 +204,7 @@ final class DecisionRecordTest extends IntegrationTestCase
         // compares DateTimeImmutable and arrays (the JSON columns) by value,
         // which is exactly the round trip being proven for those fields.
         $payload = get_object_vars($draft);
-        unset($payload['startedAt']);
+        unset($payload['startedAt'], $payload['trace']);
 
         foreach ($payload as $field => $value) {
             self::assertEquals($value, $written->$field, sprintf('Field "%s" did not round-trip.', $field));
@@ -256,6 +261,28 @@ final class DecisionRecordTest extends IntegrationTestCase
         // written value every other test in this file uses.
         self::assertNotNull($record->discountPercentGranted, 'A granting pass wrote no discount percentage.');
         self::assertEqualsWithDelta(5.0, $record->discountPercentGranted, 0.5);
+
+        $traces = static::getContainer()->get('merchant_quote_agent_trace.repository');
+        self::assertInstanceOf(EntityRepository::class, $traces);
+        $traceCriteria = (new Criteria())
+            ->addFilter(new EqualsFilter('decisionId', $record->id))
+            ->addSorting(new FieldSorting('position', FieldSorting::ASCENDING));
+        $events = array_values(
+            iterator_to_array($traces->search($traceCriteria, Context::createDefaultContext())->getEntities()),
+        );
+        $kinds = array_map(static fn($event): string => $event->kind, $events);
+
+        self::assertSame('quote_before', $kinds[0] ?? null, 'Every pass opens with the quote as it was.');
+        self::assertContains('policy_verdict', $kinds);
+        self::assertContains('quote_after', $kinds);
+        self::assertSame(
+            ['extract', 'negotiate', 'reply'],
+            array_values(array_map(
+                static fn($event): string => $event->meta['purpose'] ?? '',
+                array_filter($events, static fn($event): bool => $event->kind === 'model_call'),
+            )),
+            'One model_call per call the pass made, in order.',
+        );
     }
 
     /**

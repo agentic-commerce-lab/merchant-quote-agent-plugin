@@ -32,6 +32,9 @@ final class NegotiationPolicyArray
             // reading: every price ask escalates.
             'maxDiscountPercent' => RawConfigValue::float($raw, 'maxDiscountPercent') ?? 0.0,
             'counterOfferMaxPercent' => RawConfigValue::float($raw, 'counterOfferMaxPercent'),
+            // Null when cleared, and null is the safe reading: no floor, so
+            // the agent behaves exactly as it did before the field existed.
+            'minMarginPercent' => RawConfigValue::float($raw, 'minMarginPercent'),
             // Also null when cleared, but there is no safe reading here: an
             // offer valid for zero days is one sent already expired (#57), so
             // this zero is the sentinel QuoteLimits' Positive constraint

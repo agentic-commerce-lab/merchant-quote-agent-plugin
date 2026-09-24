@@ -78,4 +78,14 @@ final class ExportPseudonymTest extends TestCase
         self::assertIsString($written);
         self::assertSame((new ExportPseudonym($written))->of('abc'), $pseudonym->of('abc'));
     }
+
+    public function testMapPairsEachPresentIdWithItsPseudonymAndSkipsTheAbsentOnes(): void
+    {
+        $pseudonym = new ExportPseudonym('a-fixed-test-salt');
+
+        self::assertSame(
+            ['abc' => $pseudonym->of('abc'), 'def' => $pseudonym->of('def')],
+            $pseudonym->map(['abc', null, '', 'def']),
+        );
+    }
 }
