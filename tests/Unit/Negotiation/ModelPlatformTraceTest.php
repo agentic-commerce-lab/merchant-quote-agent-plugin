@@ -74,19 +74,23 @@ final class ModelPlatformTraceTest extends TestCase
         ));
     }
 
-    public function testARetriedCallRecordsTheAttemptThatFailed(): void
+    public function testARetriedCallRecordsTheAttemptAndResetsForTheNextCall(): void
     {
         [$writer, $recorder] = self::openPass();
         [$platform] = ScriptedClient::responding([
             new MockResponse('', ['http_code' => 503]),
             NegotiationFixture::modelReply('recovered'),
+            NegotiationFixture::modelReply('clean'),
         ], $recorder);
 
         $platform->text(NegotiationFixture::modelAccess(), 'sys', 'usr');
-        $event = self::modelCalls($writer, $recorder)[0];
+        $platform->text(NegotiationFixture::modelAccess(), 'sys', 'again');
+        $calls = self::modelCalls($writer, $recorder);
 
-        self::assertSame('ok', $event->meta['status']);
-        self::assertSame([['httpStatus' => 503, 'transportError' => false]], $event->meta['retries']);
+        self::assertSame('ok', $calls[0]->meta['status']);
+        self::assertCount(2, $calls);
+        self::assertSame([['httpStatus' => 503, 'transportError' => false]], $calls[0]->meta['retries']);
+        self::assertSame([], $calls[1]->meta['retries']);
     }
 
     public function testAFailedCallRecordsTheStatusAndTheProvidersErrorBody(): void

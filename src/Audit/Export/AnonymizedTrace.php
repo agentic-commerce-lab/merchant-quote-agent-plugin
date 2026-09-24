@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Audit\Export;
 
 use MerchantQuoteAgentPlugin\Audit\TraceEvent;
+use MerchantQuoteAgentPlugin\Audit\TraceKind;
 
 /**
  * One trace row as one element of its decision line's `trace` list.
  *
- * Nothing to classify per field here, unlike AnonymizedDecision: the split
- * was made when the event was recorded. `meta` is TraceKind's allowlist and
- * leaves as it is (TraceMetaCoverageTest holds what it may contain); `content`
- * is everything else and leaves only with free text. No id of the event's
+ * The split was made when the event was recorded. The export checks the
+ * TraceKind allowlist again so unexpected stored keys cannot leave with every
+ * export. `content` leaves only with free text. No id of the event's
  * own leaves: a nested event is identified by its decision line and its place
  * in the list.
  *
@@ -33,10 +33,12 @@ final class AnonymizedTrace
      */
     public static function of(TraceEvent $event, bool $freeText, array $pseudonyms = []): array
     {
+        $kind = TraceKind::tryFrom($event->kind);
+        $allowed = array_fill_keys([...($kind?->metaKeys() ?? []), 'truncated'], true);
         $line = [
             'kind' => $event->kind,
             'occurredAt' => $event->occurredAt?->format(\DateTimeInterface::RFC3339_EXTENDED),
-            'meta' => $event->meta,
+            'meta' => array_intersect_key($event->meta ?? [], $allowed),
         ];
 
         return $freeText ? [...$line, 'content' => self::pseudonymized($event->content, $pseudonyms)] : $line;
