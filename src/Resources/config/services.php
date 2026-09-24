@@ -654,7 +654,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service('product.repository'),
         service('currency.repository'),
     ]);
-    $services->alias(PurchasePricesInterface::class, PurchasePriceReader::class)->public();
+    $services->alias(PurchasePricesInterface::class, PurchasePriceReader::class);
 
     // The five commercial services, referenced by the string ids on
     // CommercialAvailability because their classes are not ours to name with
