@@ -32,7 +32,10 @@ final class MarginFloorVerifier
             $floor = $floors[$line->lineItemId()] ?? null;
             $effective = $line->unitPriceNet * $goodsFactor;
 
-            if ($floor !== null && $line->unitPriceNet > 0.0 && $effective < ($floor - Epsilon::MONEY)) {
+            // No positive-price guard: only lines that were positive before the
+            // write carry a floor, so a floored line that lands at zero or below
+            // is exactly the undercut this check exists to catch.
+            if ($floor !== null && $effective < ($floor - Epsilon::MONEY)) {
                 $violations[] = sprintf(
                     'line "%s" priced %s net below its minimum-margin floor %s',
                     $line->label() ?? $line->lineItemId(),

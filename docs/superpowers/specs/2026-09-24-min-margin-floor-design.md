@@ -181,9 +181,12 @@ there).
 
 3. **Check after the write.** A new `Policy\MarginFloorVerifier`, run by
    `OfferVerifier` alongside the totals, line and expiration checks, compares
-   each positive line of the post-write snapshot: `unitPriceNet ×
+   every post-write line that carries a floor: `unitPriceNet ×
    goodsFactor(final)` must be at least its effective floor minus
-   `Epsilon::MONEY`. `VerifyOfferInput` gains `array $floors = []`; an empty
+   `Epsilon::MONEY`. A floored line that lands at zero or below fails too
+   (PR #202 review): only lines positive before the write get a floor, so
+   the generated discount line is excluded by the map, not by a price guard,
+   and at `maxDiscountPercent` 100 no other check objects to a 0.00 line. `VerifyOfferInput` gains `array $floors = []`; an empty
    map checks nothing. A violation escalates through the existing
    `VerificationFailed` path, like every other verifier finding. This catches
    what the clamp cannot see: a rounding surprise, an absolute discount whose
