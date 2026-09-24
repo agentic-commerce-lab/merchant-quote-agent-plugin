@@ -518,6 +518,7 @@ first.
 | `negotiationStrategyId` | — | Which strategy this sales channel negotiates with. Holds the strategy's id, not its text; the prompt comes from that strategy's newest version. Can never move a cap. |
 | `maxDiscountPercent` | `0` | `0` means every price ask escalates. |
 | `counterOfferMaxPercent` | — | Blank means no counter band. |
+| `minMarginPercent` | — | Markup on each product's purchase price that no offer may go below (`purchase × (1 + m/100)`, rounded up to the cent). Clamps the offer to that floor rather than escalating. Products without a purchase price have no floor. Blank means off; `0` means never below cost. The purchase price never reaches the model or the buyer. |
 | `maxQuoteValueNet` | — | Per currency, net. A currency left blank escalates. Blank everywhere means no ceiling. |
 | `validityDays` | `14` | How long an auto-offer stays valid. At least 1 — blank or `0` takes the channel out of service rather than sending an offer stamped as already expired. A shop updating from a release that defaulted this to `0` has that `0` rewritten to `14`; a value the merchant set is left alone. |
 | `escalationSlaHours` | — | Dashboard benchmark only. Changes nothing the agent does. |

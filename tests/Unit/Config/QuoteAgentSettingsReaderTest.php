@@ -201,4 +201,12 @@ final class QuoteAgentSettingsReaderTest extends TestCase
         self::assertFalse($this->reader(['assistantQuoteRequests' => false])->assistantQuoteRequests(null));
         self::assertTrue($this->reader(['assistantQuoteRequests' => true])->assistantQuoteRequests(null));
     }
+
+    public function testTheMinimumMarginIsReadFromSystemConfig(): void
+    {
+        $settings = $this->reader(['minMarginPercent' => 12.5])->forSalesChannel(null);
+
+        self::assertNotNull($settings);
+        self::assertSame(12.5, $settings->policy->price->minMarginPercent);
+    }
 }

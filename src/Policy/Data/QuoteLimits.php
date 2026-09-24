@@ -38,6 +38,13 @@ final readonly class QuoteLimits
          */
         #[Assert\Positive]
         public int $validityDays = 0,
+        /**
+         * Markup on the purchase price below which no offer may price a line
+         * (spec 2026-09-24). Null means off. Zero means "never below cost".
+         * No upper bound: a markup can exceed 100%.
+         */
+        #[Assert\PositiveOrZero]
+        public ?float $minMarginPercent = null,
     ) {}
 
     /** The same limits with a tightened discount cap — see AskedDiscountCeiling. */
@@ -48,6 +55,7 @@ final readonly class QuoteLimits
             counterOfferMaxPercent: $this->counterOfferMaxPercent,
             valueCeiling: $this->valueCeiling,
             validityDays: $this->validityDays,
+            minMarginPercent: $this->minMarginPercent,
         );
     }
 
@@ -59,6 +67,7 @@ final readonly class QuoteLimits
             counterOfferMaxPercent: OptionalShape::float($data, 'counterOfferMaxPercent'),
             valueCeiling: self::ceiling($data),
             validityDays: OptionalShape::int($data, 'validityDays') ?? 0,
+            minMarginPercent: OptionalShape::float($data, 'minMarginPercent'),
         );
     }
 

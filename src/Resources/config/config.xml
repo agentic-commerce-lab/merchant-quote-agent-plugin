@@ -59,6 +59,11 @@
             <helpText>An ask above the maximum but at or below this gets a deterministic counter at the maximum. Blank means no counter band.</helpText>
         </input-field>
         <input-field type="float">
+            <name>minMarginPercent</name>
+            <label>Minimum margin on purchase price (%)</label>
+            <helpText>The agent never prices a product below its purchase price plus this markup: a purchase price of 100 and 10 here make 110 the lowest it may offer. It lowers an offer to that floor instead of escalating. Products without a purchase price have no floor. Blank means off; 0 means never below cost.</helpText>
+        </input-field>
+        <input-field type="float">
             <name>maxQuoteValueNet</name>
             <label>Maximum quote value for negotiation (net)</label>
             <helpText>Above this net total the quote always escalates. Stated net, and compared against the quote's net total whatever currency the quote is in — so set it in the currency you actually sell in. Blank means no ceiling at all.</helpText>

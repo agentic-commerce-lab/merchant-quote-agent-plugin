@@ -191,4 +191,15 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         self::assertNotNull($settingsBlank);
         self::assertNull($settingsBlank->strategyAssignmentSource);
     }
+
+    public function testTheMinimumMarginMapsOntoThePriceLimits(): void
+    {
+        self::assertSame(10.0, self::build(['minMarginPercent' => 10.0])?->policy->price->minMarginPercent);
+    }
+
+    public function testABlankMinimumMarginMeansNoFloor(): void
+    {
+        self::assertNull(self::build()?->policy->price->minMarginPercent);
+        self::assertNull(self::build(['minMarginPercent' => null])?->policy->price->minMarginPercent);
+    }
 }
