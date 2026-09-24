@@ -197,6 +197,18 @@ assert.equal(dispositionVariant('something_new'), 'neutral');
 assert.equal(dispositionVariant(null), 'neutral');
 assert.equal(dispositionVariant('closedNoDeal'), 'neutral');
 assert.ok(DISPOSITION_CLASSES.includes('closedNoDeal'));
+assert.equal(answeredTheBuyer('offered', 'pending'), false);
+assert.equal(answeredTheBuyer('offered', 'rejected'), false);
+assert.equal(answeredTheBuyer('offered', 'superseded'), false);
+assert.equal(answeredTheBuyer('offered', 'sent'), true);
+assert.equal(disposition('offered', null, null, 'pending'), 'awaitingReview');
+assert.equal(disposition('clarified', null, null, 'pending'), 'awaitingReview');
+assert.equal(disposition('offered', null, null, 'rejected'), 'needsReview');
+assert.equal(disposition('offered', 'accepted', null, 'pending'), 'orderPlaced');
+assert.equal(dispositionVariant('awaitingReview'), 'attention');
+assert.ok(DISPOSITION_CLASSES.includes('awaitingReview'));
+const drafted = foldToQuotes([{ quoteId: 'q', outcome: 'offered', reviewStatus: 'sent', totalNetBefore: 100 }]);
+assert.equal(drafted[0].escalated, true);
 
 // #1017 as it sits in the table: three passes, newest first. The fold keeps the
 // newest as the quote's state, counts the rounds, and takes the quote's own

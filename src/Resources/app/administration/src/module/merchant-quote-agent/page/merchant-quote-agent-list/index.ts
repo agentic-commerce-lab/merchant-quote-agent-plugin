@@ -289,7 +289,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
         dispositionFilterOptions() {
             return [
                 { value: 'all', label: this.$tc('merchant-quote-agent.list.filterAll') },
-                ...['orderPlaced', 'needsReview', 'answered', 'awaitingBuyer', 'closedNoDeal', 'noAction'].map((key) => ({
+                ...['orderPlaced', 'needsReview', 'awaitingReview', 'answered', 'awaitingBuyer', 'closedNoDeal', 'noAction'].map((key) => ({
                     value: key,
                     label: this.$tc(`merchant-quote-agent.disposition.${key}`),
                 })),
@@ -604,7 +604,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
         grantedLabel(quote) {
             const pass = quote.latest;
 
-            if (!answeredTheBuyer(pass.outcome)) {
+            if (!answeredTheBuyer(pass.outcome, pass.reviewStatus ?? null)) {
                 return '–';
             }
 

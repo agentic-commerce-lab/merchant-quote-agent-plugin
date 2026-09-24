@@ -88,3 +88,16 @@ export const privileges = {
         },
     },
 };
+
+/** Review routes require decision:update; the decision DAL entity remains write-protected. */
+export const reviewPrivileges = {
+    category: 'additional_permissions',
+    parent: null,
+    key: 'merchant_quote_agent_drafts',
+    roles: {
+        review: {
+            privileges: ['merchant_quote_agent_decision:read', 'merchant_quote_agent_decision:update'],
+            dependencies: ['merchant_quote_agent.viewer'],
+        },
+    },
+};

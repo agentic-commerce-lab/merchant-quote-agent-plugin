@@ -358,7 +358,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
          * One servicing pass, ready to render.
          */
         formatRun(round, index, baselineNet = null) {
-            const answered = answeredTheBuyer(round.outcome);
+            const answered = answeredTheBuyer(round.outcome, round.reviewStatus ?? null);
 
             return {
                 id: round.id,

@@ -1,4 +1,4 @@
-import { privileges } from './acl';
+import { privileges, reviewPrivileges } from './acl';
 import './merchant-quote-agent.scss';
 import './page/merchant-quote-agent-list';
 import './page/merchant-quote-agent-detail';
@@ -10,6 +10,7 @@ import deDE from './snippet/de.json';
 import enGB from './snippet/en.json';
 
 Shopware.Service('privileges').addPrivilegeMappingEntry(privileges);
+Shopware.Service('privileges').addPrivilegeMappingEntry(reviewPrivileges);
 
 /**
  * Whether this shop has the Agentic Commerce plugin.

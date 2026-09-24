@@ -314,12 +314,71 @@
         },
         "disposition": {
             "needsReview": "Prüfung nötig",
+            "awaitingReview": "Entwurf wartet auf Prüfung",
             "answered": "Beantwortet",
             "awaitingBuyer": "Rückfrage gestellt",
             "closedNoDeal": "Ohne Einigung beendet",
             "noAction": "Kein Handlungsbedarf",
             "other": "Unbekanntes Ergebnis",
             "orderPlaced": "Bestellung ausgelöst"
+        },
+        "review": {
+            "title": "Entwurf wartet auf Ihre Prüfung",
+            "intro": "Der Entwurfsmodus ist aktiv: Der Agent hat dies vorbereitet, aber nichts gesendet. Prüfen und anpassen, dann senden oder verwerfen.",
+            "introClarification": "Der Agent möchte dem Käufer eine Frage stellen. Es wurde nichts gesendet.",
+            "changesTitle": "Vorgeschlagene Änderungen",
+            "columnLine": "Position",
+            "columnQuantity": "Menge",
+            "columnNow": "Aktuell",
+            "columnDraft": "Entwurf",
+            "discount": "Angebotsrabatt (%)",
+            "validUntil": "Gültig bis",
+            "totalNet": "Summe (netto)",
+            "totalGross": "Summe (brutto)",
+            "overCap": "Über Ihrem konfigurierten Maximum von {cap}. Der Agent hätte das nicht anbieten dürfen – Sie dürfen.",
+            "updatePreview": "Vorschau aktualisieren",
+            "replyLabel": "Antwort an den Käufer",
+            "useRedraft": "Neu formulierte Antwort übernehmen",
+            "send": "An Käufer senden",
+            "reject": "Entwurf verwerfen",
+            "sent": "An den Käufer gesendet.",
+            "rejected": "Entwurf verworfen. Bearbeiten Sie das Angebot in SwagCommercial.",
+            "readOnly": "Sie sehen diesen Entwurf, dürfen ihn aber nicht senden oder verwerfen. Fragen Sie nach der Berechtigung „Angebotsagent: Entwürfe prüfen“.",
+            "error": {
+                "stale": "Der Käufer hat erneut geschrieben oder das Angebot hat sich seit dem Entwurf geändert. Verwerfen Sie ihn – der Agent entwirft bei der nächsten Nachricht neu.",
+                "gone": "Das Angebot zu diesem Entwurf existiert nicht mehr. Er kann weder gesendet noch verworfen werden.",
+                "not_pending": "Dieser Entwurf wurde bereits bearbeitet oder ersetzt.",
+                "busy": "Der Agent bearbeitet dieses Angebot gerade. Bitte in ein paar Sekunden erneut versuchen.",
+                "unavailable": "Angebote können nicht bearbeitet werden, weil SwagCommercial nicht lizenziert ist.",
+                "generic": "Das hat nicht geklappt. Bitte erneut versuchen."
+            },
+            "status": {
+                "pending": "Entwurf – wartet auf Prüfung",
+                "sent": "Entwurf von einem Händler gesendet",
+                "rejected": "Entwurf verworfen",
+                "superseded": "Entwurf durch neueren ersetzt"
+            },
+            "sentReplyLabel": "Stattdessen gesendet"
+        },
+        "feedback": {
+            "open": "Feedback geben",
+            "edit": "Feedback bearbeiten",
+            "title": "Was war nicht richtig?",
+            "offerAfterEdit": "Sie haben den Entwurf vor dem Senden geändert. Warum?",
+            "reasons": {
+                "wrong_price": "Falscher Preis oder Rabatt",
+                "wrong_wording": "Falscher Ton oder Wortlaut",
+                "misunderstood_buyer": "Käufer missverstanden",
+                "should_have_escalated": "Hätte an einen Menschen übergeben werden sollen",
+                "should_not_have_escalated": "Hätte nicht an einen Menschen übergeben werden sollen",
+                "other": "Sonstiges"
+            },
+            "comment": "Kommentar",
+            "commentHelp": "Bis zu 2.000 Zeichen. Wird im Entscheidungsexport mitgeliefert.",
+            "save": "Feedback speichern",
+            "saved": "Feedback gespeichert.",
+            "failed": "Das Feedback konnte nicht gespeichert werden.",
+            "savedLabel": "Händler-Feedback"
         },
         "escalationWhy": {
             "anUnstatedAmount": "einen Betrag, der nicht als Prozentwert lesbar war",
@@ -369,6 +428,14 @@
             "orderCount": "Bestellungen",
             "lifetimeNet": "Bisheriger Bestellwert (netto)",
             "lastOrderAt": "Letztes Bestelldatum"
+        }
+    },
+    "sw-privileges": {
+        "additional_permissions": {
+            "merchant_quote_agent_drafts": {
+                "label": "Angebotsagent-Entwürfe",
+                "review": "Angebotsagent: Entwürfe prüfen"
+            }
         }
     }
 }

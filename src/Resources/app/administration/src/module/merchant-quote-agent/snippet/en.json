@@ -314,12 +314,71 @@
         },
         "disposition": {
             "needsReview": "Needs review",
+            "awaitingReview": "Draft awaiting review",
             "answered": "Answered",
             "awaitingBuyer": "Question asked",
             "closedNoDeal": "Closed, no deal",
             "noAction": "No action needed",
             "other": "Unrecognised outcome",
             "orderPlaced": "Order placed"
+        },
+        "review": {
+            "title": "Draft awaiting your review",
+            "intro": "Draft Mode is on: the agent prepared this but sent nothing. Check it, change what you like, then send it or reject it.",
+            "introClarification": "The agent wants to ask the buyer a question. Nothing was sent.",
+            "changesTitle": "Proposed changes",
+            "columnLine": "Line",
+            "columnQuantity": "Qty",
+            "columnNow": "Now",
+            "columnDraft": "Draft",
+            "discount": "Quote discount (%)",
+            "validUntil": "Valid until",
+            "totalNet": "Total (net)",
+            "totalGross": "Total (gross)",
+            "overCap": "Above your configured maximum of {cap}. The agent could not have offered this — you can.",
+            "updatePreview": "Update preview",
+            "replyLabel": "Reply to the buyer",
+            "useRedraft": "Use the re-drafted reply",
+            "send": "Send to buyer",
+            "reject": "Reject draft",
+            "sent": "Sent to the buyer.",
+            "rejected": "Draft rejected. Handle the quote in SwagCommercial.",
+            "readOnly": "You can see this draft but not send or reject it. Ask for the “Quote agent: review drafts” permission.",
+            "error": {
+                "stale": "The buyer wrote again or the quote changed since this draft. Reject it — the agent drafts again on the buyer's next message.",
+                "gone": "This draft's quote no longer exists. It cannot be sent or rejected.",
+                "not_pending": "This draft was already handled or replaced.",
+                "busy": "The agent is working on this quote right now. Try again in a few seconds.",
+                "unavailable": "Quotes cannot be edited because SwagCommercial is not licensed.",
+                "generic": "That did not work. Try again."
+            },
+            "status": {
+                "pending": "Draft — awaiting review",
+                "sent": "Draft sent by a merchant",
+                "rejected": "Draft rejected",
+                "superseded": "Draft replaced by a newer one"
+            },
+            "sentReplyLabel": "Sent instead"
+        },
+        "feedback": {
+            "open": "Give feedback",
+            "edit": "Edit feedback",
+            "title": "What was not right?",
+            "offerAfterEdit": "You changed the draft before sending. Tell us why?",
+            "reasons": {
+                "wrong_price": "Wrong price or discount",
+                "wrong_wording": "Wrong tone or wording",
+                "misunderstood_buyer": "Misunderstood the buyer",
+                "should_have_escalated": "Should have handed it to a human",
+                "should_not_have_escalated": "Should not have handed it to a human",
+                "other": "Other"
+            },
+            "comment": "Comment",
+            "commentHelp": "Up to 2,000 characters. Included in the decision export.",
+            "save": "Save feedback",
+            "saved": "Feedback saved.",
+            "failed": "The feedback could not be saved.",
+            "savedLabel": "Merchant feedback"
         },
         "escalationWhy": {
             "anUnstatedAmount": "an amount it could not read as a percentage",
@@ -369,6 +428,14 @@
             "orderCount": "Orders placed",
             "lifetimeNet": "Lifetime order value (net)",
             "lastOrderAt": "Last order date"
+        }
+    },
+    "sw-privileges": {
+        "additional_permissions": {
+            "merchant_quote_agent_drafts": {
+                "label": "Quote agent drafts",
+                "review": "Quote agent: review drafts"
+            }
         }
     }
 }
