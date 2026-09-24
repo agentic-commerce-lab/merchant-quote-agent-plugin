@@ -12,6 +12,8 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Negotiation\AppliedOffer;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
+use MerchantQuoteAgentPlugin\Protocol\Act\ActKey;
+use MerchantQuoteAgentPlugin\Protocol\Act\ActRole;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use PHPUnit\Framework\TestCase;
 
@@ -62,8 +64,13 @@ final class QuoteTraceTest extends TestCase
                 customFields: [
                     'merchant_quote_agent_baseline' => ['lines' => []],
                     'a2cn_session' => 'sess-1',
+                    ActKey::for(1, ActRole::Buyer) => ['id' => 'act-1'],
                     // A merchant's own field: anything can be in it.
                     'crm_contact_email' => 'anna@acme.example',
+                    'merchant_quote_agent_contact_email' => 'anna@acme.example',
+                    'merchantQuoteAgentContactEmail' => 'anna@acme.example',
+                    'a2cn_contact_email' => 'anna@acme.example',
+                    'a2cn_act_0001_b_extra' => 'anna@acme.example',
                 ],
             ),
             content: $snapshot->content,
@@ -78,7 +85,11 @@ final class QuoteTraceTest extends TestCase
             self::assertStringNotContainsString('crm_contact_email', $encoded);
             self::assertStringNotContainsString('anna@acme.example', $encoded);
             self::assertSame(
-                ['merchant_quote_agent_baseline' => ['lines' => []], 'a2cn_session' => 'sess-1'],
+                [
+                    'merchant_quote_agent_baseline' => ['lines' => []],
+                    'a2cn_session' => 'sess-1',
+                    ActKey::for(1, ActRole::Buyer) => ['id' => 'act-1'],
+                ],
                 $event->content['lifecycle']['customFields'] ?? null,
             );
         }

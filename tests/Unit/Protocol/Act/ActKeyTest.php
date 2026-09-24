@@ -30,8 +30,13 @@ final class ActKeyTest extends TestCase
     public function testItRecognizesOnlyActKeys(): void
     {
         self::assertTrue(ActKey::isActKey('a2cn_act_0001_b'));
+        self::assertTrue(ActKey::isActKey('a2cn_act_9999_s'));
         self::assertFalse(ActKey::isActKey(ActKey::SESSION_KEY));
         self::assertFalse(ActKey::isActKey('merchant_quote_agent_serviced'));
+        self::assertFalse(ActKey::isActKey('a2cn_act_0000_b'));
+        self::assertFalse(ActKey::isActKey('a2cn_act_10000_b'));
+        self::assertFalse(ActKey::isActKey('a2cn_act_0001_x'));
+        self::assertFalse(ActKey::isActKey('a2cn_act_0001_b_extra'));
     }
 
     public function testItRefusesToEmitAnUnsortableKeyBelowTheRange(): void

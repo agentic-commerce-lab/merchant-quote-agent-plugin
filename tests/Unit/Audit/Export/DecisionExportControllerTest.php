@@ -14,6 +14,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
 
 /**
  * The endpoint's refusals, which the dashboard cannot exercise because it
@@ -29,6 +30,19 @@ use Symfony\Component\HttpFoundation\Response;
 #[CoversClass(DecisionExportController::class)]
 final class DecisionExportControllerTest extends TestCase
 {
+    public function testExportRouteRequiresDecisionAndTraceReadPrivileges(): void
+    {
+        $method = new \ReflectionMethod(DecisionExportController::class, 'export');
+        $attributes = $method->getAttributes(Route::class);
+        self::assertCount(1, $attributes);
+
+        $route = $attributes[0]->newInstance();
+        self::assertSame(
+            ['merchant_quote_agent_decision:read', 'merchant_quote_agent_trace:read'],
+            $route->getDefaults()['_acl'],
+        );
+    }
+
     public function testItRefusesAMissingRange(): void
     {
         $response = $this->controller()->export(new Request(['to' => '2026-10-01']), Context::createDefaultContext());
