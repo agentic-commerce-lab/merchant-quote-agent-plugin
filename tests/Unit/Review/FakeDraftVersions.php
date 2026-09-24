@@ -19,6 +19,9 @@ final class FakeDraftVersions implements QuoteDraftVersionsInterface
     /** @var list<string> */
     public array $deleted = [];
 
+    /** @var list<string> version ids exists() denies, as if their rows were gone */
+    public array $missing = [];
+
     public function __construct(
         public readonly FakeQuoteGateway $draft,
     ) {}
@@ -30,6 +33,12 @@ final class FakeDraftVersions implements QuoteDraftVersionsInterface
         $this->created[] = $id;
 
         return $id;
+    }
+
+    #[\Override]
+    public function exists(string $versionId): bool
+    {
+        return !\in_array($versionId, $this->missing, strict: true);
     }
 
     #[\Override]

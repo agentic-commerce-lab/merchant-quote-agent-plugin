@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Bridge;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
@@ -34,6 +35,16 @@ final readonly class QuoteDraftVersions implements QuoteDraftVersionsInterface
     public function create(string $quoteId): string
     {
         return $this->quotes->createVersion($quoteId, AgentContext::create(), self::VERSION_NAME);
+    }
+
+    #[\Override]
+    public function exists(string $versionId): bool
+    {
+        return (
+            Uuid::isValid($versionId)
+            && $this->versions->searchIds(new Criteria([$versionId]), Context::createDefaultContext())->firstId()
+            !== null
+        );
     }
 
     #[\Override]

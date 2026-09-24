@@ -86,6 +86,7 @@ final class DraftVersionTest extends IntegrationTestCase
         $versions = $this->versions();
 
         $versionId = $versions->create($quoteId);
+        self::assertTrue($versions->exists($versionId), 'A version create() just made reads as gone.');
         $versions->gateway($versionId)->updateQuote(
             $quoteId,
             new QuoteUpdate(discount: new Discount(DiscountType::Percentage, 10.0)),
@@ -93,6 +94,7 @@ final class DraftVersionTest extends IntegrationTestCase
         $versions->delete($quoteId, $versionId);
         $versions->delete($quoteId, $versionId);
 
+        self::assertFalse($versions->exists($versionId), 'A deleted version still reads as existing.');
         self::assertSame($before->totals->totalNet, $live->fetchSnapshot($quoteId)->totals->totalNet);
 
         // Unchanged live totals alone would pass against a delete that did nothing.

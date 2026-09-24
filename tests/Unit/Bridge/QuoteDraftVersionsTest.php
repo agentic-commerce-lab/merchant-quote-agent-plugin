@@ -11,7 +11,10 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Defaults;
+use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\IdSearchResult;
 
 /**
  * A gateway bound to the live version drafts onto the buyer-visible quote, a
@@ -51,6 +54,46 @@ final class QuoteDraftVersionsTest extends TestCase
         $this->expectException(NotADraftVersion::class);
 
         $this->untouchable()->gateway($versionId);
+    }
+
+    public function testExistsLooksTheVersionUpById(): void
+    {
+        $versions = $this->withVersionRows(['0190aaaa0000700080000000000000aa']);
+
+        self::assertTrue($versions->exists('0190aaaa0000700080000000000000aa'));
+        self::assertFalse($versions->exists('0190cccc0000700080000000000000cc'));
+    }
+
+    public function testANonUuidDoesNotExistAndIsNeverSearched(): void
+    {
+        self::assertFalse($this->untouchable()->exists('draft-1'));
+    }
+
+    /**
+     * A version repository holding exactly these ids.
+     *
+     * @param list<string> $ids
+     */
+    private function withVersionRows(array $ids): QuoteDraftVersions
+    {
+        $versions = $this->createMock(EntityRepository::class);
+        $versions
+            ->method('searchIds')
+            ->willReturnCallback(static function (Criteria $criteria, Context $context) use ($ids): IdSearchResult {
+                $found = [];
+
+                foreach (array_intersect($ids, $criteria->getIds()) as $id) {
+                    $found[$id] = ['primaryKey' => $id, 'data' => []];
+                }
+
+                return new IdSearchResult(\count($found), $found, $criteria, $context);
+            });
+
+        return new QuoteDraftVersions(
+            $this->createMock(EntityRepository::class),
+            $versions,
+            $this->createMock(ContextBoundGateways::class),
+        );
     }
 
     /** Every collaborator fails the test if it is reached at all. */
