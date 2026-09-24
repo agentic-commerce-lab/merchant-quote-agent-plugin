@@ -18,4 +18,5 @@ enum SkipReason: string
     case TerminalState = 'terminal_state';
     case KillSwitch = 'kill_switch';
     case RefusalWriteFailed = 'refusal_write_failed';
+    case ObservationFailed = 'observation_failed';
 }

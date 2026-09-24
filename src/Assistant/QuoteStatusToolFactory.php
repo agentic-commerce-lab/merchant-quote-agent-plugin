@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Assistant;
 
+use MerchantQuoteAgentPlugin\Audit\TraceWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use Override;
 use Shopware\Core\PlatformRequest;
@@ -23,6 +24,7 @@ final readonly class QuoteStatusToolFactory implements ToolFactoryInterface
     public function __construct(
         private RequestStack $requestStack,
         private ?BuyerQuoteGatewayInterface $gateway = null,
+        private ?TraceWriterInterface $traces = null,
     ) {}
 
     /**
@@ -55,6 +57,6 @@ final readonly class QuoteStatusToolFactory implements ToolFactoryInterface
             return null;
         }
 
-        return new QuoteStatusTool($this->gateway, $salesChannelContext);
+        return new QuoteStatusTool($this->gateway, $salesChannelContext, $this->traces);
     }
 }

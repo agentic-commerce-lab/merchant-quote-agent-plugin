@@ -26,6 +26,9 @@ enum TraceKind: string
     case QuoteBefore = 'quote_before';
     case QuoteAfter = 'quote_after';
     case Skip = 'skip';
+    case Http = 'http';
+    case AssistantTool = 'assistant_tool';
+    case SellerAct = 'seller_act';
 
     /** @return list<string> */
     public function metaKeys(): array
@@ -61,6 +64,9 @@ enum TraceKind: string
             ],
             self::QuoteBefore, self::QuoteAfter => ['lineCount'],
             self::Skip => ['source', 'reason', 'trigger', 'attempt'],
+            self::Http => ['route', 'method', 'httpStatus', 'durationMs', 'sessionId', 'errorCode'],
+            self::AssistantTool => ['tool', 'status'],
+            self::SellerAct => ['sessionId', 'seq', 'actType', 'offerHash', 'result'],
         };
     }
 }

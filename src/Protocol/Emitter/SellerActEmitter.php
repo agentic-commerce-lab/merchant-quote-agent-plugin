@@ -8,7 +8,6 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Protocol\Act\ActChain;
 use MerchantQuoteAgentPlugin\Protocol\Check\EvidenceInspector;
-use Psr\Log\LoggerInterface;
 
 /**
  * The single place a seller act is produced.
@@ -52,14 +51,14 @@ readonly class SellerActEmitter
         private SellerActFactory $acts,
         private EvidenceInspector $inspector,
         private ChainMirror $mirror,
-        private LoggerInterface $logger,
+        private SellerActJournal $logger,
         private ?QuoteGatewayInterface $gateway = null,
     ) {}
 
     public function observe(QuoteSnapshot $snapshot, \DateTimeImmutable $now): EmissionOutcome
     {
         try {
-            return $this->run($snapshot, $now);
+            $outcome = $this->run($snapshot, $now);
         } catch (\Throwable $error) {
             // Fail-open on commerce: an evidence failure never stops servicing.
             // Deliberately NOT persisted as a protocol violation — this is a
@@ -71,8 +70,12 @@ readonly class SellerActEmitter
                 'exception' => $error,
             ]);
 
-            return EmissionOutcome::failed();
+            $outcome = EmissionOutcome::failed();
         }
+
+        $this->logger->outcome($snapshot, $outcome);
+
+        return $outcome;
     }
 
     /**

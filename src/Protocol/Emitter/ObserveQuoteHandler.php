@@ -8,6 +8,10 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
+use MerchantQuoteAgentPlugin\Servicing\ServicingJournal;
+use MerchantQuoteAgentPlugin\Servicing\SkipContext;
+use MerchantQuoteAgentPlugin\Servicing\SkipReason;
+use MerchantQuoteAgentPlugin\Servicing\SkipSource;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
@@ -39,6 +43,7 @@ final readonly class ObserveQuoteHandler
         private LoggerInterface $logger,
         private ?QuoteGatewayInterface $gateway = null,
         private ?SellerActEmitter $emitter = null,
+        private ?ServicingJournal $journal = null,
     ) {}
 
     /** @throws RecoverableMessageHandlingException when another worker holds the quote */
@@ -53,6 +58,7 @@ final readonly class ObserveQuoteHandler
             $this->logger->debug('A2CN observation skipped: no commercial quote gateway.', [
                 'quoteId' => $message->quoteId,
             ]);
+            $this->skip(SkipReason::NoGateway, $message);
 
             return;
         }
@@ -72,11 +78,13 @@ final readonly class ObserveQuoteHandler
                 'outcome' => $outcome->status->value,
             ]);
         } catch (QuoteNotFoundException $error) {
+            $this->skip(SkipReason::QuoteNotFound, $message);
             $this->logger->info('A2CN observation skipped: the quote is gone.', [
                 'quoteId' => $message->quoteId,
                 'exception' => $error,
             ]);
         } catch (\Throwable $error) {
+            $this->skip(SkipReason::ObservationFailed, $message);
             $this->logger->error('A2CN observation failed outside the emitter.', [
                 'quoteId' => $message->quoteId,
                 'exception' => $error,
@@ -84,5 +92,10 @@ final readonly class ObserveQuoteHandler
         } finally {
             $lock->release();
         }
+    }
+
+    private function skip(SkipReason $reason, ObserveQuoteMessage $message): void
+    {
+        $this->journal?->skip(SkipSource::Observer, $reason, SkipContext::forQuoteId($message->quoteId));
     }
 }

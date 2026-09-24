@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Assistant;
 
+use MerchantQuoteAgentPlugin\Audit\TraceKind;
+use MerchantQuoteAgentPlugin\Audit\TraceWrite;
+use MerchantQuoteAgentPlugin\Audit\TraceWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
@@ -42,6 +45,7 @@ final class QuoteStatusTool
     public function __construct(
         private readonly BuyerQuoteGatewayInterface $gateway,
         private readonly SalesChannelContext $context,
+        private readonly ?TraceWriterInterface $traces = null,
     ) {}
 
     /**
@@ -62,15 +66,48 @@ final class QuoteStatusTool
         }
 
         if (!$quote instanceof QuoteSnapshot) {
-            return ['state' => 'not_found', 'total' => '', 'valid_until' => '', 'note' => self::NOTE_NOT_FOUND];
+            return $this->record($quoteNumber, [
+                'state' => 'not_found',
+                'total' => '',
+                'valid_until' => '',
+                'note' => self::NOTE_NOT_FOUND,
+            ]);
         }
 
-        return [
-            'state' => $quote->state ?? 'unknown',
-            'total' => $this->money($quote),
-            'valid_until' => $quote->expirationDate ?? '',
-            'note' => self::NOTE,
-        ];
+        return $this->record(
+            $quoteNumber,
+            [
+                'state' => $quote->state ?? 'unknown',
+                'total' => $this->money($quote),
+                'valid_until' => $quote->expirationDate ?? '',
+                'note' => self::NOTE,
+            ],
+            $quote->id,
+        );
+    }
+
+    /**
+     * @param array{state: string, total: string, valid_until: string, note: string} $output
+     *
+     * @return array{state: string, total: string, valid_until: string, note: string}
+     */
+    private function record(?string $quoteNumber, array $output, ?string $quoteId = null): array
+    {
+        try {
+            $this->traces?->write(
+                new TraceWrite(
+                    TraceKind::AssistantTool,
+                    ['tool' => 'quote_status', 'status' => $output['state']],
+                    ['input' => ['quoteNumber' => $quoteNumber], 'output' => $output],
+                    $quoteId,
+                    $this->context->getCustomer()?->getId(),
+                ),
+            );
+        } catch (\Throwable) {
+            // Evidence cannot change a tool response after the gateway has run.
+        }
+
+        return $output;
     }
 
     /**

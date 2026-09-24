@@ -4,12 +4,31 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Audit\Export;
 
+use MerchantQuoteAgentPlugin\Audit\Export\AnonymizedOutsideTrace;
 use MerchantQuoteAgentPlugin\Audit\Export\AnonymizedTrace;
+use MerchantQuoteAgentPlugin\Audit\Export\ExportPseudonym;
 use MerchantQuoteAgentPlugin\Audit\TraceEvent;
 use PHPUnit\Framework\TestCase;
 
 final class AnonymizedTraceTest extends TestCase
 {
+    public function testOutsideHttpSessionIdIsPseudonymizedInMetaAndContent(): void
+    {
+        $event = self::event();
+        $event->id = 'event-1';
+        $event->kind = 'http';
+        $event->quoteId = 'quote-1';
+        $event->meta = ['route' => 'frontend.merchant_quote_agent.a2cn.acts', 'sessionId' => 'session-1'];
+        $event->content = ['requestBody' => 'session-1'];
+        $pseudonym = new ExportPseudonym('shop-salt');
+
+        $line = AnonymizedOutsideTrace::of($event, $pseudonym, freeText: true);
+
+        self::assertSame($pseudonym->of('session-1'), $line['meta']['sessionId']);
+        self::assertSame($pseudonym->of('session-1'), $line['content']['requestBody']);
+        self::assertSame($pseudonym->of('quote-1'), $line['quote']);
+    }
+
     public function testWithoutFreeTextOnlyTheKindTheTimeAndTheMetaLeave(): void
     {
         self::assertSame(

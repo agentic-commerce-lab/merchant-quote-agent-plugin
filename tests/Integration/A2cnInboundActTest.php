@@ -272,7 +272,7 @@ final class A2cnInboundActTest extends IntegrationTestCase
             $container->get(SellerActFactory::class),
             $inspector,
             $container->get(ChainMirror::class),
-            $container->get('logger'),
+            $container->get(\MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActJournal::class),
             static::gateway(),
         );
         $container->set(SellerActEmitter::class, $emitter);

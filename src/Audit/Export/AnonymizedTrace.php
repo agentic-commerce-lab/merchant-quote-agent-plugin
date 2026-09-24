@@ -35,10 +35,16 @@ final class AnonymizedTrace
     {
         $kind = TraceKind::tryFrom($event->kind);
         $allowed = array_fill_keys([...($kind?->metaKeys() ?? []), 'truncated'], true);
+        $meta = array_intersect_key($event->meta ?? [], $allowed);
+        $sessionId = $meta['sessionId'] ?? null;
+        if (\is_string($sessionId) && isset($pseudonyms[$sessionId])) {
+            $meta['sessionId'] = $pseudonyms[$sessionId];
+        }
+
         $line = [
             'kind' => $event->kind,
             'occurredAt' => $event->occurredAt?->format(\DateTimeInterface::RFC3339_EXTENDED),
-            'meta' => array_intersect_key($event->meta ?? [], $allowed),
+            'meta' => $meta,
         ];
 
         return $freeText ? [...$line, 'content' => self::pseudonymized($event->content, $pseudonyms)] : $line;

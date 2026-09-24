@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Assistant;
 
+use MerchantQuoteAgentPlugin\Audit\TraceWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use Override;
@@ -20,6 +21,7 @@ final readonly class RequestQuoteToolFactory implements ToolFactoryInterface
         private QuoteAgentSettingsReader $settings,
         private AssistantAskStamp $askStamp,
         private ?BuyerQuoteGatewayInterface $gateway = null,
+        private ?TraceWriterInterface $traces = null,
     ) {}
 
     /**
@@ -56,6 +58,6 @@ final readonly class RequestQuoteToolFactory implements ToolFactoryInterface
             return null;
         }
 
-        return new RequestQuoteTool($this->gateway, $salesChannelContext, $this->askStamp);
+        return new RequestQuoteTool($this->gateway, $salesChannelContext, $this->askStamp, $this->traces);
     }
 }

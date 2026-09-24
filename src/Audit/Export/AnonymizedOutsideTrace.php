@@ -14,6 +14,9 @@ final class AnonymizedOutsideTrace
     /** @return array<string, mixed> */
     public static function of(TraceEvent $event, ExportPseudonym $pseudonym, bool $freeText): array
     {
+        $sessionId = $event->meta['sessionId'] ?? null;
+        $sessionId = \is_string($sessionId) ? $sessionId : null;
+
         return [
             'record' => 'event',
             'id' => $pseudonym->of($event->id),
@@ -23,6 +26,7 @@ final class AnonymizedOutsideTrace
                 $event->id,
                 $event->quoteId,
                 $event->customerId,
+                $sessionId,
             ])),
         ];
     }

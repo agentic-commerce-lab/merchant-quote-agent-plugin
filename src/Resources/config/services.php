@@ -17,6 +17,9 @@ use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriter;
 use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriterInterface;
 use MerchantQuoteAgentPlugin\Audit\Export\DecisionExportController;
 use MerchantQuoteAgentPlugin\Audit\Export\DecisionExportStream;
+use MerchantQuoteAgentPlugin\Audit\HttpTraceCapture;
+use MerchantQuoteAgentPlugin\Audit\HttpTraceQuote;
+use MerchantQuoteAgentPlugin\Audit\HttpTraceSubscriber;
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeSubscriber;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
@@ -114,6 +117,7 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteHandler;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\OfferVisibleStateSubscriber;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActJournal;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnBearerJwt;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnDiscoveryController;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnMessagesController;
@@ -287,6 +291,15 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
                 'controller.service_arguments',
             );
         }
+
+        $services->set(HttpTraceQuote::class)->args([
+            service(SessionQuoteLocator::class)->nullOnInvalid(),
+        ]);
+        $services->set(HttpTraceCapture::class)->args([
+            service(TraceWriterInterface::class),
+            service(HttpTraceQuote::class),
+        ]);
+        $services->set(HttpTraceSubscriber::class)->args([service(HttpTraceCapture::class), service('logger')]);
 
         // Identity: bearer token → customer context. The reader is the only class
         // that knows Agentic Commerce's OAuth schema (issue #13 retires it).
@@ -778,6 +791,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
                 service(QuoteAgentSettingsReader::class),
                 service(AssistantAskStamp::class),
                 service(BuyerQuoteGatewayInterface::class)->nullOnInvalid(),
+                service(TraceWriterInterface::class),
             ])
             ->autoconfigure(false)
             ->tag('swag_assistant.tool_factory');
@@ -788,7 +802,11 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         // quote they already have.
         $services
             ->set(QuoteStatusToolFactory::class)
-            ->args([service('request_stack'), service(BuyerQuoteGatewayInterface::class)->nullOnInvalid()])
+            ->args([
+                service('request_stack'),
+                service(BuyerQuoteGatewayInterface::class)->nullOnInvalid(),
+                service(TraceWriterInterface::class),
+            ])
             ->autoconfigure(false)
             ->tag('swag_assistant.tool_factory');
     }
@@ -943,11 +961,12 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // invalid (QuoteGatewayInterface is always defined, factory-backed); the
     // null case that matters for this shop is the factory's return value, which
     // SellerActEmitter's nullable, defaulted `$gateway` now handles itself.
+    $services->set(SellerActJournal::class)->args([service('logger'), service(TraceWriterInterface::class)]);
     $services->set(SellerActEmitter::class)->args([
         service(SellerActFactory::class),
         service(EvidenceInspector::class),
         service(ChainMirror::class),
-        service('logger'),
+        service(SellerActJournal::class),
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
     ]);
 
@@ -961,6 +980,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service('logger'),
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
         service(SellerActEmitter::class)->ignoreOnInvalid(),
+        service(ServicingJournal::class),
     ]);
 
     // The act chain and end-of-session records (Task 19). Same gateway

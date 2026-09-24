@@ -19,6 +19,11 @@ final readonly class SkipContext
         public ?int $attempt,
     ) {}
 
+    public static function forQuoteId(string $quoteId): self
+    {
+        return new self($quoteId, null, null, null);
+    }
+
     public static function forMessage(
         ServiceQuoteMessage $message,
         ?int $attempt = null,

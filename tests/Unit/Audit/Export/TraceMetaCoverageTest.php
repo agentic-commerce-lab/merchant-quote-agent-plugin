@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Audit\Export;
 
+use MerchantQuoteAgentPlugin\Assistant\QuoteStatusTool;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Audit\HttpTraceCapture;
+use MerchantQuoteAgentPlugin\Audit\HttpTraceQuote;
 use MerchantQuoteAgentPlugin\Audit\TraceDraft;
 use MerchantQuoteAgentPlugin\Audit\TraceKind;
 use MerchantQuoteAgentPlugin\Audit\TraceWrite;
+use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Negotiation\AppliedOffer;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
@@ -18,6 +22,8 @@ use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteAutoReplyDetails;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\EmissionOutcome;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActJournal;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\ServicingJournal;
 use MerchantQuoteAgentPlugin\Servicing\SkipContext;
@@ -27,9 +33,14 @@ use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeTraceWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\ScriptedClient;
+use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\ProtocolFixtures;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteList;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use Shopware\Core\System\SalesChannel\SalesChannelContext;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * `meta` leaves in every export, with or without free text. So every kind is
@@ -48,7 +59,7 @@ final class TraceMetaCoverageTest extends TestCase
     {
         $seen = array_unique(array_map(
             static fn(TraceDraft|TraceWrite $t): string => $t->kind->value,
-            self::samples(),
+            $this->samples(),
         ));
         $all = array_map(static fn(TraceKind $k): string => $k->value, TraceKind::cases());
         sort($seen);
@@ -59,7 +70,7 @@ final class TraceMetaCoverageTest extends TestCase
 
     public function testEveryMetaIsExactlyItsDeclaredKeysAndHoldsOnlyMachineValues(): void
     {
-        foreach (self::samples() as $event) {
+        foreach ($this->samples() as $event) {
             $keys = array_values(array_diff(array_keys($event->meta), ['truncated']));
             self::assertSame(
                 $event->kind->metaKeys(),
@@ -95,7 +106,7 @@ final class TraceMetaCoverageTest extends TestCase
     }
 
     /** @return list<TraceDraft|TraceWrite> */
-    private static function samples(): array
+    private function samples(): array
     {
         $writer = new FakeDecisionWriter();
         $recorder = new DecisionRecorder($writer);
@@ -128,6 +139,23 @@ final class TraceMetaCoverageTest extends TestCase
             SkipSource::Handler,
             SkipReason::LockBusy,
             SkipContext::forMessage(new ServiceQuoteMessage('quote-id', 'comment_written')),
+        );
+
+        $request = Request::create('/ucp/quotes/quote-id', 'GET');
+        $request->attributes->set('id', 'quote-id');
+        (new HttpTraceCapture($traceWriter, new HttpTraceQuote()))->record(
+            'frontend.merchant_quote_agent.quote.get',
+            $request,
+            new Response('{"id":"quote-id"}'),
+        );
+
+        $buyerGateway = $this->createMock(BuyerQuoteGatewayInterface::class);
+        $buyerGateway->method('listQuotes')->willReturn(new QuoteList([], 0, 25, 1));
+        (new QuoteStatusTool($buyerGateway, $this->createMock(SalesChannelContext::class), $traceWriter))();
+
+        (new SellerActJournal(new NullLogger(), $traceWriter))->outcome(
+            ProtocolFixtures::snapshot('quote-id'),
+            EmissionOutcome::inert(),
         );
 
         return [...$writer->drafts[0]->trace, ...$traceWriter->events];
