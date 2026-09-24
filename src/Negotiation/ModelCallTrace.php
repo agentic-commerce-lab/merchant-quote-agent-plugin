@@ -15,7 +15,9 @@ use Symfony\Contracts\HttpClient\Exception\HttpExceptionInterface;
  * back. Built only after the call is over, so it never has to be amended.
  *
  * `request` is the exact body that was POSTed. The API key is not in it: it
- * travels as `auth_bearer`, a header, and nothing here reads headers.
+ * travels as `auth_bearer`, a header, and nothing here reads headers. What
+ * comes back is the provider's text, though, so every `content` is passed
+ * through ApiKeyRedaction before it is returned.
  */
 final readonly class ModelCallTrace
 {
@@ -53,7 +55,7 @@ final readonly class ModelCallTrace
             $content['error'] = self::error($unusable, null);
         }
 
-        return [$meta, $content];
+        return [$meta, ApiKeyRedaction::of($this->access->apiKey, $content)];
     }
 
     /** @return array{0: array<string, mixed>, 1: array<string, mixed>} */
@@ -66,7 +68,10 @@ final readonly class ModelCallTrace
 
         return [
             $this->common('failed', \is_int($httpStatus) ? $httpStatus : null, $error),
-            ['request' => $this->request, 'error' => self::error($error, $cause)],
+            ApiKeyRedaction::of($this->access->apiKey, [
+                'request' => $this->request,
+                'error' => self::error($error, $cause),
+            ]),
         ];
     }
 

@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\TraceDraft;
 use MerchantQuoteAgentPlugin\Audit\TraceKind;
+use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
@@ -23,6 +24,9 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  */
 final class ModelPlatformTraceTest extends TestCase
 {
+    /** NegotiationFixture's `sk-test` is under the redaction's 8-byte guard. */
+    private const LONG_KEY = 'sk-test-0123456789';
+
     public function testASuccessfulCallRecordsThePromptTheAnswerAndItsOwnFigures(): void
     {
         [$writer, $recorder] = self::openPass();
@@ -136,6 +140,51 @@ final class ModelPlatformTraceTest extends TestCase
         $platform->object(NegotiationFixture::modelAccess(), 'sys', 'usr', CommentInterpretation::class);
 
         self::assertSame('extract', self::modelCalls($writer, $recorder)[0]->meta['purpose']);
+    }
+
+    public function testAKeyTheProviderEchoesInAnErrorIsRedacted(): void
+    {
+        // Some debug gateways reflect the Authorization header in a 401. The
+        // problem+json body also makes Symfony copy `detail` into the
+        // exception message, so `error.cause` carries the key as well.
+        [$writer, $recorder] = self::openPass();
+        [$platform] = ScriptedClient::responding([new MockResponse('{"title":"Unauthorized","detail":"Bearer '
+        . self::LONG_KEY
+        . ' is not valid"}', [
+            'http_code' => 401,
+            'response_headers' => ['content-type: application/problem+json'],
+        ])], $recorder);
+
+        try {
+            $platform->text(new ModelAccess(self::LONG_KEY, 'https://api.example.com/v1', 'gpt-4o-mini'), 'sys', 'usr');
+            self::fail('A 401 must escalate.');
+        } catch (ModelUnavailable) {
+        }
+
+        $content = json_encode(self::modelCalls($writer, $recorder)[0]->content, JSON_THROW_ON_ERROR);
+        self::assertStringNotContainsString(self::LONG_KEY, $content);
+        self::assertStringContainsString('[redacted]', $content);
+    }
+
+    public function testAKeyEchoedInAnUnusableAnswerIsRedacted(): void
+    {
+        [$writer, $recorder] = self::openPass();
+        [$platform] = ScriptedClient::spy(['{"action":"sing","key":"' . self::LONG_KEY . '"}'], $recorder);
+
+        try {
+            $platform->object(
+                new ModelAccess(self::LONG_KEY, 'https://api.example.com/v1', 'gpt-4o-mini'),
+                'sys',
+                'usr',
+                NegotiateResponse::class,
+            );
+            self::fail('An unmappable answer must escalate.');
+        } catch (ModelUnavailable) {
+        }
+
+        $content = json_encode(self::modelCalls($writer, $recorder)[0]->content, JSON_THROW_ON_ERROR);
+        self::assertStringNotContainsString(self::LONG_KEY, $content);
+        self::assertStringContainsString('[redacted]', $content);
     }
 
     /** @return array{0: FakeDecisionWriter, 1: DecisionRecorder} */
