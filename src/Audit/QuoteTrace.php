@@ -4,7 +4,16 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Audit;
 
+use MerchantQuoteAgentPlugin\Assistant\AssistantAskStamp;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
+use MerchantQuoteAgentPlugin\Negotiation\ClarificationMarker;
+use MerchantQuoteAgentPlugin\Negotiation\QuoteBaseline;
+use MerchantQuoteAgentPlugin\Protocol\Act\ActKey;
+use MerchantQuoteAgentPlugin\Servicing\AgentDisclosure;
+use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
+use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 
 /**
  * A quote snapshot as a trace event, for `quote_before` and `quote_after`
@@ -32,8 +41,18 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
  */
 final class QuoteTrace
 {
-    /** The custom-field keys this plugin writes (Audit markers, Assistant, Protocol\Act\ActKey); anything else is the merchant's. */
-    private const OWN_CUSTOM_FIELD_PREFIXES = ['merchant_quote_agent_', 'merchantQuoteAgent', 'a2cn_'];
+    /** Only keys written by this plugin, plus the indexed act keys emitted by ActKey::for(). */
+    private const OWN_CUSTOM_FIELDS = [
+        AgentDisclosure::MARKER_KEY,
+        AssistantAskStamp::ASK_SOURCE_KEY,
+        MirroredAsks::KEY,
+        QuoteBaseline::KEY,
+        ClarificationMarker::MARKER_KEY,
+        ActKey::SESSION_KEY,
+        QuoteEscalator::MARKER_KEY,
+        ServiceQuoteHandler::ATTEMPTS_KEY,
+        ServicingFingerprint::MARKER_KEY,
+    ];
 
     private function __construct() {}
 
@@ -64,12 +83,6 @@ final class QuoteTrace
 
     private static function isOwn(int|string $key): bool
     {
-        foreach (self::OWN_CUSTOM_FIELD_PREFIXES as $prefix) {
-            if (str_starts_with((string) $key, $prefix)) {
-                return true;
-            }
-        }
-
-        return false;
+        return \is_string($key) && (\in_array($key, self::OWN_CUSTOM_FIELDS, strict: true) || ActKey::isActKey($key));
     }
 }

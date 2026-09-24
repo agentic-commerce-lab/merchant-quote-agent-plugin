@@ -189,7 +189,9 @@ recorded in `ModelPlatform::send()`.
   - `latencyMs`;
   - `promptTokens`, `completionTokens`, `cachedTokens`, `reasoningTokens`, each
     null when the provider does not send it;
-  - `finishReason`;
+  - `finishReason`: a recognized chat-completion machine value, or null when
+    a compatible provider returns an unknown string; the raw value remains in
+    the response under `content`;
   - `retries`, a list with one entry per failed attempt holding
     `{httpStatus, transportError: bool}`, collected by `ModelRetryStrategy`;
   - `errorClass`;
@@ -242,10 +244,11 @@ and `AppliedOffer::$after` at `recordApplied()`.
   `identity.companyName` and `identity.orderId`, which `Audit\QuoteTrace` drops
   at recording: neither is needed to measure a strategy, and the company name
   would sit next to the customer's pseudonym in every export with comments.
-  Of `lifecycle.customFields`, only the plugin's own keys are kept (those
-  starting `merchant_quote_agent_`, `merchantQuoteAgent` or `a2cn_`: the
-  agent's state markers and the A2CN session and acts). Every other key is a
-  field the merchant defined, which can hold a contact's name or e-mail.
+  Of `lifecycle.customFields`, only exact keys written by this plugin are
+  kept: its state markers, the A2CN session key, and act keys matching the
+  bounded indexed format emitted by `ActKey::for()`. Prefix lookalikes are
+  dropped because a merchant-defined field can carry a contact's name or
+  e-mail.
 
 ### Outside a pass (PR 2)
 

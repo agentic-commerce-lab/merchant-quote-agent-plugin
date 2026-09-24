@@ -18,6 +18,9 @@ use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
  */
 final class ChatEnvelope
 {
+    /** Only documented chat-completion machine values may leave with always-exported trace metadata. */
+    private const FINISH_REASONS = ['stop', 'length', 'tool_calls', 'content_filter', 'function_call'];
+
     private function __construct() {}
 
     /**
@@ -51,12 +54,17 @@ final class ChatEnvelope
         return \is_int($value) ? $value : null;
     }
 
-    /** @param array<array-key, mixed> $decoded */
+    /**
+     * Unknown provider values stay in the raw response behind the free-text
+     * gate. Compatible gateways may send arbitrary strings here.
+     *
+     * @param array<array-key, mixed> $decoded
+     */
     public static function finishReason(array $decoded): ?string
     {
         $reason = self::at($decoded, 'choices', 0, 'finish_reason');
 
-        return \is_string($reason) ? $reason : null;
+        return \is_string($reason) && \in_array($reason, self::FINISH_REASONS, strict: true) ? $reason : null;
     }
 
     /**
