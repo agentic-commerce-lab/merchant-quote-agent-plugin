@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
-use MerchantQuoteAgentPlugin\Bridge\Data\Discount;
-use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
@@ -18,6 +16,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
 use MerchantQuoteAgentPlugin\Policy\Data\VerifyOfferInput;
 use MerchantQuoteAgentPlugin\Policy\Epsilon;
+use MerchantQuoteAgentPlugin\Policy\MarginFloorClamp;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
@@ -40,6 +39,7 @@ final readonly class OfferApplier
         private OfferVerifier $verifier,
         private LoggerInterface $logger,
         private DecisionRecorder $recorder,
+        private MarginFloorGuard $marginFloors,
     ) {}
 
     public function apply(
@@ -60,12 +60,26 @@ final readonly class OfferApplier
         // itself is a write that bumps the quote's revision, the only
         // revision the write below can safely assume as unchanged.
         $reference = $gateway->fetchSnapshot($quoteId);
+        $live = SnapshotAdapter::toPolicy($reference);
 
-        array_push($writes, ...$this->write($gateway, $quoteId, $reference, $limits, $offer));
+        // The minimum-margin floor (spec 2026-09-24), measured on the LIVE
+        // quote because that is what a percentage write acts on. A null clamp
+        // means nothing binds and the offer goes out exactly as proposed.
+        $floors = $this->marginFloors->floors($live, $limits);
+        $floored = MarginFloorClamp::clamp($offer, $live->lines, $floors);
+        if ($floored !== null) {
+            $this->logger->info('The offer was raised to the minimum-margin floor.', ['quoteId' => $quoteId]);
+        }
+
+        array_push($writes, ...$this->write(
+            $gateway,
+            $reference,
+            $limits,
+            OfferWrite::of($offer, $floored, $reference),
+        ));
         $gateway->recalculate($quoteId);
         $writes[] = 'recalculate';
 
-        $live = SnapshotAdapter::toPolicy($reference);
         $baselineLines = QuoteBaseline::read($reference);
 
         $after = $gateway->fetchSnapshot($quoteId);
@@ -83,6 +97,7 @@ final readonly class OfferApplier
             final: SnapshotAdapter::toPolicy($after),
             limits: $limits,
             now: new \DateTimeImmutable(),
+            floors: $floors,
         ));
 
         // #174: the checks above bound the write against the BASELINE, by
@@ -153,24 +168,23 @@ final readonly class OfferApplier
 
     /**
      * A per-line offer writes absolute unit prices to the named lines; a
-     * quote-wide offer writes an absolute discount percentage. Never both,
-     * and never a delta — a retry must reproduce the same quote rather than
-     * stack a second discount onto the first. Only the first write of the
-     * pass carries the revision precondition; a buyer edit between our read
-     * and our write must lose, loudly, exactly once.
+     * quote-wide offer writes an absolute discount percentage (OfferWrite
+     * says which). Never a delta — a retry must reproduce the same quote
+     * rather than stack a second discount onto the first. Only the first
+     * write of the pass carries the revision precondition; a buyer edit
+     * between our read and our write must lose, loudly, exactly once.
      *
      * @return list<string> the write names performed, for the audit trail
      */
     private function write(
         QuoteGatewayInterface $gateway,
-        string $quoteId,
         QuoteSnapshot $reference,
         QuoteLimits $limits,
-        ProposedOffer $offer,
+        OfferWrite $write,
     ): array {
+        $quoteId = $reference->identity->quoteId;
         $expected = $reference->revision;
-        $linePrices = $offer->price->linePricesNet;
-        $expiresAt = new \DateTimeImmutable(sprintf('+%d days', $limits->validityDays));
+        $writes = [];
 
         // #49: the snapshot read immediately above is the pre-negotiation
         // state on the first pass that writes anything, so the baseline rides
@@ -182,26 +196,25 @@ final readonly class OfferApplier
         // price this pre-write read gives it. Still no extra write: this
         // method's updateQuote goes out either way.
         $fragment = QuoteBaseline::stampOrExtend($reference);
-        $baseline = $fragment === [] ? null : $fragment;
 
-        if ($linePrices !== null && $linePrices !== []) {
-            $gateway->updateLineItems($quoteId, array_map(self::lineChange(...), $linePrices), $expected);
-            $gateway->updateQuote($quoteId, new QuoteUpdate(expiresAt: $expiresAt, customFields: $baseline));
-
-            return ['updateLineItems', 'updateQuote'];
+        if ($write->lines !== []) {
+            $gateway->updateLineItems($quoteId, array_map(self::lineChange(...), $write->lines), $expected);
+            $expected = null;
+            $writes[] = 'updateLineItems';
         }
 
         $gateway->updateQuote(
             $quoteId,
             new QuoteUpdate(
-                discount: new Discount(DiscountType::Percentage, $offer->price->discountPercent ?? 0.0),
-                expiresAt: $expiresAt,
-                customFields: $baseline,
+                discount: $write->discount,
+                expiresAt: new \DateTimeImmutable(sprintf('+%d days', $limits->validityDays)),
+                customFields: $fragment === [] ? null : $fragment,
             ),
             $expected,
         );
+        $writes[] = 'updateQuote';
 
-        return ['updateQuote'];
+        return $writes;
     }
 
     private static function lineChange(QuoteLinePrice $price): QuoteLineItemChange

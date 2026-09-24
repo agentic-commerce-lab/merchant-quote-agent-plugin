@@ -13,6 +13,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
+use MerchantQuoteAgentPlugin\Negotiation\MarginFloorGuard;
 use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
@@ -32,6 +33,7 @@ use MerchantQuoteAgentPlugin\Tests\Bench\Scenario;
 use MerchantQuoteAgentPlugin\Tests\Bench\SyntheticBuyer;
 use MerchantQuoteAgentPlugin\Tests\Integration\BuyerQuoteContextFixture;
 use MerchantQuoteAgentPlugin\Tests\Integration\BuyerQuoteFixture;
+use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\FakePurchasePrices;
 use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -269,7 +271,7 @@ final readonly class BenchNegotiation
 
         $round = new OfferRound(
             new OfferProposer($this->model, $prompts, $authorizer, $recorder, $historyFactory),
-            new OfferApplier($verifier, $logger, $recorder),
+            new OfferApplier($verifier, $logger, $recorder, new MarginFloorGuard(new FakePurchasePrices())),
             new ReplyComposer($this->model, $prompts, $logger, $recorder),
             $escalator,
             $logger,

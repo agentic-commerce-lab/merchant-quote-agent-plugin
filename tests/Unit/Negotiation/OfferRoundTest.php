@@ -15,6 +15,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
+use MerchantQuoteAgentPlugin\Negotiation\MarginFloorGuard;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
@@ -70,7 +71,7 @@ final class OfferRoundTest extends TestCase
 
         $round = new OfferRound(
             new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder, new FakeCustomerHistoryFactory()),
-            new OfferApplier(new OfferVerifier(), $logger, $recorder),
+            new OfferApplier(new OfferVerifier(), $logger, $recorder, new MarginFloorGuard(new FakePurchasePrices())),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             new QuoteEscalator(),
             $logger,
@@ -268,7 +269,7 @@ final class OfferRoundTest extends TestCase
 
         $round = new OfferRound(
             new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder, new FakeCustomerHistoryFactory()),
-            new OfferApplier(new OfferVerifier(), $logger, $recorder),
+            new OfferApplier(new OfferVerifier(), $logger, $recorder, new MarginFloorGuard(new FakePurchasePrices())),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             new QuoteEscalator(),
             $logger,
@@ -304,7 +305,7 @@ final class OfferRoundTest extends TestCase
 
         $round = new OfferRound(
             new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder, new FakeCustomerHistoryFactory()),
-            new OfferApplier(new OfferVerifier(), $logger, $recorder),
+            new OfferApplier(new OfferVerifier(), $logger, $recorder, new MarginFloorGuard(new FakePurchasePrices())),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             new QuoteEscalator(),
             $logger,
@@ -358,7 +359,7 @@ final class OfferRoundTest extends TestCase
 
         $round = new OfferRound(
             new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder, new FakeCustomerHistoryFactory()),
-            new OfferApplier(new OfferVerifier(), $logger, $recorder),
+            new OfferApplier(new OfferVerifier(), $logger, $recorder, new MarginFloorGuard(new FakePurchasePrices())),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             new QuoteEscalator(),
             $logger,
@@ -403,7 +404,7 @@ final class OfferRoundTest extends TestCase
         $prompts = new PromptComposer('EXTRACT', 'NEGOTIATE', 'REPLY {{tone}}');
         $round = new OfferRound(
             new OfferProposer($client, $prompts, new OfferAuthorizer(), $recorder, new FakeCustomerHistoryFactory()),
-            new OfferApplier(new OfferVerifier(), $logger, $recorder),
+            new OfferApplier(new OfferVerifier(), $logger, $recorder, new MarginFloorGuard(new FakePurchasePrices())),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             new QuoteEscalator(),
             $logger,

@@ -84,6 +84,7 @@ use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
+use MerchantQuoteAgentPlugin\Negotiation\MarginFloorGuard;
 use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
@@ -646,9 +647,9 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->alias(CustomerHistoryFactoryInterface::class, CustomerHistoryFactory::class);
 
     // The merchant's purchase prices, for the minimum-margin floor.
-    // Registered behind the SwagCommercial gate like OfferApplier, its only
-    // consumer: a consumer registered above that gate would be a missing
-    // service on a shop without SwagCommercial.
+    // Registered behind the SwagCommercial gate like MarginFloorGuard, its only
+    // consumer (used by OfferApplier): a consumer registered above that gate
+    // would be a missing service on a shop without SwagCommercial.
     $services->set(PurchasePriceReader::class)->args([
         service('product.repository'),
         service('currency.repository'),
@@ -893,6 +894,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
 
     $services->set(AskInterpreter::class);
     $services->set(OfferProposer::class);
+    $services->set(MarginFloorGuard::class);
     $services->set(OfferApplier::class);
     $services->set(ReplyComposer::class);
     $services->set(OfferRound::class);

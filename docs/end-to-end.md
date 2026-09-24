@@ -285,6 +285,15 @@ bands:
 | `counter` | Above the maximum but at or below `counterOfferMaxPercent` — answered with a deterministic counter at the merchant's own cap. |
 | `escalate` | Above the counter ceiling, or no counter band configured. |
 
+**Minimum-margin floor.** With `minMarginPercent` set, `OfferApplier` never
+writes a line below `purchase price × (1 + minMarginPercent/100)`. It does not
+escalate: a deeper offer is raised to the floor, per line, and a quote-wide
+percentage that would undercut any floor is written as line prices with the
+quote discount reset to 0%. A post-write check escalates as
+`verification_failed` if the database still lands a line below its floor. The
+purchase price and the floor never reach the model or the buyer; the buyer's
+reply reports the reduction the database actually shows.
+
 Two other checks escalate here:
 
 - **Value ceiling.** Above `maxQuoteValueNet` for the quote's currency →

@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
+use MerchantQuoteAgentPlugin\Negotiation\MarginFloorGuard;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
@@ -132,7 +133,7 @@ final class PipelineHarness
                 $recorder,
                 $historyFactory ?? new FakeCustomerHistoryFactory(),
             ),
-            new OfferApplier(new OfferVerifier(), $logger, $recorder),
+            new OfferApplier(new OfferVerifier(), $logger, $recorder, new MarginFloorGuard(new FakePurchasePrices())),
             new ReplyComposer($client, $prompts, $logger, $recorder),
             $escalator,
             $logger,
