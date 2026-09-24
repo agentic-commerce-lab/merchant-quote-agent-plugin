@@ -155,6 +155,8 @@ every place it enumerates reasons, not only the snippets.
 | Margin floor leaves nothing to give | `no_further_concession` escalation |
 | A real write that prints as `0` at two decimals | Answered with the new total, as today (#175) |
 | Comment with no ask | Acknowledged, as today |
+| Comment with no ask after a storefront ask was countered | Acknowledged: the ask's token is in the servicing stamp, so `StructuredAsk::isOpen()` is false even though `requested_price` still sits below the line |
+| Pass retried after its write landed but before its reply | Escalates; the human sees the offer already on the quote |
 | Requested price at or above the line price | Shown in the prompt; not an ask; the band grants nothing to it |
 
 ## Testing

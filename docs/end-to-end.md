@@ -244,7 +244,8 @@ from the response DTOs. It extracts **only what the buyer explicitly asked**:
 Earlier `[merchant]` comments in the thread are the agent's own previous
 replies, used as context and never as buyer asks.
 
-If there is no ask at all and no unmet structured target price, a pass that read
+If there is no ask at all and no open structured target price — one below the
+line price that the last pass has not already answered — a pass that read
 a buyer comment ends as `acknowledged`: it posts `ReplyTemplate::acknowledges()`
 — the buyer-facing total and expiry as the quote holds them, no model call, no
 price write — and moves the quote to `replied` (`sent`, or `admin_resend` from
@@ -291,11 +292,12 @@ already below its floor (a loss leader, say) is left where it is. It does not
 escalate: a deeper offer is raised to the floor, per line, and a quote-wide
 percentage that would undercut any floor is written as line prices. Whenever
 the floor re-prices an offer, quote-wide or per-line, the quote-level discount
-is reset to 0% and folded into the line prices. A buyer who repeats the ask
-gets the same prices again: the quote stands. A post-write check escalates as
-`verification_failed` if the database still lands a line below its floor. The
-purchase price and the floor never reach the model or the buyer; the buyer's
-reply reports the reduction the database actually shows.
+is reset to 0% and folded into the line prices. A repeated ask the floor leaves
+nothing more to give on moves no price, and escalates as
+`no_further_concession`: a price ask is never answered with 0%. A post-write
+check escalates as `verification_failed` if the database still lands a line
+below its floor. The purchase price and the floor never reach the model or the
+buyer; the buyer's reply reports the reduction the database actually shows.
 
 Two other checks escalate here:
 

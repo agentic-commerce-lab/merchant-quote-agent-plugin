@@ -14,6 +14,11 @@ use Psr\Log\LoggerInterface;
  * `OfferRound::play()` takes one branch on the answer instead of one per
  * reason. Split out the same way `ReductionForPass` was, to keep these
  * decisions off `OfferRound`'s class-scoped complexity budget.
+ *
+ * A write that moved nothing cannot tell "nothing left to give" from "a
+ * retried pass whose first attempt already wrote this offer and then failed
+ * to reply": both escalate as no_further_concession. The second fails safe —
+ * see OfferApplier's docblock — because the human sees the offer on the quote.
  */
 final class PostWriteOutcome
 {
