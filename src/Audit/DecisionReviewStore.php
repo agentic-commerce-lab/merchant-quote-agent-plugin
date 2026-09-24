@@ -1,0 +1,114 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MerchantQuoteAgentPlugin\Audit;
+
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\Uuid\Uuid;
+
+/**
+ * System scope throughout, because every field carries
+ * Protection(write: [Protection::SYSTEM_SCOPE]) — the same reason
+ * TerminalOutcomeWriter uses one. The admin user's own permission is checked
+ * by the route's `_acl`, before any of this runs.
+ */
+final readonly class DecisionReviewStore implements DecisionReviewStoreInterface
+{
+    /** @param EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $records */
+    public function __construct(
+        private EntityRepository $records,
+    ) {}
+
+    #[\Override]
+    public function find(string $decisionId): ?QuoteDecisionRecord
+    {
+        if (!Uuid::isValid($decisionId)) {
+            return null;
+        }
+
+        $record = $this->records
+            ->search(new Criteria([$decisionId]), Context::createDefaultContext())
+            ->getEntities()
+            ->first();
+
+        return $record instanceof QuoteDecisionRecord ? $record : null;
+    }
+
+    #[\Override]
+    public function supersedePending(string $quoteId): array
+    {
+        $context = Context::createDefaultContext();
+        $criteria = new Criteria();
+        $criteria->addFilter(
+            new EqualsFilter('quoteId', $quoteId),
+            new EqualsFilter('reviewStatus', ReviewStatus::Pending->value),
+        );
+
+        $payload = [];
+        $versionIds = [];
+
+        foreach ($this->records->search($criteria, $context)->getEntities() as $record) {
+            if (!$record instanceof QuoteDecisionRecord) {
+                continue;
+            }
+
+            $payload[] = [
+                'id' => $record->id,
+                'reviewStatus' => ReviewStatus::Superseded->value,
+                'draftVersionId' => null,
+            ];
+
+            if ($record->draftVersionId !== null) {
+                $versionIds[] = $record->draftVersionId;
+            }
+        }
+
+        if ($payload !== []) {
+            $this->records->update($payload, $context);
+        }
+
+        return $versionIds;
+    }
+
+    #[\Override]
+    public function markSent(string $decisionId, string $sentReply, ?array $sentChanges): void
+    {
+        $this->write($decisionId, [
+            'reviewStatus' => ReviewStatus::Sent->value,
+            'reviewedAt' => new \DateTimeImmutable(),
+            'sentReply' => $sentReply,
+            'sentChanges' => $sentChanges,
+            'draftVersionId' => null,
+        ]);
+    }
+
+    #[\Override]
+    public function markRejected(string $decisionId): void
+    {
+        $this->write($decisionId, [
+            'reviewStatus' => ReviewStatus::Rejected->value,
+            'reviewedAt' => new \DateTimeImmutable(),
+            'draftVersionId' => null,
+        ]);
+    }
+
+    #[\Override]
+    public function saveFeedback(string $decisionId, array $reasons, string $comment): void
+    {
+        $this->write($decisionId, [
+            'feedbackReasons' => $reasons === [] ? null : $reasons,
+            'feedbackComment' => $comment === '' ? null : $comment,
+            'feedbackAt' => new \DateTimeImmutable(),
+        ]);
+    }
+
+    /** @param array<string, mixed> $fields */
+    private function write(string $decisionId, array $fields): void
+    {
+        $this->records->update([['id' => $decisionId, ...$fields]], Context::createDefaultContext());
+    }
+}

@@ -67,6 +67,12 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
  * The rule aggregates per class (threshold 10); reading the asks component
  * back out of a stamped marker takes the same null/bounds checks composing
  * it did, so exposing the read side is one more branch, not a new concept.
+ *
+ * @mago-expect lint:too-many-methods
+ * review() is the eleventh, counting the private constructor: a third way to
+ * compose the same components, beside of() and stamp(). Moving it out would
+ * mean making compose() and buyerAuthored() public, which lets any caller
+ * build a marker that none of the three sanctioned compositions produces.
  */
 final class ServicingFingerprint
 {
@@ -101,6 +107,24 @@ final class ServicingFingerprint
     public static function stamp(QuoteSnapshot $serviced, string $stateAfter): string
     {
         return self::compose($stateAfter, self::buyerAuthored($serviced), self::asksOf($serviced));
+    }
+
+    /**
+     * What a Draft Mode Send compares of() against to tell whether the buyer
+     * did anything since the draft: the buyer comments the pass actually
+     * SERVICED (so one landing mid-pass still reads as new, for stamp()'s
+     * reason), with the state and asks as the LIVE quote holds them once the
+     * pass is done — AskMirror writes the buyer's ask onto the line during the
+     * pass, so of() right after a draft never equals stamp(), and a Send
+     * checked against the stamp would always be stale.
+     *
+     * ponytail: a buyer editing a requested price in the seconds between
+     * AskMirror and this read is credited, not caught; the pass that edit
+     * triggers supersedes the draft anyway.
+     */
+    public static function review(QuoteSnapshot $serviced, QuoteSnapshot $live): string
+    {
+        return self::compose($live->lifecycle->stateTechnicalName, self::buyerAuthored($serviced), self::asksOf($live));
     }
 
     /** @param array<string, mixed> $customFields */

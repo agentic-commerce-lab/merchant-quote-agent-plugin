@@ -12,6 +12,8 @@ use MerchantQuoteAgentPlugin\Audit\DecisionEraserInterface;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
+use MerchantQuoteAgentPlugin\Audit\DecisionReviewStore;
+use MerchantQuoteAgentPlugin\Audit\DecisionReviewStoreInterface;
 use MerchantQuoteAgentPlugin\Audit\EscalationResolutionSubscriber;
 use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriter;
 use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriterInterface;
@@ -437,6 +439,10 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(EscalationResolutionWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
     $services->alias(EscalationResolutionWriterInterface::class, EscalationResolutionWriter::class);
     $services->set(EscalationResolutionSubscriber::class);
+
+    // Draft Mode's after-the-pass writes: superseded, sent, rejected, feedback.
+    $services->set(DecisionReviewStore::class)->args([service('merchant_quote_agent_decision.repository')]);
+    $services->alias(DecisionReviewStoreInterface::class, DecisionReviewStore::class);
 
     // Configuration (issue #5). Outside every gate below: the negotiation
     // policy is what the agent decides by, so it is needed on any shop that
