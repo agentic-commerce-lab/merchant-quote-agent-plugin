@@ -25,7 +25,7 @@ final class DecisionReviewStoreTest extends TestCase
 
         self::assertSame(['0190aaaa0000700080000000000000aa'], $versions);
         self::assertSame(
-            [['id' => $pending->id, 'reviewStatus' => 'superseded', 'draftVersionId' => null]],
+            [['id' => $pending->id, 'reviewStatus' => 'superseded', 'draftVersionId' => null, 'sentChanges' => null]],
             $repository->updates[0],
         );
     }
@@ -50,6 +50,15 @@ final class DecisionReviewStoreTest extends TestCase
         self::assertSame(['totalNet' => 90.0], $row['sentChanges']);
         self::assertNull($row['draftVersionId']);
         self::assertInstanceOf(\DateTimeImmutable::class, $row['reviewedAt']);
+    }
+
+    public function testPreviewPersistsAnInternalEditedMarker(): void
+    {
+        $repository = self::repository([]);
+
+        (new DecisionReviewStore($repository))->markPreviewEdited('rec-1');
+
+        self::assertSame([['id' => 'rec-1', 'sentChanges' => ['editedByMerchant' => true]]], $repository->updates[0]);
     }
 
     public function testFeedbackStoresNullForAnEmptyHalf(): void

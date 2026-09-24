@@ -19,12 +19,14 @@ use MerchantQuoteAgentPlugin\Review\DraftEdits;
 use MerchantQuoteAgentPlugin\Review\DraftingQuoteGateway;
 use MerchantQuoteAgentPlugin\Review\DraftNotReviewable;
 use MerchantQuoteAgentPlugin\Review\DraftRejecter;
+use MerchantQuoteAgentPlugin\Review\DraftSendCompletion;
 use MerchantQuoteAgentPlugin\Review\DraftSender;
 use MerchantQuoteAgentPlugin\Review\PendingDraft;
 use MerchantQuoteAgentPlugin\Review\PendingDrafts;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
+use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -78,7 +80,7 @@ final class DraftModeFlowTest extends IntegrationTestCase
             $this->store(),
         ))->reject($pending));
 
-        self::assertFalse($this->versions()->exists($versionId));
+        self::assertFalse($this->versions()->exists($quoteId, $versionId));
         self::assertSame($before->totals->totalNet, static::gateway()->fetchSnapshot($quoteId)->totals->totalNet);
         self::assertSame('rejected', $this->store()->find($decisionId)?->reviewStatus);
     }
@@ -166,6 +168,8 @@ final class DraftModeFlowTest extends IntegrationTestCase
             static::getContainer()->get('quote.repository'),
             static::getContainer()->get('version.repository'),
             static::gatewayFactory(),
+            static::getContainer()->get(Connection::class),
+            new NullLogger(),
         );
     }
 
@@ -186,6 +190,10 @@ final class DraftModeFlowTest extends IntegrationTestCase
 
     private function sender(): DraftSender
     {
-        return new DraftSender($this->versions(), static::gatewayFactory(), $this->store());
+        return new DraftSender(
+            $this->versions(),
+            static::gatewayFactory(),
+            new DraftSendCompletion($this->store(), new NullLogger()),
+        );
     }
 }

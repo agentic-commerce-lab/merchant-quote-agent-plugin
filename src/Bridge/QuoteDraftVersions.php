@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Bridge;
 
+use Doctrine\DBAL\Connection;
+use Psr\Log\LoggerInterface;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
@@ -29,6 +30,8 @@ final readonly class QuoteDraftVersions implements QuoteDraftVersionsInterface
         private EntityRepository $quotes,
         private EntityRepository $versions,
         private ContextBoundGateways $gateways,
+        private Connection $connection,
+        private LoggerInterface $logger,
     ) {}
 
     #[\Override]
@@ -37,14 +40,24 @@ final readonly class QuoteDraftVersions implements QuoteDraftVersionsInterface
         return $this->quotes->createVersion($quoteId, AgentContext::create(), self::VERSION_NAME);
     }
 
+    /** @throws \Doctrine\DBAL\Exception */
     #[\Override]
-    public function exists(string $versionId): bool
+    public function exists(string $quoteId, string $versionId): bool
     {
-        return (
-            Uuid::isValid($versionId)
-            && $this->versions->searchIds(new Criteria([$versionId]), Context::createDefaultContext())->firstId()
-            !== null
-        );
+        if (
+            !Uuid::isValid($quoteId)
+            || !Uuid::isValid($versionId)
+            || $versionId === Defaults::LIVE_VERSION
+            || $versionId === QuoteVersionResolver::SNAPSHOT_VERSION_ID
+        ) {
+            return false;
+        }
+
+        return $this->connection->fetchOne('SELECT 1 FROM `version` v INNER JOIN `quote` q ON q.version_id = v.id
+              WHERE v.id = :versionId AND q.id = :quoteId', [
+            'versionId' => Uuid::fromHexToBytes($versionId),
+            'quoteId' => Uuid::fromHexToBytes($quoteId),
+        ]) !== false;
     }
 
     #[\Override]
@@ -65,12 +78,25 @@ final readonly class QuoteDraftVersions implements QuoteDraftVersionsInterface
         $this->quotes->merge(self::draft($versionId), AgentContext::create());
     }
 
+    /** @throws \Throwable */
     #[\Override]
     public function delete(string $quoteId, string $versionId): void
     {
         $draft = self::draft($versionId);
-        $this->quotes->delete([['id' => $quoteId]], AgentContext::forVersion($draft));
-        $this->versions->delete([['id' => $draft]], Context::createDefaultContext());
+        try {
+            $this->connection->transactional(function () use ($quoteId, $draft): void {
+                $this->quotes->delete([['id' => $quoteId]], AgentContext::forVersion($draft));
+                $this->versions->delete([['id' => $draft]], Context::createDefaultContext());
+            });
+        } catch (\Throwable $error) {
+            $this->logger->error('Failed to discard a quote draft version.', [
+                'quoteId' => $quoteId,
+                'versionId' => $draft,
+                'exception' => $error,
+            ]);
+
+            throw $error;
+        }
     }
 
     /**

@@ -26,6 +26,7 @@ final class DraftView
             'decisionId' => $record->id,
             'outcome' => $record->outcome,
             'stale' => $pending->stale,
+            'previewEdited' => $pending->previewEdited(),
             'quoteState' => $live->lifecycle->stateTechnicalName,
             'currencyIso' => $live->identity->currencyIso,
             'maxDiscountPercent' => $record->maxDiscountPercent,

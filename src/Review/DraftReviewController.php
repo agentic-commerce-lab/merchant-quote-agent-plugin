@@ -65,6 +65,11 @@ final readonly class DraftReviewController
             return $this->drafts->with($decisionId, function (PendingDraft $pending) use ($edits): array {
                 $after = DraftEditor::apply($pending, $edits);
 
+                if (!$edits->isEmpty()) {
+                    $this->store->markPreviewEdited($pending->record->id);
+                    $pending->record->sentChanges = ['editedByMerchant' => true];
+                }
+
                 return DraftView::of($pending, $after, $this->reply->compose($pending, $after));
             });
         });

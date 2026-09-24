@@ -92,7 +92,7 @@ final readonly class PendingDrafts
                 throw DraftNotReviewable::notPending();
             }
 
-            $draft = $this->draft($record->draftVersionId, $requireDraft);
+            $draft = $this->draft($quoteId, $record->draftVersionId, $requireDraft);
             $live = $gateway->fetchSnapshot($quoteId);
 
             return $work(
@@ -114,13 +114,13 @@ final readonly class PendingDrafts
      *
      * @throws DraftNotReviewable
      */
-    private function draft(?string $versionId, bool $requireDraft): ?QuoteGatewayInterface
+    private function draft(string $quoteId, ?string $versionId, bool $requireDraft): ?QuoteGatewayInterface
     {
         if ($versionId === null) {
             return null;
         }
 
-        if ($this->versions->exists($versionId)) {
+        if ($this->versions->exists($quoteId, $versionId)) {
             return $this->versions->gateway($versionId);
         }
 

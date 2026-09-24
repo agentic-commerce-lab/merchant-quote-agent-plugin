@@ -16,12 +16,11 @@ interface QuoteDraftVersionsInterface
     public function create(string $quoteId): string;
 
     /**
-     * Whether the version still has its row. Ask before reading a stored id:
-     * a versioned DAL read of a version whose rows are gone falls back to the
-     * live quote instead of failing, so a draft that no longer exists would
-     * read as the live prices. False for anything that is not a uuid.
+     * Whether both the version and this quote's row in that version exist.
+     * A versioned DAL read with no quote row falls back to the live quote,
+     * so a partially deleted draft must not be sent. False for invalid ids.
      */
-    public function exists(string $versionId): bool;
+    public function exists(string $quoteId, string $versionId): bool;
 
     /** @throws DraftVersionUnavailable|NotADraftVersion */
     public function gateway(string $versionId): QuoteGatewayInterface;

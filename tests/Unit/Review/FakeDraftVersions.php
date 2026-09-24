@@ -36,7 +36,7 @@ final class FakeDraftVersions implements QuoteDraftVersionsInterface
     }
 
     #[\Override]
-    public function exists(string $versionId): bool
+    public function exists(string $quoteId, string $versionId): bool
     {
         return !\in_array($versionId, $this->missing, strict: true);
     }

@@ -18,6 +18,9 @@ final class FakeReviewStore implements DecisionReviewStoreInterface
     /** @var list<string> */
     public array $rejected = [];
 
+    /** @var list<string> */
+    public array $previewEdited = [];
+
     /** @var list<array{string, list<string>, string}> */
     public array $feedback = [];
 
@@ -36,6 +39,12 @@ final class FakeReviewStore implements DecisionReviewStoreInterface
         $this->pendingVersions = [];
 
         return $versions;
+    }
+
+    #[\Override]
+    public function markPreviewEdited(string $decisionId): void
+    {
+        $this->previewEdited[] = $decisionId;
     }
 
     #[\Override]

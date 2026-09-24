@@ -34,6 +34,16 @@ final class DraftViewTest extends TestCase
         );
         self::assertSame('We can do 9.00 per unit.', $view['reply']);
         self::assertFalse($view['stale']);
+        self::assertFalse($view['previewEdited']);
+
+        $record->sentChanges = ['editedByMerchant' => true];
+        self::assertTrue(
+            DraftView::of(
+                new PendingDraft($record, $live, new FakeQuoteGateway([$draft]), false),
+                $draft,
+                null,
+            )['previewEdited'],
+        );
     }
 
     public function testAClarificationHasNoPricing(): void

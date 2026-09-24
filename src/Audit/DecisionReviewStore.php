@@ -60,6 +60,7 @@ final readonly class DecisionReviewStore implements DecisionReviewStoreInterface
                 'id' => $record->id,
                 'reviewStatus' => ReviewStatus::Superseded->value,
                 'draftVersionId' => null,
+                'sentChanges' => null,
             ];
 
             if ($record->draftVersionId !== null) {
@@ -72,6 +73,15 @@ final readonly class DecisionReviewStore implements DecisionReviewStoreInterface
         }
 
         return $versionIds;
+    }
+
+    #[\Override]
+    public function markPreviewEdited(string $decisionId): void
+    {
+        // A pending marker uses this otherwise-empty review column without
+        // claiming anything was sent. The export suppresses it until Send;
+        // markSent replaces it with the actual prices and this flag.
+        $this->write($decisionId, ['sentChanges' => ['editedByMerchant' => true]]);
     }
 
     #[\Override]
@@ -93,6 +103,7 @@ final readonly class DecisionReviewStore implements DecisionReviewStoreInterface
             'reviewStatus' => ReviewStatus::Rejected->value,
             'reviewedAt' => new \DateTimeImmutable(),
             'draftVersionId' => null,
+            'sentChanges' => null,
         ]);
     }
 

@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Review;
 
-use MerchantQuoteAgentPlugin\Audit\DecisionReviewStoreInterface;
 use MerchantQuoteAgentPlugin\Bridge\ContextBoundGateways;
 use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
-use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersionsInterface;
-use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use Shopware\Core\Framework\Context;
 
 final readonly class DraftSender
@@ -18,7 +15,7 @@ final readonly class DraftSender
     public function __construct(
         private QuoteDraftVersionsInterface $versions,
         private ContextBoundGateways $gateways,
-        private DecisionReviewStoreInterface $store,
+        private DraftSendCompletion $completion,
     ) {}
 
     /** @throws DraftNotReviewable|InvalidReviewRequest */
@@ -45,24 +42,14 @@ final readonly class DraftSender
         $sentChanges = null;
 
         if ($versionId !== null) {
-            $sentChanges = self::sentChanges(DraftEditor::apply($pending, $edits), !$edits->isEmpty());
-            $this->versions->merge($versionId);
-
-            if ($pending->live->lifecycle->stateTechnicalName === 'open') {
-                $gateway->transition($quoteId, QuoteTransition::Process);
-            }
-        }
-
-        $gateway->addComment($quoteId, $reply);
-
-        if ($versionId !== null) {
-            $gateway->transition(
-                $quoteId,
-                ReplyComposer::transitionFor($gateway->fetchSnapshot($quoteId)->lifecycle->stateTechnicalName),
+            $sentChanges = self::sentChanges(
+                DraftEditor::apply($pending, $edits),
+                $pending->wasEditedByMerchant($edits, $reply),
             );
+            $this->versions->merge($versionId);
         }
 
-        $this->store->markSent($pending->record->id, $reply, $sentChanges);
+        $this->completion->complete($pending, $gateway, $reply, $sentChanges);
     }
 
     /** @return array<string, mixed> */

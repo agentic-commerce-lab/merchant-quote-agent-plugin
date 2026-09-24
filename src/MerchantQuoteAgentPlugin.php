@@ -32,7 +32,6 @@ use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
  * MerchantQuoteAgentPlugin\Ucp\UcpAvailability and ADR 0001.
  *
  * Services are loaded from Resources/config/services.php by Bundle::build().
- *
  * @mago-expect analysis:missing-constructor
  * Symfony's Bundle declares $container/$name as typed properties without
  * defaults and initialises them outside a constructor (setContainer, getName).
@@ -52,10 +51,8 @@ use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
  * grows again.
  *
  * @mago-expect lint:cyclomatic-complexity
- * configureRoutes contains one independent availability gate for each
- * optional route surface: SwagCommercial review routes and UCP agent routes.
- * Both gates must remain explicit so an inactive optional plugin contributes
- * no routes; combining them would register the wrong surface.
+ * configureRoutes gates SwagCommercial review and UCP routes separately so
+ * an inactive optional plugin contributes no routes.
  */
 class MerchantQuoteAgentPlugin extends Plugin
 {

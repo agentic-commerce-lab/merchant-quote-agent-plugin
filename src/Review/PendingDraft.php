@@ -22,4 +22,14 @@ final readonly class PendingDraft
     {
         return $this->draft?->fetchSnapshot($this->record->quoteId) ?? $this->live;
     }
+
+    public function wasEditedByMerchant(DraftEdits $edits, string $reply): bool
+    {
+        return !$edits->isEmpty() || $this->previewEdited() || $reply !== trim($this->record->replyToBuyer ?? '');
+    }
+
+    public function previewEdited(): bool
+    {
+        return ($this->record->sentChanges['editedByMerchant'] ?? false) === true;
+    }
 }

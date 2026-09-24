@@ -9,11 +9,13 @@ use MerchantQuoteAgentPlugin\Bridge\ContextBoundGateways;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Review\DraftEdits;
 use MerchantQuoteAgentPlugin\Review\DraftNotReviewable;
+use MerchantQuoteAgentPlugin\Review\DraftSendCompletion;
 use MerchantQuoteAgentPlugin\Review\DraftSender;
 use MerchantQuoteAgentPlugin\Review\PendingDraft;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\QuoteSnapshotFixture;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 
@@ -59,6 +61,27 @@ final class DraftSenderTest extends TestCase
             );
     }
 
+    public function testPreviewedEditsAndReplyEditsAreRecordedOnSend(): void
+    {
+        $open = QuoteSnapshotFixture::snapshot(state: 'open');
+        $merchant = new FakeQuoteGateway([QuoteSnapshotFixture::snapshot(state: 'in_review')]);
+        $versions = new FakeDraftVersions(new FakeQuoteGateway([$open]));
+        $store = new FakeReviewStore();
+        $record = self::record('0190aaaa0000700080000000000000aa');
+        $record->replyToBuyer = 'Original reply';
+        $record->sentChanges = ['editedByMerchant' => true];
+
+        self::sender($versions, $store, $merchant)
+            ->send(
+                new PendingDraft($record, $open, $versions->draft, false),
+                'Merchant wording',
+                new DraftEdits(),
+                new Context(new AdminApiSource('user-1')),
+            );
+
+        self::assertTrue($store->sent[0][2]['editedByMerchant']);
+    }
+
     private static function sender(
         FakeDraftVersions $versions,
         FakeReviewStore $store,
@@ -75,7 +98,7 @@ final class DraftSenderTest extends TestCase
             }
         };
 
-        return new DraftSender($versions, $gateways, $store);
+        return new DraftSender($versions, $gateways, new DraftSendCompletion($store, new NullLogger()));
     }
 
     private static function record(?string $versionId): QuoteDecisionRecord

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Audit\Export;
 
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
+use MerchantQuoteAgentPlugin\Audit\ReviewStatus;
 
 /**
  * One decision record as one line of the anonymized export.
@@ -161,7 +162,7 @@ final class AnonymizedDecision
             'writes' => $record->writes,
             'reviewStatus' => $record->reviewStatus,
             'reviewedAt' => self::at($record->reviewedAt),
-            'sentChanges' => $record->sentChanges,
+            'sentChanges' => $record->reviewStatus === ReviewStatus::Sent->value ? $record->sentChanges : null,
             'feedbackReasons' => $record->feedbackReasons,
             'feedbackAt' => self::at($record->feedbackAt),
             'interpretedAsks' => self::asks($record->interpretedAsks, $freeText),

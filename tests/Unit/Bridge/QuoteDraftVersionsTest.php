@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Bridge;
 
+use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Bridge\ContextBoundGateways;
 use MerchantQuoteAgentPlugin\Bridge\NotADraftVersion;
 use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersions;
 use MerchantQuoteAgentPlugin\Bridge\QuoteVersionResolver;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use Shopware\Core\Defaults;
-use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\IdSearchResult;
+use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
  * A gateway bound to the live version drafts onto the buyer-visible quote, a
@@ -56,17 +56,20 @@ final class QuoteDraftVersionsTest extends TestCase
         $this->untouchable()->gateway($versionId);
     }
 
-    public function testExistsLooksTheVersionUpById(): void
+    public function testExistsRequiresTheVersionAndThisQuotesDraftRow(): void
     {
-        $versions = $this->withVersionRows(['0190aaaa0000700080000000000000aa']);
+        $quoteId = '0190aaaa0000700080000000000000bb';
+        $versions = $this->withVersionRows($quoteId, ['0190aaaa0000700080000000000000aa']);
 
-        self::assertTrue($versions->exists('0190aaaa0000700080000000000000aa'));
-        self::assertFalse($versions->exists('0190cccc0000700080000000000000cc'));
+        self::assertTrue($versions->exists($quoteId, '0190aaaa0000700080000000000000aa'));
+        self::assertFalse($versions->exists($quoteId, '0190cccc0000700080000000000000cc'));
+        self::assertFalse($versions->exists('0190cccc0000700080000000000000cc', '0190aaaa0000700080000000000000aa'));
+        self::assertFalse($versions->exists($quoteId, Defaults::LIVE_VERSION));
     }
 
     public function testANonUuidDoesNotExistAndIsNeverSearched(): void
     {
-        self::assertFalse($this->untouchable()->exists('draft-1'));
+        self::assertFalse($this->untouchable()->exists('0190aaaa0000700080000000000000bb', 'draft-1'));
     }
 
     /**
@@ -74,25 +77,25 @@ final class QuoteDraftVersionsTest extends TestCase
      *
      * @param list<string> $ids
      */
-    private function withVersionRows(array $ids): QuoteDraftVersions
+    private function withVersionRows(string $quoteId, array $ids): QuoteDraftVersions
     {
-        $versions = $this->createMock(EntityRepository::class);
-        $versions
-            ->method('searchIds')
-            ->willReturnCallback(static function (Criteria $criteria, Context $context) use ($ids): IdSearchResult {
-                $found = [];
-
-                foreach (array_intersect($ids, $criteria->getIds()) as $id) {
-                    $found[$id] = ['primaryKey' => $id, 'data' => []];
-                }
-
-                return new IdSearchResult(\count($found), $found, $criteria, $context);
+        $connection = $this->createMock(Connection::class);
+        $connection
+            ->method('fetchOne')
+            ->willReturnCallback(static function (string $sql, array $params) use ($quoteId, $ids): int|false {
+                self::assertStringContainsString('INNER JOIN `quote`', $sql);
+                return $params['quoteId'] === Uuid::fromHexToBytes($quoteId)
+                && \in_array(bin2hex($params['versionId']), $ids, strict: true)
+                    ? 1
+                    : false;
             });
 
         return new QuoteDraftVersions(
             $this->createMock(EntityRepository::class),
-            $versions,
+            $this->createMock(EntityRepository::class),
             $this->createMock(ContextBoundGateways::class),
+            $connection,
+            new NullLogger(),
         );
     }
 
@@ -105,7 +108,9 @@ final class QuoteDraftVersionsTest extends TestCase
         $versions->expects(self::never())->method(self::anything());
         $gateways = $this->createMock(ContextBoundGateways::class);
         $gateways->expects(self::never())->method(self::anything());
+        $connection = $this->createMock(Connection::class);
+        $connection->expects(self::never())->method(self::anything());
 
-        return new QuoteDraftVersions($quotes, $versions, $gateways);
+        return new QuoteDraftVersions($quotes, $versions, $gateways, $connection, new NullLogger());
     }
 }

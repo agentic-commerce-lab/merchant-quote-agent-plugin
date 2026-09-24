@@ -144,6 +144,7 @@ use MerchantQuoteAgentPlugin\Review\DraftModePipeline;
 use MerchantQuoteAgentPlugin\Review\DraftRejecter;
 use MerchantQuoteAgentPlugin\Review\DraftReply;
 use MerchantQuoteAgentPlugin\Review\DraftReviewController;
+use MerchantQuoteAgentPlugin\Review\DraftSendCompletion;
 use MerchantQuoteAgentPlugin\Review\DraftSender;
 use MerchantQuoteAgentPlugin\Review\PendingDrafts;
 use MerchantQuoteAgentPlugin\Servicing\EscalationFlowEventSubscriber;
@@ -714,6 +715,8 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service('quote.repository'),
         service('version.repository'),
         service(QuoteGatewayFactory::class),
+        service(Connection::class),
+        service('logger'),
     ]);
     $services->alias(QuoteDraftVersionsInterface::class, QuoteDraftVersions::class);
     $services->alias(ContextBoundGateways::class, QuoteGatewayFactory::class);
@@ -937,10 +940,14 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service(QuoteAgentSettingsSource::class),
         service('logger'),
     ]);
+    $services->set(DraftSendCompletion::class)->args([
+        service(DecisionReviewStoreInterface::class),
+        service('logger'),
+    ]);
     $services->set(DraftSender::class)->args([
         service(QuoteDraftVersionsInterface::class),
         service(ContextBoundGateways::class),
-        service(DecisionReviewStoreInterface::class),
+        service(DraftSendCompletion::class),
     ]);
     $services->set(DraftRejecter::class)->args([
         service(QuoteDraftVersionsInterface::class),

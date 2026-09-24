@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use Doctrine\DBAL\Connection;
+use MerchantQuoteAgentPlugin\Bridge\AgentContext;
 use MerchantQuoteAgentPlugin\Bridge\Data\Discount;
 use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersions;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
@@ -86,7 +90,7 @@ final class DraftVersionTest extends IntegrationTestCase
         $versions = $this->versions();
 
         $versionId = $versions->create($quoteId);
-        self::assertTrue($versions->exists($versionId), 'A version create() just made reads as gone.');
+        self::assertTrue($versions->exists($quoteId, $versionId), 'A version create() just made reads as gone.');
         $versions->gateway($versionId)->updateQuote(
             $quoteId,
             new QuoteUpdate(discount: new Discount(DiscountType::Percentage, 10.0)),
@@ -94,12 +98,65 @@ final class DraftVersionTest extends IntegrationTestCase
         $versions->delete($quoteId, $versionId);
         $versions->delete($quoteId, $versionId);
 
-        self::assertFalse($versions->exists($versionId), 'A deleted version still reads as existing.');
+        self::assertFalse($versions->exists($quoteId, $versionId), 'A deleted version still reads as existing.');
         self::assertSame($before->totals->totalNet, $live->fetchSnapshot($quoteId)->totals->totalNet);
 
         // Unchanged live totals alone would pass against a delete that did nothing.
         // Read off the tables: a versioned DAL read falls back to the live row, so no read can prove the draft is gone.
         self::assertNothingLeftIn($versionId);
+    }
+
+    public function testAVersionRowWithoutItsQuoteCannotBeSent(): void
+    {
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
+        $versions = $this->versions();
+        $versionId = $versions->create($quoteId);
+
+        static::getContainer()
+            ->get('quote.repository')
+            ->delete([['id' => $quoteId]], AgentContext::forVersion($versionId));
+
+        self::assertFalse($versions->exists($quoteId, $versionId));
+        self::assertSame(
+            1,
+            (int) static::getContainer()
+                ->get(Connection::class)
+                ->fetchOne('SELECT COUNT(*) FROM version WHERE id = :id', ['id' => Uuid::fromHexToBytes($versionId)]),
+        );
+    }
+
+    public function testDeleteRollsBackTheQuoteRowWhenVersionDeletionFails(): void
+    {
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), Context::createDefaultContext());
+        $versions = $this->versions();
+        $versionId = $versions->create($quoteId);
+        $failingRepository = $this->createMock(EntityRepository::class);
+        $failure = new \RuntimeException('version delete failed');
+        $failingRepository->method('delete')->willThrowException($failure);
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger
+            ->expects(self::once())
+            ->method('error')
+            ->with(
+                self::stringContains('Failed to discard'),
+                self::callback(static fn(array $context): bool => $context['exception'] === $failure),
+            );
+        $deleting = new QuoteDraftVersions(
+            static::getContainer()->get('quote.repository'),
+            $failingRepository,
+            static::gatewayFactory(),
+            static::getContainer()->get(Connection::class),
+            $logger,
+        );
+
+        try {
+            $deleting->delete($quoteId, $versionId);
+            self::fail('A failed version deletion was accepted.');
+        } catch (\RuntimeException $error) {
+            self::assertSame('version delete failed', $error->getMessage());
+        }
+
+        self::assertTrue($versions->exists($quoteId, $versionId), 'The quote row was not rolled back.');
     }
 
     /**
@@ -138,6 +195,8 @@ final class DraftVersionTest extends IntegrationTestCase
             static::getContainer()->get('quote.repository'),
             static::getContainer()->get('version.repository'),
             static::gatewayFactory(),
+            static::getContainer()->get(Connection::class),
+            new NullLogger(),
         );
     }
 }

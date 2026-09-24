@@ -96,9 +96,9 @@ final readonly class DraftModePipeline implements QuoteServicingPipelineInterfac
             $this->versions->delete($quoteId, $versionId);
         } catch (\Throwable) {
             // @mago-expect lint:no-empty-catch-clause
-            // Deliberately empty: a version nobody references is invisible to
-            // the buyer and to the merchant, and failing the pass over it
-            // would make Messenger redeliver and draft the quote twice.
+            // QuoteDraftVersions logged the failure with its exception. A
+            // version nobody references is invisible to buyer and merchant;
+            // failing this pass would redeliver and draft the quote twice.
         }
     }
 }

@@ -21,6 +21,9 @@ interface DecisionReviewStoreInterface
      */
     public function supersedePending(string $quoteId): array;
 
+    /** Remember a successful price/date preview across page reloads until Send. */
+    public function markPreviewEdited(string $decisionId): void;
+
     /** @param array<string, mixed>|null $sentChanges null for a clarification, which changes no price */
     public function markSent(string $decisionId, string $sentReply, ?array $sentChanges): void;
 
