@@ -181,7 +181,14 @@ final class OfferRoundTest extends TestCase
             ],
         ]);
 
-        $pass = $round->play(self::gateway(), $snapshot, self::settings(), self::decision(), null);
+        // The post-write read reports the 95-per-unit write: a pass whose
+        // write moved nothing escalates on its own (no_further_concession).
+        $gateway = new FakeQuoteGateway([
+            NegotiationFixture::snapshot(state: 'in_review'),
+            NegotiationFixture::snapshot(state: 'in_review', totalNet: 950.0),
+        ]);
+
+        $pass = $round->play($gateway, $snapshot, self::settings(), self::decision(), null);
 
         self::assertNotSame(
             NegotiationOutcome::Escalated,
@@ -290,12 +297,13 @@ final class OfferRoundTest extends TestCase
     }
 
     /**
-     * Issues #174 (second requirement) and #175, quote 1045's exact shape:
-     * the write changes nothing (34000.00 -> 34000.00) even though the stored
-     * baseline (34456.73) differs from the current total. The reply must
-     * state the hold, never a baseline percentage the pass did not grant.
+     * Quote 1045's shape (#174/#175): the write changes nothing (34000.00 ->
+     * 34000.00) against a stored baseline of 34456.73. That used to be
+     * answered "This quote stands at 34000.00 EUR"; the user's rule is that a
+     * price ask is never answered with no concession, so it now goes to a
+     * human (spec 2026-09-24-never-answer-zero-discount).
      */
-    public function testAPassThatGrantsNothingReportsAHoldNotABaselinePercentageQuote1045Shape(): void
+    public function testAPassThatGrantsNothingEscalatesInsteadOfReplyingQuote1045Shape(): void
     {
         $recorder = new DecisionRecorder(new FakeDecisionWriter());
         $logger = new RecordingLogger();
@@ -325,9 +333,11 @@ final class OfferRoundTest extends TestCase
 
         $pass = $round->play($gateway, $snapshot, self::settings(), self::decision(), null);
 
-        self::assertSame(NegotiationOutcome::Offered, $pass->outcome);
-        self::assertStringContainsString('This quote stands at 34000.00 EUR', $gateway->comments[0]);
-        self::assertStringNotContainsString('%', $gateway->comments[0]);
+        self::assertSame(NegotiationOutcome::Escalated, $pass->outcome);
+        self::assertSame(QuoteEscalationReason::NoFurtherConcession, $pass->escalationReason);
+        foreach ($gateway->comments as $comment) {
+            self::assertStringNotContainsString('stands at', $comment, 'No hold reply reaches the buyer.');
+        }
     }
 
     /**

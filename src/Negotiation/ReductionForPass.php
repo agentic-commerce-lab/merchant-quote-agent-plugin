@@ -11,7 +11,9 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
  * from `TotalsOfferVerifier`, to keep the complexity this decision carries
  * off `OfferRound`'s own budget.
  *
- * Three outcomes, not two: a hold (#175), a genuine reduction, or a
+ * Three outcomes, not two: a hold (#175) -- now only a real write too small
+ * to print, since a pass that wrote nothing escalates in `PostWriteOutcome`
+ * before reaching here (no_further_concession) -- a genuine reduction, or a
  * disagreement (#174) -- `ReplyTemplate::reduction()` throwing
  * `NegativeReduction` because the figure it was asked to describe would be an
  * increase. That last one can only mean `OfferApplier`'s
@@ -29,23 +31,14 @@ final class ReductionForPass
      * @param float $beforeNet the pass-start baseline total `reduction()` is
      *                         measured from (`SnapshotAdapter::anchored()`)
      * @param float $afterNet  what the database reports after the write
-     * @param bool $grantedThisPass whether this pass's own write actually
-     *                              moved the total (`OfferApplier`'s
-     *                              pre-write read vs. its post-write one) --
-     *                              never the baseline, which can differ from
-     *                              both
      *
      * @return array{0: ?float, 1: bool} the reduction percent (null for a
      *                                    hold), and whether the figure
      *                                    disagreed with the write and this
      *                                    pass must escalate instead of reply
      */
-    public static function of(float $beforeNet, float $afterNet, bool $grantedThisPass): array
+    public static function of(float $beforeNet, float $afterNet): array
     {
-        if (!$grantedThisPass) {
-            return [null, false];
-        }
-
         try {
             $percent = ReplyTemplate::reduction($beforeNet, $afterNet);
         } catch (NegativeReduction) {
@@ -53,8 +46,8 @@ final class ReductionForPass
         }
 
         // A hold is what the SENTENCE would say, not only what the write did.
-        // `$grantedThisPass` asks whether the total moved at all, which is a
-        // different question from whether the figure announcing it says
+        // `PostWriteOutcome` has already checked that the total moved at all,
+        // is a different question from whether the figure announcing it says
         // anything: `percent()` prints two decimals, so 0.50 EUR off a
         // 34456.73 quote -- a per-line cut on one small line of a large
         // quote, the very size #175 was filed from -- is a real write that

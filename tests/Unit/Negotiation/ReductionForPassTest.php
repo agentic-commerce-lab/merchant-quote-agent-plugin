@@ -10,21 +10,17 @@ use PHPUnit\Framework\TestCase;
 /**
  * Which of the three things a pass can report, decided in one place.
  *
- * `OfferRoundTest` pins two of them end to end -- quote 1045's hold and quote
- * 1039's never-raise escalation. This file is the unit's own table, and it
- * exists for the case those two shapes do not reach: a write that moved the
- * total and still has nothing to announce.
+ * A pass that wrote nothing never reaches this class: `OfferRound` escalates
+ * it first (no_further_concession, quote 1045's shape). `OfferRoundTest` pins
+ * that and quote 1039's never-raise escalation end to end. This file is the
+ * unit's own table, and it exists for the case those shapes do not reach: a
+ * write that moved the total and still has nothing to announce.
  */
 final class ReductionForPassTest extends TestCase
 {
-    public function testAPassThatWroteNothingIsAHold(): void
-    {
-        self::assertSame([null, false], ReductionForPass::of(34456.73, 34000.0, grantedThisPass: false));
-    }
-
     public function testAPassThatMovedTheTotalReportsWhatItMovedIt(): void
     {
-        self::assertSame([15.0, false], ReductionForPass::of(1000.0, 850.0, grantedThisPass: true));
+        self::assertSame([15.0, false], ReductionForPass::of(1000.0, 850.0));
     }
 
     /**
@@ -44,7 +40,7 @@ final class ReductionForPassTest extends TestCase
      */
     public function testAWriteTooSmallToPrintIsAHoldRatherThanAZeroPercentDiscount(): void
     {
-        self::assertSame([null, false], ReductionForPass::of(34456.73, 34456.23, grantedThisPass: true));
+        self::assertSame([null, false], ReductionForPass::of(34456.73, 34456.23));
     }
 
     /**
@@ -55,6 +51,6 @@ final class ReductionForPassTest extends TestCase
      */
     public function testAnIncreaseIsReportedAsADisagreementNotAFigure(): void
     {
-        self::assertSame([null, true], ReductionForPass::of(1818.20, 2008.83, grantedThisPass: true));
+        self::assertSame([null, true], ReductionForPass::of(1818.20, 2008.83));
     }
 }
