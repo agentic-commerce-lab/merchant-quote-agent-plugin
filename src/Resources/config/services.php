@@ -141,6 +141,11 @@ use MerchantQuoteAgentPlugin\Protocol\Store\ActStoreInterface;
 use MerchantQuoteAgentPlugin\Protocol\Store\DbalActStore;
 use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
 use MerchantQuoteAgentPlugin\Review\DraftModePipeline;
+use MerchantQuoteAgentPlugin\Review\DraftRejecter;
+use MerchantQuoteAgentPlugin\Review\DraftReply;
+use MerchantQuoteAgentPlugin\Review\DraftReviewController;
+use MerchantQuoteAgentPlugin\Review\DraftSender;
+use MerchantQuoteAgentPlugin\Review\PendingDrafts;
 use MerchantQuoteAgentPlugin\Servicing\EscalationFlowEventSubscriber;
 use MerchantQuoteAgentPlugin\Servicing\EscalationNotifierInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
@@ -919,6 +924,39 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
 
     // The one line that turns the agent on.
     $services->alias(QuoteServicingPipelineInterface::class, DraftModePipeline::class);
+
+    // Draft Mode review card endpoints.
+    $services->set(PendingDrafts::class)->args([
+        service(DecisionReviewStoreInterface::class),
+        service(QuoteDraftVersionsInterface::class),
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+        service(QuoteServicingLock::class),
+    ]);
+    $services->set(DraftReply::class)->args([
+        service(ReplyComposer::class),
+        service(QuoteAgentSettingsSource::class),
+        service('logger'),
+    ]);
+    $services->set(DraftSender::class)->args([
+        service(QuoteDraftVersionsInterface::class),
+        service(ContextBoundGateways::class),
+        service(DecisionReviewStoreInterface::class),
+    ]);
+    $services->set(DraftRejecter::class)->args([
+        service(QuoteDraftVersionsInterface::class),
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+        service(DecisionReviewStoreInterface::class),
+    ]);
+    $services
+        ->set(DraftReviewController::class)
+        ->args([
+            service(PendingDrafts::class),
+            service(DraftReply::class),
+            service(DraftSender::class),
+            service(DraftRejecter::class),
+            service(DecisionReviewStoreInterface::class),
+        ])
+        ->tag('controller.service_arguments');
 
     // The gateway argument is the null-returning factory registered above; the
     // pipeline is the alias just above it. Both ignoreOnInvalid() so an absent

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin;
 
 use Doctrine\DBAL\Connection;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Migration\Migration1789500001SeedEscalationMailAndFlow as EscalationMailSeed;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Ucp\AgentFacingRoutes;
@@ -49,6 +50,12 @@ use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
  * that is a refactor of lifecycle code this change does not otherwise touch,
  * so it is deliberately not bundled here. Revisit when either lifecycle job
  * grows again.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * configureRoutes contains one independent availability gate for each
+ * optional route surface: SwagCommercial review routes and UCP agent routes.
+ * Both gates must remain explicit so an inactive optional plugin contributes
+ * no routes; combining them would register the wrong surface.
  */
 class MerchantQuoteAgentPlugin extends Plugin
 {
@@ -127,6 +134,10 @@ class MerchantQuoteAgentPlugin extends Plugin
     public function configureRoutes(RoutingConfigurator $routes, string $environment): void
     {
         parent::configureRoutes($routes, $environment);
+
+        if (CommercialAvailability::isRegistered($this->container)) {
+            $routes->import($this->getPath() . '/Review/DraftReviewController.php', 'attribute');
+        }
 
         if (UcpAvailability::isRegistered($this->container)) {
             AgentFacingRoutes::import($routes, $this->getPath(), $this->container);
