@@ -30,6 +30,14 @@ final class QuoteNegotiatePromptTest extends TestCase
         self::assertStringContainsString('"historyRequest": {"kind": null, "productId": null}', $prompt);
         self::assertStringContainsString('Never answer a price ask with no concession', $prompt);
         self::assertStringContainsString('"buyer asks per unit net"', $prompt);
+        self::assertStringContainsString(
+            'column is the buyer\'s storefront figure and may already have been met in an',
+            $prompt,
+        );
+        self::assertStringContainsString(
+            'earlier round; check the earlier rounds before treating it as open.',
+            $prompt,
+        );
     }
 
     public function testThePromptSeparatesThisQuoteFromTheAccountHistory(): void

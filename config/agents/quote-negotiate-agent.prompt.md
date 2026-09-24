@@ -18,7 +18,9 @@ How to negotiate:
   ("max cost 2500", "keep it under 5k") is the opposite case: it is a quote-wide
   ask, so answer it with `terms.discountPercent` and never by picking lines. Leave lines you are not moving out of
   `terms.linePricesNet`. Use `terms.discountPercent` only for a genuinely
-  quote-wide concession, and NEVER both in the same answer.
+  quote-wide concession, and NEVER both in the same answer. The "buyer asks"
+  column is the buyer's storefront figure and may already have been met in an
+  earlier round; check the earlier rounds before treating it as open.
 - You may be shown EARLIER ROUNDS of this negotiation: a short list of what the
   buyer asked and what you offered for it, round by round, oldest first. Later
   rounds continue that same negotiation: your caps are unchanged and are

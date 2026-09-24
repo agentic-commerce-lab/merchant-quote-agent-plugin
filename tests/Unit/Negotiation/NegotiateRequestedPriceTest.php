@@ -61,4 +61,50 @@ final class NegotiateRequestedPriceTest extends TestCase
         $negotiatePrompt = $harness->spy->userPrompts[1] ?? '';
         self::assertMatchesRegularExpression('/^line-1 \| prod-1 \| Widget \| 10 \| 100\.00 \| $/m', $negotiatePrompt);
     }
+
+    public function testASecondRoundShowsTheOriginalPriceBesideTheLiveRequestedPrice(): void
+    {
+        // Round one already met the storefront ask: the line sits at 90 and
+        // `requested_price` still says 90. The prompt anchors the line on its
+        // ORIGINAL 100 (BaselineAnchoredAskTest says why), but the ask column
+        // is the live requested price, so the row reads as a 10% ask that is
+        // already granted. The negotiate prompt's per-line bullet tells the
+        // model to check the earlier rounds before treating it as open.
+        $harness = PipelineHarness::with([
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"10% off.","terms":{"discountPercent":10}}',
+            'Here you go.',
+        ]);
+        $baseline = NegotiationFixture::baselineOf(1000.0, 100.0);
+        $harness->before = NegotiationFixture::withCustomFields(
+            NegotiationFixture::snapshot(
+                comments: [NegotiationFixture::buyerComment('5% more please', '2026-08-28 09:00:00')],
+                totalNet: 900.0,
+                requestedUnitPrice: 90.0,
+            ),
+            $baseline,
+        );
+        $harness->gateway->replaceSnapshots([
+            NegotiationFixture::withCustomFields(
+                NegotiationFixture::snapshot(state: 'in_review', totalNet: 900.0, requestedUnitPrice: 90.0),
+                $baseline,
+            ),
+            NegotiationFixture::withCustomFields(
+                NegotiationFixture::snapshot(state: 'in_review', totalNet: 900.0, requestedUnitPrice: 90.0),
+                $baseline,
+            ),
+        ]);
+
+        $harness->pipeline->service(
+            $harness->before,
+            $harness->gateway,
+            NegotiationFixture::settings(maxDiscountPercent: 15.0),
+            NegotiationFixture::context(),
+        );
+
+        self::assertStringContainsString(
+            'line-1 | prod-1 | Widget | 10 | 100.00 | 90.00',
+            $harness->spy->userPrompts[1] ?? '',
+        );
+    }
 }
