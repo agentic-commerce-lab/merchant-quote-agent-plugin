@@ -168,6 +168,7 @@
             "strategyVersion": "Version",
             "strategyPrompt": "Strategy wording",
             "strategyUnavailable": "No longer available",
+            "strategyInPass": "Strategy: {name}",
             "missingTitle": "Decision not found",
             "missingSubline": "This record could not be loaded. It may have been deleted.",
             "terminal": {
