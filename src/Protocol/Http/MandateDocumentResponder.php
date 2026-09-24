@@ -33,6 +33,9 @@ use Symfony\Component\HttpFoundation\JsonResponse;
  * silently break if that call order ever changed. Caught here too, so the
  * mandate route answers 503 regardless of which call discovers the key is
  * missing.
+ *
+ * The mandate is served with a cache header, so a Draft Mode switch reaches
+ * buyer agents when their cached copy expires.
  */
 final readonly class MandateDocumentResponder
 {
@@ -62,6 +65,7 @@ final readonly class MandateDocumentResponder
             $identity,
             $now,
             $this->currencies->isoFor($salesChannelId),
+            $settings->draftMode,
         );
 
         try {

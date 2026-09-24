@@ -50,6 +50,7 @@ final readonly class SellerMandateFactory
         A2cnIdentity $identity,
         \DateTimeImmutable $validFrom,
         ?string $currencyIso = null,
+        bool $draftMode = false,
     ): array {
         $mandate = [
             'mandate_type' => self::MANDATE_TYPE,
@@ -59,7 +60,7 @@ final readonly class SellerMandateFactory
             'authorized_deal_types' => A2cnIdentity::DEAL_TYPES,
             'valid_from' => ProtocolTimestamp::of($validFrom),
             'valid_until' => ProtocolTimestamp::of($validFrom->modify('+1 year')),
-            'negotiation_bands' => NegotiationBands::fromPolicy($policy),
+            'negotiation_bands' => NegotiationBands::fromPolicy($policy, $draftMode),
         ];
 
         $commitment = $policy->price->valueCeiling?->commitmentFor($currencyIso);

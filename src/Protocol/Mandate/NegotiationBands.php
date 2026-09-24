@@ -29,10 +29,12 @@ final class NegotiationBands
     private function __construct() {}
 
     /** @return array<string, mixed> */
-    public static function fromPolicy(NegotiationPolicy $policy): array
+    public static function fromPolicy(NegotiationPolicy $policy, bool $draftMode = false): array
     {
         $limits = $policy->price;
-        $autoGrantMaxBps = (int) round($limits->maxDiscountPercent * 100);
+        // Draft Mode: a human sends every offer, so the agent grants nothing
+        // on its own authority and everything "escalates" to that human.
+        $autoGrantMaxBps = $draftMode ? 0 : (int) round($limits->maxDiscountPercent * 100);
         $bands = [
             'autoGrantMaxBps' => $autoGrantMaxBps,
             'counterAtBps' => (int) round(($limits->counterOfferMaxPercent ?? $limits->maxDiscountPercent) * 100),
