@@ -430,7 +430,10 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // subscribes to customer deletion, because keeping a decision explainable
     // and answering a person's request are two different decisions and only
     // the merchant can make the second one.
-    $services->set(DecisionEraser::class)->args([service('merchant_quote_agent_decision.repository')]);
+    $services->set(DecisionEraser::class)->args([
+        service('merchant_quote_agent_decision.repository'),
+        service('merchant_quote_agent_trace.repository'),
+    ]);
     $services->alias(DecisionEraserInterface::class, DecisionEraser::class);
     $services->set(DecisionForgetCommand::class)->tag('console.command');
 

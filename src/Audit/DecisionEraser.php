@@ -8,7 +8,9 @@ use MerchantQuoteAgentPlugin\Audit\Export\AnonymizedDecision;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\OrFilter;
 
 /**
  * Removes one buyer from the decision records without removing the records.
@@ -34,18 +36,18 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
  * deciding a second time and drifting. The only difference is when the
  * question is asked: a merchant chooses per export, a person asks to be
  * forgotten once and permanently.
+ * The trace follows the same split: its `content` is cleared and its `meta`
+ * kept (2026-09-23 spec §3).
  */
 final readonly class DecisionEraser implements DecisionEraserInterface
 {
     public function __construct(
         private EntityRepository $decisions,
+        private EntityRepository $traces,
     ) {}
 
-    /**
-     * @return int the number of records changed
-     */
     #[\Override]
-    public function forget(string $customerId, ?Context $context = null): int
+    public function forget(string $customerId, ?Context $context = null): Erasure
     {
         $context ??= Context::createDefaultContext();
         $criteria = new Criteria();
@@ -53,6 +55,7 @@ final readonly class DecisionEraser implements DecisionEraserInterface
 
         $records = $this->decisions->search($criteria, $context)->getEntities();
         $payload = [];
+        $quoteIds = [];
 
         foreach ($records as $record) {
             if (!$record instanceof QuoteDecisionRecord) {
@@ -60,15 +63,47 @@ final readonly class DecisionEraser implements DecisionEraserInterface
             }
 
             $payload[] = self::erased($record);
+            $quoteIds[] = $record->quoteId;
         }
 
-        if ($payload === []) {
+        // Read quote ids before decision rows lose their customer id. These
+        // also find traces that never knew the customer directly.
+        $traces = $this->forgetTraces($customerId, array_values(array_unique(array_filter($quoteIds))), $context);
+
+        if ($payload !== []) {
+            $this->decisions->update($payload, $context);
+        }
+
+        return new Erasure(\count($payload), $traces);
+    }
+
+    /**
+     * `content` can carry the person; `meta` is the merchant's record and
+     * stays. Fetch ids only because prompt content can be large.
+     *
+     * @param list<string> $quoteIds
+     */
+    private function forgetTraces(string $customerId, array $quoteIds, Context $context): int
+    {
+        $criteria = new Criteria();
+        $criteria->addFilter(new OrFilter([
+            new EqualsFilter('customerId', $customerId),
+            ...($quoteIds === [] ? [] : [new EqualsAnyFilter('quoteId', $quoteIds)]),
+        ]));
+
+        $ids = array_values(array_filter($this->traces->searchIds($criteria, $context)->getIds(), \is_string(...)));
+
+        if ($ids === []) {
             return 0;
         }
 
-        $this->decisions->update($payload, $context);
+        $this->traces->update(array_map(static fn(string $id): array => [
+            'id' => $id,
+            'content' => null,
+            'customerId' => null,
+        ], $ids), $context);
 
-        return \count($payload);
+        return \count($ids);
     }
 
     /**
