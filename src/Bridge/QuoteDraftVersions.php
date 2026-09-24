@@ -39,11 +39,13 @@ final readonly class QuoteDraftVersions implements QuoteDraftVersionsInterface
     #[\Override]
     public function gateway(string $versionId): QuoteGatewayInterface
     {
-        return (
-            $this->gateways->forContext(AgentContext::forVersion(
-                $versionId,
-            )) ?? throw DraftVersionUnavailable::forVersion($versionId)
-        );
+        $gateway = $this->gateways->forContext(AgentContext::forVersion(self::draft($versionId)));
+
+        if ($gateway === null) {
+            throw DraftVersionUnavailable::forVersion($versionId);
+        }
+
+        return $gateway;
     }
 
     #[\Override]
@@ -62,9 +64,12 @@ final readonly class QuoteDraftVersions implements QuoteDraftVersionsInterface
 
     /**
      * Mirrors StorefrontQuoteDraftVersionManager::assertDraftVersionId(). A
-     * delete in the live version's context deletes the live quote, and a merge
-     * of the snapshot lane replays SwagCommercial's "last sent" copy over it.
-     * Our ids only ever come from create(), but they are stored and read back.
+     * gateway bound to the live version writes the proposal straight onto the
+     * buyer-visible quote, one bound to the snapshot lane rewrites
+     * SwagCommercial's "last sent" copy, a delete in the live version's
+     * context deletes the live quote, and a merge of the snapshot lane replays
+     * that copy over it. Our ids only ever come from create(), but they are
+     * stored and read back.
      *
      * @throws NotADraftVersion
      */

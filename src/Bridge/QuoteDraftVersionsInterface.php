@@ -15,7 +15,7 @@ interface QuoteDraftVersionsInterface
     /** @return string the new version's id */
     public function create(string $quoteId): string;
 
-    /** @throws DraftVersionUnavailable */
+    /** @throws DraftVersionUnavailable|NotADraftVersion */
     public function gateway(string $versionId): QuoteGatewayInterface;
 
     /**

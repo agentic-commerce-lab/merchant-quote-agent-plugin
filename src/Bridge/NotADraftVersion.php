@@ -10,7 +10,7 @@ final class NotADraftVersion extends \RuntimeException
     public static function forId(string $versionId): self
     {
         return new self(sprintf(
-            'Version %s is not a draft version, so it cannot be merged or deleted as one.',
+            'Version %s is not a draft version, so it cannot be drafted in, merged or deleted as one.',
             $versionId,
         ));
     }

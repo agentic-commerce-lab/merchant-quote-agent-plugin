@@ -14,9 +14,10 @@ use Shopware\Core\Defaults;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 
 /**
- * A delete in the live version's context deletes the live quote, and a merge
- * of the snapshot lane replays SwagCommercial's "last sent" copy over it — so
- * both refuse anything but a draft id before a repository is ever reached.
+ * A gateway bound to the live version drafts onto the buyer-visible quote, a
+ * delete in its context deletes the live quote, and a merge of the snapshot
+ * lane replays SwagCommercial's "last sent" copy over it — so all three refuse
+ * anything but a draft id before a collaborator is ever reached.
  */
 final class QuoteDraftVersionsTest extends TestCase
 {
@@ -42,6 +43,14 @@ final class QuoteDraftVersionsTest extends TestCase
         $this->expectException(NotADraftVersion::class);
 
         $this->untouchable()->merge($versionId);
+    }
+
+    #[DataProvider('notADraft')]
+    public function testGatewayRefusesAnythingButADraft(string $versionId): void
+    {
+        $this->expectException(NotADraftVersion::class);
+
+        $this->untouchable()->gateway($versionId);
     }
 
     /** Every collaborator fails the test if it is reached at all. */
