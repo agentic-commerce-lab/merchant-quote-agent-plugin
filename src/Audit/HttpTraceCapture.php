@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Audit;
 
+use MerchantQuoteAgentPlugin\Identity\AuthenticatedCustomerAttribute;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -24,8 +25,13 @@ final readonly class HttpTraceCapture
         $sessionId = $request->attributes->get('sessionId');
         $sessionId = \is_string($sessionId) && $sessionId !== '' ? $sessionId : null;
         $quoteId = $this->quotes->id($route, $request, $body, $sessionId);
+        $customerId = AuthenticatedCustomerAttribute::of($request);
         $started = $request->server->get('REQUEST_TIME_FLOAT');
         $duration = \is_numeric($started) ? max(0, (int) round((microtime(true) - (float) $started) * 1000)) : null;
+        $metadataOnly =
+            HttpTraceRoute::identity($route)
+            || HttpTraceRoute::quote($route) && $customerId === null
+            || $quoteId === null && $customerId === null;
 
         $this->writer->write(
             new TraceWrite(
@@ -38,8 +44,9 @@ final readonly class HttpTraceCapture
                     'sessionId' => $sessionId,
                     'errorCode' => HttpTraceErrorCode::of($response->getStatusCode(), $body),
                 ],
-                HttpTraceBody::content($request, $response, HttpTraceRoute::identity($route)),
+                HttpTraceBody::content($request, $response, $metadataOnly),
                 $quoteId,
+                $customerId,
             ),
         );
     }

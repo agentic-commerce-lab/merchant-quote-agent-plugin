@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Audit\Export;
 
 use MerchantQuoteAgentPlugin\Audit\TraceEvent;
+use MerchantQuoteAgentPlugin\Protocol\Crypto\SessionId;
 
 /** One outside-pass trace row as its own JSONL record. */
 final class AnonymizedOutsideTrace
@@ -16,6 +17,7 @@ final class AnonymizedOutsideTrace
     {
         $sessionId = $event->meta['sessionId'] ?? null;
         $sessionId = \is_string($sessionId) ? $sessionId : null;
+        $quoteSessionId = $event->quoteId === null ? null : SessionId::forQuote($event->quoteId);
 
         return [
             'record' => 'event',
@@ -27,6 +29,7 @@ final class AnonymizedOutsideTrace
                 $event->quoteId,
                 $event->customerId,
                 $sessionId,
+                $quoteSessionId,
             ])),
         ];
     }

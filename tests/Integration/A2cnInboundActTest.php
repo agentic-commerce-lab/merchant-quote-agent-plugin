@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Audit\TraceEvent;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
@@ -41,6 +42,9 @@ use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActAppender;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\InboundActConformance;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\SessionQuoteLocator;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelLifecycleManager;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -124,6 +128,14 @@ final class A2cnInboundActTest extends IntegrationTestCase
         self::assertIsArray($quotePayload);
         $quoteId = $quotePayload['id'];
         self::assertIsString($quoteId);
+        $traceCriteria = new Criteria();
+        $traceCriteria->addFilter(new EqualsFilter('quoteId', $quoteId), new EqualsFilter('kind', 'http'));
+        $trace = static::getContainer()
+            ->get('merchant_quote_agent_trace.repository')
+            ->search($traceCriteria, Context::createDefaultContext())
+            ->first();
+        self::assertInstanceOf(TraceEvent::class, $trace);
+        self::assertSame($customerId, $trace->customerId);
         $sessionId = $quotePayload['a2cn_session_id'] ?? null;
         self::assertIsString($sessionId);
 

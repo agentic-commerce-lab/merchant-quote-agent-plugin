@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Ucp\Quote\Controller;
 
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
 use MerchantQuoteAgentPlugin\Identity\AgentCustomerCredential;
+use MerchantQuoteAgentPlugin\Identity\AuthenticatedCustomerAttribute;
 use MerchantQuoteAgentPlugin\Identity\UcpRequestContext;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\A2cnSessionStamp;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
@@ -54,6 +55,7 @@ final class UcpQuoteController
     public function requestQuote(Request $request): JsonResponse
     {
         $context = UcpRequestContext::of($request);
+        $customerContext = $this->customerContext($request, $context);
         $payload = $this->payload($request);
 
         // Only requestQuote stamps the A2CN session id. getQuote and
@@ -62,7 +64,7 @@ final class UcpQuoteController
         // customFields on every quote read just to echo a value the buyer
         // can already derive is not worth it.
         $snapshot = $this->sessions->stamp($this->quoteCapability->requestQuote(
-            $this->customerContext($request, $context),
+            $customerContext,
             $this->requestValidator->lineItems($payload, true),
             $this->requestValidator->comment($payload),
         ));
@@ -103,10 +105,11 @@ final class UcpQuoteController
     public function counterQuote(string $id, Request $request): JsonResponse
     {
         $context = UcpRequestContext::of($request);
+        $customerContext = $this->customerContext($request, $context);
         $payload = $this->payload($request);
 
         $snapshot = $this->quoteCapability->counterQuote(
-            $this->customerContext($request, $context),
+            $customerContext,
             $id,
             $this->requestValidator->lineItems($payload, false),
             $this->requestValidator->comment($payload),
@@ -128,10 +131,11 @@ final class UcpQuoteController
     public function declineQuote(string $id, Request $request): JsonResponse
     {
         $context = UcpRequestContext::of($request);
+        $customerContext = $this->customerContext($request, $context);
         $payload = $this->payload($request);
 
         $snapshot = $this->quoteCapability->declineQuote(
-            $this->customerContext($request, $context),
+            $customerContext,
             $id,
             $this->requestValidator->comment($payload),
         );
@@ -146,7 +150,13 @@ final class UcpQuoteController
             '',
         ));
 
-        return $this->authenticator->authenticate($credential, $context);
+        $salesChannelContext = $this->authenticator->authenticate($credential, $context);
+        $customerId = $salesChannelContext->getCustomer()?->getId();
+        if ($customerId !== null) {
+            AuthenticatedCustomerAttribute::remember($request, $customerId);
+        }
+
+        return $salesChannelContext;
     }
 
     /**

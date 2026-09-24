@@ -34,4 +34,9 @@ final class HttpTraceRoute
     {
         return str_starts_with($route, self::PREFIX . 'authorize') || $route === self::PREFIX . 'authorization_request';
     }
+
+    public static function quote(string $route): bool
+    {
+        return str_starts_with($route, self::PREFIX . 'quote.');
+    }
 }

@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Audit\HttpTraceCapture;
 use MerchantQuoteAgentPlugin\Audit\HttpTraceQuote;
 use MerchantQuoteAgentPlugin\Audit\HttpTraceSubscriber;
 use MerchantQuoteAgentPlugin\Audit\TraceKind;
+use MerchantQuoteAgentPlugin\Identity\AuthenticatedCustomerAttribute;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\SessionQuoteLocator;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -20,6 +21,52 @@ final class HttpTraceSubscriberTest extends TestCase
 {
     private const QUOTE_ID = '11111111111111111111111111111111';
 
+    private const CUSTOMER_ID = '22222222222222222222222222222222';
+
+    public function testAuthenticatedQuoteRefusalCarriesCustomerForErasure(): void
+    {
+        $writer = new FakeTraceWriter();
+        $request = Request::create('/ucp/quotes', 'POST', content: '{"comment":"private"}');
+        $request->attributes->set('_route', 'frontend.merchant_quote_agent.quote.request');
+        $request->attributes->set(AuthenticatedCustomerAttribute::KEY, self::CUSTOMER_ID);
+
+        self::send($writer, $request, new Response('{"messages":[{"type":"error"}]}', 422));
+
+        self::assertCount(1, $writer->events);
+        self::assertSame(self::CUSTOMER_ID, $writer->events[0]->customerId);
+        self::assertNull($writer->events[0]->quoteId);
+        self::assertSame('{"comment":"private"}', $writer->events[0]->content['requestBody']);
+    }
+
+    public function testUnboundRefusalDoesNotRetainItsRequestBody(): void
+    {
+        $writer = new FakeTraceWriter();
+        $request = Request::create('/ucp/quotes', 'POST', content: '{"comment":"private"}');
+        $request->attributes->set('_route', 'frontend.merchant_quote_agent.quote.request');
+
+        self::send($writer, $request, new Response('{"messages":[{"type":"error"}]}', 401));
+
+        self::assertCount(1, $writer->events);
+        self::assertNull($writer->events[0]->content);
+    }
+
+    public function testUnauthenticatedCounterRefusalDoesNotRetainItsRequestBody(): void
+    {
+        $writer = new FakeTraceWriter();
+        $request = Request::create(
+            '/ucp/quotes/' . self::QUOTE_ID . '/counter',
+            'POST',
+            content: '{"comment":"private"}',
+        );
+        $request->attributes->set('_route', 'frontend.merchant_quote_agent.quote.counter');
+        $request->attributes->set('id', self::QUOTE_ID);
+
+        self::send($writer, $request, new Response('{"messages":[{"type":"error"}]}', 401));
+
+        self::assertCount(1, $writer->events);
+        self::assertNull($writer->events[0]->content);
+    }
+
     public function testPostCapturesBodiesAndResolvesCreatedQuote(): void
     {
         $writer = new FakeTraceWriter();
@@ -30,6 +77,7 @@ final class HttpTraceSubscriberTest extends TestCase
             content: '{"comment":"hello"}',
         );
         $request->attributes->set('_route', 'frontend.merchant_quote_agent.quote.request');
+        $request->attributes->set(AuthenticatedCustomerAttribute::KEY, self::CUSTOMER_ID);
 
         self::send($writer, $request, new Response('{"id":"' . self::QUOTE_ID . '"}', 201));
 

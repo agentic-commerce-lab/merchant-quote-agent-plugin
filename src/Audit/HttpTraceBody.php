@@ -21,9 +21,9 @@ final class HttpTraceBody
     }
 
     /** @return array<string, string|null>|null */
-    public static function content(Request $request, Response $response, bool $identity): ?array
+    public static function content(Request $request, Response $response, bool $metadataOnly): ?array
     {
-        if ($identity || !$request->isMethod('POST') && $response->getStatusCode() < 400) {
+        if ($metadataOnly || !$request->isMethod('POST') && $response->getStatusCode() < 400) {
             return null;
         }
 

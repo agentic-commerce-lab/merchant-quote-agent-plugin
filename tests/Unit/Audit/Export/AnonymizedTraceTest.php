@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Audit\Export\AnonymizedOutsideTrace;
 use MerchantQuoteAgentPlugin\Audit\Export\AnonymizedTrace;
 use MerchantQuoteAgentPlugin\Audit\Export\ExportPseudonym;
 use MerchantQuoteAgentPlugin\Audit\TraceEvent;
+use MerchantQuoteAgentPlugin\Protocol\Crypto\SessionId;
 use PHPUnit\Framework\TestCase;
 
 final class AnonymizedTraceTest extends TestCase
@@ -27,6 +28,23 @@ final class AnonymizedTraceTest extends TestCase
         self::assertSame($pseudonym->of('session-1'), $line['meta']['sessionId']);
         self::assertSame($pseudonym->of('session-1'), $line['content']['requestBody']);
         self::assertSame($pseudonym->of('quote-1'), $line['quote']);
+    }
+
+    public function testQuoteRequestResponseSessionIdIsPseudonymizedWithoutRouteSessionMeta(): void
+    {
+        $quoteId = '11111111111111111111111111111111';
+        $sessionId = SessionId::forQuote($quoteId);
+        $event = self::event();
+        $event->kind = 'http';
+        $event->quoteId = $quoteId;
+        $event->meta = ['route' => 'frontend.merchant_quote_agent.quote.request', 'sessionId' => null];
+        $event->content = ['responseBody' => '{"id":"' . $quoteId . '","a2cn_session_id":"' . $sessionId . '"}'];
+        $pseudonym = new ExportPseudonym('shop-salt');
+
+        $line = AnonymizedOutsideTrace::of($event, $pseudonym, freeText: true);
+
+        self::assertStringNotContainsString($sessionId, $line['content']['responseBody']);
+        self::assertStringContainsString($pseudonym->of($sessionId), $line['content']['responseBody']);
     }
 
     public function testWithoutFreeTextOnlyTheKindTheTimeAndTheMetaLeave(): void
