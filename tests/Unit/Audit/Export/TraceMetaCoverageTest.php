@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Audit\Export;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\TraceDraft;
 use MerchantQuoteAgentPlugin\Audit\TraceKind;
+use MerchantQuoteAgentPlugin\Audit\TraceWrite;
 use MerchantQuoteAgentPlugin\Negotiation\AppliedOffer;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
@@ -17,7 +18,13 @@ use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteAutoReplyDetails;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
+use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
+use MerchantQuoteAgentPlugin\Servicing\ServicingJournal;
+use MerchantQuoteAgentPlugin\Servicing\SkipContext;
+use MerchantQuoteAgentPlugin\Servicing\SkipReason;
+use MerchantQuoteAgentPlugin\Servicing\SkipSource;
 use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeTraceWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\ScriptedClient;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
@@ -39,7 +46,10 @@ final class TraceMetaCoverageTest extends TestCase
 
     public function testEveryKindHasASampleFromItsRealRecordingPath(): void
     {
-        $seen = array_unique(array_map(static fn(TraceDraft $t): string => $t->kind->value, self::samples()));
+        $seen = array_unique(array_map(
+            static fn(TraceDraft|TraceWrite $t): string => $t->kind->value,
+            self::samples(),
+        ));
         $all = array_map(static fn(TraceKind $k): string => $k->value, TraceKind::cases());
         sort($seen);
         sort($all);
@@ -84,7 +94,7 @@ final class TraceMetaCoverageTest extends TestCase
         }
     }
 
-    /** @return list<TraceDraft> */
+    /** @return list<TraceDraft|TraceWrite> */
     private static function samples(): array
     {
         $writer = new FakeDecisionWriter();
@@ -113,6 +123,13 @@ final class TraceMetaCoverageTest extends TestCase
         $recorder->recordApplied(new AppliedOffer(true, [], $after, 1000.0), ['updateLineItems']); // quote_after
         $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
 
-        return $writer->drafts[0]->trace;
+        $traceWriter = new FakeTraceWriter();
+        (new ServicingJournal(new NullLogger(), $traceWriter))->skip(
+            SkipSource::Handler,
+            SkipReason::LockBusy,
+            SkipContext::forMessage(new ServiceQuoteMessage('quote-id', 'comment_written')),
+        );
+
+        return [...$writer->drafts[0]->trace, ...$traceWriter->events];
     }
 }

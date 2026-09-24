@@ -152,7 +152,8 @@ final class DecisionExportCommand extends Command
         // method's to compose.
         $errors = $io->getErrorStyle();
         $errors->writeln(\sprintf(
-            '%d decision record(s), each with its trace. Customer, quote, channel, revision and strategy ids are'
+            '%d export line(s), including decisions with their trace and outside-pass events. Customer, quote, channel,'
+            . ' revision and strategy ids are'
             . ' pseudonymized with this shop\'s salt; names, addresses and the quote number are never exported in'
             . ' their own fields.',
             $written,

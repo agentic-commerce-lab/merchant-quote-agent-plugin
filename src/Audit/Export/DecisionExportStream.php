@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Audit\Export;
 
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
-use MerchantQuoteAgentPlugin\Audit\TraceEvent;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Dbal\Common\RepositoryIterator;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -30,9 +29,8 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
  * What leaves and what does not is AnonymizedDecision's five lists, and
  * docs/for-merchants.md describes it for the merchant.
  *
- * Each line starts with `record: "decision"` and carries the pass's trace
- * events under `trace` (spec 2026-09-23 §3). PR 2 adds `record: "event"`
- * lines for events outside a pass.
+ * Decision lines carry the pass's trace under `trace`; standalone events
+ * follow as `record: "event"` lines (spec 2026-09-23 §3).
  */
 final readonly class DecisionExportStream
 {
@@ -72,7 +70,12 @@ final readonly class DecisionExportStream
         // "the agent did nothing" rather than "no pass ended that way". Same
         // stderr channel as the encoding notices below, and for the same
         // reason: it describes the file, not a record in it.
-        $skipped = $outcome === '' ? [] : [\sprintf('Only records whose outcome is "%s" were exported.', $outcome)];
+        $skipped = $outcome === ''
+            ? []
+            : [\sprintf(
+                'Only records whose outcome is "%s" were exported; outside-pass events were omitted.',
+                $outcome,
+            )];
 
         while (($result = $iterator->fetch()) !== null) {
             foreach ($result->getEntities() as $record) {
@@ -83,7 +86,7 @@ final readonly class DecisionExportStream
                 $row = [
                     'record' => 'decision',
                     ...AnonymizedDecision::of($record, $pseudonym, $freeText),
-                    'trace' => $this->traceOf($record, $pseudonym, $context, $freeText),
+                    'trace' => PassTraceExport::of($record, $this->traces, $pseudonym, $context, $freeText),
                 ];
 
                 // JSON_INVALID_UTF8_SUBSTITUTE swaps invalid bytes -- the only
@@ -101,7 +104,7 @@ final readonly class DecisionExportStream
                 if ($line === false) {
                     $skipped[] = \sprintf(
                         'Skipped one record (%s) that could not be JSON-encoded: %s',
-                        $record->id,
+                        $pseudonym->of($record->id),
                         json_last_error_msg(),
                     );
 
@@ -112,50 +115,16 @@ final readonly class DecisionExportStream
             }
         }
 
-        return $skipped;
-    }
-
-    /**
-     * A decision's events in the order the pass recorded them.
-     *
-     * ponytail: one query per decision, so memory holds one pass's prompts
-     * (~150 KB) rather than a page's (500 passes, ~75 MB). The ceiling is
-     * query count: a 90-day export on a busy shop makes a few thousand. Batch
-     * per page with a smaller page size if exports get slow.
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function traceOf(
-        QuoteDecisionRecord $record,
-        ExportPseudonym $pseudonym,
-        Context $context,
-        bool $freeText,
-    ): array {
-        $criteria = new Criteria();
-        $criteria->addFilter(new EqualsFilter('decisionId', $record->id));
-        $criteria->addSorting(new FieldSorting('position', FieldSorting::ASCENDING));
-
-        // The ids AnonymizedDecision pseudonymizes, for the same swap inside
-        // trace content (see AnonymizedTrace).
-        $pseudonyms = $freeText
-            ? $pseudonym->map([
-                $record->id,
-                $record->quoteId,
-                $record->customerId,
-                $record->salesChannelId,
-                $record->revisionVersionId,
-                $record->strategyVersionId,
-            ])
-            : [];
-        $trace = [];
-
-        foreach ($this->traces->search($criteria, $context)->getEntities() as $event) {
-            if ($event instanceof TraceEvent) {
-                $trace[] = AnonymizedTrace::of($event, $freeText, $pseudonyms);
-            }
+        if ($outcome !== '') {
+            return $skipped;
         }
 
-        return $trace;
+        $eventLines = (new OutsideTraceExport($this->traces, $context, $pseudonym))->lines($from, $to, $freeText);
+        foreach ($eventLines as $line) {
+            yield $line;
+        }
+
+        return [...$skipped, ...$eventLines->getReturn()];
     }
 
     private static function criteria(\DateTimeImmutable $from, \DateTimeImmutable $to, string $outcome): Criteria

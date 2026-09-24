@@ -14,7 +14,6 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentResolver;
 use MerchantQuoteAgentPlugin\Strategy\UnknownStrategy;
-use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Context;
 
 /**
@@ -71,7 +70,7 @@ final readonly class ServicingPreflight
     public function __construct(
         private QuoteAgentSettingsSource $reader,
         private QuoteEscalator $escalator,
-        private LoggerInterface $logger,
+        private ServicingJournal $logger,
         private DecisionRecorder $recorder,
         private StrategyAssignmentResolver $assignments,
     ) {}
@@ -91,6 +90,11 @@ final readonly class ServicingPreflight
                 'quoteId' => $snapshot->identity->quoteId,
                 'state' => $state,
             ]);
+            $this->logger->skip(
+                SkipSource::Preflight,
+                SkipReason::TerminalState,
+                SkipContext::forSnapshot($snapshot, $context),
+            );
 
             return null;
         }
@@ -119,6 +123,11 @@ final readonly class ServicingPreflight
                 'quoteId' => $snapshot->identity->quoteId,
                 'salesChannelId' => $snapshot->identity->salesChannelId,
             ]);
+            $this->logger->skip(
+                SkipSource::Preflight,
+                SkipReason::KillSwitch,
+                SkipContext::forSnapshot($snapshot, $context),
+            );
 
             return null;
         }
@@ -175,6 +184,11 @@ final readonly class ServicingPreflight
                 'quoteId' => $snapshot->identity->quoteId,
                 'exception' => $e,
             ]);
+            $this->logger->skip(
+                SkipSource::Preflight,
+                SkipReason::RefusalWriteFailed,
+                SkipContext::forSnapshot($snapshot, $context),
+            );
         }
     }
 }

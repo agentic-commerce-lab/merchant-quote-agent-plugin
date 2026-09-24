@@ -55,6 +55,20 @@ final class RecorderOwnershipTest extends TestCase
         );
     }
 
+    public function testOnlyThePassAndOutsidePassWritersInsertTraceRows(): void
+    {
+        $owners = [];
+
+        foreach ($this->sourceFiles() as $relative => $contents) {
+            if (str_contains($contents, '->traces->create(')) {
+                $owners[] = $relative;
+            }
+        }
+
+        sort($owners);
+        self::assertSame(['Audit/DecisionRecordWriter.php', 'Audit/TraceWriter.php'], $owners);
+    }
+
     /** @return iterable<string, string> relative path => contents */
     private function sourceFiles(): iterable
     {

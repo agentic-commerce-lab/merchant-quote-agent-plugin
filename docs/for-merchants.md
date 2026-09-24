@@ -324,7 +324,9 @@ bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 > sept
 ```
 
 Either way you get one line of JSON for every decision the agent recorded in that
-range, each carrying the step-by-step trace of how the agent got there —
+range, each carrying the step-by-step trace of how the agent got there. Separate
+event lines follow for attempts that stopped before a decision, such as a paused
+agent, a busy quote or an unavailable gateway. Each event says why it stopped.
 `--from` is included, `--to` is not, so the line above is exactly September.
 Nothing schedules either of them, nothing calls them, and neither sends anything
 anywhere: you get a file, and what you do with that file is your decision. We
@@ -333,7 +335,7 @@ across more than one shop.
 
 Four lists, and together they are the whole boundary.
 
-*Leaves, as a scrambled code.* The record itself, the quote, the customer, the
+*Leaves, as a scrambled code.* The record or event itself, the quote, the customer, the
 sales channel, the quote revision and the strategy version. Each is replaced by a
 code computed from a secret unique to your shop. The same customer is the same
 code in every export you make, so repeat-buyer patterns are still visible, and a
@@ -407,8 +409,9 @@ The command leaves them out, and `--include-comments` puts them in. It prints
 which of the two you just produced on every run, so a redirected export is never
 ambiguous about what is in the file.
 
-**Reading one kind of decision.** `--outcome` narrows the file to a single kind,
-and the run says so on screen. The two worth looking at now and then are
+**Reading one kind of decision.** `--outcome` narrows the file to a single kind.
+Events that stopped before a decision have no outcome and are omitted from a
+filtered file; the run says so on screen. The two worth looking at now and then are
 
 ```
 bin/console merchant-quote-agent:export --from=2026-09-01 --to=2026-10-01 \

@@ -15,7 +15,6 @@ use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use PHPUnit\Framework\Attributes\DataProviderExternal;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\NullLogger;
 
 final class ServiceQuoteHandlerTest extends TestCase
 {
@@ -219,7 +218,7 @@ final class ServiceQuoteHandlerTest extends TestCase
 
         (new ServiceQuoteHandler(
             ServicingHandlerFixture::locks(),
-            new NullLogger(),
+            ServicingTestJournal::create(),
             ServicingSettingsFixture::preflightReturning(ServicingSettingsFixture::settings()),
             $gateway,
             null,

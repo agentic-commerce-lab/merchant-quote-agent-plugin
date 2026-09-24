@@ -22,6 +22,8 @@ use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeSubscriber;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriterInterface;
 use MerchantQuoteAgentPlugin\Audit\TraceEvent;
+use MerchantQuoteAgentPlugin\Audit\TraceWriter;
+use MerchantQuoteAgentPlugin\Audit\TraceWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
@@ -143,6 +145,7 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
+use MerchantQuoteAgentPlugin\Servicing\ServicingJournal;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
 use MerchantQuoteAgentPlugin\Strategy\Strategy;
@@ -411,6 +414,15 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     ]);
     $services->alias(DecisionRecordWriterInterface::class, DecisionRecordWriter::class);
     $services->set(DecisionRecorder::class);
+    $services->set(TraceWriter::class)->args([
+        service('merchant_quote_agent_trace.repository'),
+        service('logger'),
+    ]);
+    $services->alias(TraceWriterInterface::class, TraceWriter::class);
+    $services->set(ServicingJournal::class)->args([
+        service('logger'),
+        service(TraceWriterInterface::class),
+    ]);
 
     // #34: the merchant's own anonymized export of this table. Never
     // scheduled and never called by the plugin itself, because sending
@@ -846,7 +858,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(ServicingPreflight::class)->args([
         service(QuoteAgentSettingsSource::class),
         service(QuoteEscalator::class),
-        service('logger'),
+        service(ServicingJournal::class),
         service(DecisionRecorder::class),
         service(StrategyAssignmentResolver::class),
     ]);
@@ -909,7 +921,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // error. autoconfigure() picks up #[AsMessageHandler].
     $services->set(ServiceQuoteHandler::class)->args([
         service(QuoteServicingLock::class),
-        service('logger'),
+        service(ServicingJournal::class),
         service(ServicingPreflight::class),
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
         service(QuoteServicingPipelineInterface::class)->ignoreOnInvalid(),

@@ -16,7 +16,7 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
-use Psr\Log\NullLogger;
+use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\ServicingTestJournal;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Component\Lock\LockFactory;
@@ -114,7 +114,7 @@ final class ServicingConfigGateTest extends IntegrationTestCase
     ): ServiceQuoteHandler {
         return new ServiceQuoteHandler(
             new QuoteServicingLock(new LockFactory(new InMemoryStore()), 'redis://x'),
-            new NullLogger(),
+            ServicingTestJournal::create(),
             static::preflight(),
             $gateway,
             $pipeline,

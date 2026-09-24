@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 
+use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
@@ -26,7 +27,8 @@ final class ServiceQuoteHandlerSkipTraceTest extends TestCase
         try {
             $handler(ServicingHandlerFixture::message());
             self::fail('A missing gateway must park the message.');
-        } catch (UnrecoverableMessageHandlingException) {
+        } catch (UnrecoverableMessageHandlingException $e) {
+            self::assertStringContainsString('gateway is unavailable', $e->getMessage());
         }
 
         $held = $locks->for('q1');
@@ -41,7 +43,8 @@ final class ServiceQuoteHandlerSkipTraceTest extends TestCase
         try {
             $handler(ServicingHandlerFixture::message());
             self::fail('A busy lock must retry.');
-        } catch (RecoverableMessageHandlingException) {
+        } catch (RecoverableMessageHandlingException $e) {
+            self::assertStringContainsString('being serviced', $e->getMessage());
         }
 
         self::assertSame(['no_gateway', 'lock_busy'], self::reasons($writer));
@@ -63,7 +66,8 @@ final class ServiceQuoteHandlerSkipTraceTest extends TestCase
                 $pipeline,
             )(new ServiceQuoteMessage('q1', 'Anna@example.com'));
             self::fail('An unknown trigger must retain its original failure.');
-        } catch (\ValueError) {
+        } catch (\ValueError $e) {
+            self::assertStringContainsString('Anna@example.com', $e->getMessage());
         }
 
         self::assertSame(['quote_not_found', 'stale_trigger'], self::reasons($writer));
@@ -87,6 +91,19 @@ final class ServiceQuoteHandlerSkipTraceTest extends TestCase
         self::assertSame(0, $pipeline->passes);
     }
 
+    public function testQuoteDeletedDuringAttemptWriteLeavesOneQuoteNotFoundSkip(): void
+    {
+        $writer = new FakeTraceWriter();
+        $gateway = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
+        $gateway->updateThrows = QuoteNotFoundException::forId('q1');
+
+        self::handler($writer, $gateway, ServicingHandlerFixture::countingPipeline())(
+            ServicingHandlerFixture::message(),
+        );
+
+        self::assertSame(['quote_not_found'], self::reasons($writer));
+    }
+
     public function testCrashBudgetAndFailedAttemptWriteEachLeaveASkip(): void
     {
         $writer = new FakeTraceWriter();
@@ -98,7 +115,8 @@ final class ServiceQuoteHandlerSkipTraceTest extends TestCase
         try {
             self::handler($writer, $ceiling, $pipeline)(ServicingHandlerFixture::message());
             self::fail('A spent crash budget must park the message.');
-        } catch (UnrecoverableMessageHandlingException) {
+        } catch (UnrecoverableMessageHandlingException $e) {
+            self::assertStringContainsString('crash budget', $e->getMessage());
         }
 
         $failedWrite = new FakeQuoteGateway([ServicingHandlerFixture::snapshot()]);
