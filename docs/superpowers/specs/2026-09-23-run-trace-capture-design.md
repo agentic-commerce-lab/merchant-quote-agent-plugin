@@ -238,7 +238,10 @@ and `AppliedOffer::$after` at `recordApplied()`.
 
 - `meta`: `{lineCount}`.
 - `content`: the snapshot, encoded the same way. It carries product labels and
-  the quote's identity, so all of it goes into `content`.
+  the quote's identity, so all of it goes into `content`, except
+  `identity.companyName` and `identity.orderId`, which `Audit\QuoteTrace` drops
+  at recording: neither is needed to measure a strategy, and the company name
+  would sit next to the customer's pseudonym in every export with comments.
 
 ### Outside a pass (PR 2)
 
@@ -336,8 +339,10 @@ Interleaving by time would mean merging two cursors, and consumers group by
 `--outcome` filters decisions. When it is set, no event lines are written,
 because an event has no outcome. The notice that a filter applied says so.
 
-`DecisionExportStream` loads a fetched page's trace rows in one query per page
-(`decision_id IN (...)`), so the export stays streamed at 500 decisions per page.
+`DecisionExportStream` loads each decision's trace rows in one query per
+decision, not one per page: memory then holds one pass's prompts (~150 KB)
+rather than a whole page's (500 passes, ~75 MB). The export stays streamed, at
+the cost of one query per decision.
 
 ### Pseudonymization
 
@@ -369,7 +374,7 @@ comment, product label and email, and finds none of them.
 `content` follows the existing comments rule exactly:
 
 - the dashboard **Export** includes it;
-- **Export without comments** leaves it out;
+- **Export without comments or prompts** leaves it out;
 - the CLI leaves it out unless `--include-comments` is given.
 
 The notices in `DecisionExportCommand::report()` and the menu labels name what
@@ -385,12 +390,6 @@ it up.
 lookup. Neither leaves in its own field, but both are in the prompts the model
 was shown, and the prompts are free text. The chat choice was "same as
 comments", made knowing that traces carry customer history.
-
-A third follows for the same reason: the customer's company name, which the
-same list named. `quote_before` and `quote_after` content is the whole
-`Bridge\Data\QuoteSnapshot`, and `QuoteIdentity::$companyName` is part of it.
-It too leaves only with free text, and `docs/for-merchants.md` lists it under
-"Leaves only with the comments".
 
 The pseudonym promise does hold inside `content`: the decision's own ids
 (record, quote, customer, channel, revision, strategy version) are swapped

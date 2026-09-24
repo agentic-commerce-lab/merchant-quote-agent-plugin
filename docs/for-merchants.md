@@ -338,7 +338,9 @@ sales channel, the quote revision and the strategy version. Each is replaced by 
 code computed from a secret unique to your shop. The same customer is the same
 code in every export you make, so repeat-buyer patterns are still visible, and a
 different code from every other shop's, so nobody can line your customers up
-against anyone else's — or against your own database. The secret is created the
+against anyone else's — or against your own database. One exception: with the
+comments included, the model's prompts can carry the quote number, so an export
+with comments can be matched to your own records. The secret is created the
 first time you export and kept in your shop's configuration. If you delete it,
 future exports stop lining up with past ones, which is also how you sever that
 link on purpose.
@@ -369,15 +371,14 @@ link on purpose.
   customer code rather than to a name, but it does describe that customer's
   relationship with you.
 
-*Does not leave, ever.* Names, e-mail addresses, postal addresses and phone
-numbers — the agent's record does not hold them to begin with.
+*Does not leave, ever.* Names, e-mail addresses, postal addresses, phone numbers
+and company names — the agent's record does not hold them to begin with.
 
-*Leaves only with the comments.* The quote number, your customer's company name
-and the details behind a history lookup — which past quotes and orders the agent
-read, their numbers, products and prices, and which product it asked about —
-never leave in their own fields. But the model's full prompts and the snapshots
-of the quote do contain them, because that is what the model was shown and what
-the agent read, and both are part of the comments below.
+*Leaves only with the comments.* The quote number and the details behind a
+history lookup — which past quotes and orders the agent read, their numbers,
+products and prices, and which product it asked about — never leave in their
+own fields. But the model's full prompts do contain them, because that is what
+the model was shown, and the full prompts are part of the comments below.
 
 **The comments are the part to decide about, and the two ways round differ.** The
 customer's own message, the agent's replies, the model's full prompts and raw

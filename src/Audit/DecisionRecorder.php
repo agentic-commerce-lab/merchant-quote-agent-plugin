@@ -116,16 +116,10 @@ final class DecisionRecorder
 
         // Position 0 of every row, refusals included: what the quote looked
         // like when the agent picked it up is the one thing every later event
-        // is read against. Content, all of it -- product labels and the
-        // quote's own identity are in there.
-        TraceDraft::appendTo(
-            $draft,
-            TraceKind::QuoteBefore,
-            [
-                'lineCount' => \count($snapshot->content->lines),
-            ],
-            TracePayload::of($snapshot),
-        );
+        // is read against. Content, nearly all of it -- product labels and the
+        // quote's own identity are in there (see QuoteTrace for what is not).
+        [$meta, $content] = QuoteTrace::of($snapshot);
+        TraceDraft::appendTo($draft, TraceKind::QuoteBefore, $meta, $content);
 
         return $draft;
     }
@@ -256,14 +250,8 @@ final class DecisionRecorder
             $applied->after->totals->totalNet,
         );
 
-        TraceDraft::appendTo(
-            $this->draft,
-            TraceKind::QuoteAfter,
-            [
-                'lineCount' => \count($applied->after->content->lines),
-            ],
-            TracePayload::of($applied->after),
-        );
+        [$meta, $content] = QuoteTrace::of($applied->after);
+        TraceDraft::appendTo($this->draft, TraceKind::QuoteAfter, $meta, $content);
     }
 
     public function recordReply(string $comment, ?string $promptHash): void
