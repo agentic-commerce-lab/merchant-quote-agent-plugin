@@ -58,7 +58,7 @@ final class QuoteLineMapperTest extends TestCase
         self::assertSame(80.0, $lines[0]->requestedUnitPrice);
     }
 
-    /** The whole point of the tolerance being a cent and not "any value on a marked line". */
+    /** Both a large change and a one-cent edit must remain visible after a mirror. */
     public function testABuyerEditingOverAMirroredAskIsReadAgain(): void
     {
         $lines = (new QuoteLineMapper(
@@ -68,6 +68,11 @@ final class QuoteLineMapperTest extends TestCase
         ])));
 
         self::assertSame(75.63, $lines[0]->requestedUnitPrice);
+        $oneCentEdit = (new QuoteLineMapper(
+            CommercialCapabilities::modern(),
+        ))->map(self::quote(requestedPriceGross: 17.84, customFields: MirroredAsks::stamp([], ['line-1' => 15.0])));
+
+        self::assertSame(14.99, $oneCentEdit[0]->requestedUnitPrice);
     }
 
     public function testAMirrorOnAnotherLineDoesNotHideThisLinesAsk(): void

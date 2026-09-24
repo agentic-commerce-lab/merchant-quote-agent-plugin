@@ -26,17 +26,6 @@ final class MirroredAsks
 {
     public const KEY = 'merchant_quote_agent_mirrored_asks';
 
-    /**
-     * Slack for one net→gross→net round trip, not a money tolerance.
-     *
-     * The marker holds the NET ask; the column holds the quote's own tax space.
-     * Writing rounds to the cent there and reading rounds to the cent back, so
-     * a mirrored 15.00 can return as 14.995. Deliberately not Policy's
-     * `Epsilon::MONEY`: that one is offer-verification slack, a policy concept,
-     * and the bridge does not import the policy layer.
-     */
-    private const ROUND_TRIP_SLACK = 0.01;
-
     private function __construct() {}
 
     /**
@@ -90,19 +79,30 @@ final class MirroredAsks
     }
 
     /**
-     * Whether this line's requested price is the one the agent mirrored — and
-     * not a number the buyer has since entered over it.
+     * Whether the stored requested price is exactly what the agent wrote in
+     * the quote's tax space. A net-space tolerance can hide a buyer's later
+     * one-cent edit and falsely mark an unserviced ask as already answered.
      *
      * @param array<string, float> $mirrored as returned by read()
      */
-    public static function holds(array $mirrored, string $lineItemId, ?float $requestedUnitPriceNet): bool
-    {
+    public static function holds(
+        array $mirrored,
+        string $lineItemId,
+        ?float $storedRequestedPrice,
+        float $netRatio,
+    ): bool {
         $net = $mirrored[$lineItemId] ?? null;
 
         return (
             $net !== null
-            && $requestedUnitPriceNet !== null
-            && abs($requestedUnitPriceNet - $net) <= self::ROUND_TRIP_SLACK
+            && $storedRequestedPrice !== null
+            && $netRatio !== 0.0
+            && number_format($storedRequestedPrice, 2, '.', '') === number_format(
+                round($net / $netRatio, precision: 2),
+                2,
+                '.',
+                '',
+            )
         );
     }
 }
