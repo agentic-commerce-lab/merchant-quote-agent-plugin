@@ -17,7 +17,7 @@ use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
-use Psr\Log\NullLogger;
+use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\ServicingTestJournal;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Component\Lock\LockFactory;
@@ -64,7 +64,13 @@ final class ServicingCrashBudgetTest extends IntegrationTestCase
         ]));
 
         $pipeline = self::countingPipeline();
-        $handler = new ServiceQuoteHandler(self::locks(), new NullLogger(), static::preflight(), $gateway, $pipeline);
+        $handler = new ServiceQuoteHandler(
+            self::locks(),
+            ServicingTestJournal::create(),
+            static::preflight(),
+            $gateway,
+            $pipeline,
+        );
 
         $this->expectException(UnrecoverableMessageHandlingException::class);
 
@@ -91,7 +97,7 @@ final class ServicingCrashBudgetTest extends IntegrationTestCase
 
         $handler = new ServiceQuoteHandler(
             self::locks(),
-            new NullLogger(),
+            ServicingTestJournal::create(),
             static::preflight(),
             $gateway,
             self::countingPipeline(),
@@ -128,7 +134,13 @@ final class ServicingCrashBudgetTest extends IntegrationTestCase
             }
         };
 
-        $handler = new ServiceQuoteHandler(self::locks(), new NullLogger(), static::preflight(), $gateway, $pipeline);
+        $handler = new ServiceQuoteHandler(
+            self::locks(),
+            ServicingTestJournal::create(),
+            static::preflight(),
+            $gateway,
+            $pipeline,
+        );
         $handler(ServiceQuoteMessage::because($quoteId, ServicingTriggerReason::StateEntered));
 
         self::assertSame(
@@ -167,7 +179,13 @@ final class ServicingCrashBudgetTest extends IntegrationTestCase
             }
         };
 
-        $handler = new ServiceQuoteHandler(self::locks(), new NullLogger(), static::preflight(), $gateway, $pipeline);
+        $handler = new ServiceQuoteHandler(
+            self::locks(),
+            ServicingTestJournal::create(),
+            static::preflight(),
+            $gateway,
+            $pipeline,
+        );
         $handler(ServiceQuoteMessage::because($quoteId, ServicingTriggerReason::StateEntered));
 
         self::assertNotNull(

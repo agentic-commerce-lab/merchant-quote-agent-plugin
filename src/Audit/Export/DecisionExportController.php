@@ -17,10 +17,10 @@ use Symfony\Component\Routing\Attribute\Route;
  * allowlist, same half-open range -- as a downloadable file, so a merchant who
  * has never opened a shell can still send their records to Shopware.
  *
- * Read-gated on `merchant_quote_agent_decision:read` and nothing further: this
- * exposes a pseudonymized SUBSET of what the decision list and detail pages
- * already render to the same viewer. A second privilege would suggest the
- * export reveals something those pages do not, and it does not.
+ * Read-gated on both decision and trace privileges. A custom Administration
+ * role may grant decision rows without granting prompts, account history and
+ * quote snapshots in trace rows; the action route must enforce both before
+ * the stream begins.
  *
  * `from` and `to` are validated here rather than trusted from the caller even
  * though the dashboard computes them: this is an authenticated HTTP endpoint,
@@ -47,7 +47,13 @@ final readonly class DecisionExportController
     #[Route(
         path: '/api/_action/merchant-quote-agent/decision-export',
         name: 'api.action.merchant_quote_agent.decision_export',
-        defaults: ['_routeScope' => ['api'], '_acl' => ['merchant_quote_agent_decision:read']],
+        defaults: [
+            '_routeScope' => ['api'],
+            '_acl' => [
+                'merchant_quote_agent_decision:read',
+                'merchant_quote_agent_trace:read',
+            ],
+        ],
         methods: ['GET'],
     )]
     public function export(Request $request, Context $context): Response

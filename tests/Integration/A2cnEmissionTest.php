@@ -270,7 +270,13 @@ final class A2cnEmissionTest extends IntegrationTestCase
         $logger = $container->get('logger');
         self::assertInstanceOf(LoggerInterface::class, $logger);
 
-        return new SellerActEmitter($factory, $inspector, $mirror, $logger, static::gateway());
+        return new SellerActEmitter(
+            $factory,
+            $inspector,
+            $mirror,
+            $container->get(\MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActJournal::class),
+            static::gateway(),
+        );
     }
 
     private static function protocolHash(): ProtocolHash

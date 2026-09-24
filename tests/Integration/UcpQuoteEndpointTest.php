@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use MerchantQuoteAgentPlugin\Audit\TraceEvent;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Identity\AccessTokenSubjectReaderInterface;
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelLifecycleManager;
 use Symfony\Component\HttpFoundation\Request;
 use Ucp\Sdk\Model\Profile\PlatformProfile;
@@ -121,6 +125,38 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
 
         self::assertNotNull($info, 'the access-token schema or hash changed in Agentic Commerce');
         self::assertSame($customerId, $info->subject);
+    }
+
+    public function testInvalidAuthenticatedQuoteRequestKeepsAnErasableTrace(): void
+    {
+        $customerId = BuyerQuoteFixture::anyQuoteCapableCustomerId(static::getContainer());
+        $request = Request::create(
+            BuyerQuoteFixture::storefrontBaseUri(static::getContainer()) . '/ucp/quotes',
+            'POST',
+            server: [
+                'HTTP_UCP_AGENT' => $this->agentHeader(),
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->issueToken($customerId),
+                'HTTP_IDEMPOTENCY_KEY' => 'idem-' . bin2hex(random_bytes(8)),
+                'CONTENT_TYPE' => 'application/json',
+            ],
+            content: '{"line_items":[{"product_id":"","quantity":1}],"comment":"private"}',
+        );
+        $response = KernelLifecycleManager::getKernel()->handle($request);
+
+        self::assertSame(422, $response->getStatusCode());
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('kind', 'http'), new EqualsFilter('customerId', $customerId));
+        $trace = static::getContainer()
+            ->get('merchant_quote_agent_trace.repository')
+            ->search($criteria, Context::createDefaultContext())
+            ->first();
+        self::assertInstanceOf(TraceEvent::class, $trace);
+        self::assertSame($customerId, $trace->customerId);
+        self::assertNull($trace->quoteId);
+        self::assertSame(
+            '{"line_items":[{"product_id":"","quantity":1}],"comment":"private"}',
+            $trace->content['requestBody'] ?? null,
+        );
     }
 
     private function issueToken(?string $customerId = null): string

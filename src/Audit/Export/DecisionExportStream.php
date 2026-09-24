@@ -28,11 +28,15 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
  *
  * What leaves and what does not is AnonymizedDecision's five lists, and
  * docs/for-merchants.md describes it for the merchant.
+ *
+ * Decision lines carry the pass's trace under `trace`; standalone events
+ * follow as `record: "event"` lines (spec 2026-09-23 §3).
  */
 final readonly class DecisionExportStream
 {
     public function __construct(
         private EntityRepository $decisions,
+        private EntityRepository $traces,
         private SystemConfigService $systemConfig,
     ) {}
 
@@ -58,24 +62,32 @@ final readonly class DecisionExportStream
         ?Context $context = null,
         string $outcome = '',
     ): \Generator {
+        $context ??= Context::createDefaultContext();
         $pseudonym = ExportPseudonym::forShop($this->systemConfig);
-        $iterator = new RepositoryIterator(
-            $this->decisions,
-            $context ?? Context::createDefaultContext(),
-            self::criteria($from, $to, $outcome),
-        );
+        $iterator = new RepositoryIterator($this->decisions, $context, self::criteria($from, $to, $outcome));
         // A filtered file looks exactly like an unfiltered one, and a
         // merchant who does not know a filter applied reads "0 records" as
         // "the agent did nothing" rather than "no pass ended that way". Same
         // stderr channel as the encoding notices below, and for the same
         // reason: it describes the file, not a record in it.
-        $skipped = $outcome === '' ? [] : [\sprintf('Only records whose outcome is "%s" were exported.', $outcome)];
+        $skipped = $outcome === ''
+            ? []
+            : [\sprintf(
+                'Only records whose outcome is "%s" were exported; outside-pass events were omitted.',
+                $outcome,
+            )];
 
         while (($result = $iterator->fetch()) !== null) {
             foreach ($result->getEntities() as $record) {
                 if (!$record instanceof QuoteDecisionRecord) {
                     continue;
                 }
+
+                $row = [
+                    'record' => 'decision',
+                    ...AnonymizedDecision::of($record, $pseudonym, $freeText),
+                    'trace' => PassTraceExport::of($record, $this->traces, $pseudonym, $context, $freeText),
+                ];
 
                 // JSON_INVALID_UTF8_SUBSTITUTE swaps invalid bytes -- the only
                 // realistic failure here, e.g. a provider error body stored in
@@ -85,14 +97,14 @@ final readonly class DecisionExportStream
                 // unreachable in practice; it stays as a guard so a blank line
                 // can never enter the JSONL stream uncounted.
                 $line = json_encode(
-                    AnonymizedDecision::of($record, $pseudonym, $freeText),
+                    $row,
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
                 );
 
                 if ($line === false) {
                     $skipped[] = \sprintf(
                         'Skipped one record (%s) that could not be JSON-encoded: %s',
-                        $record->id,
+                        $pseudonym->of($record->id),
                         json_last_error_msg(),
                     );
 
@@ -103,7 +115,16 @@ final readonly class DecisionExportStream
             }
         }
 
-        return $skipped;
+        if ($outcome !== '') {
+            return $skipped;
+        }
+
+        $eventLines = (new OutsideTraceExport($this->traces, $context, $pseudonym))->lines($from, $to, $freeText);
+        foreach ($eventLines as $line) {
+            yield $line;
+        }
+
+        return [...$skipped, ...$eventLines->getReturn()];
     }
 
     private static function criteria(\DateTimeImmutable $from, \DateTimeImmutable $to, string $outcome): Criteria

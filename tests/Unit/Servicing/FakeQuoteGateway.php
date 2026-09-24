@@ -39,6 +39,8 @@ final class FakeQuoteGateway implements QuoteGatewayInterface
 
     public ?\Throwable $transitionThrows = null;
 
+    public ?\Throwable $updateThrows = null;
+
     /** @var list<QuoteTransition> */
     public array $transitions = [];
 
@@ -80,6 +82,10 @@ final class FakeQuoteGateway implements QuoteGatewayInterface
     #[\Override]
     public function updateQuote(string $quoteId, QuoteUpdate $update, ?QuoteRevision $expected = null): void
     {
+        if ($this->updateThrows !== null) {
+            throw $this->updateThrows;
+        }
+
         $this->calls[] = 'updateQuote';
         $this->quoteUpdates[] = $update;
         $this->firstExpectedRevision ??= $expected;

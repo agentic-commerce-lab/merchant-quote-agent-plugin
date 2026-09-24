@@ -114,6 +114,13 @@ final class DecisionRecorder
         $draft->totalNetBefore = $snapshot->totals->totalNet;
         $draft->startedAt = microtime(true);
 
+        // Position 0 of every row, refusals included: what the quote looked
+        // like when the agent picked it up is the one thing every later event
+        // is read against. Content, nearly all of it -- product labels and the
+        // quote's own identity are in there (see QuoteTrace for what is not).
+        [$meta, $content] = QuoteTrace::of($snapshot);
+        TraceDraft::appendTo($draft, TraceKind::QuoteBefore, $meta, $content);
+
         return $draft;
     }
 
@@ -125,6 +132,30 @@ final class DecisionRecorder
     public function recordHistoryRound(HistoryRequest $request, string $result): void
     {
         HistoryRecord::roundTo($this->draft, $request, $result);
+    }
+
+    /**
+     * One event for the open pass's trace (see TraceKind). For the
+     * collaborators that are not the recorder's to map -- ModelPlatform and
+     * ReplyComposer build their own event. Dropped when no pass is open, like
+     * every other record* call.
+     *
+     * @param array<string, mixed> $meta
+     * @param array<array-key, mixed>|null $content
+     */
+    public function trace(TraceKind $kind, array $meta, ?array $content = null): void
+    {
+        if ($this->draft === null) {
+            return;
+        }
+
+        TraceDraft::appendTo($this->draft, $kind, $meta, $content);
+    }
+
+    /** The id the open pass's row will have, or null when no pass is open. */
+    public function decisionId(): ?string
+    {
+        return $this->draft?->id;
     }
 
     /**
@@ -173,6 +204,9 @@ final class DecisionRecorder
         $this->draft->maxDiscountPercent = $maxDiscountPercent;
         $this->draft->strategyVersionId = $strategyVersionId;
         $this->draft->strategyAssignmentSource = $strategyAssignmentSource?->value;
+
+        [$meta, $content] = VerdictTrace::of($decision);
+        TraceDraft::appendTo($this->draft, TraceKind::PolicyVerdict, $meta, $content);
     }
 
     public function recordProposal(?string $rawResponse, ProposedAnswer $answer): void
@@ -215,6 +249,9 @@ final class DecisionRecorder
             $this->draft->totalNetBefore,
             $applied->after->totals->totalNet,
         );
+
+        [$meta, $content] = QuoteTrace::of($applied->after);
+        TraceDraft::appendTo($this->draft, TraceKind::QuoteAfter, $meta, $content);
     }
 
     public function recordReply(string $comment, ?string $promptHash): void

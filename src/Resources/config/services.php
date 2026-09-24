@@ -17,10 +17,16 @@ use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriter;
 use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriterInterface;
 use MerchantQuoteAgentPlugin\Audit\Export\DecisionExportController;
 use MerchantQuoteAgentPlugin\Audit\Export\DecisionExportStream;
+use MerchantQuoteAgentPlugin\Audit\HttpTraceCapture;
+use MerchantQuoteAgentPlugin\Audit\HttpTraceQuote;
+use MerchantQuoteAgentPlugin\Audit\HttpTraceSubscriber;
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeSubscriber;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriterInterface;
+use MerchantQuoteAgentPlugin\Audit\TraceEvent;
+use MerchantQuoteAgentPlugin\Audit\TraceWriter;
+use MerchantQuoteAgentPlugin\Audit\TraceWriterInterface;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
@@ -114,6 +120,7 @@ use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteHandler;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\OfferVisibleStateSubscriber;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActFactory;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActJournal;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnBearerJwt;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnDiscoveryController;
 use MerchantQuoteAgentPlugin\Protocol\Http\A2cnMessagesController;
@@ -145,6 +152,7 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
+use MerchantQuoteAgentPlugin\Servicing\ServicingJournal;
 use MerchantQuoteAgentPlugin\Servicing\ServicingPreflight;
 use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
 use MerchantQuoteAgentPlugin\Strategy\Strategy;
@@ -287,6 +295,15 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
             );
         }
 
+        $services->set(HttpTraceQuote::class)->args([
+            service(SessionQuoteLocator::class)->nullOnInvalid(),
+        ]);
+        $services->set(HttpTraceCapture::class)->args([
+            service(TraceWriterInterface::class),
+            service(HttpTraceQuote::class),
+        ]);
+        $services->set(HttpTraceSubscriber::class)->args([service(HttpTraceCapture::class), service('logger')]);
+
         // Identity: bearer token → customer context. The reader is the only class
         // that knows Agentic Commerce's OAuth schema (issue #13 retires it).
         $services->set(AcOAuthAccessTokenReader::class);
@@ -374,6 +391,11 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // the class a service for that to fire.
     $services->set(QuoteDecisionRecord::class);
 
+    // The run trace (2026-09-23 spec). Registered unconditionally for the same
+    // reason as QuoteDecisionRecord: a pass writes it whether or not
+    // SwagCommercial is installed.
+    $services->set(TraceEvent::class);
+
     // The strategy library (Task 2). Registered unconditionally like
     // QuoteDecisionRecord — they are written by the administration through the
     // admin API regardless of whether SwagCommercial is licensed. Autoconfiguration
@@ -399,11 +421,24 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // EventSubscriberInterface, so no explicit tag.
     $services->set(StrategyWriteGuard::class);
 
-    // The repository is created by the DAL from the #[Entity] attribute; it
-    // is not autowirable by type, so name it.
-    $services->set(DecisionRecordWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
+    // The repositories are created by the DAL from the #[Entity] attributes;
+    // they are not autowirable by type, so name them.
+    $services->set(DecisionRecordWriter::class)->args([
+        service('merchant_quote_agent_decision.repository'),
+        service('merchant_quote_agent_trace.repository'),
+        service('logger'),
+    ]);
     $services->alias(DecisionRecordWriterInterface::class, DecisionRecordWriter::class);
     $services->set(DecisionRecorder::class);
+    $services->set(TraceWriter::class)->args([
+        service('merchant_quote_agent_trace.repository'),
+        service('logger'),
+    ]);
+    $services->alias(TraceWriterInterface::class, TraceWriter::class);
+    $services->set(ServicingJournal::class)->args([
+        service('logger'),
+        service(TraceWriterInterface::class),
+    ]);
 
     // #34: the merchant's own anonymized export of this table. Never
     // scheduled and never called by the plugin itself, because sending
@@ -412,6 +447,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // and both read the same stream.
     $services->set(DecisionExportStream::class)->args([
         service('merchant_quote_agent_decision.repository'),
+        service('merchant_quote_agent_trace.repository'),
         service(SystemConfigService::class),
     ]);
     $services->set(DecisionExportCommand::class)->tag('console.command');
@@ -422,7 +458,10 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // subscribes to customer deletion, because keeping a decision explainable
     // and answering a person's request are two different decisions and only
     // the merchant can make the second one.
-    $services->set(DecisionEraser::class)->args([service('merchant_quote_agent_decision.repository')]);
+    $services->set(DecisionEraser::class)->args([
+        service('merchant_quote_agent_decision.repository'),
+        service('merchant_quote_agent_trace.repository'),
+    ]);
     $services->alias(DecisionEraserInterface::class, DecisionEraser::class);
     $services->set(DecisionForgetCommand::class)->tag('console.command');
 
@@ -765,6 +804,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
                 service(QuoteAgentSettingsReader::class),
                 service(AssistantAskStamp::class),
                 service(BuyerQuoteGatewayInterface::class)->nullOnInvalid(),
+                service(TraceWriterInterface::class),
             ])
             ->autoconfigure(false)
             ->tag('swag_assistant.tool_factory');
@@ -775,7 +815,11 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         // quote they already have.
         $services
             ->set(QuoteStatusToolFactory::class)
-            ->args([service('request_stack'), service(BuyerQuoteGatewayInterface::class)->nullOnInvalid()])
+            ->args([
+                service('request_stack'),
+                service(BuyerQuoteGatewayInterface::class)->nullOnInvalid(),
+                service(TraceWriterInterface::class),
+            ])
             ->autoconfigure(false)
             ->tag('swag_assistant.tool_factory');
     }
@@ -845,7 +889,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(ServicingPreflight::class)->args([
         service(QuoteAgentSettingsSource::class),
         service(QuoteEscalator::class),
-        service('logger'),
+        service(ServicingJournal::class),
         service(DecisionRecorder::class),
         service(StrategyAssignmentResolver::class),
     ]);
@@ -909,7 +953,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // error. autoconfigure() picks up #[AsMessageHandler].
     $services->set(ServiceQuoteHandler::class)->args([
         service(QuoteServicingLock::class),
-        service('logger'),
+        service(ServicingJournal::class),
         service(ServicingPreflight::class),
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
         service(QuoteServicingPipelineInterface::class)->ignoreOnInvalid(),
@@ -931,11 +975,12 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // invalid (QuoteGatewayInterface is always defined, factory-backed); the
     // null case that matters for this shop is the factory's return value, which
     // SellerActEmitter's nullable, defaulted `$gateway` now handles itself.
+    $services->set(SellerActJournal::class)->args([service('logger'), service(TraceWriterInterface::class)]);
     $services->set(SellerActEmitter::class)->args([
         service(SellerActFactory::class),
         service(EvidenceInspector::class),
         service(ChainMirror::class),
-        service('logger'),
+        service(SellerActJournal::class),
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
     ]);
 
@@ -949,6 +994,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service('logger'),
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
         service(SellerActEmitter::class)->ignoreOnInvalid(),
+        service(ServicingJournal::class),
     ]);
 
     // The act chain and end-of-session records (Task 19). Same gateway

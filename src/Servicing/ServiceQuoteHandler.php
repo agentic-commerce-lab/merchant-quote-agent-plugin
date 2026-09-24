@@ -9,11 +9,8 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use MerchantQuoteAgentPlugin\Negotiation\ClarificationMarker;
-use MerchantQuoteAgentPlugin\Negotiation\QuoteBaseline;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
-use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
-use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
@@ -53,7 +50,7 @@ final readonly class ServiceQuoteHandler
 
     public function __construct(
         private QuoteServicingLock $locks,
-        private LoggerInterface $logger,
+        private ServicingJournal $logger,
         private ServicingPreflight $preflight,
         private ?QuoteGatewayInterface $gateway = null,
         private ?QuoteServicingPipelineInterface $pipeline = null,
@@ -79,6 +76,7 @@ final readonly class ServiceQuoteHandler
                 'quoteId' => $message->quoteId,
                 'reason' => $message->reason,
             ]);
+            $this->logger->skip(SkipSource::Handler, SkipReason::NoGateway, SkipContext::forMessage($message));
 
             throw new UnrecoverableMessageHandlingException(sprintf(
                 'Quote %s cannot be serviced: the SwagCommercial gateway is unavailable.',
@@ -93,6 +91,8 @@ final readonly class ServiceQuoteHandler
             // quote, and after it finishes the fingerprint may STILL differ —
             // a buyer comment that landed mid-pass. Dropping the message here
             // would drop that ask.
+            $this->logger->skip(SkipSource::Handler, SkipReason::LockBusy, SkipContext::forMessage($message));
+
             throw new RecoverableMessageHandlingException(
                 sprintf('Quote %s is being serviced by another worker.', $message->quoteId),
                 retryDelay: self::BUSY_RETRY_DELAY_MS,
@@ -108,6 +108,7 @@ final readonly class ServiceQuoteHandler
                 'quoteId' => $message->quoteId,
                 'exception' => $e,
             ]);
+            $this->logger->skip(SkipSource::Handler, SkipReason::QuoteNotFound, SkipContext::forMessage($message));
         } finally {
             $lock->release();
         }
@@ -128,7 +129,11 @@ final readonly class ServiceQuoteHandler
         // since the preflight can write a marker, a comment and a notification
         // on the strength of a trigger nothing can name. The counter is read
         // rather than claimed; a refused pass claims nothing.
-        $context = new PassContext(ServicingTriggerReason::from($message->reason), self::attemptsOn($snapshot));
+        $attempt = self::attemptsOn($snapshot);
+
+        $trigger = ServicingTriggerResolver::resolve($message, $snapshot, $attempt, $this->logger);
+
+        $context = new PassContext($trigger, $attempt);
         $settings = $this->preflight->check($gateway, $snapshot, $context);
 
         if ($settings === null) {
@@ -146,6 +151,11 @@ final readonly class ServiceQuoteHandler
                 'quoteId' => $message->quoteId,
                 'fingerprint' => $fingerprint,
             ]);
+            $this->logger->skip(
+                SkipSource::Handler,
+                SkipReason::NothingNew,
+                SkipContext::forSnapshot($snapshot, $context),
+            );
 
             return;
         }
@@ -158,6 +168,11 @@ final readonly class ServiceQuoteHandler
             $this->logger->warning('Quote claimed for servicing but no servicing pipeline is registered.', [
                 'quoteId' => $message->quoteId,
             ]);
+            $this->logger->skip(
+                SkipSource::Handler,
+                SkipReason::NoPipeline,
+                SkipContext::forSnapshot($snapshot, $context),
+            );
 
             return;
         }
@@ -221,6 +236,7 @@ final readonly class ServiceQuoteHandler
         return \is_int($attempts) ? $attempts : 0;
     }
 
+    /** @throws \Throwable */
     private function claimAttempt(
         QuoteGatewayInterface $gateway,
         ServiceQuoteMessage $message,
@@ -236,6 +252,11 @@ final readonly class ServiceQuoteHandler
                 'key' => self::ATTEMPTS_KEY,
                 'quoteId' => $message->quoteId,
             ]);
+            $this->logger->skip(
+                SkipSource::Handler,
+                SkipReason::CrashBudget,
+                SkipContext::forMessage($message, $attempts, $snapshot->identity->customerId),
+            );
 
             throw new UnrecoverableMessageHandlingException(sprintf(
                 'Quote %s exceeded the servicing crash budget.',
@@ -257,9 +278,6 @@ final readonly class ServiceQuoteHandler
         // #54: the same write also appends a line added since the stamp, at
         // the price it has at pass start, which is before this pass concedes
         // anything.
-        $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
-            self::ATTEMPTS_KEY => $attempts + 1,
-            ...QuoteBaseline::stampOrExtend($snapshot),
-        ]));
+        AttemptStampWriter::write($gateway, $message, $snapshot, $attempts, $this->logger);
     }
 }

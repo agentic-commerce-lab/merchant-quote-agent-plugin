@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Command;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionEraserInterface;
+use MerchantQuoteAgentPlugin\Audit\Erasure;
 use MerchantQuoteAgentPlugin\Command\DecisionForgetCommand;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -58,6 +59,7 @@ final class DecisionForgetCommandTest extends TestCase
         self::assertSame(1, $eraser->calls);
         self::assertSame(self::CUSTOMER, $eraser->forgot);
         self::assertStringContainsString('3 decision record(s)', $tester->getDisplay());
+        self::assertStringContainsString('2 trace event(s)', $tester->getDisplay());
     }
 
     public function testACustomerWithNoRecordsIsAnAnswerNotAFailure(): void
@@ -86,12 +88,12 @@ final class DecisionForgetCommandTest extends TestCase
             ) {}
 
             #[\Override]
-            public function forget(string $customerId, ?Context $context = null): int
+            public function forget(string $customerId, ?Context $context = null): Erasure
             {
                 ++$this->calls;
                 $this->forgot = $customerId;
 
-                return $this->changed;
+                return new Erasure($this->changed, 2);
             }
         };
     }

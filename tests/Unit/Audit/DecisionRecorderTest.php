@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Audit;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
+use MerchantQuoteAgentPlugin\Audit\TraceDraft;
+use MerchantQuoteAgentPlugin\Audit\TraceKind;
 use MerchantQuoteAgentPlugin\Negotiation\AppliedOffer;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
@@ -18,6 +20,7 @@ use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use PHPUnit\Framework\TestCase;
+use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
  * @mago-expect lint:too-many-methods
@@ -236,6 +239,100 @@ final class DecisionRecorderTest extends TestCase
         self::assertNull($writer->drafts[0]->violations, 'An empty problem list is not a violation.');
         self::assertSame('offered', $writer->drafts[1]->outcome);
         self::assertSame('We can do 5%.', $writer->drafts[1]->replyToBuyer);
+    }
+
+    public function testATraceEventIsBufferedOnTheOpenPass(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->begin(NegotiationFixture::snapshot(), self::context());
+        $recorder->trace(TraceKind::ReplyGuard, ['accepted' => false], ['reason' => 'it is empty']);
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        $kinds = array_map(static fn($t): string => $t->kind->value, $writer->drafts[0]->trace);
+        self::assertContains('reply_guard', $kinds);
+    }
+
+    public function testAPassOpensWithTheQuoteAsItWas(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+        $snapshot = NegotiationFixture::snapshot();
+
+        $recorder->begin($snapshot, self::context());
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::NothingToDo));
+
+        $first = $writer->drafts[0]->trace[0];
+        self::assertSame('quote_before', $first->kind->value);
+        self::assertSame(0, $first->position);
+        self::assertSame(['lineCount' => \count($snapshot->content->lines)], $first->meta);
+        self::assertSame($snapshot->identity->quoteId, $first->content['identity']['quoteId'] ?? null);
+    }
+
+    public function testARefusalRowCarriesTheQuoteItRefusedToo(): void
+    {
+        $writer = new FakeDecisionWriter();
+
+        (new DecisionRecorder($writer))->recordRefusal(
+            NegotiationFixture::snapshot(),
+            self::context(),
+            QuoteEscalationReason::NotConfigured,
+            ['no model'],
+        );
+
+        self::assertSame(
+            ['quote_before'],
+            array_map(static fn(TraceDraft $t): string => $t->kind->value, $writer->drafts[0]->trace),
+        );
+    }
+
+    public function testTheVerdictAndTheAppliedQuoteAreTraced(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+        $after = NegotiationFixture::snapshot(totalNet: 950.0);
+
+        $recorder->begin(NegotiationFixture::snapshot(), self::context());
+        $recorder->recordDecision(
+            new NegotiationDecision(
+                Band::Grant,
+                QuoteDecision::autoReply(new QuoteAutoReplyDetails(5.0, false, [], 14)),
+            ),
+            10.0,
+        );
+        $recorder->recordApplied(new AppliedOffer(true, [], $after, 1000.0), ['updateLineItems']);
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        $kinds = array_map(static fn(TraceDraft $t): string => $t->kind->value, $writer->drafts[0]->trace);
+        self::assertSame(['quote_before', 'policy_verdict', 'quote_after'], $kinds);
+        self::assertSame(950.0, $writer->drafts[0]->trace[2]->content['totals']['totalNet'] ?? null);
+    }
+
+    public function testATraceWithoutAnOpenPassIsDropped(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->trace(TraceKind::ReplyGuard, ['accepted' => false]);
+
+        self::assertNull($recorder->decisionId());
+        self::assertSame([], $writer->drafts);
+    }
+
+    public function testTheDecisionIdIsKnownFromBeginAndIsTheWrittenRowsId(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->begin(NegotiationFixture::snapshot(), self::context());
+        $id = $recorder->decisionId();
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        self::assertIsString($id);
+        self::assertTrue(Uuid::isValid($id));
+        self::assertSame($id, $writer->drafts[0]->id);
+        self::assertNull($recorder->decisionId(), 'finish() closes the pass; no id may outlive it.');
     }
 
     private static function context(): PassContext

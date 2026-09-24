@@ -67,4 +67,28 @@ final readonly class ExportPseudonym
 
         return substr(hash_hmac('sha256', $id, $this->salt), 0, self::WIDTH);
     }
+
+    /**
+     * Several ids at once, as raw => pseudonym, the absent ones left out. For
+     * swapping ids that sit inside text rather than in their own field (see
+     * AnonymizedTrace).
+     *
+     * @param list<?string> $ids
+     *
+     * @return array<string, string>
+     */
+    public function map(array $ids): array
+    {
+        $map = [];
+
+        foreach ($ids as $id) {
+            $alias = $this->of($id);
+
+            if ($id !== null && $alias !== null) {
+                $map[$id] = $alias;
+            }
+        }
+
+        return $map;
+    }
 }

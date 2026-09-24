@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Protocol\Emitter;
 
+use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\EmissionOutcome;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteHandler;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ObserveQuoteMessage;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingLock;
 use MerchantQuoteAgentPlugin\Servicing\ServiceQuoteHandler;
+use MerchantQuoteAgentPlugin\Servicing\ServicingJournal;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeTraceWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\RecordingQuoteGateway;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\AbstractLogger;
@@ -21,6 +25,38 @@ use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
 
 final class ObserveQuoteHandlerTest extends TestCase
 {
+    public function testObserverExitsRecordSkipsWithoutRecordingBusyRetries(): void
+    {
+        $writer = new FakeTraceWriter();
+        $journal = new ServicingJournal(new NullLogger(), $writer);
+        $message = new ObserveQuoteMessage('quote-1');
+
+        (new ObserveQuoteHandler(self::locks(free: true), new NullLogger(), null, self::emitter(), $journal))($message);
+
+        $missing = $this->createMock(QuoteGatewayInterface::class);
+        $missing->method('fetchSnapshot')->willThrowException(QuoteNotFoundException::forId('quote-1'));
+        (new ObserveQuoteHandler(self::locks(free: true), new NullLogger(), $missing, self::emitter(), $journal))(
+            $message,
+        );
+
+        (new ObserveQuoteHandler(
+            self::locks(free: true),
+            new NullLogger(),
+            new RecordingQuoteGateway(),
+            self::failingEmitter(),
+            $journal,
+        ))($message);
+
+        self::assertSame(
+            ['no_gateway', 'quote_not_found', 'observation_failed'],
+            array_column(array_map(static fn($event): array => $event->meta, $writer->events), 'reason'),
+        );
+        self::assertSame(
+            ['observer', 'observer', 'observer'],
+            array_column(array_map(static fn($event): array => $event->meta, $writer->events), 'source'),
+        );
+    }
+
     /**
      * Proven by mutation: with the null-gateway guard replaced by `if
      * (false)`, all three tests in this class still passed, because

@@ -14,6 +14,8 @@ use MerchantQuoteAgentPlugin\Protocol\Check\ProtocolViolation;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\SessionId;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\ChainMirror;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActEmitter;
+use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActJournal;
+use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeTraceWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\InMemoryActStore;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\ProtocolFixtures;
 use MerchantQuoteAgentPlugin\Tests\Unit\Protocol\TestActSigner;
@@ -54,12 +56,13 @@ final class SellerActEmitterFixture
         InMemoryActStore $store,
         ?QuoteGatewayInterface $gateway,
         ?EvidenceInspector $inspector = null,
+        ?FakeTraceWriter $writer = null,
     ): SellerActEmitter {
         return new SellerActEmitter(
             TestActSigner::factory(),
             $inspector ?? new EvidenceInspector([]),
             new ChainMirror($store),
-            new NullLogger(),
+            new SellerActJournal(new NullLogger(), $writer ?? new FakeTraceWriter()),
             $gateway,
         );
     }

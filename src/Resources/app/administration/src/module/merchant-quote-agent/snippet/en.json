@@ -98,7 +98,7 @@
         },
         "export": {
             "button": "Export",
-            "withoutComments": "Export without comments",
+            "withoutComments": "Export without comments or prompts",
             "failed": "The export could not be created."
         },
         "figures": {
