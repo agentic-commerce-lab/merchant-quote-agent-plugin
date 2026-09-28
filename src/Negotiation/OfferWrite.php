@@ -34,9 +34,17 @@ final readonly class OfferWrite
      * (MarginFloorClamp, spec 2026-09-24) prices every line with the old quote
      * discount folded in, so that discount goes to 0% — left on, it would stack
      * under the floor.
+     *
+     * A quote-wide offer writes `$quoteWidePercent`, the model's percentage
+     * re-expressed on the live prices (QuoteWidePercent::of()),
+     * never the raw one: that would stack on or replace a standing discount.
      */
-    public static function of(ProposedOffer $offer, ?ProposedOffer $floored, QuoteSnapshot $reference): self
-    {
+    public static function of(
+        ProposedOffer $offer,
+        ?ProposedOffer $floored,
+        QuoteSnapshot $reference,
+        float $quoteWidePercent,
+    ): self {
         if ($floored !== null) {
             return new self(
                 self::moved($floored->price->linePricesNet ?? [], $reference),
@@ -49,7 +57,7 @@ final readonly class OfferWrite
         return (
             $lines !== []
                 ? new self($lines, null)
-                : new self([], new Discount(DiscountType::Percentage, $offer->price->discountPercent ?? 0.0))
+                : new self([], new Discount(DiscountType::Percentage, $quoteWidePercent))
         );
     }
 

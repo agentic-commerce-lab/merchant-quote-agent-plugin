@@ -14,10 +14,12 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot as PolicySnapshot;
 use MerchantQuoteAgentPlugin\Policy\Data\VerifyOfferInput;
 use MerchantQuoteAgentPlugin\Policy\Epsilon;
 use MerchantQuoteAgentPlugin\Policy\MarginFloorClamp;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
+use MerchantQuoteAgentPlugin\Policy\QuoteWidePercent;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
 
@@ -31,7 +33,9 @@ use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
  * A verification failure escalates and LEAVES THE CHANGES IN PLACE. Rolling
  * back is itself a fallible write with no transaction around it, and a failed
  * rollback leaves a third state nobody intended. We report what the database
- * says, which is the same principle the verifier exists to enforce.
+ * says, which is the same principle the verifier exists to enforce. That is
+ * why the same checks also run on the write's PREDICTED result first
+ * (rejected()): a write that would fail them is never made at all.
  */
 final readonly class OfferApplier
 {
@@ -76,12 +80,26 @@ final readonly class OfferApplier
             $this->logger->info('The offer was raised to the minimum-margin floor.', ['quoteId' => $quoteId]);
         }
 
-        array_push($writes, ...$this->write(
-            $gateway,
+        $write = OfferWrite::of(
+            $offer,
+            $floored,
             $reference,
-            $limits,
-            OfferWrite::of($offer, $floored, $reference),
-        ));
+            QuoteWidePercent::of($offer, $live->lines, $anchored->lines),
+        );
+
+        // Design note 2026-09-28: the same verification, on the write's
+        // PREDICTED result, before anything lands. A failure here writes
+        // nothing, so a price that would take back a standing concession never
+        // reaches the quote and the pass escalates as a rejected proposal.
+        $rejected = $this->rejected($anchored, $live, $write, $limits, $floors);
+        if ($rejected !== []) {
+            $applied = new AppliedOffer(false, $rejected, $reference, $reference->totals->totalNet, written: false);
+            $this->recorder->recordApplied($applied, $writes);
+
+            return $applied;
+        }
+
+        array_push($writes, ...$this->write($gateway, $reference, $limits, $write));
         $gateway->recalculate($quoteId);
         $writes[] = 'recalculate';
 
@@ -144,6 +162,35 @@ final readonly class OfferApplier
         $this->recorder->recordApplied($applied, $writes);
 
         return $applied;
+    }
+
+    /**
+     * The OfferVerifier checks plus the per-line never-raise, on what `$write`
+     * would leave on the quote (PredictedWrite).
+     *
+     * @param array<string, float> $floors
+     *
+     * @return list<string>
+     */
+    private function rejected(
+        PolicySnapshot $anchored,
+        PolicySnapshot $live,
+        OfferWrite $write,
+        QuoteLimits $limits,
+        array $floors,
+    ): array {
+        $predicted = PredictedWrite::of($write, $live);
+
+        return [
+            ...$this->verifier->verify(new VerifyOfferInput(
+                reference: $anchored,
+                final: $predicted->snapshot,
+                limits: $limits,
+                now: new \DateTimeImmutable(),
+                floors: $floors,
+            )),
+            ...$predicted->raises,
+        ];
     }
 
     /**
