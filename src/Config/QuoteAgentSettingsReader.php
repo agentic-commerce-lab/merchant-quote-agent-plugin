@@ -45,6 +45,8 @@ final readonly class QuoteAgentSettingsReader implements QuoteAgentSettingsSourc
         'maxDiscountPercent',
         'counterOfferMaxPercent',
         'minMarginPercent',
+        'roundingMode',
+        'roundingStep',
         'maxQuoteValueNet',
         'validityDays',
         'notifyBuyerOnEscalation',

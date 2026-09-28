@@ -40,6 +40,11 @@ final class NegotiationPolicyArray
             // this zero is the sentinel QuoteLimits' Positive constraint
             // rejects rather than a conservative default.
             'validityDays' => RawConfigValue::int($raw, 'validityDays') ?? 0,
+            // Null when the merchant never picked one, which QuoteLimits reads
+            // as off; an unknown mode is refused there.
+            'roundingMode' => RawConfigValue::string($raw, 'roundingMode'),
+            // Blank or 0 means off whatever the mode (QuoteLimits::stepFor()).
+            'roundingStep' => RawConfigValue::float($raw, 'roundingStep'),
         ];
 
         // Passed straight through. The admin field is a plain number; an

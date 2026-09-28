@@ -82,8 +82,12 @@ final class CappedAuthority
      * and can lift the cap all the way to the merchant's maximum. That is only
      * safe because the same stale anchored total then fails the predicted
      * write closed (OfferApplier::rejected()) instead of letting it land.
+     *
+     * Public for rounding control (spec 2026-09-28, rule 3): OfferProposer
+     * hands it to DiscountRounding, so a rounded rate never prices a line
+     * above what the buyer already holds.
      */
-    private static function standing(PolicySnapshot $anchored, PolicySnapshot $live): float
+    public static function standing(PolicySnapshot $anchored, PolicySnapshot $live): float
     {
         $standing = $anchored->totalNet > 0.0
             ? (($anchored->totalNet - $live->totalNet) / $anchored->totalNet) * 100

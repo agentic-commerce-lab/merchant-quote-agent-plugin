@@ -96,6 +96,31 @@ Under **Negotiation policies** — this is the important screen:
   agent always escalates, however small the discount. Set it per currency: a
   quote in a currency you left blank escalates rather than passing, because an
   unknown limit is not an unlimited one.
+- **Round the agent's offers** and **Rounding step** — optional, off by
+  default. Left alone, the agent's figures can read like machine output: a
+  total of 12,356.12 € or 4.34 % off. Pick how they come out round:
+  - *Round the discount percentage down*: the step is in percentage points.
+    With `0.5`, 7.34 % becomes 7.0 %. Only a quote-wide percentage is
+    rounded; an offer the agent makes as per-line prices goes out unrounded.
+  - *Round the quote total up*: the step is in your currency, on the total the
+    customer sees (gross on a gross quote, shipping included). With `10`,
+    12,356.12 € becomes 12,360.00 €. The agent writes this as a fixed-amount
+    quote discount, so the quote shows "Discount 103.45 €" rather than a
+    percentage.
+
+  The percentage stated in the agent's reply is measured on the whole quote
+  total, shipping included. So with *Round the discount percentage down* on a
+  quote with shipping, the reply can read 6.97 % while the quote's discount
+  line shows 7 %. *Round the quote total up* makes the total the round figure,
+  and the stated percentage then follows from it.
+
+  Rounding only ever gives *less* discount, so it can never break your
+  maximum, counter band, margin floor or value ceiling. It never rounds a
+  figure the customer asked for themselves (their percentage, their line
+  prices or their budget). It never takes back a discount they already hold,
+  and it never rounds a discount away to nothing. In each of those cases the
+  offer goes out unrounded. A blank or `0` step means off, whichever option
+  you picked.
 - **Default offer validity (days)** — how long the offers it sends stay valid.
 - **Escalation SLA (hours)** — optional, and it changes nothing the agent does.
   It only lets the dashboard tell you how many escalations your team answered in
@@ -564,6 +589,15 @@ as final values, not added on top of each other.
 Stated plainly, so nothing here is a surprise later:
 
 - It negotiates **price and offer validity**. Nothing else.
+- **Rounding the quote total** works on quote-wide offers only. A per-line
+  offer (mostly the customer's own line prices) goes out unrounded. It is also
+  skipped on a quote that adds tax on top of net prices: the tax is rounded
+  per rate after the discount, so no fixed amount is guaranteed to land on a
+  round total. (Rounding the discount percentage still works there.) A gross
+  quote whose goods are all at 0 % VAT but whose shipping is taxed looks the
+  same from the agent's side and is treated the same way, conservatively: the
+  offer goes out unrounded. Shopware's own cash rounding is unaffected as long
+  as your step is a multiple of its interval.
 - There is **no rules-only mode**. Reading a customer's free-text request needs
   the AI, so an agent without model access does not negotiate more
   conservatively — it escalates.
