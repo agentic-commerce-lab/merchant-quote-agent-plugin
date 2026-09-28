@@ -102,16 +102,7 @@ final readonly class OfferRound
         $applied = $this->applier->apply($gateway, $snapshot, $settings, $answer->offer);
 
         if (!$applied->verified) {
-            $this->logger->error('The database disagreed with the offer we applied; escalating.', [
-                'quoteId' => $snapshot->identity->quoteId,
-                'violations' => $applied->violations,
-            ]);
-
-            // Deliberately no rollback: see OfferApplier. We escalate against
-            // the post-write snapshot, which is what the buyer now has.
-            $reason = QuoteEscalationReason::VerificationFailed;
-
-            return $this->escalated($gateway, $applied->after, $reason, $extractHash, $answer->promptHash);
+            return $this->unverified($gateway, $applied, $extractHash, $answer->promptHash);
         }
 
         // What the buyer is told is what the DATABASE says the quote came down
@@ -241,6 +232,26 @@ final readonly class OfferRound
     public function acknowledge(QuoteGatewayInterface $gateway, QuoteSnapshot $snapshot): void
     {
         $this->reply->acknowledge($gateway, $snapshot);
+    }
+
+    /**
+     * Deliberately no rollback: see OfferApplier. We escalate against the
+     * post-write snapshot, which is what the buyer now has — the pre-write one
+     * when the offer was refused before its write, which is then a rejected
+     * proposal rather than a verification failure.
+     */
+    private function unverified(
+        QuoteGatewayInterface $gateway,
+        AppliedOffer $applied,
+        ?string $extractHash,
+        ?string $negotiateHash,
+    ): NegotiationPass {
+        $this->logger->error('The offer failed verification; escalating.', [
+            'quoteId' => $applied->after->identity->quoteId,
+            'violations' => $applied->violations,
+        ]);
+
+        return $this->escalated($gateway, $applied->after, $applied->escalationReason(), $extractHash, $negotiateHash);
     }
 
     /** A quote the agent has answered before carries the servicing fingerprint. */

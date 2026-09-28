@@ -128,11 +128,14 @@ final class OfferApplierBaselineTest extends TestCase
      */
     public function testALineAddedBetweenRoundsIsAnchoredAtItsFirstSeenPrice(): void
     {
+        // A total that agrees with the lines (1000 + 200): the offer is now
+        // verified on its predicted result before the write, and a total that
+        // disagreed would read as a concession and refuse the write.
         $roundTwo = self::withLines(
-            NegotiationFixture::withCustomFields(NegotiationFixture::snapshot(), NegotiationFixture::baselineOf(
-                1000.0,
-                100.0,
-            )),
+            NegotiationFixture::withCustomFields(
+                NegotiationFixture::snapshot(totalNet: 1200.0),
+                NegotiationFixture::baselineOf(1000.0, 100.0),
+            ),
             [self::line('line-1', 100.0, 10), self::line('line-2', 200.0, 1)],
         );
 

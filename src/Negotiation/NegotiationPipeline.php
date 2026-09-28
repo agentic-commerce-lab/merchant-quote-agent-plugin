@@ -274,7 +274,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         return $this->round->play(
             $gateway,
             $snapshot,
-            CappedAuthority::forRound($settings, $policySnapshot, $ask),
+            CappedAuthority::forRound($settings, $policySnapshot, SnapshotAdapter::toPolicy($snapshot), $ask),
             $decision,
             $ask,
         );
