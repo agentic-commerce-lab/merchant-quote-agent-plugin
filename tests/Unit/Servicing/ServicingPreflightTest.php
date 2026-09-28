@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 
 use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Strategy\AssignedStrategy;
 use MerchantQuoteAgentPlugin\Strategy\ResolvedStrategy;
@@ -117,6 +118,29 @@ final class ServicingPreflightTest extends TestCase
         self::assertSame('not_configured', $writer->drafts[0]->escalationReason);
         self::assertSame(['No LLM API key is set.'], $writer->drafts[0]->violations);
         self::assertSame('comment_written', $writer->drafts[0]->triggerReason);
+    }
+
+    public function testARepeatedMisconfigurationRecordsNoSecondRefusal(): void
+    {
+        // escalate() suppresses the repeat; a row per buyer comment describing
+        // an escalation that did not happen is the same audit noise.
+        $snapshot = QuoteSnapshotFixture::snapshot(customFields: [
+            QuoteEscalator::MARKER_KEY => 'not_configured',
+            PendingEscalation::ESCALATED_AT_KEY => '1790154000.000000',
+        ]);
+        $gateway = new FakeQuoteGateway([$snapshot]);
+        $writer = new FakeDecisionWriter();
+
+        ServicingSettingsFixture::preflight(
+            static function (): ?QuoteAgentSettings {
+                throw new InvalidQuoteAgentConfiguration(['No LLM API key is set.']);
+            },
+            null,
+            $writer,
+        )->check($gateway, $snapshot, ServicingSettingsFixture::context());
+
+        self::assertSame([], $gateway->calls);
+        self::assertSame([], $writer->drafts);
     }
 
     public function testASilentRefusalRecordsNothing(): void

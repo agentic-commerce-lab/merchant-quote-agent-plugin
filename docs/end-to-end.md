@@ -248,9 +248,9 @@ If there is no ask at all and no unmet structured target price, a pass that read
 a buyer comment ends as `acknowledged`: it posts `ReplyTemplate::acknowledges()`
 — the buyer-facing total and expiry as the quote holds them, no model call, no
 price write — and moves the quote to `replied` (`sent`, or `admin_resend` from
-the renegotiation states). On an escalated quote no merchant has sent an
-answer to since (`PendingEscalation::awaitsAHuman()`), or with no comment read,
-it ends as `nothing_to_do` instead — first finishing a stranded
+the renegotiation states). With no comment read it ends as `nothing_to_do`
+instead (an escalated quote no merchant has sent since never gets this far;
+it is `handed_over`, section 4.7) — first finishing a stranded
 `in_review → replied` transition, but only when the agent's own comment is the
 newest one on the quote.
 
@@ -425,6 +425,17 @@ static predicate over the snapshot.
 There is no persistent handover flag and no merchant-operated switch: a later
 buyer comment, or a later per-line ask, makes the comparison read `false`
 again on the very next pass, and the agent answers as normal.
+
+The one exception is an open escalation. While
+`Servicing\PendingEscalation::awaitsAHuman()` holds — the escalation marker is
+set and no merchant has moved the quote to `replied` since it was written —
+`tookOver()` returns `true` however new the buyer's ask, so a second ask on an
+escalated quote does not run the pipeline and escalate it again. A merchant's
+send releases it. A legacy marker written before its time was recorded is
+released by any send, since it cannot be ordered against one. After an
+escalation only a merchant SEND re-enables the agent; reopening or declining
+the quote does not, and buyer chat asks made during the escalation are
+consumed (the fingerprint is stamped) and not mirrored to `requested_price`.
 
 The outcome, `NegotiationOutcome::HandedOver`, is returned before the extract
 call and before the stranded-reply branch that follows it. It does not answer

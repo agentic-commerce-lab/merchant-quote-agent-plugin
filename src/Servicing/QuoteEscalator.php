@@ -90,12 +90,13 @@ final class QuoteEscalator
         return $outcome->answeredTheBuyer() ? [self::MARKER_KEY => null] : [];
     }
 
+    /** @return bool false when the same escalation is still open and nothing was written */
     public function escalate(
         QuoteGatewayInterface $gateway,
         QuoteSnapshot $snapshot,
         QuoteEscalationReason $reason,
         ?bool $notifyBuyer = null,
-    ): void {
+    ): bool {
         $quoteId = $snapshot->identity->quoteId;
 
         // Once per open escalation: after a human has answered, the same
@@ -104,7 +105,7 @@ final class QuoteEscalator
             ($snapshot->lifecycle->customFields[self::MARKER_KEY] ?? null) === $reason->value
             && PendingEscalation::awaitsAHuman($snapshot->lifecycle)
         ) {
-            return;
+            return false;
         }
 
         $shouldNotify = $notifyBuyer ?? $this->shouldNotifyBuyer($snapshot->identity->salesChannelId);
@@ -139,6 +140,8 @@ final class QuoteEscalator
             // Deliberately empty: the notifier owns its own logging, and there
             // is nothing useful left to say from here that it has not said.
         }
+
+        return true;
     }
 
     private function shouldNotifyBuyer(?string $salesChannelId): bool

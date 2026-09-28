@@ -49,15 +49,31 @@ final class PendingEscalationTest extends TestCase
         )));
     }
 
-    /** A marker written before the time was recorded cannot be dated, so it stays with the human. */
-    public function testAnUndatedEscalationAwaitsAHuman(): void
+    /** A marker written before the time was recorded stays with the human until one sends the quote. */
+    public function testAnUndatedEscalationAwaitsAHumanUntilOneSends(): void
     {
-        self::assertTrue(PendingEscalation::awaitsAHuman(new QuoteLifecycle(
+        self::assertTrue(PendingEscalation::awaitsAHuman(self::undated(to: null)));
+        self::assertTrue(PendingEscalation::awaitsAHuman(self::undated(to: 'in_review')));
+    }
+
+    /**
+     * An undated marker cannot be ordered against the send, so any send
+     * releases it. Otherwise, now that an open escalation stands the agent
+     * down, a legacy quote would stay silent for good.
+     */
+    public function testAnyHumanSendReleasesAnUndatedEscalation(): void
+    {
+        self::assertFalse(PendingEscalation::awaitsAHuman(self::undated(to: 'replied')));
+    }
+
+    private static function undated(?string $to): QuoteLifecycle
+    {
+        return new QuoteLifecycle(
             stateTechnicalName: 'change_requested',
             customFields: [QuoteEscalator::MARKER_KEY => QuoteEscalationReason::NeedsHumanReview->value],
-            lastAdminTransitionAt: new \DateTimeImmutable('2026-09-23 10:00:00'),
-            lastAdminTransitionTo: 'replied',
-        )));
+            lastAdminTransitionAt: $to === null ? null : new \DateTimeImmutable('2026-09-23 10:00:00'),
+            lastAdminTransitionTo: $to,
+        );
     }
 
     private static function escalated(?string $sentAt = null, string $to = 'replied'): QuoteLifecycle
