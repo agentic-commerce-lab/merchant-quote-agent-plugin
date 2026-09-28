@@ -144,7 +144,14 @@ final readonly class ReplyComposer
      *
      * @return array{0: string, 1: string|null}
      */
-    private function reword(
+    /**
+     * Public for Review\DraftReply, which re-drafts a reply against a
+     * merchant's edited prices through exactly this path, guard and fallback
+     * included.
+     *
+     * @return array{0: string, 1: string|null}
+     */
+    public function reword(
         QuoteAgentSettings $settings,
         QuoteSnapshot $after,
         string $ask,
@@ -284,7 +291,7 @@ final readonly class ReplyComposer
     }
 
     /** The renegotiation states share `admin_resend` as their only exit to `replied`; everything else uses `sent`. */
-    private static function transitionFor(string $state): QuoteTransition
+    public static function transitionFor(string $state): QuoteTransition
     {
         return match ($state) {
             'reopen', 'change_requested' => QuoteTransition::AdminResend,

@@ -16,6 +16,12 @@
             <defaultValue>AI Agent</defaultValue>
             <helpText>What the buyer sees above the agent's messages in their quote conversation, instead of "Merchant". Give your agent a name if you prefer, e.g. "Peter the AI". One name for all languages. Leave empty to fall back to "AI Agent" — a blank name would render the buyer's messages unattributed.</helpText>
         </input-field>
+        <input-field type="bool">
+            <name>draftMode</name>
+            <label>Draft Mode: review every reply before it is sent</label>
+            <defaultValue>false</defaultValue>
+            <helpText>The agent prepares every reply and price change but never sends them. Each draft waits for you under Orders › Quote agent, where you can edit, send or reject it. The buyer hears nothing from the agent directly — not even that a human is looking at the quote.</helpText>
+        </input-field>
     </card>
 
     <card>

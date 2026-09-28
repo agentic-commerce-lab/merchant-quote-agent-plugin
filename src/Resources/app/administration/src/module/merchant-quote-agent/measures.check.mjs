@@ -126,6 +126,16 @@ assert.equal(agent[0].agentDiscount, 10);
 // A quote that escalated and was answered by a human has no answered pass, so
 // there is no agent-set price to measure.
 assert.equal(agent[1].agentDiscount, null);
+const editedDraft = foldToQuotes([{
+    id: 'edited-pass', quoteId: 'edited-quote', outcome: 'offered', reviewStatus: 'sent',
+    totalNetBefore: 100, totalNetAfter: 90, sentChanges: { totalNet: 80 }, createdAt: iso(2, 12),
+}]);
+const editedDeal = splitDeals(
+    [{ id: 'edited-quote', amountNet: 80, createdAt: iso(2, 10), orderId: 'edited-order' }],
+    new Map([['edited-order', iso(3, 10)]]),
+    new Map(editedDraft.map((quote) => [quote.quoteId, quote])),
+).agent[0];
+assert.equal(editedDeal.agentDiscount, 20, 'A sent draft uses the merchant-edited total, not the agent proposal.');
 // The baseline's discount comes from the quote's own fields.
 assert.equal(baseline[0].baselineDiscount, 20);
 // A missing totalLineItemDiscount is 0, not NaN — that field does not exist on

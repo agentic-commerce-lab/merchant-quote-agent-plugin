@@ -1,7 +1,9 @@
 import template from './merchant-quote-agent-detail.html.twig';
 import { historySummary, historyReads } from '../../history';
-import { builtInSnippetKey } from '../../strategy.ts';
+import { builtInSnippetKey } from '../../strategy';
+import { reviewStatusVariant } from '../../review';
 import {
+    answeredNetAfter,
     ORDER_PLACED_TERMINAL_STATE,
     answeredTheBuyer,
     askItems,
@@ -30,7 +32,7 @@ const { Criteria } = Shopware.Data;
 Shopware.Component.register('merchant-quote-agent-detail', {
     template,
 
-    inject: ['repositoryFactory'],
+    inject: ['repositoryFactory', 'acl'],
 
     data() {
         return {
@@ -38,6 +40,8 @@ Shopware.Component.register('merchant-quote-agent-detail', {
             rounds: [],
             quote: null,
             isLoading: false,
+            feedbackFor: null as { id: string; feedbackReasons?: string[]; feedbackComment?: string } | null,
+            feedbackPrompt: '',
             // Keyed by strategyVersionId. Resolved once per load(), not per
             // pass: several rounds of the same quote can share a version, and
             // a version can outlive the strategy row that named it.
@@ -65,6 +69,12 @@ Shopware.Component.register('merchant-quote-agent-detail', {
         /** The rounds this page renders, record itself included as a fallback of one. */
         recordRounds() {
             return this.rounds.length > 0 ? this.rounds : (this.record ? [this.record] : []);
+        },
+
+        pendingDraftId() {
+            const last = this.recordRounds[this.recordRounds.length - 1] as { id: string; reviewStatus?: string | null } | undefined;
+
+            return last?.reviewStatus === 'pending' ? last.id : null;
         },
 
         /**
@@ -165,7 +175,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
 
             const last = this.runs[this.runs.length - 1];
 
-            return last ? last.outcomeLabel : '–';
+            return last ? last.reviewStatusLabel ?? last.outcomeLabel : '–';
         },
 
         statusVariant() {
@@ -173,7 +183,9 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 return this.orderPlaced ? 'positive' : 'neutral';
             }
 
-            return this.runs[this.runs.length - 1]?.outcomeVariant ?? 'neutral';
+            const last = this.runs[this.runs.length - 1];
+
+            return last?.reviewStatusLabel ? last.reviewStatusVariant : last?.outcomeVariant ?? 'neutral';
         },
 
         /**
@@ -199,9 +211,38 @@ Shopware.Component.register('merchant-quote-agent-detail', {
     },
 
     methods: {
+        answeredNetAfter,
         formatCurrency,
         formatDate,
         formatPercent,
+
+        openFeedback(round: { id: string; feedbackReasons?: string[]; feedbackComment?: string }, prompt = '') {
+            this.feedbackFor = round;
+            this.feedbackPrompt = prompt;
+        },
+
+        onReviewed({ edited }: { edited: boolean }) {
+            const round = this.recordRounds.find((r) => (r as { id: string }).id === this.pendingDraftId) as { id: string } | undefined;
+            void this.load();
+
+            if (edited && round) {
+                this.openFeedback(round, this.$tc('merchant-quote-agent.feedback.offerAfterEdit'));
+            }
+        },
+
+        onRejected() {
+            const round = this.recordRounds.find((r) => (r as { id: string }).id === this.pendingDraftId) as { id: string } | undefined;
+            void this.load();
+
+            if (round) {
+                this.openFeedback(round);
+            }
+        },
+
+        onFeedbackSaved() {
+            this.feedbackFor = null;
+            void this.load();
+        },
 
         /** The outcome entry that closes the stream: the state, then why. */
         terminalTitle(state) {
@@ -358,7 +399,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
          * One servicing pass, ready to render.
          */
         formatRun(round, index, baselineNet = null) {
-            const answered = answeredTheBuyer(round.outcome);
+            const answered = answeredTheBuyer(round.outcome, round.reviewStatus ?? null);
 
             return {
                 id: round.id,
@@ -372,7 +413,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 title: this.$tc('merchant-quote-agent.detail.agentTitle'),
                 timestamp: formatDate(round.createdAt),
                 outcomeLabel: outcomeLabel(this, round.outcome),
-                outcomeVariant: outcomeVariant(round.outcome),
+                outcomeVariant: round.reviewStatus ? reviewStatusVariant(round.reviewStatus) : outcomeVariant(round.outcome),
                 asks: askItems(this, round.interpretedAsks),
                 band: round.band,
                 bandVariant: bandVariant(round.band),
@@ -381,7 +422,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 // previous round's offer records a 0 reduction of its own, and
                 // showing that here read as "no discount" next to a reduced
                 // total and a reply quoting 15% — live quote 1012.
-                granted: answered ? formatPercent(quoteDiscountPercent(baselineNet, round.totalNetAfter)) : null,
+                granted: answered ? formatPercent(quoteDiscountPercent(baselineNet, answeredNetAfter(round))) : null,
                 totals: answered ? roundChange(this, round) : null,
                 // What the pass actually did to the quote, and what a person
                 // still has to look at. Both were recorded from the start and
@@ -401,6 +442,15 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 // better source whenever it can be read; `buyerAsk` on the
                 // record is the fallback when it cannot. See recordedAsks().
                 reply: round.replyToBuyer || null,
+                replyLabel: round.reviewStatus
+                    ? this.$tc('merchant-quote-agent.review.draftReplyLabel')
+                    : this.$tc('merchant-quote-agent.detail.replyLabel'),
+                reviewStatus: round.reviewStatus ?? null,
+                reviewStatusLabel: round.reviewStatus ? this.$tc(`merchant-quote-agent.review.status.${round.reviewStatus}`) : null,
+                reviewStatusVariant: reviewStatusVariant(round.reviewStatus ?? null),
+                sentReply: round.sentReply && round.sentReply !== round.replyToBuyer ? round.sentReply : null,
+                feedbackReasons: (round.feedbackReasons ?? []).map((r) => this.$tc(`merchant-quote-agent.feedback.reasons.${r}`)),
+                feedbackComment: round.feedbackComment || null,
                 technical: this.technical(round),
                 // null when the pass ran with no strategy configured -- a
                 // valid state, not an error, and rendered as nothing at all.

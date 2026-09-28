@@ -61,6 +61,7 @@ final readonly class QuoteLineMapper
     {
         $lineItemId = (string) $lineItem->get('id');
         $updatedAt = $lineItem->get('updatedAt') ?? $lineItem->get('createdAt');
+        $storedRequested = $this->capabilities->lineItemAsks ? $lineItem->get('requestedPrice') : null;
 
         return new QuoteLineSnapshot(
             identity: new QuoteLineIdentity(
@@ -71,13 +72,19 @@ final readonly class QuoteLineMapper
             quantity: (int) $lineItem->get('quantity'),
             unitPriceNet: $net->unitPrice,
             totalNet: $net->total,
-            requestedUnitPrice: MirroredAsks::holds($mirrored, $lineItemId, $net->requestedUnitPrice)
+            requestedUnitPrice: MirroredAsks::holds(
+                $mirrored,
+                $lineItemId,
+                $storedRequested === null ? null : (float) $storedRequested,
+                $net->netRatio,
+            )
                 ? null
                 : $net->requestedUnitPrice,
             netRatio: $net->netRatio,
             updatedAt: $updatedAt instanceof \DateTimeInterface
                 ? \DateTimeImmutable::createFromInterface($updatedAt)
                 : null,
+            totalInQuotePriceSpace: (float) $lineItem->get('totalPrice'),
         );
     }
 

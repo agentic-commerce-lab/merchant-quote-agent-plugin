@@ -8,7 +8,11 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\EscalationNotice;
 use MerchantQuoteAgentPlugin\Servicing\EscalationNotifierInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
+use MerchantQuoteAgentPlugin\Servicing\ShopwareEscalationNotifier;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
+use Shopware\Core\Framework\Notification\NotificationService;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 
 /**
  * The merchant's half of an escalation. QuoteEscalator's copy is customer-
@@ -138,6 +142,31 @@ final class EscalationNotificationTest extends TestCase
             ServicingHandlerFixture::lastCustomFieldWrite($gateway)[QuoteEscalator::MARKER_KEY] ?? null,
             'The marker was not stamped, so this quote will escalate again.',
         );
+    }
+
+    /**
+     * Draft Mode reuses the escalation channels for "a draft is waiting", so
+     * the administration notice must say that, not that the agent gave up.
+     */
+    public function testADraftReadyNoticeTellsTheMerchantADraftIsWaiting(): void
+    {
+        $message = null;
+        $notifications = $this->createMock(NotificationService::class);
+        $notifications
+            ->method('createNotification')
+            ->willReturnCallback(static function (array $data) use (&$message): void {
+                $message = $data['message'] ?? null;
+            });
+
+        (new ShopwareEscalationNotifier(
+            new EventDispatcher(),
+            $notifications,
+            new NullLogger(),
+        ))->notify(EscalationNotice::of(QuoteSnapshotFixture::snapshot(), QuoteEscalationReason::DraftReady));
+
+        self::assertIsString($message);
+        self::assertStringContainsString('waiting for your review', $message);
+        self::assertStringNotContainsString('escalated', $message);
     }
 
     /** A shop with no notifier configured still escalates, as it did before. */

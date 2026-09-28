@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
+use Doctrine\DBAL\Connection;
+use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Negotiation\StructuredAsk;
+use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -36,6 +40,17 @@ final class QuoteFixture
      * fixed "what the counterparty last saw" DAL version lane.
      */
     private const SNAPSHOT_VERSION_ID = '019cfaaf020219939ba2eea26ba651ae';
+
+    public static function adminUserId(ContainerInterface $container): string
+    {
+        $id = $container->get(Connection::class)->fetchOne('SELECT LOWER(HEX(id)) FROM `user` LIMIT 1');
+
+        if (!\is_string($id)) {
+            throw new \RuntimeException('The test shop has no admin user to attribute a draft Send to.');
+        }
+
+        return $id;
+    }
 
     /** @throws \RuntimeException when the shop has no quote to work with */
     public static function anyQuoteId(ContainerInterface $container, Context $context): string
@@ -103,6 +118,30 @@ final class QuoteFixture
         }
 
         return $id;
+    }
+
+    /** A quote suitable for a comment-only retry test, without an unrelated outstanding line-price ask. */
+    public static function quoteIdInStateWithoutUnmetPriceAsk(
+        ContainerInterface $container,
+        Context $context,
+        string $state,
+        QuoteGatewayInterface $gateway,
+    ): string {
+        foreach (self::editableQuoteCriteria($container, $context, [$state])->getIds() as $id) {
+            $snapshot = $gateway->fetchSnapshot($id);
+
+            // isOpen(), not "unmet": an ask the last pass already answered
+            // is not new work, the same reading NegotiationPipeline uses. And
+            // never an open escalation: that stands the agent down whatever
+            // the buyer writes next (MerchantHandover), and the shop's history
+            // leaves some on open quotes. A merchant's last word is fine -- the
+            // caller's own buyer comment is newer.
+            if (!StructuredAsk::isOpen($snapshot) && !PendingEscalation::awaitsAHuman($snapshot->lifecycle)) {
+                return $id;
+            }
+        }
+
+        throw new \RuntimeException(sprintf('No quote in state "%s" without an unmet line-price ask exists.', $state));
     }
 
     /** @param list<string> $states */

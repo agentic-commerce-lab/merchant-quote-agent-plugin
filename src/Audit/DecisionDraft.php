@@ -14,12 +14,11 @@ use Shopware\Core\Framework\Uuid\Uuid;
  * Deliberately dumb — no behaviour, no validation. DecisionRecorder owns the
  * lifecycle and DecisionRecordWriter owns the mapping.
  *
- * Mirrors QuoteDecisionRecord's columns one-for-one, plus `id`, generated here so
- * that a pass's trace events and its log line can name the row before it
- * exists, minus `terminalState`/`terminalAt` (written later, via
- * TerminalOutcomeSubscriber and TerminalOutcomeWriter, never by a pass), plus
- * `startedAt` (a stopwatch) and `trace` (the buffered events), both of which
- * the writer excludes from the payload.
+ * Mirrors the pass-written QuoteDecisionRecord fields. `id` is generated here
+ * so trace events and the log line can name the row before it exists. Terminal
+ * outcome and merchant-review completion fields are written later by their
+ * respective owners. `startedAt` and `trace` are working fields excluded from
+ * the record payload.
  *
  * @mago-expect lint:too-many-properties
  * The gate fires above 10 and these properties mirror a table's columns
@@ -122,6 +121,15 @@ final class DecisionDraft
 
     /** Which rung of the ladder chose that version — see StrategyAssignmentSource. */
     public ?string $strategyAssignmentSource = null;
+
+    /** The DAL version holding a Draft Mode proposal — see Review\DraftingQuoteGateway. */
+    public ?string $draftVersionId = null;
+
+    /** Null for an autonomous pass — see ReviewStatus. */
+    public ?string $reviewStatus = null;
+
+    /** Buyer input and live pricing when drafted — see Review\ReviewFingerprint. */
+    public ?string $reviewFingerprint = null;
 
     /**
      * The pass's trace events, in order. Not a column: DecisionRecordWriter

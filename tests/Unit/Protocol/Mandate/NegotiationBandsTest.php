@@ -39,4 +39,20 @@ final class NegotiationBandsTest extends TestCase
         self::assertSame($bands['autoGrantMaxBps'], $bands['counterAtBps']);
         self::assertArrayNotHasKey('counterUpToBps', $bands);
     }
+
+    /**
+     * In Draft Mode nothing is granted without a human, so the signed mandate
+     * must not say the agent grants anything itself. Everything above zero
+     * escalates, which is exactly what a draft is.
+     */
+    public function testDraftModeClaimsNoAutoGrant(): void
+    {
+        $bands = NegotiationBands::fromPolicy(
+            new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 10.0, counterOfferMaxPercent: 20.0)),
+            draftMode: true,
+        );
+
+        self::assertSame(0, $bands['autoGrantMaxBps']);
+        self::assertSame(0, $bands['escalateAboveBps']);
+    }
 }

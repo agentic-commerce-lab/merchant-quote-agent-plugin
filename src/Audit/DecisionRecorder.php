@@ -297,6 +297,23 @@ final class DecisionRecorder
     }
 
     /**
+     * A Draft Mode pass drafted something: its version (null for a
+     * clarification, which changes no price) and the buyer/pricing fingerprint
+     * a Send checks staleness against. Called by DraftingQuoteGateway on its
+     * first draft write and again on the reply; the first fingerprint is the
+     * one taken after AskMirror and before anything else, so it wins.
+     */
+    public function recordDraft(?string $versionId, string $reviewFingerprint): void
+    {
+        if ($this->draft === null) {
+            return;
+        }
+
+        $this->draft->draftVersionId = $versionId ?? $this->draft->draftVersionId;
+        $this->draft->reviewFingerprint ??= $reviewFingerprint;
+    }
+
+    /**
      * The pass authorized and verified an offer, told the buyer, and STILL
      * did not finish: `replied` is what makes that offer acceptable, and this
      * is the one signal that it was not reached. Appended to `violations`
@@ -361,6 +378,7 @@ final class DecisionRecorder
         $draft->durationMs = (int) round((microtime(true) - $draft->startedAt) * 1000);
         PassOutcome::applyTo($draft, $pass);
         ErrorChain::applyTo($draft, $error);
+        DraftOutcome::applyTo($draft, $pass, $error);
 
         $this->writer->write($draft);
     }

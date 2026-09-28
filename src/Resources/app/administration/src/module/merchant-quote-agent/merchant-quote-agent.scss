@@ -645,3 +645,28 @@
 .mqa-assignment__section .sw-data-grid__cell-content .mt-field {
     margin-bottom: 0;
 }
+
+.mqa-review {
+    &__intro { color: var(--color-text-secondary-default); margin-bottom: 16px; }
+    &__heading { font-size: 14px; margin: 16px 0 8px; }
+    &__lines { width: 100%; border-collapse: collapse; margin-bottom: 12px;
+        th, td { padding: 6px 8px; border-bottom: 1px solid var(--color-border-secondary-default); text-align: left; }
+    }
+    &__hint { color: var(--color-text-attention-default); margin-top: 4px; }
+    &__date { display: flex; flex-direction: column; gap: 4px; margin: 12px 0; max-width: 220px; }
+    &__totals { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 12px 0;
+        s { color: var(--color-text-secondary-default); margin-right: 8px; }
+    }
+    &__redraft { background: var(--color-elevation-surface-sunken); padding: 12px; margin: 8px 0; }
+    &__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+}
+
+.mqa-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.mqa-feedback {
+    &__prompt { margin-bottom: 12px; }
+    &__reasons { border: 0; padding: 0; margin: 0 0 16px; }
+    &__legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+}
+
+.mqa-run__feedback { margin: 8px 0; }

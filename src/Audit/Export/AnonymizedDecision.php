@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Audit\Export;
 
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
+use MerchantQuoteAgentPlugin\Audit\ReviewStatus;
 
 /**
  * One decision record as one line of the anonymized export.
@@ -96,16 +97,28 @@ final class AnonymizedDecision
         'resolvedAt',
         'resolvedState',
         'writes',
+        'reviewStatus',
+        'reviewedAt',
+        'sentChanges',
+        'feedbackReasons',
+        'feedbackAt',
     ];
 
     /** JSON columns exported with their free text or business data removed. @var list<string> */
     public const RESHAPED = ['interpretedAsks', 'historyReads', 'errorChain'];
 
-    /** Exported only under --include-comments. @var list<string> */
-    public const FREE_TEXT = ['rawProposal', 'buyerAsk', 'replyToBuyer', 'violations'];
+    /** Exported only under --include-comments (the admin Export button includes them by default). @var list<string> */
+    public const FREE_TEXT = ['rawProposal', 'buyerAsk', 'replyToBuyer', 'violations', 'sentReply', 'feedbackComment'];
 
-    /** A document number a human reads, printed on the buyer's quote. Nothing cross-shop needs it. @var list<string> */
-    public const DROPPED = ['quoteNumber'];
+    /**
+     * A document number a human reads, printed on the buyer's quote. Nothing
+     * cross-shop needs it. And two internal working columns: a DAL version id
+     * and the staleness fingerprint, which carries line ids and comment
+     * timestamps.
+     *
+     * @var list<string>
+     */
+    public const DROPPED = ['quoteNumber', 'draftVersionId', 'reviewFingerprint'];
 
     private function __construct() {}
 
@@ -151,6 +164,11 @@ final class AnonymizedDecision
             'resolvedAt' => self::at($record->resolvedAt),
             'resolvedState' => $record->resolvedState,
             'writes' => $record->writes,
+            'reviewStatus' => $record->reviewStatus,
+            'reviewedAt' => self::at($record->reviewedAt),
+            'sentChanges' => $record->reviewStatus === ReviewStatus::Sent->value ? $record->sentChanges : null,
+            'feedbackReasons' => $record->feedbackReasons,
+            'feedbackAt' => self::at($record->feedbackAt),
             'interpretedAsks' => self::asks($record->interpretedAsks, $freeText),
             'historyReads' => self::history($record->historyReads),
             'errorChain' => self::errors($record->errorChain, $freeText),
@@ -166,6 +184,8 @@ final class AnonymizedDecision
             'buyerAsk' => $record->buyerAsk,
             'replyToBuyer' => $record->replyToBuyer,
             'violations' => $record->violations,
+            'sentReply' => $record->sentReply,
+            'feedbackComment' => $record->feedbackComment,
         ];
     }
 

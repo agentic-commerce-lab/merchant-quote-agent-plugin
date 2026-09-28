@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin;
 
 use Doctrine\DBAL\Connection;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
 use MerchantQuoteAgentPlugin\Migration\Migration1789500001SeedEscalationMailAndFlow as EscalationMailSeed;
 use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Ucp\AgentFacingRoutes;
@@ -31,7 +32,6 @@ use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
  * MerchantQuoteAgentPlugin\Ucp\UcpAvailability and ADR 0001.
  *
  * Services are loaded from Resources/config/services.php by Bundle::build().
- *
  * @mago-expect analysis:missing-constructor
  * Symfony's Bundle declares $container/$name as typed properties without
  * defaults and initialises them outside a constructor (setContainer, getName).
@@ -49,6 +49,10 @@ use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
  * that is a refactor of lifecycle code this change does not otherwise touch,
  * so it is deliberately not bundled here. Revisit when either lifecycle job
  * grows again.
+ *
+ * @mago-expect lint:cyclomatic-complexity
+ * configureRoutes gates SwagCommercial review and UCP routes separately so
+ * an inactive optional plugin contributes no routes.
  */
 class MerchantQuoteAgentPlugin extends Plugin
 {
@@ -127,6 +131,10 @@ class MerchantQuoteAgentPlugin extends Plugin
     public function configureRoutes(RoutingConfigurator $routes, string $environment): void
     {
         parent::configureRoutes($routes, $environment);
+
+        if (CommercialAvailability::isRegistered($this->container)) {
+            $routes->import($this->getPath() . '/Review/DraftReviewController.php', 'attribute');
+        }
 
         if (UcpAvailability::isRegistered($this->container)) {
             AgentFacingRoutes::import($routes, $this->getPath(), $this->container);
@@ -376,9 +384,7 @@ class MerchantQuoteAgentPlugin extends Plugin
 
     private function logKeyGenerationFailure(\Throwable $error): void
     {
-        // has() before get(): this method exists precisely because a service
-        // id can be absent, and a logger fetch that throws would defeat the
-        // catch that called us.
+        // A missing logger must not defeat the catch that called us.
         $container = $this->container;
         $logger = $container?->has(self::LIFECYCLE_LOGGER_ID) === true
             ? $container->get(self::LIFECYCLE_LOGGER_ID)

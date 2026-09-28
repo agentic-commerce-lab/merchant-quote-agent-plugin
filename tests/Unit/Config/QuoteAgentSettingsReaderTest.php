@@ -22,10 +22,11 @@ use Symfony\Component\Validator\Validation;
  * never talks to a real API, not real secrets.
  *
  * @mago-expect lint:too-many-methods
- * Thirteen cases plus two private helpers (the reader builder and a strategy
+ * Sixteen cases plus two private helpers (the reader builder and a strategy
  * resolver stub) shared across them, including the #140 regression coverage
- * for notifyBuyerOnEscalation() and the mirrored default-off pin for
- * assistantQuoteRequests().
+ * for notifyBuyerOnEscalation(), the mirrored default-off pins for
+ * assistantQuoteRequests() and draftMode(), and Draft Mode's silencing of the
+ * escalation notice.
  */
 final class QuoteAgentSettingsReaderTest extends TestCase
 {
@@ -201,6 +202,28 @@ final class QuoteAgentSettingsReaderTest extends TestCase
     {
         self::assertFalse($this->reader(['assistantQuoteRequests' => false])->assistantQuoteRequests(null));
         self::assertTrue($this->reader(['assistantQuoteRequests' => true])->assistantQuoteRequests(null));
+    }
+
+    public function testDraftModeIsOnOnlyWhenExplicitlyTrue(): void
+    {
+        self::assertFalse($this->reader()->draftMode(null));
+        self::assertFalse($this->reader(['draftMode' => false])->draftMode(null));
+        self::assertTrue($this->reader(['draftMode' => true])->draftMode(null));
+    }
+
+    /** The agent never speaks to the buyer in Draft Mode — not even to say a human has it. */
+    public function testDraftModeSilencesTheEscalationNotice(): void
+    {
+        self::assertFalse($this->reader([
+            'notifyBuyerOnEscalation' => true,
+            'draftMode' => true,
+        ])->notifyBuyerOnEscalation(null));
+    }
+
+    public function testTheSettingsCarryDraftMode(): void
+    {
+        self::assertTrue($this->reader(['draftMode' => true])->forSalesChannel(null)?->draftMode);
+        self::assertFalse($this->reader()->forSalesChannel(null)?->draftMode);
     }
 
     public function testTheMinimumMarginIsReadFromSystemConfig(): void

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Servicing;
 
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\Notification\NotificationService;
@@ -78,6 +79,10 @@ final readonly class ShopwareEscalationNotifier implements EscalationNotifierInt
      */
     private static function message(EscalationNotice $notice): string
     {
+        if ($notice->reason === QuoteEscalationReason::DraftReady) {
+            return sprintf('Quote %s has a draft from the quote agent waiting for your review.', $notice->quoteNumber);
+        }
+
         return sprintf(
             'Quote %s needs a human: the quote agent escalated it (%s).',
             $notice->quoteNumber,

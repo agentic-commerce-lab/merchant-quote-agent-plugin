@@ -12,6 +12,8 @@ use MerchantQuoteAgentPlugin\Audit\DecisionEraserInterface;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriter;
 use MerchantQuoteAgentPlugin\Audit\DecisionRecordWriterInterface;
+use MerchantQuoteAgentPlugin\Audit\DecisionReviewStore;
+use MerchantQuoteAgentPlugin\Audit\DecisionReviewStoreInterface;
 use MerchantQuoteAgentPlugin\Audit\EscalationResolutionSubscriber;
 use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriter;
 use MerchantQuoteAgentPlugin\Audit\EscalationResolutionWriterInterface;
@@ -39,6 +41,7 @@ use MerchantQuoteAgentPlugin\Bridge\Commercial\VariantRejectingProductAdder;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteAccess;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteLinePricing;
 use MerchantQuoteAgentPlugin\Bridge\CommercialQuoteSnapshotMapper;
+use MerchantQuoteAgentPlugin\Bridge\ContextBoundGateways;
 use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;
 use MerchantQuoteAgentPlugin\Bridge\History\CustomerHistoryFactory;
 use MerchantQuoteAgentPlugin\Bridge\History\DecisionAggregate;
@@ -46,6 +49,8 @@ use MerchantQuoteAgentPlugin\Bridge\History\OrderHistoryReads;
 use MerchantQuoteAgentPlugin\Bridge\History\QuoteHistoryReads;
 use MerchantQuoteAgentPlugin\Bridge\MerchantActionReader;
 use MerchantQuoteAgentPlugin\Bridge\PurchasePriceReader;
+use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersions;
+use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersionsInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayFactory;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLifecycleWriters;
@@ -145,6 +150,14 @@ use MerchantQuoteAgentPlugin\Protocol\Record\TransactionRecord;
 use MerchantQuoteAgentPlugin\Protocol\Store\ActStoreInterface;
 use MerchantQuoteAgentPlugin\Protocol\Store\DbalActStore;
 use MerchantQuoteAgentPlugin\Protocol\Terms\TermsFactory;
+use MerchantQuoteAgentPlugin\Review\DraftModePipeline;
+use MerchantQuoteAgentPlugin\Review\DraftPreviewer;
+use MerchantQuoteAgentPlugin\Review\DraftRejecter;
+use MerchantQuoteAgentPlugin\Review\DraftReply;
+use MerchantQuoteAgentPlugin\Review\DraftReviewController;
+use MerchantQuoteAgentPlugin\Review\DraftSendCompletion;
+use MerchantQuoteAgentPlugin\Review\DraftSender;
+use MerchantQuoteAgentPlugin\Review\PendingDrafts;
 use MerchantQuoteAgentPlugin\Servicing\EscalationFlowEventSubscriber;
 use MerchantQuoteAgentPlugin\Servicing\EscalationNotifierInterface;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
@@ -477,6 +490,10 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->alias(EscalationResolutionWriterInterface::class, EscalationResolutionWriter::class);
     $services->set(EscalationResolutionSubscriber::class);
 
+    // Draft Mode's after-the-pass writes: superseded, sent, rejected, feedback.
+    $services->set(DecisionReviewStore::class)->args([service('merchant_quote_agent_decision.repository')]);
+    $services->alias(DecisionReviewStoreInterface::class, DecisionReviewStore::class);
+
     // Configuration (issue #5). Outside every gate below: the negotiation
     // policy is what the agent decides by, so it is needed on any shop that
     // services a quote at all — with or without SwagCommercial licensed, with
@@ -745,6 +762,18 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // no null-object implementation: capability absence belongs one layer up.
     $services->set(QuoteGatewayInterface::class)->factory([service(QuoteGatewayFactory::class), 'create']);
 
+    // Draft Mode's working copy of a quote: a DAL version, priced by the real
+    // recalculation, invisible to the buyer until a merchant sends it.
+    $services->set(QuoteDraftVersions::class)->args([
+        service('quote.repository'),
+        service('version.repository'),
+        service(QuoteGatewayFactory::class),
+        service(Connection::class),
+        service('logger'),
+    ]);
+    $services->alias(QuoteDraftVersionsInterface::class, QuoteDraftVersions::class);
+    $services->alias(ContextBoundGateways::class, QuoteGatewayFactory::class);
+
     // Buyer-side counterpart of the merchant gateway. Every commercial route is
     // an ignore-on-invalid reference, so the container compiles on a shop
     // without SwagCommercial and the capability reports itself unsupported.
@@ -944,8 +973,62 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(OfferRound::class);
     $services->set(NegotiationPipeline::class);
 
+    // Draft Mode wraps the pipeline rather than living inside it: see
+    // DraftModePipeline. Out of Draft Mode it only retires pending drafts
+    // before handing over unchanged.
+    $services->set(DraftModePipeline::class)->args([
+        service(NegotiationPipeline::class),
+        service(QuoteDraftVersionsInterface::class),
+        service(DecisionRecorder::class),
+        service(DecisionReviewStoreInterface::class),
+        service(EscalationNotifierInterface::class),
+    ]);
+
     // The one line that turns the agent on.
-    $services->alias(QuoteServicingPipelineInterface::class, NegotiationPipeline::class);
+    $services->alias(QuoteServicingPipelineInterface::class, DraftModePipeline::class);
+
+    // Draft Mode review card endpoints.
+    $services->set(PendingDrafts::class)->args([
+        service(DecisionReviewStoreInterface::class),
+        service(QuoteDraftVersionsInterface::class),
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+        service(QuoteServicingLock::class),
+    ]);
+    $services->set(DraftReply::class)->args([
+        service(ReplyComposer::class),
+        service(QuoteAgentSettingsSource::class),
+        service('logger'),
+    ]);
+    $services->set(DraftPreviewer::class)->args([
+        service(Connection::class),
+        service(DraftReply::class),
+        service(DecisionReviewStoreInterface::class),
+    ]);
+    $services->set(DraftSendCompletion::class)->args([
+        service(DecisionReviewStoreInterface::class),
+        service('logger'),
+    ]);
+    $services->set(DraftSender::class)->args([
+        service(QuoteDraftVersionsInterface::class),
+        service(ContextBoundGateways::class),
+        service(DraftSendCompletion::class),
+        service(Connection::class),
+    ]);
+    $services->set(DraftRejecter::class)->args([
+        service(QuoteDraftVersionsInterface::class),
+        service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
+        service(DecisionReviewStoreInterface::class),
+    ]);
+    $services
+        ->set(DraftReviewController::class)
+        ->args([
+            service(PendingDrafts::class),
+            service(DraftPreviewer::class),
+            service(DraftSender::class),
+            service(DraftRejecter::class),
+            service(DecisionReviewStoreInterface::class),
+        ])
+        ->tag('controller.service_arguments');
 
     // The gateway argument is the null-returning factory registered above; the
     // pipeline is the alias just above it. Both ignoreOnInvalid() so an absent

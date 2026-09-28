@@ -20,11 +20,14 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity as EntityStruct;
  * read: DAL cannot aggregate inside a JSON column, so anything #21 counts or
  * averages has to be its own column.
  *
- * `terminalState`, `terminalAt`, `resolvedAt` and `resolvedState` are the only
- * four columns not written by a servicing pass. TerminalOutcomeSubscriber
+ * `terminalState`, `terminalAt`, `resolvedAt` and `resolvedState` are four of
+ * the ten columns not written by a servicing pass. TerminalOutcomeSubscriber
  * stamps the first two later, via TerminalOutcomeWriter, when the quote
  * reaches one of the five states that end a negotiation, so a record's insert
- * still has exactly one owner and the outcome is a separate update.
+ * still has exactly one owner and the outcome is a separate update. The other
+ * six — `reviewedAt`, `sentReply`, `sentChanges`, `feedbackReasons`,
+ * `feedbackComment` and `feedbackAt` — are written by DecisionReviewStore when
+ * a merchant sends, rejects or comments on a Draft Mode draft.
  *
  * Write-protected to system scope on every field: DecisionRecordWriter writes
  * through Context::createDefaultContext(), which is system scope, while
@@ -286,4 +289,48 @@ class QuoteDecisionRecord extends EntityStruct
     #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $strategyAssignmentSource = null;
+
+    /** The DAL version holding a pending draft's prices; null once sent, rejected or superseded. */
+    #[Field(type: FieldType::UUID, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?string $draftVersionId = null;
+
+    /** See ReviewStatus. Null for an autonomous pass. */
+    #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?string $reviewStatus = null;
+
+    /** Internal buyer/pricing staleness check for Send — see Review\ReviewFingerprint. Never exported. */
+    #[Field(type: FieldType::TEXT, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?string $reviewFingerprint = null;
+
+    /** When the merchant sent or rejected the draft. */
+    #[Field(type: FieldType::DATETIME, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?\DateTimeImmutable $reviewedAt = null;
+
+    /** The text the merchant actually sent — compare with replyToBuyer, the draft. */
+    #[Field(type: FieldType::TEXT, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?string $sentReply = null;
+
+    /** @var array<string, mixed>|null {discountPercent, totalNet, totalGross, expiresAt, editedByMerchant} */
+    #[Field(type: FieldType::JSON, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?array $sentChanges = null;
+
+    /** @var list<string>|null Review\FeedbackReason values */
+    #[Field(type: FieldType::JSON, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?array $feedbackReasons = null;
+
+    /** The merchant's own words on why the agent's work was not right. */
+    #[Field(type: FieldType::TEXT, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?string $feedbackComment = null;
+
+    #[Field(type: FieldType::DATETIME, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?\DateTimeImmutable $feedbackAt = null;
 }

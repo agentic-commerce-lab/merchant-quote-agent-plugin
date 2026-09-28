@@ -168,6 +168,66 @@ agent is completely silent: it queues nothing and writes nothing.
 
 ---
 
+## Draft Mode: approve each reply yourself
+
+Turn on **Draft Mode: review every reply before it is sent** under **Agent
+activation** for any sales channel where you want the agent to prepare work
+without contacting the buyer. It is off by default. The agent still checks
+your limits and prepares an offer, counter-offer, clarifying question or
+acknowledgement of the buyer's message, but keeps proposed prices in a private
+working copy of the quote. Neither the
+price nor the reply reaches the buyer until a person sends it. In this mode it
+also sends no automatic escalation notice to the buyer.
+If you enabled the seeded escalation mail flow in Flow Builder, it can still
+mail your team when a draft is ready (`draft_ready`); adjust that flow if you
+want a different notification for drafts.
+
+Open **Orders → Quote agent**, choose the **Draft awaiting review** filter,
+then open a quote. The review card compares the live quote with the draft.
+You can change its price or discount, validity date and reply. **Update
+preview** recalculates the proposed totals and offers a reworded reply without
+replacing any text you typed. A warning appears if your discount exceeds the
+agent's configured cap; a person may still choose to send it. Preview rejects
+a price change that would raise the quote above its current live total, and
+an unsuccessful preview or Send saves none of its price edits. If the agent
+cannot reword the reply, check the existing text yourself before sending.
+
+**Send to buyer** applies the reviewed prices to the live quote, posts your
+reply with *you* as its author, and moves the quote to replied. Your usual
+Flow Builder mail can then run. **Reject draft** discards the private working
+copy without changing the live prices; finish that quote in SwagCommercial.
+The agent asks for feedback after rejection and offers it after you edit a
+draft before sending. You can also use **Give feedback** on any pass in the
+history. The decision export includes reason codes and totals actually sent.
+The feedback comment and the sent reply are free text: the dashboard's
+**Export** includes them unless you choose **Export without comments or
+prompts**, and the command-line export includes them only with
+`--include-comments` (see [Costs and data](#costs-and-data)).
+
+Sending is blocked if the buyer wrote again, changed a requested price, or
+the quote's state changed after the draft was prepared. It is also blocked if
+someone changed the live quote's line prices, quantities, discount, totals or
+validity in SwagCommercial. This protects those edits from being overwritten
+by the draft on older supported Shopware versions. Reject a stale draft; a new
+buyer message starts a new pass. Anyone with the Quote agent viewer role can
+see a draft, but only a user granted the additional **Quote agent: review
+drafts** permission may preview, send, reject or save feedback. That
+permission reaches further than its name: sending a draft reprices the quote,
+posts the reply and moves the quote to replied on the reviewer's behalf, even
+if their role has no SwagCommercial permission to edit quotes or write quote
+comments. Grant it only to people you would let answer the buyer. Switching Draft
+Mode off leaves existing drafts reviewable; new passes answer on their own again.
+If Send reports an error, check the quote before retrying: its reply may
+already be visible to the buyer. When the system detects that situation, it
+blocks further review actions until the quote is checked and reconciled.
+
+If you use the Agentic Commerce extension, a sales channel in Draft Mode
+advertises 0% automatic-grant authority in its signed A2CN mandate. Buyers'
+assistants may have cached an older mandate until its expiry, so do not treat
+their cached copy as proof that an offer will be sent automatically.
+
+---
+
 ## How a negotiation actually runs
 
 The agent wakes up when a customer submits a quote request, asks for changes on
@@ -299,6 +359,11 @@ Two roles, under **Permissions → merchant_quote_agent**:
   quotes and orders, or two of the four tiles cannot be calculated.
 - **deleter** — additionally remove audit rows.
 
+The additional **Quote agent: review drafts** permission (see
+[Draft Mode](#draft-mode-approve-each-reply-yourself)) lets its holder send a
+draft, which changes the quote and answers the buyer without SwagCommercial's
+own quote permissions.
+
 There is also an **Agent access** page under Settings, but only if you run the
 Agentic Commerce extension — it controls which customer assistants may talk to
 your shop, and it edits that extension's own data, so it is gated by that
@@ -392,6 +457,14 @@ link on purpose.
 - The type of any error and where in the code it happened — not its message.
 - How the quote ended and when, and when someone on your team resolved an
   escalation and how.
+- In Draft Mode, how each draft was reviewed:
+  - `reviewStatus` — `pending`, `sent`, `rejected` or `superseded`; empty unless
+    the pass produced a draft.
+  - `reviewedAt` — when you sent or rejected the draft.
+  - `sentChanges` — the totals you actually sent, and whether you edited the
+    agent's draft first.
+  - `feedbackReasons` — the reason codes you picked.
+  - `feedbackAt` — when you left that feedback.
 - **If the agent looked up the customer's history, a summary of the account**: how
   many past quotes, how many became orders or were lost, offers made and accepted,
   the last discount granted, the number of orders, **lifetime order value**, and
@@ -402,6 +475,9 @@ link on purpose.
 
 *Does not leave, ever.* Names, e-mail addresses, postal addresses, phone numbers
 and company names — the agent's record does not hold them to begin with.
+A draft's internal bookkeeping also stays in the shop: `draftVersionId`, the
+working copy of the quote it was prepared in, and `reviewFingerprint`, which
+records buyer input and live pricing at draft time.
 
 *Leaves only with the comments.* The quote number and the details behind a
 history lookup — which past quotes and orders the agent read, their numbers,
@@ -413,9 +489,12 @@ the model was shown, and the full prompts are part of the comments below.
 customer's own message, the agent's replies, the model's full prompts and raw
 answers, snapshots of the quote, the reasons it gave for escalating, the
 questions it raised and the full text of any error messages are the most useful
-part of the data and the most sensitive. The customer's message is stored word
-for word, and anything they typed — a signature, a phone number, an order
-reference — is in it, and can come back a second time in the model's own words.
+part of the data and the most sensitive. In Draft Mode they also include the
+reply you actually sent (`sentReply`) and the feedback you wrote about the
+agent's draft (`feedbackComment`) — either can quote the customer. The
+customer's message is stored word for word, and anything they typed — a
+signature, a phone number, an order reference — is in it, and can come back a
+second time in the model's own words.
 
 The agent keeps that message so that a decision can be explained afterwards:
 when it reads a comment and concludes there was nothing to answer, the record of

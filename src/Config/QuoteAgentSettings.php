@@ -23,12 +23,14 @@ use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
  * so the negotiation engine stays framework-free.
  *
  * @mago-expect lint:excessive-parameter-list
- * All six fields are what one sales channel's configuration resolves to;
+ * All seven fields are what one sales channel's configuration resolves to;
  * `$strategyAssignmentSource` travels with `$strategyPrompt` and
  * `$strategyVersionId` because all three describe the same resolved
  * strategy, so splitting them into a sub-object would just move that
  * three-field group one level down without changing what withStrategy()
- * has to keep in sync.
+ * has to keep in sync. `$draftMode` is here rather than behind a raw accessor
+ * because the pipeline decorator and the mandate read it alongside the
+ * validated policy.
  */
 final readonly class QuoteAgentSettings
 {
@@ -45,6 +47,8 @@ final readonly class QuoteAgentSettings
         public bool $notifyBuyerOnEscalation = true,
         public ?string $strategyVersionId = null,
         public ?StrategyAssignmentSource $strategyAssignmentSource = null,
+        /** Prepare, never send — see Review\DraftModePipeline. */
+        public bool $draftMode = false,
     ) {}
 
     public function withPolicy(NegotiationPolicy $policy): self
@@ -56,6 +60,7 @@ final readonly class QuoteAgentSettings
             $this->notifyBuyerOnEscalation,
             $this->strategyVersionId,
             $this->strategyAssignmentSource,
+            $this->draftMode,
         );
     }
 
@@ -74,6 +79,7 @@ final readonly class QuoteAgentSettings
             $this->notifyBuyerOnEscalation,
             $strategy->versionId,
             $source,
+            $this->draftMode,
         );
     }
 }

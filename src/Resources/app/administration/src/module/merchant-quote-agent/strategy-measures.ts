@@ -63,7 +63,7 @@ export function attributeStrategy(quotePasses: any[]): { strategyVersionId: stri
         .map((pass) => pass.strategyVersionId ?? null)
         .filter((id): id is string => typeof id === 'string' && id !== '');
 
-    const answered = (quotePasses ?? []).find((pass) => answeredTheBuyer(pass.outcome ?? null) && pass.strategyVersionId);
+    const answered = (quotePasses ?? []).find((pass) => answeredTheBuyer(pass.outcome ?? null, pass.reviewStatus ?? null) && pass.strategyVersionId);
 
     return {
         strategyVersionId: answered?.strategyVersionId ?? named[0] ?? null,

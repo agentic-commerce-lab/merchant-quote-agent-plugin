@@ -1,0 +1,125 @@
+{% block merchant_quote_agent_draft_review %}
+<mt-card
+    class="mqa-review"
+    :title="$tc('merchant-quote-agent.review.title')"
+    :is-loading="isLoading"
+>
+    <mt-banner v-if="blocked && !view" variant="attention">
+        {{ blockedMessage }}
+    </mt-banner>
+
+    <template v-if="view && form">
+        <p class="mqa-review__intro">
+            {{ $tc(reviewIntroKey(view)) }}
+        </p>
+
+        <mt-banner v-if="blocked" variant="attention">{{ blockedMessage }}</mt-banner>
+        <mt-banner v-else-if="!canReview" variant="info">
+            {{ $tc('merchant-quote-agent.review.readOnly') }}
+        </mt-banner>
+
+        <section v-if="view.pricing !== null" class="mqa-review__changes">
+            <h3 class="mqa-review__heading">{{ $tc('merchant-quote-agent.review.changesTitle') }}</h3>
+
+            <table v-if="view.pricing === 'lines'" class="mqa-review__lines">
+                <thead>
+                    <tr>
+                        <th scope="col">{{ $tc('merchant-quote-agent.review.columnLine') }}</th>
+                        <th scope="col" class="mqa-num">{{ $tc('merchant-quote-agent.review.columnQuantity') }}</th>
+                        <th scope="col" class="mqa-num">{{ $tc('merchant-quote-agent.review.columnNow') }}</th>
+                        <th scope="col" class="mqa-num">{{ $tc('merchant-quote-agent.review.columnDraft') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="line in view.lines" :key="line.id">
+                        <td>{{ line.label || line.id }}</td>
+                        <td class="mqa-num">{{ line.quantity }}</td>
+                        <td class="mqa-num">{{ formatCurrency(line.live, view.currencyIso) }}</td>
+                        <td class="mqa-num">
+                            <mt-number-field
+                                size="small"
+                                :model-value="form.linePrices[line.id]"
+                                :min="0"
+                                :digits="2"
+                                :disabled="!canReview || blocked || isSaving"
+                                :aria-label="line.label || line.id"
+                                @update:model-value="(value) => { form.linePrices[line.id] = value; }"
+                            />
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div v-else class="mqa-review__discount">
+                <mt-number-field
+                    :label="$tc('merchant-quote-agent.review.discount')"
+                    :model-value="form.discountPercent"
+                    :min="0"
+                    :max="100"
+                    :digits="2"
+                    :disabled="!canReview || blocked || isSaving"
+                    @update:model-value="(value) => { form.discountPercent = value; }"
+                />
+                <p v-if="overCap" class="mqa-review__hint">
+                    {{ $t('merchant-quote-agent.review.overCap', { cap: formatPercent(view.maxDiscountPercent) }) }}
+                </p>
+            </div>
+
+            <label class="mqa-review__date">
+                <span>{{ $tc('merchant-quote-agent.review.validUntil') }}</span>
+                <input v-model="form.expiresAt" type="date" :min="minExpiresAt" :disabled="!canReview || blocked || isSaving">
+            </label>
+
+            <dl class="mqa-review__totals">
+                <dt>{{ $tc('merchant-quote-agent.review.totalNet') }}</dt>
+                <dd class="mqa-num">
+                    <s>{{ formatCurrency(view.totals.live.net, view.currencyIso) }}</s>
+                    {{ formatCurrency(view.totals.draft.net, view.currencyIso) }}
+                </dd>
+                <dt>{{ $tc('merchant-quote-agent.review.totalGross') }}</dt>
+                <dd class="mqa-num">
+                    <s>{{ formatCurrency(view.totals.live.gross, view.currencyIso) }}</s>
+                    {{ formatCurrency(view.totals.draft.gross, view.currencyIso) }}
+                </dd>
+            </dl>
+
+            <mt-button v-if="canReview" size="small" variant="secondary" :disabled="blocked || isSaving" @click="preview">
+                {{ $tc('merchant-quote-agent.review.updatePreview') }}
+            </mt-button>
+        </section>
+
+        <mt-textarea
+            :label="$tc('merchant-quote-agent.review.replyLabel')"
+            :model-value="form.reply"
+            :disabled="!canReview || blocked || isSaving"
+            @update:model-value="(value) => { form.reply = value; replyTouched = true; }"
+        />
+
+        <mt-banner v-if="needsReplyReview" variant="attention">
+            {{ $tc('merchant-quote-agent.review.checkReplyAfterEdit') }}
+        </mt-banner>
+
+        <div v-if="redraft" class="mqa-review__redraft">
+            <p class="mqa-run__message">{{ redraft }}</p>
+            <mt-button size="small" variant="secondary" @click="useRedraft">
+                {{ $tc('merchant-quote-agent.review.useRedraft') }}
+            </mt-button>
+        </div>
+
+        <div v-if="canReview" class="mqa-review__actions">
+            <mt-button variant="secondary" :disabled="isSaving || blockedBy === 'not_pending' || blockedBy === 'published'" @click="reject">
+                {{ $tc('merchant-quote-agent.review.reject') }}
+            </mt-button>
+            <mt-button variant="primary" :disabled="blocked || isSaving || form.reply.trim() === ''" @click="send">
+                {{ $tc('merchant-quote-agent.review.send') }}
+            </mt-button>
+        </div>
+    </template>
+
+    <div v-if="!view && canReview && (blockedBy === 'gone' || blockedBy === 'stale')" class="mqa-review__actions">
+        <mt-button variant="secondary" :disabled="isSaving" @click="reject">
+            {{ $tc('merchant-quote-agent.review.reject') }}
+        </mt-button>
+    </div>
+</mt-card>
+{% endblock %}

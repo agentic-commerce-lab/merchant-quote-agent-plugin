@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { historySummary, historyReads } from './history.ts';
 import {
     DISPOSITION_CLASSES,
+    answeredNetAfter,
     answeredTheBuyer,
     askItems,
     askSummary,
@@ -35,6 +36,9 @@ import {
     writeLabels,
 } from './decision.ts';
 
+assert.equal(answeredNetAfter({ reviewStatus: 'sent', totalNetAfter: 90, sentChanges: { totalNet: 80 } }), 80);
+assert.equal(answeredNetAfter({ reviewStatus: 'pending', totalNetAfter: 90, sentChanges: { totalNet: 80 } }), 90);
+
 /**
  * $tc/$t return the last path segment, so assertions read as labels. $t also
  * echoes the interpolated values, which is what lets the escalation-sentence
@@ -45,6 +49,8 @@ const vm = {
     $tc: (key) => key.split('.').pop(),
     $t: (key, values) => `${Object.values(values ?? {}).join(' / ')} ${key.split('.').pop()}`,
 };
+
+assert.equal(roundChange(vm, { reviewStatus: 'sent', totalNetBefore: 100, totalNetAfter: 90, sentChanges: { totalNet: 80 }, discountPercentGranted: 10, currencyIso: 'EUR' }), '+20.0 roundChange · 100.00 EUR → 80.00 EUR');
 
 const current = {
     price: { bestPriceRequested: false, additionalDiscountPercent: 8 },
@@ -202,6 +208,18 @@ assert.equal(dispositionVariant('something_new'), 'neutral');
 assert.equal(dispositionVariant(null), 'neutral');
 assert.equal(dispositionVariant('closedNoDeal'), 'neutral');
 assert.ok(DISPOSITION_CLASSES.includes('closedNoDeal'));
+assert.equal(answeredTheBuyer('offered', 'pending'), false);
+assert.equal(answeredTheBuyer('offered', 'rejected'), false);
+assert.equal(answeredTheBuyer('offered', 'superseded'), false);
+assert.equal(answeredTheBuyer('offered', 'sent'), true);
+assert.equal(disposition('offered', null, null, 'pending'), 'awaitingReview');
+assert.equal(disposition('clarified', null, null, 'pending'), 'awaitingReview');
+assert.equal(disposition('offered', null, null, 'rejected'), 'needsReview');
+assert.equal(disposition('offered', 'accepted', null, 'pending'), 'orderPlaced');
+assert.equal(dispositionVariant('awaitingReview'), 'attention');
+assert.ok(DISPOSITION_CLASSES.includes('awaitingReview'));
+const drafted = foldToQuotes([{ quoteId: 'q', outcome: 'offered', reviewStatus: 'sent', totalNetBefore: 100 }]);
+assert.equal(drafted[0].escalated, true);
 
 // #1017 as it sits in the table: three passes, newest first. The fold keeps the
 // newest as the quote's state, counts the rounds, and takes the quote's own

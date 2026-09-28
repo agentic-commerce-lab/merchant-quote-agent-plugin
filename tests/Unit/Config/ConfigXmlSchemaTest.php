@@ -140,6 +140,23 @@ final class ConfigXmlSchemaTest extends TestCase
         self::assertSame(0, $nodes->count());
     }
 
+    /** Draft Mode changes who sends; installing the plugin must not switch it on. */
+    public function testConfigXmlDeclaresDraftModeDefaultOff(): void
+    {
+        $document = new DOMDocument();
+        self::assertTrue($document->load(__DIR__ . '/../../../src/Resources/config/config.xml'));
+
+        $xpath = new \DOMXPath($document);
+        $nodes = $xpath->query('//input-field[name="draftMode"]');
+        self::assertNotNull($nodes);
+        self::assertSame(1, $nodes->count());
+
+        $field = $nodes->item(0);
+        self::assertInstanceOf(\DOMElement::class, $field);
+        self::assertSame('bool', $field->getAttribute('type'));
+        self::assertSame('false', $xpath->query('defaultValue', $field)?->item(0)?->textContent);
+    }
+
     /** The admin's options and RoundingMode::from() must agree, or a saved option takes the channel out of service. */
     public function testTheRoundingModeOptionsAreTheEnumsCasesAndDefaultToOff(): void
     {

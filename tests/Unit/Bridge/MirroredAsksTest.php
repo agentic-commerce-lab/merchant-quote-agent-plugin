@@ -59,17 +59,18 @@ final class MirroredAsksTest extends TestCase
         self::assertSame(['line-1' => 15.0], MirroredAsks::read([MirroredAsks::KEY => ['line-1' => 15]]));
     }
 
-    public function testAMirroredPriceIsRecognisedThroughTheNetRoundTripsCent(): void
+    public function testAMirroredPriceIsRecognisedInTheStoredTaxSpace(): void
     {
-        self::assertTrue(MirroredAsks::holds(['line-1' => 15.0], 'line-1', 15.0));
-        self::assertTrue(MirroredAsks::holds(['line-1' => 15.0], 'line-1', 14.995));
+        self::assertTrue(MirroredAsks::holds(['line-1' => 15.0], 'line-1', 15.0, 1.0));
+        self::assertTrue(MirroredAsks::holds(['line-1' => 15.0], 'line-1', 17.85, 100 / 119));
     }
 
     public function testABuyersOwnNumberIsNotRecognisedAsMirrored(): void
     {
-        self::assertFalse(MirroredAsks::holds(['line-1' => 15.0], 'line-1', 14.0));
-        self::assertFalse(MirroredAsks::holds(['line-1' => 15.0], 'line-2', 15.0));
-        self::assertFalse(MirroredAsks::holds([], 'line-1', 15.0));
-        self::assertFalse(MirroredAsks::holds(['line-1' => 15.0], 'line-1', null));
+        self::assertFalse(MirroredAsks::holds(['line-1' => 15.0], 'line-1', 14.99, 1.0));
+        self::assertFalse(MirroredAsks::holds(['line-1' => 15.0], 'line-1', 17.84, 100 / 119));
+        self::assertFalse(MirroredAsks::holds(['line-1' => 15.0], 'line-2', 15.0, 1.0));
+        self::assertFalse(MirroredAsks::holds([], 'line-1', 15.0, 1.0));
+        self::assertFalse(MirroredAsks::holds(['line-1' => 15.0], 'line-1', null, 1.0));
     }
 }

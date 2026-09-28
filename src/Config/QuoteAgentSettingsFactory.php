@@ -66,6 +66,7 @@ final readonly class QuoteAgentSettingsFactory
             notifyBuyerOnEscalation: RawConfigValue::bool($raw, 'notifyBuyerOnEscalation') !== false,
             strategyVersionId: $strategyVersionId,
             strategyAssignmentSource: $strategyVersionId === null ? null : StrategyAssignmentSource::Config,
+            draftMode: RawConfigValue::bool($raw, 'draftMode') === true,
         );
     }
 }

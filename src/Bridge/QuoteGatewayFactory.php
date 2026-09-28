@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Bridge;
 
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
+use Shopware\Core\Framework\Context;
 
 /**
  * Stage two of ADR 0001's gate: the license toggle decides whether the gateway
@@ -20,7 +21,7 @@ use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialAvailability;
  * existence anyway, which makes this correct standalone (the integration
  * harness constructs it by hand) rather than dependent on the caller.
  */
-final readonly class QuoteGatewayFactory
+final readonly class QuoteGatewayFactory implements ContextBoundGateways
 {
     public function __construct(
         private QuoteSnapshotReader $reader,
@@ -35,5 +36,20 @@ final readonly class QuoteGatewayFactory
         }
 
         return new SwagCommercialQuoteGateway($this->reader, $this->writers, $this->lifecycle);
+    }
+
+    /**
+     * A gateway whose reads and writes run under $context instead of the
+     * agent's own live one: a Draft Mode version (AgentContext::forVersion())
+     * or the admin user sending a draft. Null exactly when create() is.
+     */
+    #[\Override]
+    public function forContext(Context $context): ?QuoteGatewayInterface
+    {
+        if (!CommercialAvailability::isLicensed()) {
+            return null;
+        }
+
+        return new SwagCommercialQuoteGateway($this->reader, $this->writers, $this->lifecycle, $context);
     }
 }

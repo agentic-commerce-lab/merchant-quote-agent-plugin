@@ -67,6 +67,12 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
  * The rule aggregates per class (threshold 10); reading the asks component
  * back out of a stamped marker takes the same null/bounds checks composing
  * it did, so exposing the read side is one more branch, not a new concept.
+ *
+ * @mago-expect lint:too-many-methods
+ * review() is the eleventh, counting the private constructor: a third way to
+ * compose the same components, beside of() and stamp(). Moving it out would
+ * mean making compose() and buyerAuthored() public, which lets any caller
+ * build a marker that none of the three sanctioned compositions produces.
  */
 final class ServicingFingerprint
 {
@@ -101,6 +107,46 @@ final class ServicingFingerprint
     public static function stamp(QuoteSnapshot $serviced, string $stateAfter): string
     {
         return self::compose($stateAfter, self::buyerAuthored($serviced), self::asksOf($serviced));
+    }
+
+    /**
+     * What a Draft Mode Send compares of() against: the state after the pass,
+     * but buyer comments and requested prices from the snapshot the pass
+     * actually serviced. Subtract any ask this pass mirrored: QuoteLineMapper
+     * hides AskMirror's own line writes on the live read. A later buyer ask
+     * must not be credited merely because it appeared before draft cloning.
+     */
+    /** @param list<string> $mirroredLineIds Line IDs written by this pass's AskMirror. */
+    public static function review(QuoteSnapshot $serviced, QuoteSnapshot $live, array $mirroredLineIds = []): string
+    {
+        return self::compose(
+            $live->lifecycle->stateTechnicalName,
+            self::buyerAuthored($serviced),
+            self::asksServicedAfterMirror($serviced, $mirroredLineIds),
+        );
+    }
+
+    /** @param list<string> $mirroredLineIds */
+    private static function asksServicedAfterMirror(QuoteSnapshot $serviced, array $mirroredLineIds): string
+    {
+        $mirrored = array_fill_keys($mirroredLineIds, true);
+        $asks = [];
+
+        foreach ($serviced->content->lines as $line) {
+            if (isset($mirrored[$line->identity->lineItemId])) {
+                continue;
+            }
+
+            $token = self::askToken($line);
+
+            if ($token !== null) {
+                $asks[] = $token;
+            }
+        }
+
+        sort($asks);
+
+        return implode(',', $asks);
     }
 
     /** @param array<string, mixed> $customFields */

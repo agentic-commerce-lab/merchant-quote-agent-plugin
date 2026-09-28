@@ -45,4 +45,8 @@ enum QuoteEscalationReason: string
     // already gave it. Never answered with 0% (spec
     // 2026-09-24-never-answer-zero-discount). OfferRound.
     case NoFurtherConcession = 'no_further_concession';
+    // Draft Mode. Never recorded on a decision row: it names the NOTICE that a
+    // draft is waiting for the merchant, sent through the same channels as an
+    // escalation so the seeded escalation flow covers it without a new event.
+    case DraftReady = 'draft_ready';
 }

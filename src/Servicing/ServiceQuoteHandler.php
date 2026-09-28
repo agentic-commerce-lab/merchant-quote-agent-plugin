@@ -215,7 +215,8 @@ final readonly class ServiceQuoteHandler
         // agent acted on it, which stays true. It has its own outcome gate
         // (not every completed pass is an agent acting - see AgentDisclosure),
         // and it is spread last so a future release fragment cannot null it by
-        // accident.
+        // accident. A Draft Mode pass that drafted a reply withholds it (see
+        // AgentDisclosure::stampForPass()).
         $gateway->updateQuote($message->quoteId, new QuoteUpdate(customFields: [
             ServicingFingerprint::MARKER_KEY => ServicingFingerprint::stamp(
                 $snapshot,
@@ -224,7 +225,7 @@ final readonly class ServiceQuoteHandler
             self::ATTEMPTS_KEY => null,
             ...QuoteEscalator::releaseFor($outcome),
             ...ClarificationMarker::releaseFor($outcome),
-            ...AgentDisclosure::stampFor($outcome),
+            ...AgentDisclosure::stampForPass($outcome, $settings),
         ]));
     }
 

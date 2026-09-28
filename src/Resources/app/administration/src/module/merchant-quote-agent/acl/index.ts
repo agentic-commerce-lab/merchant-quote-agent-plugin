@@ -93,3 +93,27 @@ export const privileges = {
         },
     },
 };
+
+/** Review routes require decision:update; the decision DAL entity remains write-protected. */
+export const reviewPrivileges = {
+    category: 'additional_permissions',
+    parent: null,
+    key: 'merchant_quote_agent_drafts',
+    roles: {
+        review: {
+            // Reaches further than the two privileges it lists. Send reprices
+            // the live quote, posts a comment and moves the quote to replied
+            // (Review\MerchantSendContext grants that one write
+            // `quote:update`, `quote_comment:create` and
+            // `quote_history:create`), so a user holding only this role and
+            // the viewer role can change a quote that SwagCommercial's own
+            // permissions would not let them touch. Called out for the same
+            // reason as the viewer's `customer:read`: a widening a reviewer
+            // should see stated, not discover. It reaches only a pending
+            // draft's quote, and only by sending what the agent prepared or
+            // the reviewer edited.
+            privileges: ['merchant_quote_agent_decision:read', 'merchant_quote_agent_decision:update'],
+            dependencies: ['merchant_quote_agent.viewer'],
+        },
+    },
+};

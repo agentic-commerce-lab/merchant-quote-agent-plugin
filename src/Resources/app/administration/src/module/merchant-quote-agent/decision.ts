@@ -38,8 +38,10 @@ const BAND_VARIANTS: Record<string, string> = {
  */
 export const ANSWERED_OUTCOMES = ['offered', 'countered', 'replied'];
 
-export function answeredTheBuyer(outcome: string | null): boolean {
-    return outcome !== null && ANSWERED_OUTCOMES.includes(outcome);
+const NOT_SENT = ['pending', 'rejected', 'superseded'];
+
+export function answeredTheBuyer(outcome: string | null, reviewStatus: string | null = null): boolean {
+    return outcome !== null && ANSWERED_OUTCOMES.includes(outcome) && !NOT_SENT.includes(reviewStatus ?? '');
 }
 
 /**
@@ -90,12 +92,13 @@ export const ORDER_PLACED_TERMINAL_STATE = 'accepted';
  */
 export const CLOSED_NO_DEAL = ['declined', 'expired', 'cancelled', 'withdrawn'];
 
-export const DISPOSITION_CLASSES = ['orderPlaced', 'closedNoDeal', 'needsReview', 'answered', 'awaitingBuyer', 'noAction', 'other'];
+export const DISPOSITION_CLASSES = ['orderPlaced', 'closedNoDeal', 'needsReview', 'awaitingReview', 'answered', 'awaitingBuyer', 'noAction', 'other'];
 
 export function disposition(
     outcome: string | null,
     terminalState: string | null = null,
     resolvedAt: string | null = null,
+    reviewStatus: string | null = null,
 ): string {
     if (terminalState === ORDER_PLACED_TERMINAL_STATE) {
         return 'orderPlaced';
@@ -108,6 +111,14 @@ export function disposition(
     // filter.
     if (terminalState !== null && CLOSED_NO_DEAL.includes(terminalState)) {
         return 'closedNoDeal';
+    }
+
+    if (reviewStatus === 'pending') {
+        return 'awaitingReview';
+    }
+
+    if (reviewStatus === 'rejected') {
+        return 'needsReview';
     }
 
     // An escalation a human has answered is waiting on the BUYER, which is
@@ -151,7 +162,7 @@ export function foldToQuotes(decisions: any[]): any[] {
             // Any pass, for the same reason plus one of its own: a quote that
             // escalated in round one and was answered in round two DID need a
             // human, so the auto-execution rate must count it.
-            seen.escalated = seen.escalated || decision.outcome === 'escalated';
+            seen.escalated = seen.escalated || decision.outcome === 'escalated' || Boolean(decision.reviewStatus);
             // The newest escalated pass, since decisions arrive newest-first.
             // That is also the pass `disposition` asks about, because it only
             // consults `resolvedAt` when the LATEST pass escalated.
@@ -162,19 +173,20 @@ export function foldToQuotes(decisions: any[]): any[] {
             // The newest pass that put an offer in front of the buyer. Price
             // retention needs the price the buyer actually saw, and the latest
             // pass may have escalated without offering anything.
-            seen.latestAnswered = seen.latestAnswered ?? (answeredTheBuyer(decision.outcome) ? decision : null);
-            seen.disposition = disposition(seen.latest.outcome, seen.terminalState, seen.resolvedAt);
+            seen.latestAnswered = seen.latestAnswered ?? (answeredTheBuyer(decision.outcome, decision.reviewStatus ?? null) ? decision : null);
+            seen.disposition = disposition(seen.latest.outcome, seen.terminalState, seen.resolvedAt, seen.latest.reviewStatus ?? null);
 
             return;
         }
 
-        const escalated = decision.outcome === 'escalated';
+        // Drafted passes needed a human, even when their eventual outcome was an offer.
+        const escalated = decision.outcome === 'escalated' || Boolean(decision.reviewStatus);
 
         byQuote.set(decision.quoteId, {
             quoteId: decision.quoteId,
             quoteNumber: decision.quoteNumber,
             latest: decision,
-            latestAnswered: answeredTheBuyer(decision.outcome) ? decision : null,
+            latestAnswered: answeredTheBuyer(decision.outcome, decision.reviewStatus ?? null) ? decision : null,
             rounds: 1,
             netBefore,
             terminalState: decision.terminalState ?? null,
@@ -186,6 +198,7 @@ export function foldToQuotes(decisions: any[]): any[] {
                 decision.outcome,
                 decision.terminalState ?? null,
                 escalated ? decision.resolvedAt ?? null : null,
+                decision.reviewStatus ?? null,
             ),
         });
     });
@@ -211,6 +224,7 @@ const DISPOSITION_VARIANTS: Record<string, string> = {
     orderPlaced: 'positive',
     answered: 'positive',
     needsReview: 'critical',
+    awaitingReview: 'attention',
     awaitingBuyer: 'info',
     closedNoDeal: 'neutral',
     noAction: 'neutral',
@@ -355,11 +369,26 @@ export function quoteDiscountPercent(baselineNet: number | null, totalNetAfter: 
     return ((Number(baselineNet) - Number(totalNetAfter)) / Number(baselineNet)) * 100;
 }
 
+/** A sent draft's final price supersedes the agent's proposed pass total. */
+export function answeredNetAfter(decision: unknown): number | null {
+    if (typeof decision !== 'object' || decision === null) {
+        return null;
+    }
+
+    const row = decision as Record<string, unknown>;
+    const changes = row.sentChanges;
+    const sent = row.reviewStatus === 'sent' && typeof changes === 'object' && changes !== null
+        ? (changes as Record<string, unknown>).totalNet
+        : null;
+    const net = typeof sent === 'number' && Number.isFinite(sent) ? sent : row.totalNetAfter;
+
+    return typeof net === 'number' && Number.isFinite(net) ? net : null;
+}
+
 /**
- * How much of that the pass itself moved, as the aside under the quote-level
- * figure: the recorded per-pass reduction, then the two totals it is measured
- * on. A pass holding the previous offer says so in words rather than printing
- * a zero that reads as "no discount".
+ * What the buyer saw on a sent draft, otherwise what the pass itself moved:
+ * reduction and the two totals it is measured on. A pass holding the previous
+ * offer says so in words rather than printing a zero as "no discount".
  *
  * Below 0.05pp is "unchanged" because the figure shows one decimal: a delta
  * that rounds away would render as "+0.0", which is exactly the ambiguity
@@ -367,16 +396,19 @@ export function quoteDiscountPercent(baselineNet: number | null, totalNetAfter: 
  * visible as one.
  */
 export function roundChange(vm: any, round: any): string {
-    const delta = round.discountPercentGranted;
+    const after = answeredNetAfter(round);
+    const delta = round.reviewStatus === 'sent' && Number(round.totalNetBefore) > 0 && after !== null
+        ? ((Number(round.totalNetBefore) - after) / Number(round.totalNetBefore)) * 100
+        : round.discountPercentGranted;
     const change = typeof delta !== 'number' || !Number.isFinite(delta) || Math.abs(delta) < 0.05
         ? vm.$tc('merchant-quote-agent.detail.roundUnchanged')
         : vm.$t('merchant-quote-agent.detail.roundChange', { pp: `${delta > 0 ? '+' : ''}${delta.toFixed(1)}` });
 
-    if (!Number.isFinite(round.totalNetBefore) || !Number.isFinite(round.totalNetAfter)) {
+    if (!Number.isFinite(round.totalNetBefore) || after === null) {
         return change;
     }
 
-    return `${change} · ${formatCurrency(round.totalNetBefore, round.currencyIso)} → ${formatCurrency(round.totalNetAfter, round.currencyIso)}`;
+    return `${change} · ${formatCurrency(round.totalNetBefore, round.currencyIso)} → ${formatCurrency(after, round.currencyIso)}`;
 }
 
 /** One decimal: the model returns discounts to four and they read as noise. */
@@ -521,7 +553,7 @@ export function askItems(vm: any, asks: any): { label: string; value: string }[]
  *
  * Authorship follows the backend's three-way split exactly: a comment with
  * customerId or employeeId is the buyer's, one with createdById alone is the
- * merchant's own note, and one with none of them is the agent's — issue #3
+ * merchant's own message, and one with none of them is the agent's — issue #3
  * measured that last one and AddCommentTest pins it. That is not elegant, it
  * is what SwagCommercial writes. If this and the backend ever disagree, the
  * page credits the agent's own words to the customer, so the two must move

@@ -1,0 +1,37 @@
+{% block merchant_quote_agent_feedback_modal %}
+<sw-modal
+    variant="small"
+    :title="$tc('merchant-quote-agent.feedback.title')"
+    @modal-close="$emit('close')"
+>
+    <p v-if="prompt" class="mqa-feedback__prompt">{{ prompt }}</p>
+
+    <fieldset class="mqa-feedback__reasons">
+        <legend class="mqa-feedback__legend">{{ $tc('merchant-quote-agent.feedback.title') }}</legend>
+        <mt-checkbox
+            v-for="option in options"
+            :key="option.value"
+            :label="option.label"
+            :model-value="selected.includes(option.value)"
+            @update:model-value="(on) => toggle(option.value, on)"
+        />
+    </fieldset>
+
+    <mt-textarea
+        :label="$tc('merchant-quote-agent.feedback.comment')"
+        :help-text="$tc('merchant-quote-agent.feedback.commentHelp')"
+        :model-value="text"
+        :max-length="2000"
+        @update:model-value="(value) => { text = value; }"
+    />
+
+    <template #modal-footer>
+        <mt-button size="small" variant="secondary" @click="$emit('close')">
+            {{ $tc('global.default.cancel') }}
+        </mt-button>
+        <mt-button size="small" variant="primary" :disabled="payload === null || isSaving" @click="save">
+            {{ $tc('merchant-quote-agent.feedback.save') }}
+        </mt-button>
+    </template>
+</sw-modal>
+{% endblock %}

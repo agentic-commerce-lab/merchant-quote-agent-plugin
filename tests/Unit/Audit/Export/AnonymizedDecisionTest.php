@@ -136,6 +136,17 @@ final class AnonymizedDecisionTest extends TestCase
         self::assertNull($row['terminalAt']);
     }
 
+    public function testPendingPreviewMarkerIsNotExportedAsSentChanges(): void
+    {
+        $record = self::record();
+        $record->reviewStatus = 'pending';
+        $record->sentChanges = ['editedByMerchant' => true];
+        self::assertNull(self::export($record)['sentChanges']);
+
+        $record->reviewStatus = 'sent';
+        self::assertSame(['editedByMerchant' => true], self::export($record)['sentChanges']);
+    }
+
     public function testTimestampsAreIso8601(): void
     {
         $row = self::export(self::record());
