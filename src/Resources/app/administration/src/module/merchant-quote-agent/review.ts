@@ -13,6 +13,7 @@ export const FEEDBACK_COMMENT_MAX = 2000;
 export const REVIEW_PRIVILEGE = 'merchant_quote_agent_drafts.review';
 
 export interface DraftView {
+    outcome: string | null;
     pricing: 'lines' | 'discount' | null;
     reply: string;
     previewEdited: boolean;
@@ -98,6 +99,21 @@ export function replyCheckedAfterPreview(view: DraftView, replyTouched: boolean)
 /** Merchant cap is advisory here; it binds the agent, not the human reviewer. */
 export function exceedsCap(discount: number | null, cap: number | null): boolean {
     return discount !== null && cap !== null && discount > cap + CENT;
+}
+
+/**
+ * The card's opening line. A draft without prices is a clarification or an
+ * acknowledgement (DraftView.php), and only the first one asks the buyer
+ * anything.
+ */
+export function reviewIntroKey(view: Pick<DraftView, 'pricing' | 'outcome'>): string {
+    if (view.pricing !== null) {
+        return 'merchant-quote-agent.review.intro';
+    }
+
+    return view.outcome === 'acknowledged'
+        ? 'merchant-quote-agent.review.introAcknowledgement'
+        : 'merchant-quote-agent.review.introClarification';
 }
 
 const STATUS_VARIANTS: Record<string, string> = {

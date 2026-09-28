@@ -1,6 +1,6 @@
 import template from './merchant-quote-agent-draft-review.html.twig';
 import { formatCurrency, formatPercent } from '../../decision';
-import { REVIEW_PRIVILEGE, editsPayload, errorCode, exceedsCap, needsReplyReview, replyCheckedAfterPreview, wasEdited } from '../../review';
+import { REVIEW_PRIVILEGE, editsPayload, errorCode, exceedsCap, needsReplyReview, replyCheckedAfterPreview, reviewIntroKey, wasEdited } from '../../review';
 import type { DraftForm, DraftView } from '../../review';
 
 interface ReviewResponse extends DraftView {
@@ -87,6 +87,7 @@ Shopware.Component.register('merchant-quote-agent-draft-review', {
     methods: {
         formatCurrency,
         formatPercent,
+        reviewIntroKey,
 
         sync(): SyncService {
             return this.syncService as SyncService;

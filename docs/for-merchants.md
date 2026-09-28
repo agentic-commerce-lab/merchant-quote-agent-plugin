@@ -148,8 +148,9 @@ agent is completely silent: it queues nothing and writes nothing.
 Turn on **Draft Mode: review every reply before it is sent** under **Agent
 activation** for any sales channel where you want the agent to prepare work
 without contacting the buyer. It is off by default. The agent still checks
-your limits and prepares an offer, counter-offer or clarifying question, but
-keeps proposed prices in a private working copy of the quote. Neither the
+your limits and prepares an offer, counter-offer, clarifying question or
+acknowledgement of the buyer's message, but keeps proposed prices in a private
+working copy of the quote. Neither the
 price nor the reply reaches the buyer until a person sends it. In this mode it
 also sends no automatic escalation notice to the buyer.
 If you enabled the seeded escalation mail flow in Flow Builder, it can still

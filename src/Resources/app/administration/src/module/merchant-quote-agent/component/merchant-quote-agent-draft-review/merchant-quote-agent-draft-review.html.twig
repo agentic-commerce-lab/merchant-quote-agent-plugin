@@ -10,7 +10,7 @@
 
     <template v-if="view && form">
         <p class="mqa-review__intro">
-            {{ view.pricing === null ? $tc('merchant-quote-agent.review.introClarification') : $tc('merchant-quote-agent.review.intro') }}
+            {{ $tc(reviewIntroKey(view)) }}
         </p>
 
         <mt-banner v-if="blocked" variant="attention">{{ blockedMessage }}</mt-banner>

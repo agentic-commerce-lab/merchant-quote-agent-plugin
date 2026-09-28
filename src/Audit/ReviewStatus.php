@@ -17,12 +17,23 @@ enum ReviewStatus: string
     case Rejected = 'rejected';
     case Superseded = 'superseded';
 
-    /** The outcomes that put something in front of the buyer — so, in Draft Mode, in front of the merchant. */
+    /**
+     * The outcomes that put something in front of the buyer — so, in Draft
+     * Mode, in front of the merchant. An acknowledgement is one: it posts the
+     * quote back and moves it to `replied` (ReplyComposer::acknowledge()),
+     * and left out, Draft Mode swallowed both and parked the quote where the
+     * buyer could not accept it.
+     */
     public static function awaitsReview(NegotiationOutcome $outcome): bool
     {
         return \in_array(
             $outcome,
-            [NegotiationOutcome::Offered, NegotiationOutcome::Countered, NegotiationOutcome::Clarified],
+            [
+                NegotiationOutcome::Offered,
+                NegotiationOutcome::Countered,
+                NegotiationOutcome::Clarified,
+                NegotiationOutcome::Acknowledged,
+            ],
             strict: true,
         );
     }

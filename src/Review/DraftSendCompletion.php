@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyComposer;
 use Psr\Log\LoggerInterface;
 
@@ -64,18 +65,24 @@ final readonly class DraftSendCompletion
         ];
     }
 
+    /**
+     * The claim follows the version: only a draft that changed prices claims
+     * the quote, as OfferApplier does. The closing transition follows the
+     * outcome instead, as it does outside Draft Mode: a clarification only
+     * asks its question, while an acknowledgement has no version and must
+     * still move the quote back to `replied`, where the buyer can accept.
+     */
     private function publish(PendingDraft $pending, QuoteGatewayInterface $gateway, string $reply): void
     {
         $quoteId = $pending->record->quoteId;
-        $versionId = $pending->record->draftVersionId;
 
-        if ($versionId !== null && $pending->live->lifecycle->stateTechnicalName === 'open') {
+        if ($pending->record->draftVersionId !== null && $pending->live->lifecycle->stateTechnicalName === 'open') {
             $gateway->transition($quoteId, QuoteTransition::Process);
         }
 
         $gateway->addComment($quoteId, $reply);
 
-        if ($versionId !== null) {
+        if ($pending->record->outcome !== NegotiationOutcome::Clarified->value) {
             $gateway->transition(
                 $quoteId,
                 ReplyComposer::transitionFor($gateway->fetchSnapshot($quoteId)->lifecycle->stateTechnicalName),

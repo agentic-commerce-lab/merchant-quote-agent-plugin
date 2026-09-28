@@ -10,7 +10,8 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 /**
  * The review card's one read: live against drafted, side by side. `pricing`
  * says which kind of price the agent drafted — per-line or quote-wide — so the
- * card offers the matching inputs; null is a clarification, which has none.
+ * card offers the matching inputs; null is a draft that changes no price (a
+ * clarification or an acknowledgement), which has none.
  */
 final class DraftView
 {

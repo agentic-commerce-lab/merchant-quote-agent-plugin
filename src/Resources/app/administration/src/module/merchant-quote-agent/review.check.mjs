@@ -9,6 +9,7 @@ import {
     feedbackPayload,
     needsReplyReview,
     replyCheckedAfterPreview,
+    reviewIntroKey,
     reviewStatusVariant,
     wasEdited,
 } from './review.ts';
@@ -58,5 +59,24 @@ assert.equal(reviewStatusVariant('superseded'), 'neutral');
 assert.equal(reviewStatusVariant(null), 'neutral');
 assert.equal(errorCode({ response: { data: { code: 'stale' } } }), 'stale');
 assert.equal(errorCode(new Error('network')), null);
+
+// A draft without prices is a clarification or an acknowledgement, and the
+// card's opening line has to say which: an acknowledgement asks nothing.
+assert.equal(reviewIntroKey({ pricing: 'discount', outcome: 'offered' }), 'merchant-quote-agent.review.intro');
+assert.equal(reviewIntroKey({ pricing: null, outcome: 'clarified' }), 'merchant-quote-agent.review.introClarification');
+assert.equal(reviewIntroKey({ pricing: null, outcome: 'acknowledged' }), 'merchant-quote-agent.review.introAcknowledgement');
+
+const snippets = Object.fromEntries(['en', 'de'].map((locale) => [
+    locale,
+    JSON.parse(readFileSync(new URL(`./snippet/${locale}.json`, import.meta.url), 'utf8')),
+]));
+const snippetAt = (locale, key) => key.split('.').reduce((node, part) => node?.[part], snippets[locale]);
+
+for (const view of [{ pricing: 'lines' }, { pricing: null, outcome: 'clarified' }, { pricing: null, outcome: 'acknowledged' }]) {
+    for (const locale of ['en', 'de']) {
+        const key = reviewIntroKey(view);
+        assert.ok(typeof snippetAt(locale, key) === 'string', `snippet/${locale}.json is missing ${key}`);
+    }
+}
 
 console.log('review.check.mjs: all assertions passed');

@@ -330,6 +330,7 @@
             "title": "Draft awaiting your review",
             "intro": "Draft Mode is on: the agent prepared this but sent nothing. Check it, change what you like, then send it or reject it.",
             "introClarification": "The agent wants to ask the buyer a question. Nothing was sent.",
+            "introAcknowledgement": "The agent wants to acknowledge the buyer's message. Nothing was sent.",
             "changesTitle": "Proposed changes",
             "columnLine": "Line",
             "columnQuantity": "Qty",

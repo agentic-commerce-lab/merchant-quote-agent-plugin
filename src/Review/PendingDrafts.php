@@ -113,8 +113,9 @@ final readonly class PendingDrafts
     }
 
     /**
-     * The gateway onto the draft's version: null for a clarification, which
-     * drafted no prices, and for a version that is gone unless one is required.
+     * The gateway onto the draft's version: null for a clarification or an
+     * acknowledgement, which drafted no prices, and for a version that is
+     * gone unless one is required.
      *
      * @throws DraftNotReviewable
      */

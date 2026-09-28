@@ -27,7 +27,7 @@ interface DecisionReviewStoreInterface
     /** Persist an attempt marker before publishing a buyer-visible comment. */
     public function markPublishing(string $decisionId, int $merchantCommentCount, bool $editedByMerchant): void;
 
-    /** @param array<string, mixed>|null $sentChanges null for a clarification, which changes no price */
+    /** @param array<string, mixed>|null $sentChanges null for a draft that changes no price */
     public function markSent(string $decisionId, string $sentReply, ?array $sentChanges): void;
 
     public function markRejected(string $decisionId): void;

@@ -8,7 +8,7 @@ use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 
-/** One pending draft, opened under the quote's lock: its row, the live quote, and the gateway onto its version (null for a clarification). */
+/** One pending draft, opened under the quote's lock: its row, the live quote, and the gateway onto its version (null for a draft that changes no price). */
 final readonly class PendingDraft
 {
     public function __construct(

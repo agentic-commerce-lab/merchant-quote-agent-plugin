@@ -79,6 +79,7 @@ side effects go.
 |---|---|---|
 | `offered` / `countered` | claim (`process`), write prices/discount/validity, recalculate, verify, post reply, `sent` → `replied` | create a draft version; write, recalculate and verify **in the version**; compose the reply and record it; **no comment, no transition** |
 | `clarified` | post the clarifying question | record the question as the draft reply; not posted; no version |
+| `acknowledged` | post the quote back as it stands, `sent` / `admin_resend` → `replied` | record the acknowledgement as the draft reply; not posted; no version; **no transition** |
 | `escalated` | buyer notice (if `notifyBuyerOnEscalation`) + merchant notification | merchant notification only; **no buyer notice** |
 | `nothing_to_do`, `handed_over` | nothing buyer-visible | unchanged |
 
@@ -185,6 +186,10 @@ interleave.
    actually sent) and `sent_changes`.
 
 A `clarified` draft has no version: Send posts the question (steps 1, 5, 7).
+An `acknowledged` draft has no version either, but Send still moves the quote
+to `replied` after posting it (steps 1, 5, 6, 7): the buyer's comment moved it
+to `change_requested` / `reopen`, and only that transition makes the standing
+offer acceptable again.
 
 A failure after the merge is logged with the exception and surfaced to the
 admin as an error. The row stays `pending` so the failure is visible; there is

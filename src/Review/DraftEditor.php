@@ -32,7 +32,7 @@ final class DraftEditor
 
         if ($gateway === null) {
             if (!$edits->isEmpty()) {
-                throw InvalidReviewRequest::because('This draft asks the buyer a question; it has no prices to edit.');
+                throw InvalidReviewRequest::because('This draft changes no prices, so there are none to edit.');
             }
 
             return $pending->live;

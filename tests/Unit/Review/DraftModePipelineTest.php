@@ -44,6 +44,22 @@ final class DraftModePipelineTest extends TestCase
         self::assertSame(QuoteEscalationReason::DraftReady, $h->notifier->notices[0]->reason ?? null);
     }
 
+    /**
+     * An acknowledgement posts a comment and moves the quote back to replied,
+     * so in Draft Mode it is a draft like a clarification: the merchant is
+     * told, and there is no version because it changes no price.
+     */
+    public function testADraftedAcknowledgementNotifiesTheMerchantAndKeepsNoVersion(): void
+    {
+        $h = self::harness(NegotiationOutcome::Acknowledged);
+
+        $outcome = $h->pipeline->service($h->snapshot, $h->live, self::settings(draftMode: true), self::context());
+
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
+        self::assertSame([], $h->versions->created);
+        self::assertSame(QuoteEscalationReason::DraftReady, $h->notifier->notices[0]->reason ?? null);
+    }
+
     public function testAnEscalatedDraftPassDeletesItsVersionAndSendsNoDraftNotice(): void
     {
         $h = self::harness(NegotiationOutcome::Escalated, writesAPrice: true);

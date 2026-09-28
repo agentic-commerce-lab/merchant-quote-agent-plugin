@@ -19,6 +19,7 @@ use MerchantQuoteAgentPlugin\Review\ReviewFingerprint;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\QuoteSnapshotFixture;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
@@ -46,6 +47,60 @@ final class DraftSenderTest extends TestCase
         self::assertSame([QuoteTransition::Process, QuoteTransition::Sent], $merchant->transitions);
         self::assertSame(['We can offer 5%.'], $merchant->comments);
         self::assertSame('We can offer 5%.', $store->sent[0][1]);
+    }
+
+    /**
+     * An acknowledgement has no version, yet it must still reach replied:
+     * the buyer's comment moved the quote to a renegotiation state, and only
+     * the reply moves it back to where the buyer can accept (PassedOver).
+     */
+    #[DataProvider('renegotiationStates')]
+    public function testAnAcknowledgementIsCommentedAndMovedToRepliedWithoutAClaim(string $state): void
+    {
+        $live = QuoteSnapshotFixture::snapshot(state: $state);
+        $merchant = new FakeQuoteGateway([$live]);
+        $versions = new FakeDraftVersions(new FakeQuoteGateway([$live]));
+        $store = new FakeReviewStore();
+        $record = self::record(null, $live);
+        $record->outcome = 'acknowledged';
+
+        $this->sender($versions, $store, $merchant)->send(
+            new PendingDraft($record, $live, null, false),
+            'Thanks, the quote stands.',
+            new DraftEdits(),
+            new Context(new AdminApiSource('user-1')),
+        );
+
+        self::assertSame(['Thanks, the quote stands.'], $merchant->comments);
+        self::assertSame([QuoteTransition::AdminResend], $merchant->transitions);
+        self::assertSame([], $versions->merged);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function renegotiationStates(): iterable
+    {
+        yield 'trunk' => ['change_requested'];
+        yield '6.7.12' => ['reopen'];
+    }
+
+    /** A clarification only asks its question, drafted or not: the buyer owes the next move. */
+    public function testAClarificationIsCommentedWithoutATransition(): void
+    {
+        $live = QuoteSnapshotFixture::snapshot(state: 'change_requested');
+        $merchant = new FakeQuoteGateway([$live]);
+        $store = new FakeReviewStore();
+        $record = self::record(null, $live);
+        $record->outcome = 'clarified';
+
+        $this->sender(new FakeDraftVersions(new FakeQuoteGateway([$live])), $store, $merchant)->send(
+            new PendingDraft($record, $live, null, false),
+            'Which colour?',
+            new DraftEdits(),
+            new Context(new AdminApiSource('user-1')),
+        );
+
+        self::assertSame(['Which colour?'], $merchant->comments);
+        self::assertSame([], $merchant->transitions);
     }
 
     public function testAStaleDraftIsNotSent(): void

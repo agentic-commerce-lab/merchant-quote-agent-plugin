@@ -330,6 +330,7 @@
             "title": "Entwurf wartet auf Ihre Prüfung",
             "intro": "Der Entwurfsmodus ist aktiv: Der Agent hat dies vorbereitet, aber nichts gesendet. Prüfen und anpassen, dann senden oder verwerfen.",
             "introClarification": "Der Agent möchte dem Käufer eine Frage stellen. Es wurde nichts gesendet.",
+            "introAcknowledgement": "Der Agent möchte die Nachricht des Käufers bestätigen. Es wurde nichts gesendet.",
             "changesTitle": "Vorgeschlagene Änderungen",
             "columnLine": "Position",
             "columnQuantity": "Menge",

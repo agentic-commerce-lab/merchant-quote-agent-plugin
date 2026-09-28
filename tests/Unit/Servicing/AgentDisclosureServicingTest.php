@@ -92,6 +92,7 @@ final class AgentDisclosureServicingTest extends TestCase
         yield 'offered - drafted' => [NegotiationOutcome::Offered, false];
         yield 'countered - drafted' => [NegotiationOutcome::Countered, false];
         yield 'clarified - drafted' => [NegotiationOutcome::Clarified, false];
+        yield 'acknowledged - drafted' => [NegotiationOutcome::Acknowledged, false];
         yield 'escalated - nothing drafted, still disclosed' => [NegotiationOutcome::Escalated, true];
     }
 
