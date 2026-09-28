@@ -8,9 +8,7 @@ use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Bridge\ContextBoundGateways;
 use MerchantQuoteAgentPlugin\Bridge\QuoteDraftVersionsInterface;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
-use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
-use Shopware\Core\Framework\Uuid\Uuid;
 
 final readonly class DraftSender
 {
@@ -61,7 +59,8 @@ final readonly class DraftSender
             $this->connection->transactional(
                 /** @throws \Doctrine\DBAL\Exception */ function () use ($pending, $edits, $gateway, $versionId): void {
                     $quoteId = $pending->record->quoteId;
-                    $this->lockLivePricing($quoteId);
+                    // One DBAL connection, so the lock holds until this commits.
+                    $this->versions->lockLive($quoteId);
                     $live = $gateway->fetchSnapshot($quoteId);
 
                     if (ReviewFingerprint::current($live) !== $pending->record->reviewFingerprint) {
@@ -79,22 +78,5 @@ final readonly class DraftSender
         } catch (\Throwable $error) {
             throw DraftSendFailed::after($error);
         }
-    }
-
-    /** @throws \Doctrine\DBAL\Exception */
-    private function lockLivePricing(string $quoteId): void
-    {
-        $ids = [
-            'quoteId' => Uuid::fromHexToBytes($quoteId),
-            'liveVersion' => Uuid::fromHexToBytes(Defaults::LIVE_VERSION),
-        ];
-        $this->connection->fetchFirstColumn(
-            'SELECT id FROM `quote` WHERE id = :quoteId AND version_id = :liveVersion FOR UPDATE',
-            $ids,
-        );
-        $this->connection->fetchFirstColumn(
-            'SELECT id FROM `quote_line_item` WHERE quote_id = :quoteId AND quote_version_id = :liveVersion FOR UPDATE',
-            $ids,
-        );
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Review;
 
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 
@@ -43,7 +44,10 @@ final class MerchantSendContext
             $request->getRuleIds(),
             $request->getCurrencyId(),
             $request->getLanguageIdChain(),
-            $request->getVersionId(),
+            // Live, never the request's own: any admin-API caller can set
+            // `sw-version-id`, and these widened permissions must only ever
+            // write the quote the buyer sees.
+            Defaults::LIVE_VERSION,
             $request->getCurrencyFactor(),
             $request->considerInheritance(),
             $request->getTaxState(),

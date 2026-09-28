@@ -72,6 +72,29 @@ final readonly class QuoteDraftVersions implements QuoteDraftVersionsInterface
         return $gateway;
     }
 
+    /**
+     * DBAL rather than the DAL: the DAL has no row lock. SwagCommercial's own
+     * tables, so this lives in Bridge with the rest of that knowledge.
+     *
+     * @throws \Doctrine\DBAL\Exception
+     */
+    #[\Override]
+    public function lockLive(string $quoteId): void
+    {
+        $ids = [
+            'quoteId' => Uuid::fromHexToBytes($quoteId),
+            'liveVersion' => Uuid::fromHexToBytes(Defaults::LIVE_VERSION),
+        ];
+        $this->connection->fetchFirstColumn(
+            'SELECT id FROM `quote` WHERE id = :quoteId AND version_id = :liveVersion FOR UPDATE',
+            $ids,
+        );
+        $this->connection->fetchFirstColumn(
+            'SELECT id FROM `quote_line_item` WHERE quote_id = :quoteId AND quote_version_id = :liveVersion FOR UPDATE',
+            $ids,
+        );
+    }
+
     #[\Override]
     public function merge(string $versionId): void
     {

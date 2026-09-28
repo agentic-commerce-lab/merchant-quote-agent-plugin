@@ -19,6 +19,9 @@ final class FakeDraftVersions implements QuoteDraftVersionsInterface
     /** @var list<string> */
     public array $deleted = [];
 
+    /** @var list<string> lockLive() and merge() in call order, beside what a test's transaction adds */
+    public array $events = [];
+
     /** @var list<string> version ids exists() denies, as if their rows were gone */
     public array $missing = [];
 
@@ -51,9 +54,16 @@ final class FakeDraftVersions implements QuoteDraftVersionsInterface
     }
 
     #[\Override]
+    public function lockLive(string $quoteId): void
+    {
+        $this->events[] = 'lock';
+    }
+
+    #[\Override]
     public function merge(string $versionId): void
     {
         $this->merged[] = $versionId;
+        $this->events[] = 'merge';
     }
 
     #[\Override]

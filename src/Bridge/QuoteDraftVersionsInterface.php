@@ -26,6 +26,13 @@ interface QuoteDraftVersionsInterface
     public function gateway(string $versionId): QuoteGatewayInterface;
 
     /**
+     * Row-locks the live quote and its lines until the caller's transaction
+     * ends, so a merchant edit cannot land between Send's final staleness
+     * check and its merge. Only meaningful inside a transaction.
+     */
+    public function lockLive(string $quoteId): void;
+
+    /**
      * Replays the version onto the live quote; the version is gone afterwards.
      *
      * @throws NotADraftVersion

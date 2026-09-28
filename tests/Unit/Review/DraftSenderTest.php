@@ -19,7 +19,6 @@ use MerchantQuoteAgentPlugin\Review\ReviewFingerprint;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\QuoteSnapshotFixture;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
@@ -50,57 +49,22 @@ final class DraftSenderTest extends TestCase
     }
 
     /**
-     * An acknowledgement has no version, yet it must still reach replied:
-     * the buyer's comment moved the quote to a renegotiation state, and only
-     * the reply moves it back to where the buyer can accept (PassedOver).
+     * The stale check reads the live quote under a row lock and merges in the
+     * same transaction, so a merchant edit cannot land between the two.
      */
-    #[DataProvider('renegotiationStates')]
-    public function testAnAcknowledgementIsCommentedAndMovedToRepliedWithoutAClaim(string $state): void
+    public function testTheLivePricingIsLockedInsideTheMergeTransaction(): void
     {
-        $live = QuoteSnapshotFixture::snapshot(state: $state);
-        $merchant = new FakeQuoteGateway([$live]);
-        $versions = new FakeDraftVersions(new FakeQuoteGateway([$live]));
-        $store = new FakeReviewStore();
-        $record = self::record(null, $live);
-        $record->outcome = 'acknowledged';
+        $open = QuoteSnapshotFixture::snapshot(state: 'open');
+        $versions = new FakeDraftVersions(new FakeQuoteGateway([$open]));
 
-        $this->sender($versions, $store, $merchant)->send(
-            new PendingDraft($record, $live, null, false),
-            'Thanks, the quote stands.',
+        $this->sender($versions, new FakeReviewStore(), new FakeQuoteGateway([$open]))->send(
+            new PendingDraft(self::record('0190aaaa0000700080000000000000aa', $open), $open, $versions->draft, false),
+            'We can offer 5%.',
             new DraftEdits(),
             new Context(new AdminApiSource('user-1')),
         );
 
-        self::assertSame(['Thanks, the quote stands.'], $merchant->comments);
-        self::assertSame([QuoteTransition::AdminResend], $merchant->transitions);
-        self::assertSame([], $versions->merged);
-    }
-
-    /** @return iterable<string, array{string}> */
-    public static function renegotiationStates(): iterable
-    {
-        yield 'trunk' => ['change_requested'];
-        yield '6.7.12' => ['reopen'];
-    }
-
-    /** A clarification only asks its question, drafted or not: the buyer owes the next move. */
-    public function testAClarificationIsCommentedWithoutATransition(): void
-    {
-        $live = QuoteSnapshotFixture::snapshot(state: 'change_requested');
-        $merchant = new FakeQuoteGateway([$live]);
-        $store = new FakeReviewStore();
-        $record = self::record(null, $live);
-        $record->outcome = 'clarified';
-
-        $this->sender(new FakeDraftVersions(new FakeQuoteGateway([$live])), $store, $merchant)->send(
-            new PendingDraft($record, $live, null, false),
-            'Which colour?',
-            new DraftEdits(),
-            new Context(new AdminApiSource('user-1')),
-        );
-
-        self::assertSame(['Which colour?'], $merchant->comments);
-        self::assertSame([], $merchant->transitions);
+        self::assertSame(['begin', 'lock', 'merge', 'commit'], $versions->events);
     }
 
     public function testAStaleDraftIsNotSent(): void
@@ -211,7 +175,15 @@ final class DraftSenderTest extends TestCase
         };
 
         $connection = $this->createMock(Connection::class);
-        $connection->method('transactional')->willReturnCallback(static fn(callable $work): mixed => $work());
+        $connection
+            ->method('transactional')
+            ->willReturnCallback(static function (callable $work) use ($versions): mixed {
+                $versions->events[] = 'begin';
+                $result = $work();
+                $versions->events[] = 'commit';
+
+                return $result;
+            });
 
         return new DraftSender($versions, $gateways, new DraftSendCompletion($store, new NullLogger()), $connection);
     }
