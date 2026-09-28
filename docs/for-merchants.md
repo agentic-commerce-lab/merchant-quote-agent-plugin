@@ -173,9 +173,11 @@ Flow Builder mail can then run. **Reject draft** discards the private working
 copy without changing the live prices; finish that quote in SwagCommercial.
 The agent asks for feedback after rejection and offers it after you edit a
 draft before sending. You can also use **Give feedback** on any pass in the
-history. The decision export includes reason codes and totals actually sent;
-the comment and sent reply are included only when you opt into free text (see
-[Costs and data](#costs-and-data)).
+history. The decision export includes reason codes and totals actually sent.
+The feedback comment and the sent reply are free text: the dashboard's
+**Export** includes them unless you choose **Export without comments or
+prompts**, and the command-line export includes them only with
+`--include-comments` (see [Costs and data](#costs-and-data)).
 
 Sending is blocked if the buyer wrote again, changed a requested price, or
 the quote's state changed after the draft was prepared. It is also blocked if
@@ -184,7 +186,11 @@ validity in SwagCommercial. This protects those edits from being overwritten
 by the draft on older supported Shopware versions. Reject a stale draft; a new
 buyer message starts a new pass. Anyone with the Quote agent viewer role can
 see a draft, but only a user granted the additional **Quote agent: review
-drafts** permission may preview, send, reject or save feedback. Switching Draft
+drafts** permission may preview, send, reject or save feedback. That
+permission reaches further than its name: sending a draft reprices the quote,
+posts the reply and moves the quote to replied on the reviewer's behalf, even
+if their role has no SwagCommercial permission to edit quotes or write quote
+comments. Grant it only to people you would let answer the buyer. Switching Draft
 Mode off leaves existing drafts reviewable; new passes answer on their own again.
 If Send reports an error, check the quote before retrying: its reply may
 already be visible to the buyer. When the system detects that situation, it
@@ -327,6 +333,11 @@ Two roles, under **Permissions → merchant_quote_agent**:
 - **viewer** — read the dashboard and the records. Also needs read access to
   quotes and orders, or two of the four tiles cannot be calculated.
 - **deleter** — additionally remove audit rows.
+
+The additional **Quote agent: review drafts** permission (see
+[Draft Mode](#draft-mode-approve-each-reply-yourself)) lets its holder send a
+draft, which changes the quote and answers the buyer without SwagCommercial's
+own quote permissions.
 
 There is also an **Agent access** page under Settings, but only if you run the
 Agentic Commerce extension — it controls which customer assistants may talk to

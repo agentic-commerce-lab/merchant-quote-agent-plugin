@@ -260,16 +260,18 @@
                                     <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.review.sentReplyLabel') }}</dt>
                                     <dd class="mqa-run__fact-value mqa-run__message">{{ entry.run.sentReply }}</dd>
                                 </template>
+                            </dl>
 
-                                <template v-if="entry.run.feedbackReasons.length || entry.run.feedbackComment">
-                                    <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.feedback.savedLabel') }}</dt>
-                                    <dd class="mqa-run__fact-value">
-                                        <ul v-if="entry.run.feedbackReasons.length" class="mqa-changes">
-                                            <li v-for="reason in entry.run.feedbackReasons" :key="reason">{{ reason }}</li>
-                                        </ul>
-                                        <span v-if="entry.run.feedbackComment" class="mqa-run__message">{{ entry.run.feedbackComment }}</span>
-                                    </dd>
-                                </template>
+                            {# Outside the facts list: feedback can be given on
+                               any pass, and a no-op pass hides that list. #}
+                            <dl v-if="entry.run.feedbackReasons.length || entry.run.feedbackComment" class="mqa-run__facts">
+                                <dt class="mqa-run__fact-label">{{ $tc('merchant-quote-agent.feedback.savedLabel') }}</dt>
+                                <dd class="mqa-run__fact-value">
+                                    <ul v-if="entry.run.feedbackReasons.length" class="mqa-changes">
+                                        <li v-for="reason in entry.run.feedbackReasons" :key="reason">{{ reason }}</li>
+                                    </ul>
+                                    <span v-if="entry.run.feedbackComment" class="mqa-run__message">{{ entry.run.feedbackComment }}</span>
+                                </dd>
                             </dl>
 
                             <mt-button

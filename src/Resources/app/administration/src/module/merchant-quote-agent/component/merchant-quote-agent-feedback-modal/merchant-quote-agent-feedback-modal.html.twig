@@ -21,7 +21,7 @@
         :label="$tc('merchant-quote-agent.feedback.comment')"
         :help-text="$tc('merchant-quote-agent.feedback.commentHelp')"
         :model-value="text"
-        :maxlength="2000"
+        :max-length="2000"
         @update:model-value="(value) => { text = value; }"
     />
 

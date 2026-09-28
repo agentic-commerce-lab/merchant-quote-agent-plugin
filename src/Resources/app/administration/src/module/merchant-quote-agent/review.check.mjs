@@ -119,4 +119,19 @@ for (const key of cardKeys) {
     }
 }
 
+// Meteor 5.7's MtTextarea declares `maxLength`; a `maxlength` attribute falls
+// through to its wrapper and limits nothing.
+const feedbackModal = readFileSync(new URL('./component/merchant-quote-agent-feedback-modal/merchant-quote-agent-feedback-modal.html.twig', import.meta.url), 'utf8');
+assert.match(feedbackModal, /:max-length="/);
+assert.doesNotMatch(feedbackModal, /:maxlength="/);
+
+// Saved feedback shows on every pass, a no-op one included: it must not sit
+// inside the facts list a nothing_to_do / handed_over pass hides.
+const detail = readFileSync(new URL('./page/merchant-quote-agent-detail/merchant-quote-agent-detail.html.twig', import.meta.url), 'utf8');
+const factsOpen = detail.indexOf('<dl v-if="!entry.run.isNoop"');
+const factsClose = detail.indexOf('</dl>', factsOpen);
+const savedFeedback = detail.indexOf('feedback.savedLabel');
+assert.ok(factsOpen >= 0 && factsClose > factsOpen && savedFeedback >= 0, 'detail template landmarks moved');
+assert.ok(savedFeedback > factsClose, 'saved feedback is inside the facts list a no-op pass hides');
+
 console.log('review.check.mjs: all assertions passed');

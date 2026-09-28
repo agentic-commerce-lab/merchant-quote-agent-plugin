@@ -204,8 +204,9 @@ so unrelated live merchant edits retained by the merge are represented.
 ### Reject — `POST …/reject`
 
 Deletes the draft version and records `rejected` + `reviewed_at`. The admin
-then opens the feedback form. The quote is untouched; the merchant handles it
-in SwagCommercial.
+then opens the feedback form. The live prices are untouched (a `clarified`
+draft's marker is released, ruling 8); the merchant handles the quote in
+SwagCommercial.
 
 ### Feedback — `PUT …/feedback`
 
@@ -262,6 +263,13 @@ redeliver the servicing pass.
 5. Any new pass supersedes a pending draft, including `nothing_to_do`, because a new buyer message makes it stale.
 6. Review access is the additional permission `merchant_quote_agent_drafts.review`; the existing `editor` role continues to mean strategy editing.
 7. Pending, rejected and superseded drafts do not count as buyer answers on the dashboard. Every drafted pass counts against auto-execution, and pending drafts have the `awaitingReview` disposition.
+
+### Rulings recorded during PR #205 review
+
+8. Reject releases the clarification marker. A drafted clarification writes `ClarificationMarker` to the live quote although the buyer never saw the question, so "the quote is untouched" holds for prices only: rejecting a `clarified` draft clears that marker.
+9. Superseding does the same. `supersedePending()` reports, per row, its version and whether it was a clarification; `DraftModePipeline` clears the marker before the next pass, in or out of Draft Mode, and hands that pass a fresh snapshot, because `ClarificationRound` reads the snapshot it is given.
+10. Draft Mode escalations still stamp the storefront disclosure. An escalation drafts nothing, and the agent's determination that a human must decide stands either way (`AgentDisclosure::stampForPass()`).
+11. `acknowledged` is a draft. It posts a comment and moves the quote to `replied`, so in Draft Mode it is a version-less pending draft like `clarified`; Send posts it and, unlike a clarification, runs the closing transition.
 
 ## Admin
 
