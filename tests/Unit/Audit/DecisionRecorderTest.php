@@ -15,6 +15,9 @@ use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteAutoReplyDetails;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
+use MerchantQuoteAgentPlugin\Policy\Data\Rounding;
+use MerchantQuoteAgentPlugin\Policy\Data\RoundingMode;
+use MerchantQuoteAgentPlugin\Policy\Data\RoundingSkip;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
@@ -351,5 +354,35 @@ final class DecisionRecorderTest extends TestCase
                 validityDays: 14,
             )),
         );
+    }
+
+    public function testARoundingIsTracedWithItsFiguresAndNoRoundingIsNotTraced(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->begin(NegotiationFixture::snapshot(), self::context());
+        $recorder->recordRounding(null);
+        $recorder->recordRounding(
+            new Rounding(RoundingMode::DiscountPercent, 0.5, 7.34, 7.0, RoundingSkip::BuyerFigure),
+        );
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        $events = array_values(array_filter(
+            $writer->drafts[0]->trace,
+            static fn(TraceDraft $t): bool => $t->kind === TraceKind::Rounding,
+        ));
+        self::assertCount(1, $events);
+        self::assertSame(
+            [
+                'mode' => 'discount_percent',
+                'step' => 0.5,
+                'unrounded' => 7.34,
+                'rounded' => 7.0,
+                'skipped' => 'buyer_figure',
+            ],
+            $events[0]->meta,
+        );
+        self::assertNull($events[0]->content);
     }
 }

@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot as PolicyQuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot as PolicySnapshot;
+use MerchantQuoteAgentPlugin\Policy\DiscountRounding;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
 use MerchantQuoteAgentPlugin\Policy\OfferLevelMirror;
 
@@ -39,10 +40,12 @@ final readonly class OfferProposer
         PolicySnapshot $snapshot,
         QuoteDecision $decision,
         NegotiationContext $context,
+        ?float $askedDiscountPercent = null,
     ): ProposedAnswer {
         // Quote 1101: one anchor for the brief, the mirror and the checks —
         // the original prices, carrying the live asks. Round one has no
         // baseline yet, and there the live snapshot IS the original.
+        $live = $snapshot;
         $snapshot = $context->baseline?->anchor($snapshot) ?? $snapshot;
         $details = $decision->autoReply;
 
@@ -107,10 +110,19 @@ final readonly class OfferProposer
             ));
         }
 
-        $offer = LinePriceNormalizer::normalize(
-            self::atTheBuyersLevel($response->toOffer($snapshot->totalNet), $snapshot),
-            $snapshot->lines,
+        // Rounding control (spec 2026-09-28), discount_percent mode: before
+        // the mirror, so a per-line conversion inherits the rounded rate, and
+        // before authorize(), so the checks and the reply see the rate that
+        // is written. Null (and nothing traced) in every other case.
+        [$proposed, $rounding] = DiscountRounding::offer(
+            $settings->policy->price,
+            $response->toOffer($snapshot->totalNet),
+            $askedDiscountPercent,
+            CappedAuthority::standing($snapshot, $live),
         );
+        $this->recorder->recordRounding($rounding);
+
+        $offer = LinePriceNormalizer::normalize(self::atTheBuyersLevel($proposed, $snapshot), $snapshot->lines);
 
         return $this->recorded($raw, $this->authorize(
             $settings,

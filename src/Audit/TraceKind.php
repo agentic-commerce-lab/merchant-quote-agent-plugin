@@ -29,6 +29,7 @@ enum TraceKind: string
     case Http = 'http';
     case AssistantTool = 'assistant_tool';
     case SellerAct = 'seller_act';
+    case Rounding = 'rounding';
 
     /** @return list<string> */
     public function metaKeys(): array
@@ -67,6 +68,7 @@ enum TraceKind: string
             self::Http => ['route', 'method', 'httpStatus', 'durationMs', 'sessionId', 'errorCode'],
             self::AssistantTool => ['tool', 'status'],
             self::SellerAct => ['sessionId', 'seq', 'actType', 'offerHash', 'result'],
+            self::Rounding => ['mode', 'step', 'unrounded', 'rounded', 'skipped'],
         };
     }
 }

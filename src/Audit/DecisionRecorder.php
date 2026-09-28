@@ -14,6 +14,7 @@ use MerchantQuoteAgentPlugin\Negotiation\ProposedAnswer;
 use MerchantQuoteAgentPlugin\Negotiation\Response\HistoryRequest;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
+use MerchantQuoteAgentPlugin\Policy\Data\Rounding;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
 
@@ -232,6 +233,33 @@ final class DecisionRecorder
         if ($answer->escalationDetail !== '') {
             $this->draft->violations = [$answer->escalationDetail];
         }
+    }
+
+    /**
+     * What rounding control did to this pass's offer (spec 2026-09-28). Its
+     * own event rather than a key on `policy_verdict`: that one is recorded
+     * before the model has proposed anything there is to round. Null means
+     * rounding did not run and records nothing. Only enums and figures, so
+     * all of it is meta.
+     */
+    public function recordRounding(?Rounding $rounding): void
+    {
+        if ($rounding === null || $this->draft === null) {
+            return;
+        }
+
+        TraceDraft::appendTo(
+            $this->draft,
+            TraceKind::Rounding,
+            [
+                'mode' => $rounding->mode->value,
+                'step' => $rounding->step,
+                'unrounded' => $rounding->unrounded,
+                'rounded' => $rounding->rounded,
+                'skipped' => $rounding->skipped?->value,
+            ],
+            null,
+        );
     }
 
     /** @param list<string> $writes */

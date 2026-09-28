@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Policy\AskedDiscountCeiling;
 use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
@@ -58,7 +59,17 @@ final readonly class OfferRound
                 'quoteId' => $snapshot->identity->quoteId,
             ]);
         }
-        $answer = $this->proposer->propose($settings, SnapshotAdapter::toPolicy($snapshot), $decision->price, $context);
+        // Rounding control never rounds the buyer's own figure (spec
+        // 2026-09-28, rule 2). This is that figure, measured the way
+        // CappedAuthority measured it for this round's cap.
+        $asked = AskedDiscountCeiling::percent(SnapshotAdapter::anchored($snapshot), $ask?->interpretation);
+        $answer = $this->proposer->propose(
+            $settings,
+            SnapshotAdapter::toPolicy($snapshot),
+            $decision->price,
+            $context,
+            $asked,
+        );
 
         if ($answer->offer === null) {
             // The detail stays here, in the log: QuoteEscalator writes to the
