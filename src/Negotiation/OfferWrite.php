@@ -22,10 +22,16 @@ final readonly class OfferWrite
     /**
      * @param list<QuoteLinePrice> $lines unit prices to write; empty writes none
      * @param ?Discount $discount the quote discount to set; null leaves it as it is
+     * @param ?float $discountFactor what share of its live net price each
+     *     positive line costs once `$discount` is written (PredictedWrite);
+     *     null exactly when `$discount` is. A percentage states it; an
+     *     absolute amount does not, so whoever builds one works it out
+     *     (QuoteTotalRounding).
      */
     private function __construct(
         public array $lines,
         public ?Discount $discount,
+        public ?float $discountFactor = null,
     ) {}
 
     /**
@@ -46,19 +52,30 @@ final readonly class OfferWrite
         float $quoteWidePercent,
     ): self {
         if ($floored !== null) {
-            return new self(
-                self::moved($floored->price->linePricesNet ?? [], $reference),
-                $reference->totals->discount === null ? null : new Discount(DiscountType::Percentage, 0.0),
-            );
+            $moved = self::moved($floored->price->linePricesNet ?? [], $reference);
+
+            return $reference->totals->discount === null ? new self($moved, null) : self::percentage($moved, 0.0);
         }
 
         $lines = $offer->price->linePricesNet ?? [];
 
-        return (
-            $lines !== []
-                ? new self($lines, null)
-                : new self([], new Discount(DiscountType::Percentage, $quoteWidePercent))
-        );
+        return $lines !== [] ? new self($lines, null) : self::percentage([], $quoteWidePercent);
+    }
+
+    /**
+     * An absolute quote discount of `$value` in the quote's own tax space
+     * (Bridge\Data\Discount), leaving every positive line at `$factor` of its
+     * live net price. Rounding control's quote_total mode (spec 2026-09-28).
+     */
+    public static function absolute(float $value, float $factor): self
+    {
+        return new self([], new Discount(DiscountType::Absolute, $value), $factor);
+    }
+
+    /** @param list<QuoteLinePrice> $lines */
+    private static function percentage(array $lines, float $percent): self
+    {
+        return new self($lines, new Discount(DiscountType::Percentage, $percent), 1 - ($percent / 100));
     }
 
     /**
