@@ -107,10 +107,19 @@ final readonly class ReplayEvaluator
             QuoteBaseline::read($snapshot),
         );
 
+        // Both snapshots, the same two the live round passes: the anchored one
+        // measures the ask against the ORIGINAL prices, and the live one is
+        // what the quote costs the buyer right now. CappedAuthority needs both
+        // to floor the round's cap at the concession already granted -- without
+        // the live arm a round-two ask would cap below what the buyer is
+        // holding, and the replay would diverge from production on exactly the
+        // rounds this feature exists to measure.
+        $live = SnapshotAdapter::toPolicy($snapshot);
+
         try {
             $answer = $this->proposer->propose(
-                CappedAuthority::forRound($settings, $policySnapshot, $ask),
-                SnapshotAdapter::toPolicy($snapshot),
+                CappedAuthority::forRound($settings, $policySnapshot, $live, $ask),
+                $live,
                 $decision->price,
                 $context,
             );
