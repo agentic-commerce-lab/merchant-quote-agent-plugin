@@ -110,7 +110,7 @@ final readonly class OfferRound
             );
         }
 
-        $applied = $this->applier->apply($gateway, $snapshot, $settings, $answer->offer);
+        $applied = $this->applier->apply($gateway, $snapshot, $settings, $answer->offer, $asked);
 
         if (!$applied->verified) {
             return $this->unverified($gateway, $applied, $extractHash, $answer->promptHash);
