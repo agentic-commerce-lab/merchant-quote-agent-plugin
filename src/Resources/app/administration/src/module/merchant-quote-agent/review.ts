@@ -31,13 +31,19 @@ const BLOCKING_CODES = ['stale', 'gone', 'published', 'not_pending', 'unavailabl
 export const FEEDBACK_COMMENT_MAX = 2000;
 export const REVIEW_PRIVILEGE = 'merchant_quote_agent_drafts.review';
 
+/** Bridge\Data\Discount: an `absolute` value is money in the quote's own tax space. */
+export interface DraftDiscount {
+    type: 'percentage' | 'absolute';
+    value: number;
+}
+
 export interface DraftView {
     outcome: string | null;
     pricing: 'lines' | 'discount' | null;
     reply: string;
     previewEdited: boolean;
     replyRedrafted: boolean;
-    discountPercent: { live: number | null; draft: number | null };
+    discount: { live: DraftDiscount | null; draft: DraftDiscount | null };
     lines: Array<{ id: string; draft: number }>;
     expiresAt: { live: string | null; draft: string | null };
 }
@@ -75,6 +81,20 @@ function isNumber(value: unknown): value is number {
     return typeof value === 'number' && Number.isFinite(value);
 }
 
+/** What the percentage field edits. A fixed amount has no percentage, so the field starts empty. */
+export function draftPercent(view: Pick<DraftView, 'discount'>): number | null {
+    const draft = view.discount.draft;
+
+    return draft?.type === 'percentage' ? draft.value : null;
+}
+
+/** QuoteTotalRounding's fixed amount: the one that lands the gross total on a round figure. */
+export function draftAmount(view: Pick<DraftView, 'discount'>): number | null {
+    const draft = view.discount.draft;
+
+    return draft?.type === 'absolute' ? draft.value : null;
+}
+
 /**
  * Submit changed fields only, and only the price type actually drafted. A
  * cleared number field is no edit: the drafted price stays, as the totals
@@ -87,7 +107,7 @@ export function editsPayload(view: DraftView, form: DraftForm): Record<string, u
         return edits;
     }
 
-    if (view.pricing === 'discount' && isNumber(form.discountPercent) && !same(form.discountPercent, view.discountPercent.draft)) {
+    if (view.pricing === 'discount' && isNumber(form.discountPercent) && !same(form.discountPercent, draftPercent(view))) {
         edits.discountPercent = form.discountPercent;
     }
 
@@ -104,6 +124,11 @@ export function editsPayload(view: DraftView, form: DraftForm): Record<string, u
     }
 
     return edits;
+}
+
+/** A typed percentage is written as one (DraftEditor.php) and replaces the drafted fixed amount. */
+export function replacesAmount(view: DraftView, form: DraftForm): boolean {
+    return draftAmount(view) !== null && 'discountPercent' in editsPayload(view, form);
 }
 
 export function wasEdited(view: DraftView, form: DraftForm): boolean {

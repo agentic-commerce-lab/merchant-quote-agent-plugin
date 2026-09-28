@@ -2,10 +2,13 @@ import template from './merchant-quote-agent-draft-review.html.twig';
 import { formatCurrency, formatPercent } from '../../decision';
 import {
     REVIEW_PRIVILEGE,
+    draftAmount,
+    draftPercent,
     editsPayload,
     exceedsCap,
     localDay,
     needsReplyReview,
+    replacesAmount,
     replyCheckedAfterPreview,
     reviewFailure,
     reviewIntroKey,
@@ -65,6 +68,15 @@ Shopware.Component.register('merchant-quote-agent-draft-review', {
             return this.view?.pricing === 'discount' && exceedsCap(this.form?.discountPercent ?? null, this.view.maxDiscountPercent);
         },
 
+        /** Rounding's fixed amount (DraftView.php); null for a percentage or no discount. */
+        amount() {
+            return this.view === null ? null : draftAmount(this.view);
+        },
+
+        replacesAmount() {
+            return this.view !== null && this.form !== null && replacesAmount(this.view, this.form);
+        },
+
         edited() {
             return this.view !== null && this.form !== null && wasEdited(this.view, this.form);
         },
@@ -116,7 +128,7 @@ Shopware.Component.register('merchant-quote-agent-draft-review', {
             this.view = view;
             this.form = {
                 reply: view.reply,
-                discountPercent: view.discountPercent.draft,
+                discountPercent: draftPercent(view),
                 linePrices: Object.fromEntries(view.lines.map((line) => [line.id, line.draft])),
                 expiresAt: view.expiresAt.draft,
             };
