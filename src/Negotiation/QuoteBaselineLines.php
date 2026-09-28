@@ -12,7 +12,8 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot as PolicySnapshot;
  *
  * Carries the total as well as the lines because the verifier reads all three
  * together: NetFactor::of() divides totalNet by the sum of
- * unitPriceNet * quantity to normalise gross-vs-net price space, so prices
+ * unitPriceNet * quantity over the positive lines to normalise gross-vs-net
+ * price space, so prices
  * without their quantities and total would produce a meaningless ratio.
  */
 final readonly class QuoteBaselineLines
