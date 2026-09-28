@@ -189,7 +189,7 @@ final readonly class OfferApplier
                 now: new \DateTimeImmutable(),
                 floors: $floors,
             )),
-            ...$predicted->raises,
+            ...$predicted->refusals,
         ];
     }
 

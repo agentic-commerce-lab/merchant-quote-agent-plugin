@@ -23,10 +23,13 @@ use MerchantQuoteAgentPlugin\Policy\GoodsFactor;
  */
 final readonly class PredictedWrite
 {
-    /** @param list<string> $raises every line the write would price above what the buyer pays today */
+    /**
+     * @param list<string> $refusals every line the write would price above what the buyer pays today, and
+     *                               a quote whose discount the prediction cannot see
+     */
     private function __construct(
         public PolicySnapshot $snapshot,
-        public array $raises,
+        public array $refusals,
     ) {}
 
     /** @param PolicySnapshot $live the pre-write quote, never the baseline */
@@ -40,13 +43,15 @@ final readonly class PredictedWrite
         $goodsFactor = GoodsFactor::of($live->lines);
         $factor = $write->discount === null ? $goodsFactor : 1 - ($write->discount->value / 100);
         $lines = [];
-        $raises = [];
+        $refusals = [];
         $moved = 0.0;
+        $goods = 0.0;
         foreach ($live->lines as $line) {
             if ($line->unitPriceNet <= 0.0) {
                 continue;
             }
 
+            $goods += $line->unitPriceNet * $line->quantity;
             $today = $line->unitPriceNet * $goodsFactor;
             $price = ($named[$line->lineItemId()] ?? $line->unitPriceNet) * $factor;
             $moved += ($price - $today) * $line->quantity;
@@ -55,13 +60,24 @@ final readonly class PredictedWrite
             // Never-raise, per line: OfferApplier changes no quantity or
             // product, so no structural change can explain a higher price.
             if ($price > ($today + Epsilon::MONEY)) {
-                $raises[] = sprintf(
+                $refusals[] = sprintf(
                     'line "%s" would rise from %.2f to %.2f net, above what the buyer pays today',
                     $line->label() ?? $line->lineItemId(),
                     $today,
                     $price,
                 );
             }
+        }
+
+        // GoodsFactor reads the quote discount off its negative line. A total
+        // below the goods with no such line means something takes money off
+        // that the prediction cannot see, and a hold would write 0% over it.
+        if ($goodsFactor >= 1.0 && $live->totalNet < ($goods - Epsilon::MONEY)) {
+            $refusals[] = sprintf(
+                'the quote total %.2f is below its lines %.2f with no discount line to account for it',
+                $live->totalNet,
+                $goods,
+            );
         }
 
         return new self(
@@ -71,7 +87,7 @@ final readonly class PredictedWrite
                 lines: $lines,
                 lifecycle: new PolicyLifecycle($live->lifecycle->stateTechnicalName),
             ),
-            $raises,
+            $refusals,
         );
     }
 }

@@ -41,8 +41,11 @@ final class QuoteWidePercent
                 continue;
             }
 
+            // A line above its baseline (a merchant raised it after the stamp)
+            // has no concession behind it, so it anchors on today's price;
+            // anchored at the lower baseline, a hold would write a cut.
             $live += $line->unitPriceNet * $line->quantity;
-            $anchored += ($reference[$line->lineItemId()] ?? $line->unitPriceNet) * $line->quantity;
+            $anchored += max($reference[$line->lineItemId()] ?? 0.0, $line->unitPriceNet) * $line->quantity;
         }
 
         if ($live <= 0.0) {

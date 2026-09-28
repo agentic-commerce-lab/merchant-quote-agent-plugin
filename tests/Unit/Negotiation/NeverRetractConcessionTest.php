@@ -104,7 +104,7 @@ final class NeverRetractConcessionTest extends TestCase
         return CappedAuthority::forRound(
             NegotiationFixture::settings(maxDiscountPercent: $maxDiscountPercent),
             SnapshotAdapter::anchored($live),
-            $live->totals->totalNet,
+            SnapshotAdapter::toPolicy($live),
             new InterpretedAsk(
                 new CommentInterpretation(price: new PriceAsk(additionalDiscountPercent: 5.0)),
                 'extract-hash',

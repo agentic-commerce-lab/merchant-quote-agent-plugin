@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Policy\AskedDiscountCeiling;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot as PolicySnapshot;
+use MerchantQuoteAgentPlugin\Policy\GoodsFactor;
 
 /**
  * The merchant's discount cap, tightened to what the buyer actually asked for.
@@ -44,12 +45,12 @@ final class CappedAuthority
      * ask must not be allowed to redefine.
      *
      * @param PolicySnapshot $anchored the round's snapshot on the baseline (SnapshotAdapter::anchored())
-     * @param float $liveTotalNet what the quote costs the buyer right now
+     * @param PolicySnapshot $live what the quote costs the buyer right now (SnapshotAdapter::toPolicy())
      */
     public static function forRound(
         QuoteAgentSettings $settings,
         PolicySnapshot $anchored,
-        float $liveTotalNet,
+        PolicySnapshot $live,
         ?InterpretedAsk $ask,
     ): QuoteAgentSettings {
         $limits = $settings->policy->price;
@@ -59,7 +60,7 @@ final class CappedAuthority
             return $settings;
         }
 
-        $cap = min($limits->maxDiscountPercent, max($asked, self::standing($anchored, $liveTotalNet)));
+        $cap = min($limits->maxDiscountPercent, max($asked, self::standing($anchored, $live)));
 
         return $cap >= $limits->maxDiscountPercent
             ? $settings
@@ -67,16 +68,40 @@ final class CappedAuthority
     }
 
     /**
-     * The discount the buyer already holds, measured the way
-     * DiscountTotalViolation measures the write: live total against the
-     * anchored one. Never negative — a quote above its baseline holds nothing.
+     * The discount the buyer already holds, measured the way BOTH verifier
+     * checks measure a hold: the total (DiscountTotalViolation) and the
+     * deepest single line (LineNetViolation, on the price the buyer pays,
+     * quote discount folded in). The line term matters because
+     * MarginFloorClamp makes a round's write uneven by construction — a at 95,
+     * b at 80 is 12.5% on the total and 20% on b, and a total-only cap
+     * refuses the hold on b every round. Never negative.
+     *
+     * Structural reductions (a quantity cut from 10 to 5, a removed line)
+     * shrink the live total against an anchored total that does not shrink
+     * with them (#49's totals limitation), so they read as standing discount
+     * and can lift the cap all the way to the merchant's maximum. That is only
+     * safe because the same stale anchored total then fails the predicted
+     * write closed (OfferApplier::rejected()) instead of letting it land.
      */
-    private static function standing(PolicySnapshot $anchored, float $liveTotalNet): float
+    private static function standing(PolicySnapshot $anchored, PolicySnapshot $live): float
     {
-        if ($anchored->totalNet <= 0.0) {
-            return 0.0;
+        $standing = $anchored->totalNet > 0.0
+            ? (($anchored->totalNet - $live->totalNet) / $anchored->totalNet) * 100
+            : 0.0;
+
+        $reference = [];
+        foreach ($anchored->lines as $line) {
+            $reference[$line->lineItemId()] = $line->unitPriceNet;
         }
 
-        return max(0.0, (($anchored->totalNet - $liveTotalNet) / $anchored->totalNet) * 100);
+        $goodsFactor = GoodsFactor::of($live->lines);
+        foreach ($live->lines as $line) {
+            $original = $reference[$line->lineItemId()] ?? 0.0;
+            if ($line->unitPriceNet > 0.0 && $original > 0.0) {
+                $standing = max($standing, (($original - ($line->unitPriceNet * $goodsFactor)) / $original) * 100);
+            }
+        }
+
+        return max(0.0, $standing);
     }
 }
