@@ -141,10 +141,15 @@ final readonly class DraftReviewController
         } catch (DecisionNotFound $e) {
             return new JsonResponse(['code' => 'not_found', 'message' => $e->getMessage()], 404);
         } catch (InvalidReviewRequest $e) {
-            return new JsonResponse(['code' => 'invalid', 'message' => $e->getMessage()], 400);
+            return new JsonResponse([
+                'code' => 'invalid',
+                'reason' => $e->reason->value,
+                'message' => $e->getMessage(),
+            ], 400);
         } catch (MappingError) {
             return new JsonResponse([
                 'code' => 'invalid',
+                'reason' => InvalidReviewReason::Malformed->value,
                 'message' => 'The request does not have the expected shape.',
             ], 400);
         }
@@ -160,7 +165,11 @@ final readonly class DraftReviewController
         try {
             return $request->toArray();
         } catch (JsonException $e) {
-            throw InvalidReviewRequest::because('The request body is not a JSON object.', $e);
+            throw InvalidReviewRequest::because(
+                InvalidReviewReason::Malformed,
+                'The request body is not a JSON object.',
+                $e,
+            );
         }
     }
 
@@ -176,7 +185,11 @@ final readonly class DraftReviewController
         try {
             return ArrayMapper::mapObject(DraftEdits::class, $body);
         } catch (MappingError $e) {
-            throw InvalidReviewRequest::because('The request does not have the expected shape.', $e);
+            throw InvalidReviewRequest::because(
+                InvalidReviewReason::Malformed,
+                'The request does not have the expected shape.',
+                $e,
+            );
         }
     }
 
@@ -186,7 +199,11 @@ final readonly class DraftReviewController
         try {
             return ArrayMapper::mapObject(FeedbackRequest::class, self::body($request));
         } catch (MappingError $e) {
-            throw InvalidReviewRequest::because('The request does not have the expected shape.', $e);
+            throw InvalidReviewRequest::because(
+                InvalidReviewReason::Malformed,
+                'The request does not have the expected shape.',
+                $e,
+            );
         }
     }
 }

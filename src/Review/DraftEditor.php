@@ -32,7 +32,10 @@ final class DraftEditor
 
         if ($gateway === null) {
             if (!$edits->isEmpty()) {
-                throw InvalidReviewRequest::because('This draft changes no prices, so there are none to edit.');
+                throw InvalidReviewRequest::because(
+                    InvalidReviewReason::NoPrices,
+                    'This draft changes no prices, so there are none to edit.',
+                );
             }
 
             return $pending->live;
@@ -82,7 +85,10 @@ final class DraftEditor
         );
 
         if (array_diff(array_keys($edits->linePrices), $known) !== []) {
-            throw InvalidReviewRequest::because('One of the edited lines is not on this quote.');
+            throw InvalidReviewRequest::because(
+                InvalidReviewReason::UnknownLine,
+                'One of the edited lines is not on this quote.',
+            );
         }
     }
 }

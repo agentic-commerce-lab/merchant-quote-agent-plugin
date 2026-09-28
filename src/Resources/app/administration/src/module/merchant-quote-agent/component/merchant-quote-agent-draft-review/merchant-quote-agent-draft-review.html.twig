@@ -67,7 +67,7 @@
 
             <label class="mqa-review__date">
                 <span>{{ $tc('merchant-quote-agent.review.validUntil') }}</span>
-                <input v-model="form.expiresAt" type="date" :disabled="!canReview || blocked || isSaving">
+                <input v-model="form.expiresAt" type="date" :min="minExpiresAt" :disabled="!canReview || blocked || isSaving">
             </label>
 
             <dl class="mqa-review__totals">

@@ -18,7 +18,10 @@ final class DraftPriceGuard
     public static function reduction(PendingDraft $pending, QuoteSnapshot $after): ?float
     {
         if ($after->totals->totalNet > ($pending->live->totals->totalNet + Epsilon::MONEY)) {
-            throw InvalidReviewRequest::because('These prices would raise the total above what the quote shows now.');
+            throw InvalidReviewRequest::because(
+                InvalidReviewReason::PriceIncrease,
+                'These prices would raise the total above what the quote shows now.',
+            );
         }
 
         // Prices that leave the live total where it is are the merchant
@@ -35,7 +38,10 @@ final class DraftPriceGuard
         );
 
         if ($disagreed) {
-            throw InvalidReviewRequest::because('These prices would raise the total above what the quote shows now.');
+            throw InvalidReviewRequest::because(
+                InvalidReviewReason::PriceIncrease,
+                'These prices would raise the total above what the quote shows now.',
+            );
         }
 
         return $percent;

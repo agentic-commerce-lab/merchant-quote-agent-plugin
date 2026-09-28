@@ -1,7 +1,17 @@
 import template from './merchant-quote-agent-draft-review.html.twig';
 import { formatCurrency, formatPercent } from '../../decision';
-import { REVIEW_PRIVILEGE, editsPayload, errorCode, exceedsCap, needsReplyReview, replyCheckedAfterPreview, reviewIntroKey, wasEdited } from '../../review';
-import type { DraftForm, DraftView } from '../../review';
+import {
+    REVIEW_PRIVILEGE,
+    editsPayload,
+    exceedsCap,
+    localDay,
+    needsReplyReview,
+    replyCheckedAfterPreview,
+    reviewFailure,
+    reviewIntroKey,
+    wasEdited,
+} from '../../review';
+import type { DraftForm, DraftView, ReviewAction } from '../../review';
 
 interface ReviewResponse extends DraftView {
     stale: boolean;
@@ -67,6 +77,11 @@ Shopware.Component.register('merchant-quote-agent-draft-review', {
             return this.blockedBy !== null || this.view?.stale === true;
         },
 
+        /** A past day is refused server-side (`date_in_past`); the picker should not offer one. */
+        minExpiresAt() {
+            return localDay(new Date());
+        },
+
         blockedMessage() {
             const code = this.blockedBy ?? (this.view?.stale ? 'stale' : null);
 
@@ -119,7 +134,7 @@ Shopware.Component.register('merchant-quote-agent-draft-review', {
                 const response = await this.sync().httpClient.get<ReviewResponse>(`${this.base}/draft`, this.options());
                 this.adopt(response.data);
             } catch (error) {
-                this.fail(error);
+                this.fail(error, 'load');
             } finally {
                 this.isLoading = false;
             }
@@ -157,7 +172,7 @@ Shopware.Component.register('merchant-quote-agent-draft-review', {
                     this.replyTouched = true;
                 }
             } catch (error) {
-                this.fail(error);
+                this.fail(error, 'preview');
             } finally {
                 this.isSaving = false;
             }
@@ -194,7 +209,7 @@ Shopware.Component.register('merchant-quote-agent-draft-review', {
                 this.createNotificationSuccess({ message: this.$tc('merchant-quote-agent.review.sent') });
                 this.$emit('reviewed', { edited });
             } catch (error) {
-                this.fail(error);
+                this.fail(error, 'send');
             } finally {
                 this.isSaving = false;
             }
@@ -208,23 +223,23 @@ Shopware.Component.register('merchant-quote-agent-draft-review', {
                 this.createNotificationInfo({ message: this.$tc('merchant-quote-agent.review.rejected') });
                 this.$emit('rejected');
             } catch (error) {
-                this.fail(error);
+                this.fail(error, 'reject');
             } finally {
                 this.isSaving = false;
             }
         },
 
-        fail(error: unknown) {
-            const code = errorCode(error);
+        fail(error: unknown, action: ReviewAction) {
+            const failure = reviewFailure(error, action);
 
-            if (['stale', 'gone', 'published', 'not_pending', 'unavailable'].includes(code ?? '')) {
-                this.blockedBy = code;
+            if ('blockedBy' in failure) {
+                this.blockedBy = failure.blockedBy;
 
                 return;
             }
 
             this.createNotificationError({
-                message: this.$tc(`merchant-quote-agent.review.error.${code === 'busy' ? 'busy' : 'generic'}`),
+                message: 'message' in failure ? failure.message : this.$tc(failure.snippet),
             });
         },
     },

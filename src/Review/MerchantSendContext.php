@@ -24,7 +24,10 @@ final class MerchantSendContext
         $original = $request->getSource();
 
         if (!$original instanceof AdminApiSource || $original->getUserId() === null) {
-            throw InvalidReviewRequest::because('Sending a draft requires an administration user.');
+            throw InvalidReviewRequest::because(
+                InvalidReviewReason::NotAnAdminUser,
+                'Sending a draft requires an administration user.',
+            );
         }
 
         $source = new AdminApiSource($original->getUserId(), $original->getIntegrationId());

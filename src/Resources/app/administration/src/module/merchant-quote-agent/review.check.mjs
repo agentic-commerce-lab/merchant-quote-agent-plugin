@@ -3,12 +3,14 @@ import { readFileSync } from 'node:fs';
 import {
     FEEDBACK_COMMENT_MAX,
     FEEDBACK_REASONS,
+    INVALID_REASONS,
     editsPayload,
-    errorCode,
     exceedsCap,
     feedbackPayload,
+    localDay,
     needsReplyReview,
     replyCheckedAfterPreview,
+    reviewFailure,
     reviewIntroKey,
     reviewStatusVariant,
     wasEdited,
@@ -48,6 +50,11 @@ assert.equal(replyCheckedAfterPreview({ ...view, replyRedrafted: true }, true), 
 const lines = { ...view, pricing: 'lines', lines: [{ id: 'l1', draft: 9 }, { id: 'l2', draft: 4 }] };
 assert.deepEqual(editsPayload(lines, { ...untouched, discountPercent: 99, linePrices: { l1: 9, l2: 3.5 } }), { linePrices: { l2: 3.5 } });
 assert.deepEqual(editsPayload({ ...view, pricing: null }, { ...untouched, discountPercent: 8 }), {});
+// A cleared number field is not an edit: sending `null` fails the request's
+// mapping, and the drafted price the totals show is what goes out.
+assert.deepEqual(editsPayload(lines, { ...untouched, linePrices: { l1: null, l2: 3.5 } }), { linePrices: { l2: 3.5 } });
+assert.deepEqual(editsPayload(lines, { ...untouched, linePrices: { l1: undefined, l2: 4 } }), {});
+assert.deepEqual(editsPayload(view, { ...untouched, discountPercent: null }), {});
 
 assert.equal(exceedsCap(12, 10), true);
 assert.equal(exceedsCap(10, 10), false);
@@ -57,8 +64,36 @@ assert.equal(reviewStatusVariant('sent'), 'positive');
 assert.equal(reviewStatusVariant('rejected'), 'critical');
 assert.equal(reviewStatusVariant('superseded'), 'neutral');
 assert.equal(reviewStatusVariant(null), 'neutral');
-assert.equal(errorCode({ response: { data: { code: 'stale' } } }), 'stale');
-assert.equal(errorCode(new Error('network')), null);
+// The 400 reasons are the PHP enum's, and each has copy in both locales.
+const reasonPhp = readFileSync(new URL('../../../../../../Review/InvalidReviewReason.php', import.meta.url), 'utf8');
+const reasonValues = [...reasonPhp.matchAll(/case \w+ = '([a-z_]+)';/g)].map((match) => match[1]);
+assert.ok(reasonValues.length > 0, 'no cases read from InvalidReviewReason.php');
+assert.deepEqual([...INVALID_REASONS].sort(), reasonValues.sort());
+
+const failure = (status, data) => ({ response: { status, data } });
+assert.deepEqual(reviewFailure(failure(409, { code: 'stale' }), 'send'), { blockedBy: 'stale' });
+assert.deepEqual(reviewFailure(failure(409, { code: 'busy' }), 'send'), { snippet: 'merchant-quote-agent.review.error.busy' });
+assert.deepEqual(
+    reviewFailure(failure(400, { code: 'invalid', reason: 'price_increase', message: 'These prices…' }), 'preview'),
+    { snippet: 'merchant-quote-agent.review.error.invalid.price_increase' },
+);
+assert.deepEqual(
+    reviewFailure(failure(400, { code: 'invalid', reason: 'from_a_newer_server', message: 'Server copy.' }), 'preview'),
+    { message: 'Server copy.' },
+    'A reason the card does not know shows the server message, never "Try again".',
+);
+// DraftSendFailed is not caught by the controller: Shopware answers 500 with
+// its own `errors` body, and the reply may already be with the buyer.
+assert.deepEqual(
+    reviewFailure(failure(500, { errors: [{ code: '0', status: '500' }] }), 'send'),
+    { snippet: 'merchant-quote-agent.review.error.send_failed' },
+);
+assert.deepEqual(reviewFailure(failure(500, { errors: [] }), 'preview'), { snippet: 'merchant-quote-agent.review.error.generic' });
+assert.deepEqual(reviewFailure(new Error('network'), 'send'), { snippet: 'merchant-quote-agent.review.error.generic' });
+
+// The date input's minimum is today in the merchant's own time zone.
+assert.equal(localDay(new Date(2026, 0, 5, 23, 30)), '2026-01-05');
+assert.equal(localDay(new Date(2026, 10, 30, 0, 5)), '2026-11-30');
 
 // A draft without prices is a clarification or an acknowledgement, and the
 // card's opening line has to say which: an acknowledgement asks nothing.
@@ -72,9 +107,14 @@ const snippets = Object.fromEntries(['en', 'de'].map((locale) => [
 ]));
 const snippetAt = (locale, key) => key.split('.').reduce((node, part) => node?.[part], snippets[locale]);
 
-for (const view of [{ pricing: 'lines' }, { pricing: null, outcome: 'clarified' }, { pricing: null, outcome: 'acknowledged' }]) {
+const cardKeys = [
+    ...[{ pricing: 'lines' }, { pricing: null, outcome: 'clarified' }, { pricing: null, outcome: 'acknowledged' }].map(reviewIntroKey),
+    ...INVALID_REASONS.map((reason) => `merchant-quote-agent.review.error.invalid.${reason}`),
+    'merchant-quote-agent.review.error.send_failed',
+];
+
+for (const key of cardKeys) {
     for (const locale of ['en', 'de']) {
-        const key = reviewIntroKey(view);
         assert.ok(typeof snippetAt(locale, key) === 'string', `snippet/${locale}.json is missing ${key}`);
     }
 }

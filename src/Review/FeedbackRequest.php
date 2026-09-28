@@ -27,7 +27,7 @@ final readonly class FeedbackRequest
         $comment = trim($comment);
 
         if (mb_strlen($comment) > self::MAX_COMMENT_LENGTH) {
-            throw InvalidReviewRequest::because(sprintf(
+            throw InvalidReviewRequest::because(InvalidReviewReason::CommentTooLong, sprintf(
                 'The comment is longer than %d characters.',
                 self::MAX_COMMENT_LENGTH,
             ));
@@ -40,7 +40,10 @@ final readonly class FeedbackRequest
         }
 
         if ($unique === [] && $comment === '') {
-            throw InvalidReviewRequest::because('Pick at least one reason or write a comment.');
+            throw InvalidReviewRequest::because(
+                InvalidReviewReason::EmptyFeedback,
+                'Pick at least one reason or write a comment.',
+            );
         }
 
         $this->reasons = array_values($unique);

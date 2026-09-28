@@ -358,7 +358,22 @@
                 "not_pending": "Dieser Entwurf wurde bereits bearbeitet oder ersetzt.",
                 "busy": "Der Agent bearbeitet dieses Angebot gerade. Bitte in ein paar Sekunden erneut versuchen.",
                 "unavailable": "Angebote können nicht bearbeitet werden, weil SwagCommercial nicht lizenziert ist.",
-                "generic": "Das hat nicht geklappt. Bitte erneut versuchen."
+                "generic": "Das hat nicht geklappt. Bitte erneut versuchen.",
+                "send_failed": "Der Entwurf konnte nicht gesendet werden. Prüfen Sie das Angebot in SwagCommercial, bevor Sie es erneut versuchen: Die Antwort könnte für den Käufer bereits sichtbar sein.",
+                "invalid": {
+                    "malformed": "Die Prüfung konnte nicht gelesen werden. Laden Sie die Seite neu und versuchen Sie es erneut.",
+                    "not_an_admin_user": "Nur ein angemeldeter Administrationsbenutzer kann einen Entwurf senden.",
+                    "empty_reply": "Die Antwort an den Käufer ist leer. Schreiben Sie vor dem Senden eine Antwort.",
+                    "discount_out_of_range": "Der Rabatt muss zwischen 0 und 100 Prozent liegen.",
+                    "negative_price": "Ein Stückpreis darf nicht negativ sein.",
+                    "date_format": "Geben Sie das Gültigkeitsdatum als Kalendertag ein.",
+                    "date_in_past": "Das Gültigkeitsdatum liegt in der Vergangenheit. Wählen Sie heute oder einen späteren Tag.",
+                    "price_increase": "Mit diesen Preisen läge die Summe über dem, was das Angebot jetzt zeigt. Senken Sie sie, oder verwerfen Sie den Entwurf und bearbeiten Sie das Angebot in SwagCommercial.",
+                    "no_prices": "Dieser Entwurf ändert keine Preise, es gibt also keine zu bearbeiten.",
+                    "unknown_line": "Eine der bearbeiteten Positionen ist nicht mehr in diesem Angebot. Laden Sie die Seite neu.",
+                    "comment_too_long": "Der Kommentar ist länger als 2.000 Zeichen.",
+                    "empty_feedback": "Wählen Sie mindestens einen Grund oder schreiben Sie einen Kommentar."
+                }
             },
             "status": {
                 "pending": "Entwurf – wartet auf Prüfung",

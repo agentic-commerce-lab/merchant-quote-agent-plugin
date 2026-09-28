@@ -29,11 +29,14 @@ final readonly class DraftEdits
     public function __construct(?float $discountPercent = null, array $linePrices = [], ?string $expiresAt = null)
     {
         if ($discountPercent !== null && ($discountPercent < 0.0 || $discountPercent > 100.0)) {
-            throw InvalidReviewRequest::because('The discount must be between 0 and 100 percent.');
+            throw InvalidReviewRequest::because(
+                InvalidReviewReason::DiscountOutOfRange,
+                'The discount must be between 0 and 100 percent.',
+            );
         }
 
         if (array_filter($linePrices, static fn(float $price): bool => $price < 0.0) !== []) {
-            throw InvalidReviewRequest::because('A unit price cannot be negative.');
+            throw InvalidReviewRequest::because(InvalidReviewReason::NegativePrice, 'A unit price cannot be negative.');
         }
 
         $this->discountPercent = $discountPercent;
@@ -52,13 +55,16 @@ final readonly class DraftEdits
         $day = \DateTimeImmutable::createFromFormat('!Y-m-d', $value);
 
         if ($day === false || $day->format('Y-m-d') !== $value) {
-            throw InvalidReviewRequest::because('The validity date must be a calendar day, YYYY-MM-DD.');
+            throw InvalidReviewRequest::because(
+                InvalidReviewReason::DateFormat,
+                'The validity date must be a calendar day, YYYY-MM-DD.',
+            );
         }
 
         $end = $day->setTime(23, 59, 59);
 
         if ($end < new \DateTimeImmutable()) {
-            throw InvalidReviewRequest::because('The validity date is in the past.');
+            throw InvalidReviewRequest::because(InvalidReviewReason::DateInPast, 'The validity date is in the past.');
         }
 
         return $end;

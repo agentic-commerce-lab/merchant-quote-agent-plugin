@@ -31,7 +31,7 @@ final readonly class DraftSender
         $reply = trim($reply);
 
         if ($reply === '') {
-            throw InvalidReviewRequest::because('The reply to the buyer is empty.');
+            throw InvalidReviewRequest::because(InvalidReviewReason::EmptyReply, 'The reply to the buyer is empty.');
         }
 
         $this->publish($pending, $reply, $edits, MerchantSendContext::from($merchant));

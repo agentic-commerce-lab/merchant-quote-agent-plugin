@@ -358,7 +358,22 @@
                 "not_pending": "This draft was already handled or replaced.",
                 "busy": "The agent is working on this quote right now. Try again in a few seconds.",
                 "unavailable": "Quotes cannot be edited because SwagCommercial is not licensed.",
-                "generic": "That did not work. Try again."
+                "generic": "That did not work. Try again.",
+                "send_failed": "The draft could not be sent. Check the quote in SwagCommercial before trying again: the reply may already be visible to the buyer.",
+                "invalid": {
+                    "malformed": "The review could not be read. Reload the page and try again.",
+                    "not_an_admin_user": "Only a signed-in administration user can send a draft.",
+                    "empty_reply": "The reply to the buyer is empty. Write a reply before sending.",
+                    "discount_out_of_range": "The discount must be between 0 and 100 percent.",
+                    "negative_price": "A unit price cannot be negative.",
+                    "date_format": "Enter the validity date as a calendar day.",
+                    "date_in_past": "The validity date is in the past. Pick today or a later day.",
+                    "price_increase": "These prices would raise the total above what the quote shows now. Lower them, or reject the draft and handle the quote in SwagCommercial.",
+                    "no_prices": "This draft changes no prices, so there are none to edit.",
+                    "unknown_line": "One of the edited lines is no longer on this quote. Reload the page.",
+                    "comment_too_long": "The comment is longer than 2,000 characters.",
+                    "empty_feedback": "Pick at least one reason or write a comment."
+                }
             },
             "status": {
                 "pending": "Draft — awaiting review",

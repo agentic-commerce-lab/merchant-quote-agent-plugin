@@ -8,6 +8,25 @@ export const FEEDBACK_REASONS = [
     'other',
 ] as const;
 
+/** InvalidReviewReason.php's values: a 400 the merchant can fix, each with its own copy. */
+export const INVALID_REASONS = [
+    'malformed',
+    'not_an_admin_user',
+    'empty_reply',
+    'discount_out_of_range',
+    'negative_price',
+    'date_format',
+    'date_in_past',
+    'price_increase',
+    'no_prices',
+    'unknown_line',
+    'comment_too_long',
+    'empty_feedback',
+] as const;
+
+/** The 409 codes that block the card until the merchant rejects or reloads. */
+const BLOCKING_CODES = ['stale', 'gone', 'published', 'not_pending', 'unavailable'];
+
 /** PHP limits comments to 2,000 code points; JS UTF-16 length is never looser. */
 export const FEEDBACK_COMMENT_MAX = 2000;
 export const REVIEW_PRIVILEGE = 'merchant_quote_agent_drafts.review';
@@ -52,7 +71,15 @@ export function feedbackPayload(reasons: string[], comment: string): { reasons: 
     return { reasons: [...known], comment: text };
 }
 
-/** Submit changed fields only, and only the price type actually drafted. */
+function isNumber(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value);
+}
+
+/**
+ * Submit changed fields only, and only the price type actually drafted. A
+ * cleared number field is no edit: the drafted price stays, as the totals
+ * show, rather than a `null` the request mapping refuses.
+ */
 export function editsPayload(view: DraftView, form: DraftForm): Record<string, unknown> {
     const edits: Record<string, unknown> = {};
 
@@ -60,12 +87,12 @@ export function editsPayload(view: DraftView, form: DraftForm): Record<string, u
         return edits;
     }
 
-    if (view.pricing === 'discount' && form.discountPercent !== null && !same(form.discountPercent, view.discountPercent.draft)) {
+    if (view.pricing === 'discount' && isNumber(form.discountPercent) && !same(form.discountPercent, view.discountPercent.draft)) {
         edits.discountPercent = form.discountPercent;
     }
 
     if (view.pricing === 'lines') {
-        const moved = view.lines.filter((line) => !same(form.linePrices[line.id], line.draft));
+        const moved = view.lines.filter((line) => isNumber(form.linePrices[line.id]) && !same(form.linePrices[line.id], line.draft));
 
         if (moved.length > 0) {
             edits.linePrices = Object.fromEntries(moved.map((line) => [line.id, form.linePrices[line.id]]));
@@ -127,23 +154,56 @@ export function reviewStatusVariant(status: string | null): string {
     return (status && STATUS_VARIANTS[status]) || 'neutral';
 }
 
-/** Error code returned by DraftReviewController, if this response came from it. */
-export function errorCode(error: unknown): string | null {
-    if (typeof error !== 'object' || error === null || !('response' in error)) {
-        return null;
+/** A calendar day in the browser's own time zone, as `<input type="date">` reads it. */
+export function localDay(date: Date): string {
+    const pad = (value: number): string => String(value).padStart(2, '0');
+
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export type ReviewAction = 'load' | 'preview' | 'send' | 'reject';
+
+/** What the card does with a failed request: block itself, or notify with a snippet or the server's own copy. */
+export type ReviewFailure = { blockedBy: string } | { snippet: string } | { message: string };
+
+function field(value: unknown, key: string): unknown {
+    return typeof value === 'object' && value !== null && key in value ? (value as Record<string, unknown>)[key] : undefined;
+}
+
+/**
+ * DraftReviewController answers 409 `{code}` for a draft that cannot be acted
+ * on and 400 `{code: 'invalid', reason, message}` for a request the merchant
+ * can fix. A reason the card has no copy for yet shows the server's message,
+ * which is merchant-facing too. A Send that failed past its merge
+ * (DraftSendFailed) is not caught there, so Shopware answers 500 — and the
+ * reply may already be with the buyer, which "Try again" must not hide.
+ */
+export function reviewFailure(error: unknown, action: ReviewAction): ReviewFailure {
+    const response = field(error, 'response');
+    const data = field(response, 'data');
+    const code = field(data, 'code');
+    const reason = field(data, 'reason');
+    const message = field(data, 'message');
+
+    if (typeof code === 'string' && BLOCKING_CODES.includes(code)) {
+        return { blockedBy: code };
     }
 
-    const response = error.response;
-
-    if (typeof response !== 'object' || response === null || !('data' in response)) {
-        return null;
+    if (code === 'invalid' && (INVALID_REASONS as readonly unknown[]).includes(reason)) {
+        return { snippet: `merchant-quote-agent.review.error.invalid.${String(reason)}` };
     }
 
-    const data = response.data;
-
-    if (typeof data !== 'object' || data === null || !('code' in data)) {
-        return null;
+    if (code === 'invalid' && typeof message === 'string' && message !== '') {
+        return { message };
     }
 
-    return typeof data.code === 'string' ? data.code : null;
+    if (code === 'busy') {
+        return { snippet: 'merchant-quote-agent.review.error.busy' };
+    }
+
+    if (action === 'send' && field(response, 'status') === 500) {
+        return { snippet: 'merchant-quote-agent.review.error.send_failed' };
+    }
+
+    return { snippet: 'merchant-quote-agent.review.error.generic' };
 }
