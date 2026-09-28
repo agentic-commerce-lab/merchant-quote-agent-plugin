@@ -1,0 +1,11 @@
+{
+    "id": "margin-floor-holds",
+    "description": "A3. Purchase price 0.8 of the unit price with a 15% markup floor puts the floor at 0.92 of the price: a 15% ask must be held at the floor by MarginFloorClamp, never written below it.",
+    "lines": [{"productRef": "any-purchasable", "quantity": 10, "purchasePriceRatio": 0.8}],
+    "openingAsk": "Could you do 15% off?",
+    "persona": "scripted:moderate",
+    "maxRounds": 2,
+    "policy": {"minMarginPercent": 15},
+    "buyer": {"targetDiscountPercent": 15},
+    "expect": {"firstOutcome": ["offered", "countered"]}
+}

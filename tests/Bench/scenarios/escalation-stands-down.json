@@ -1,0 +1,11 @@
+{
+    "id": "escalation-stands-down",
+    "description": "B2. An escalated quote waits for a human: the buyer's next comment must be handed_over, never a second escalation or a fresh offer.",
+    "lines": [{"productRef": "any-purchasable", "quantity": 10}],
+    "openingAsk": "We need 35% off.",
+    "persona": "scripted:persistent",
+    "maxRounds": 2,
+    "counters": ["Any news on the 35%?"],
+    "continueAfterEscalation": true,
+    "expect": {"firstOutcome": ["escalated"], "maxEscalations": 1}
+}

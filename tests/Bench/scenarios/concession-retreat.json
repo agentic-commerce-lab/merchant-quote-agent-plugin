@@ -1,0 +1,11 @@
+{
+    "id": "concession-retreat",
+    "description": "B1. 12% first, then the buyer retreats to 8%: the written total must never rise (never-retract fix). Round 2's outcome is recorded, not pinned -- see the spec's 'Recorded, not pinned'.",
+    "lines": [{"productRef": "any-purchasable", "quantity": 10}],
+    "openingAsk": "Could you do 12% off?",
+    "persona": "scripted:retreating",
+    "maxRounds": 2,
+    "buyer": {"targetDiscountPercent": 50},
+    "counters": ["Actually, 8% off would already work for us."],
+    "expect": {"firstOutcome": ["offered"], "judge": ["No reply may withdraw or reduce a discount the buyer was already given."]}
+}

@@ -17,6 +17,7 @@ use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Tests\Bench\Scenario;
+use MerchantQuoteAgentPlugin\Tests\Bench\ScenarioAsk;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\FakeCustomerHistoryFactory;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\PipelineHarness;
@@ -137,8 +138,13 @@ final class ScenarioPipelineTest extends TestCase
             '{"action":"offer","message":"10% off.","terms":{"discountPercent":10}}',
             'Confirmed, 10% off.',
         ]);
+        $ask = ScenarioAsk::forLine(
+            $scenario->openingAsk,
+            NegotiationFixture::grossSnapshot()->content->lines[0] ?? null,
+        );
+        self::assertStringContainsString('90.00 a unit', $ask, 'Rendered against the 100.00 gross unit price.');
         $snapshot = NegotiationFixture::grossSnapshot([
-            NegotiationFixture::buyerComment($scenario->openingAsk, '2026-08-28 09:00:00'),
+            NegotiationFixture::buyerComment($ask, '2026-08-28 09:00:00'),
         ]);
         $harness->gateway->replaceSnapshots([
             $snapshot,
@@ -176,6 +182,11 @@ final class ScenarioPipelineTest extends TestCase
         self::assertSame(1, $scenario->lines[0]['quantity'], 'The fixture below assumes a single unit.');
 
         $before = self::ceilingSnapshot($scenario->openingAsk);
+        self::assertStringStartsWith(
+            '106.68 ',
+            $before->content->comments[0]->comment ?? '',
+            'Rendered against the 125.50 gross unit price.',
+        );
         $discountPercent = ((100.40 - 85.34) / 100.40) * 100;
         self::assertGreaterThan(
             15.0,
@@ -229,10 +240,17 @@ final class ScenarioPipelineTest extends TestCase
             '{"action":"offer","message":"11% off.","terms":{"discountPercent":11}}',
             'Here you go.',
         ]);
+        // Rendered against the quote as round 1 saw it (80.00/unit), the
+        // price the live bench renders the ask against -- not the reduced 72.00.
+        $ask = ScenarioAsk::forLine(
+            $scenario->openingAsk,
+            NegotiationFixture::snapshot(totalNet: 800.0)->content->lines[0] ?? null,
+        );
+        self::assertStringContainsString('71.20 a unit', $ask);
         $baseline = NegotiationFixture::baselineOf(800.0, 80.0);
         $before = NegotiationFixture::withCustomFields(
             NegotiationFixture::snapshot(
-                comments: [NegotiationFixture::buyerComment($scenario->openingAsk, '2026-08-28 09:00:00')],
+                comments: [NegotiationFixture::buyerComment($ask, '2026-08-28 09:00:00')],
                 totalNet: 720.0,
                 requestedUnitPrice: 71.2,
             ),
@@ -434,8 +452,16 @@ final class ScenarioPipelineTest extends TestCase
         }
     }
 
-    private static function ceilingSnapshot(string $comment): QuoteSnapshot
+    private static function ceilingSnapshot(string $ask): QuoteSnapshot
     {
+        $line = new QuoteLineSnapshot(
+            identity: new QuoteLineIdentity('line-1', 'Widget', 'prod-1'),
+            quantity: 1,
+            unitPriceNet: 100.40,
+            totalNet: 100.40,
+            netRatio: 0.8,
+        );
+
         return new QuoteSnapshot(
             identity: new QuoteIdentity('q1', '10001', 'EUR', 'sc1', 'cust-1'),
             revision: new QuoteRevision('v1', new \DateTimeImmutable('2026-08-28 10:00:00.000')),
@@ -444,13 +470,9 @@ final class ScenarioPipelineTest extends TestCase
                 stateTechnicalName: 'open',
                 expiresAt: new \DateTimeImmutable(NegotiationFixture::expires()),
             ),
-            content: new QuoteContent(lines: [new QuoteLineSnapshot(
-                identity: new QuoteLineIdentity('line-1', 'Widget', 'prod-1'),
-                quantity: 1,
-                unitPriceNet: 100.40,
-                totalNet: 100.40,
-                netRatio: 0.8,
-            )], comments: [NegotiationFixture::buyerComment($comment, '2026-08-28 09:00:00')]),
+            content: new QuoteContent(lines: [$line], comments: [
+                NegotiationFixture::buyerComment(ScenarioAsk::forLine($ask, $line), '2026-08-28 09:00:00'),
+            ]),
         );
     }
 

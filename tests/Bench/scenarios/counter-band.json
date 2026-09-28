@@ -1,0 +1,10 @@
+{
+    "id": "counter-band",
+    "description": "A1. A 20% ask sits between the 15% cap and the 25% counter ceiling: QuoteBandDecider counters, and nothing written may exceed 15%.",
+    "lines": [{"productRef": "any-purchasable", "quantity": 10}],
+    "openingAsk": "Could you do 20% off this order?",
+    "persona": "scripted:moderate",
+    "maxRounds": 2,
+    "buyer": {"targetDiscountPercent": 20},
+    "expect": {"firstOutcome": ["countered"]}
+}

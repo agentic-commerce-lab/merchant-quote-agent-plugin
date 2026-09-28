@@ -1,10 +1,10 @@
 {
     "id": "gross-figure-in-comment",
-    "description": "A gross per-unit figure typed in a comment on a taxed quote, once stored one tax factor above what the buyer meant.",
+    "description": "A gross per-unit figure typed in a comment on a taxed quote, once stored one tax factor above what the buyer meant. The ask is relative to the quote's own unit price (`{unit*f}`), so it ports between products.",
     "lines": [
         {"productRef": "any-purchasable", "quantity": 10}
     ],
-    "openingAsk": "We can do 90 a unit including tax and we'll place the order today.",
+    "openingAsk": "We can do {unit*0.9} a unit including tax and we'll place the order today.",
     "persona": "scripted:direct",
     "maxRounds": 2,
     "expect": {"firstOutcome": ["offered", "countered"]}
