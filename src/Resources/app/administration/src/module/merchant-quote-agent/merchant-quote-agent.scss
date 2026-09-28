@@ -319,14 +319,6 @@
     color: var(--color-text-secondary-default);
 }
 
-/* The message actually written to the buyer — the one piece of prose on the
-   page, so it gets prose width rather than the full card. */
-.mqa-run__message {
-    max-width: 70ch;
-    color: var(--color-text-primary-default);
-    text-wrap: pretty;
-}
-
 /* ----------------------------------------------------------------- access */
 
 /* Three host lists are typically one to three lines each. The default gave
@@ -453,10 +445,10 @@
     max-height: none;
 }
 
-/* The customer's own sentence, quoted. Left/right attribution is gone with
-   the separate conversation card — only the buyer's comments are entries now,
-   the agent's reply renders inside the pass that composed it — so the bubble
-   only has to read as speech rather than as a field value.
+/* What one side said to the other, quoted: the customer's comment as its
+   own entry, the agent's reply inside the pass that composed it. Same bubble
+   for both, because both are speech rather than field values — the entry
+   title or the label above says who spoke.
 
    Prose rules: pretty wrapping and preserved line breaks. A buyer who wrote a
    list wrote it as a list. */
@@ -469,6 +461,15 @@
     color: var(--color-text-primary-default);
     white-space: pre-wrap;
     text-wrap: pretty;
+}
+
+/* Who the reply went to, above the agent's bubble. The customer's bubble
+   needs none: its entry title already says it. */
+.mqa-msg__label {
+    display: block;
+    margin-top: 16px;
+    color: var(--color-text-secondary-default);
+    font-size: 13px;
 }
 
 /* What a merchant has to know about a pass before its figures: an earlier

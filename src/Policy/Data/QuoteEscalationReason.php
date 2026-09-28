@@ -40,6 +40,11 @@ enum QuoteEscalationReason: string
     // Issue #169. The model could not place the buyer's ask on a line, and
     // the buyer was already asked once to clarify it. ClarificationRound.
     case UnplaceableAsk = 'unplaceable_ask';
+    // A price ask whose pass wrote no concession: the model held, the cap or
+    // the minimum-margin floor left nothing to give, or an earlier round
+    // already gave it. Never answered with 0% (spec
+    // 2026-09-24-never-answer-zero-discount). OfferRound.
+    case NoFurtherConcession = 'no_further_concession';
     // Draft Mode. Never recorded on a decision row: it names the NOTICE that a
     // draft is waiting for the merchant, sent through the same channels as an
     // escalation so the seeded escalation flow covers it without a new event.

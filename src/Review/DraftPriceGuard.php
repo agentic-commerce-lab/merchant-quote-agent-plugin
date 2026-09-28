@@ -21,11 +21,17 @@ final class DraftPriceGuard
             throw InvalidReviewRequest::because('These prices would raise the total above what the quote shows now.');
         }
 
-        $granted = abs($after->totals->totalNet - $pending->live->totals->totalNet) > Epsilon::MONEY;
+        // Prices that leave the live total where it is are the merchant
+        // holding: the reply says so (`ReplyTemplate::holds()`). The agent
+        // escalates such a pass instead (`PostWriteOutcome`); a human choosing
+        // to hold is the one who is allowed to.
+        if (abs($after->totals->totalNet - $pending->live->totals->totalNet) <= Epsilon::MONEY) {
+            return null;
+        }
+
         [$percent, $disagreed] = ReductionForPass::of(
             SnapshotAdapter::anchored($pending->live)->totalNet,
             $after->totals->totalNet,
-            $granted,
         );
 
         if ($disagreed) {

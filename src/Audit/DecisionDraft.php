@@ -63,6 +63,11 @@ final class DecisionDraft
 
     public ?float $totalNetAfter = null;
 
+    /** Tax included: the figure the reply states -- see QuoteTotals. */
+    public ?float $totalGrossBefore = null;
+
+    public ?float $totalGrossAfter = null;
+
     public ?string $model = null;
 
     public ?string $modelHost = null;

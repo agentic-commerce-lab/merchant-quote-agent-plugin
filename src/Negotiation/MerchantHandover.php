@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Negotiation;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 
 /**
@@ -12,7 +13,9 @@ use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
  *
  * True when the merchant acted more recently than the buyer's newest input.
  * It is not a permanent handover: the buyer's next ask is newer than the
- * merchant's action by definition, and re-enables the agent by itself.
+ * merchant's action by definition, and re-enables the agent by itself. The
+ * one exception is an open escalation (PendingEscalation::awaitsAHuman()),
+ * which only a merchant's send releases.
  *
  * A merchant acting by hand does not TRIGGER a pass — QuoteServicingTrigger
  * filters their comments and their transitions both. This exists for the pass
@@ -32,6 +35,14 @@ final class MerchantHandover
 
     public static function tookOver(QuoteSnapshot $snapshot, BuyerConversation $conversation): bool
     {
+        // An open escalation is the human's until they SEND the quote, however
+        // new the buyer's ask. Without this every ask re-ran the pipeline and
+        // escalated the quote again, under a new reason notifying the buyer
+        // again (12 quotes escalated two and three times in PM testing).
+        if (PendingEscalation::awaitsAHuman($snapshot->lifecycle)) {
+            return true;
+        }
+
         $merchant = self::latest(
             $conversation->merchantSpokeAt(),
             self::at($snapshot->lifecycle->lastAdminTransitionAt),

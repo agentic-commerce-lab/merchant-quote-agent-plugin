@@ -162,10 +162,11 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         // from the agent — or worse, its line-price writes over theirs — is
         // exactly the surprise this plugin exists to prevent. Not permanent:
         // the buyer's next ask is newer than the merchant's action and
-        // re-enables the agent by itself.
+        // re-enables the agent by itself -- except on an open escalation,
+        // which stays the human's until they send the quote.
         if (MerchantHandover::tookOver($snapshot, $conversation)) {
-            $this->logger->info('A human merchant answered this quote more recently than the buyer asked; '
-            . 'standing down.', [
+            $this->logger->info('A human merchant has this quote (they answered more recently than the buyer '
+            . 'asked, or an escalation awaits them); standing down.', [
                 'quoteId' => $snapshot->identity->quoteId,
             ]);
 
@@ -192,7 +193,11 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         // `$ask === null` alone missed that case, because it only covers "no
         // extract call happened at all" (no new buyer comment). Both are the
         // same outcome once a structured ask isn't picking up the slack.
-        if (($ask === null || $ask->hasNoAsk()) && !StructuredAsk::isUnmet($snapshot)) {
+        // Only an OPEN one does: a storefront ask the last pass already
+        // answered (countered, say, so `requested_price` still sits below the
+        // line) is not new work, and a "thanks" on that quote is acknowledged
+        // here rather than sent back to a band with nothing left to move.
+        if (($ask === null || $ask->hasNoAsk()) && !StructuredAsk::isOpen($snapshot)) {
             // The one outcome nothing else counts. A comment the agent reads
             // as holding no ask is acknowledged, not escalated (PassedOver) --
             // so if the extract prompt ever regresses, the symptom is real
@@ -202,9 +207,11 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             // `commentRead` is what makes the count worth alerting on: false
             // is an ordinary duplicate trigger or a stranded reply, true is a
             // human writing something the agent found no ask in.
-            // `acknowledged` says whether they were answered or, on an
-            // escalated quote, left to the human. The words themselves stay
-            // out of the log and go to the audit record instead (`buyer_ask`).
+            // `acknowledged` says whether they were answered; an escalated
+            // quote no longer reaches here (MerchantHandover), so it tracks
+            // `commentRead` and stays for this event's readers. The words
+            // themselves stay out of the log and go to the audit record
+            // instead (`buyer_ask`).
             $pass = PassedOver::handle($gateway, $snapshot, $conversation, $ask, $this->round);
 
             $this->logger->info('Nothing to answer on this quote.', [
@@ -263,6 +270,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             $settings->policy->price->maxDiscountPercent,
             $settings->strategyVersionId,
             $settings->strategyAssignmentSource,
+            $settings->policy,
         );
 
         if ($decision->overall === Band::Escalate) {
@@ -274,7 +282,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         return $this->round->play(
             $gateway,
             $snapshot,
-            CappedAuthority::forRound($settings, $policySnapshot, $ask),
+            CappedAuthority::forRound($settings, $policySnapshot, SnapshotAdapter::toPolicy($snapshot), $ask),
             $decision,
             $ask,
         );

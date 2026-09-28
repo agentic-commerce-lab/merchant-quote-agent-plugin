@@ -126,6 +126,19 @@ class QuoteDecisionRecord extends EntityStruct
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?float $totalNetAfter = null;
 
+    /**
+     * Shopware's `amountTotal`, tax included: the figure `replyToBuyer` states
+     * (`QuoteTotals::buyerFacingTotal()`). Read off the same snapshots as the
+     * net pair. Null on rows before 2026-09-28.
+     */
+    #[Field(type: FieldType::FLOAT, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?float $totalGrossBefore = null;
+
+    #[Field(type: FieldType::FLOAT, api: ['admin-api' => true, 'store-api' => false])]
+    #[Protection(write: [Protection::SYSTEM_SCOPE])]
+    public ?float $totalGrossAfter = null;
+
     #[Field(type: FieldType::STRING, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]
     public ?string $model = null;

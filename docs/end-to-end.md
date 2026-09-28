@@ -244,13 +244,14 @@ from the response DTOs. It extracts **only what the buyer explicitly asked**:
 Earlier `[merchant]` comments in the thread are the agent's own previous
 replies, used as context and never as buyer asks.
 
-If there is no ask at all and no unmet structured target price, a pass that read
+If there is no ask at all and no open structured target price — one below the
+line price that the last pass has not already answered — a pass that read
 a buyer comment ends as `acknowledged`: it posts `ReplyTemplate::acknowledges()`
 — the buyer-facing total and expiry as the quote holds them, no model call, no
 price write — and moves the quote to `replied` (`sent`, or `admin_resend` from
-the renegotiation states). On an escalated quote no merchant has sent an
-answer to since (`PendingEscalation::awaitsAHuman()`), or with no comment read,
-it ends as `nothing_to_do` instead — first finishing a stranded
+the renegotiation states). With no comment read it ends as `nothing_to_do`
+instead (an escalated quote no merchant has sent since never gets this far;
+it is `handed_over`, section 4.7) — first finishing a stranded
 `in_review → replied` transition, but only when the agent's own comment is the
 newest one on the quote.
 
@@ -291,11 +292,12 @@ already below its floor (a loss leader, say) is left where it is. It does not
 escalate: a deeper offer is raised to the floor, per line, and a quote-wide
 percentage that would undercut any floor is written as line prices. Whenever
 the floor re-prices an offer, quote-wide or per-line, the quote-level discount
-is reset to 0% and folded into the line prices. A buyer who repeats the ask
-gets the same prices again: the quote stands. A post-write check escalates as
-`verification_failed` if the database still lands a line below its floor. The
-purchase price and the floor never reach the model or the buyer; the buyer's
-reply reports the reduction the database actually shows.
+is reset to 0% and folded into the line prices. A repeated ask the floor leaves
+nothing more to give on moves no price, and escalates as
+`no_further_concession`: a price ask is never answered with 0%. A post-write
+check escalates as `verification_failed` if the database still lands a line
+below its floor. The purchase price and the floor never reach the model or the
+buyer; the buyer's reply reports the reduction the database actually shows.
 
 Two other checks escalate here:
 
@@ -426,6 +428,17 @@ There is no persistent handover flag and no merchant-operated switch: a later
 buyer comment, or a later per-line ask, makes the comparison read `false`
 again on the very next pass, and the agent answers as normal.
 
+The one exception is an open escalation. While
+`Servicing\PendingEscalation::awaitsAHuman()` holds — the escalation marker is
+set and no merchant has moved the quote to `replied` since it was written —
+`tookOver()` returns `true` however new the buyer's ask, so a second ask on an
+escalated quote does not run the pipeline and escalate it again. A merchant's
+send releases it. A legacy marker written before its time was recorded is
+released by any send, since it cannot be ordered against one. After an
+escalation only a merchant SEND re-enables the agent; reopening or declining
+the quote does not, and buyer chat asks made during the escalation are
+consumed (the fingerprint is stamped) and not mirrored to `requested_price`.
+
 The outcome, `NegotiationOutcome::HandedOver`, is returned before the extract
 call and before the stranded-reply branch that follows it. It does not answer
 the buyer, so `answeredTheBuyer()` is false and neither the escalation marker
@@ -441,11 +454,12 @@ reason into a custom field, and notifies the merchant through two channels: a
 administration notification. **It never transitions the quote**; the deal desk's
 own state change is the only observable sign of a human acting.
 
-The marker makes escalation idempotent for a given reason. The eight reasons:
+The marker makes escalation idempotent for a given reason. The twelve reasons:
 
 `discount_limit_exceeded`, `quote_value_limit_exceeded`, `needs_human_review`,
 `currency_mismatch`, `not_configured`, `model_unavailable`, `proposal_rejected`,
-`verification_failed`.
+`verification_failed`, `structural_change_requested`,
+`non_price_term_requested`, `unplaceable_ask`, `no_further_concession`.
 
 ---
 

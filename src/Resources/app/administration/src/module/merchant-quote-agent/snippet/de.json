@@ -25,7 +25,8 @@
             "verification_failed": "Prüfung fehlgeschlagen",
             "structural_change_requested": "Änderung am Angebotsinhalt gewünscht",
             "non_price_term_requested": "Nicht-preisliche Bedingung gewünscht",
-            "unplaceable_ask": "Anliegen nicht zuordenbar"
+            "unplaceable_ask": "Anliegen nicht zuordenbar",
+            "no_further_concession": "Kein weiteres Entgegenkommen"
         },
         "trigger": {
             "state_entered": "Angebot hat den Status gewechselt",
@@ -168,6 +169,7 @@
             "strategyVersion": "Version",
             "strategyPrompt": "Wortlaut der Strategie",
             "strategyUnavailable": "Nicht mehr verfügbar",
+            "strategyInPass": "Strategie: {name}",
             "missingTitle": "Entscheidung nicht gefunden",
             "missingSubline": "Dieser Datensatz konnte nicht geladen werden. Möglicherweise wurde er gelöscht.",
             "terminal": {
@@ -397,7 +399,8 @@
             "verification_failed": "Das Angebot wurde geändert, beim erneuten Lesen stimmte es aber nicht mit dem Autorisierten überein. Ein Mensch muss das prüfen, bevor der Kunde etwas erfährt.",
             "structural_change_requested": "Der Kunde wollte etwas am Angebotsinhalt ändern — Menge, eine entfernte Position oder ein zusätzliches Produkt — statt am Preis. Der Agent verhandelt nur den Preis, diese Änderung muss ein Mensch vornehmen.",
             "non_price_term_requested": "Der Kunde hat eine Liefer- oder Zahlungsbedingung verlangt. Der Agent verhandelt nur den Preis, und nichts hier kann eine solche Bedingung gewähren oder eintragen; diesen Teil muss ein Mensch beantworten.",
-            "unplaceable_ask": "Der Agent konnte nicht erkennen, welche Position oder was genau der Kommentar des Kunden meinte, und eine Rückfrage hat das nicht geklärt. Ein Mensch muss den Verlauf direkt lesen."
+            "unplaceable_ask": "Der Agent konnte nicht erkennen, welche Position oder was genau der Kommentar des Kunden meinte, und eine Rückfrage hat das nicht geklärt. Ein Mensch muss den Verlauf direkt lesen.",
+            "no_further_concession": "Der Kunde wollte einen besseren Preis, aber dieser Durchlauf konnte das Angebot nicht senken: Ihr maximaler Rabatt oder Ihre Mindestmarge ist bereits erreicht, oder der Agent fand nichts, was er anbieten konnte. Ein Mensch entscheidet, ob weiter entgegengekommen wird."
         },
         "write": {
             "claim": "Angebot in Prüfung gesetzt",

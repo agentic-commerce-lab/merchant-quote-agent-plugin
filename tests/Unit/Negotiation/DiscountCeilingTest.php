@@ -275,7 +275,7 @@ final class DiscountCeilingTest extends TestCase
         );
 
         self::assertStringContainsString(
-            'maximum discount you may grant: 5.41%',
+            'maximum discount you may grant: 5.40%',
             $harness->spy->userPrompts[1],
             'An absolute quote-level target must cap the model at what it implies, not the configured 15%.',
         );

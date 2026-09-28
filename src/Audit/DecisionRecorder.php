@@ -13,6 +13,7 @@ use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
 use MerchantQuoteAgentPlugin\Negotiation\ProposedAnswer;
 use MerchantQuoteAgentPlugin\Negotiation\Response\HistoryRequest;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
+use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
@@ -112,6 +113,7 @@ final class DecisionRecorder
         $draft->revisionVersionId = $snapshot->revision->versionId;
         $draft->revisionUpdatedAt = $snapshot->revision->updatedAt;
         $draft->totalNetBefore = $snapshot->totals->totalNet;
+        $draft->totalGrossBefore = $snapshot->totals->totalGross;
         $draft->startedAt = microtime(true);
 
         // Position 0 of every row, refusals included: what the quote looked
@@ -195,6 +197,7 @@ final class DecisionRecorder
         float $maxDiscountPercent,
         ?string $strategyVersionId = null,
         ?StrategyAssignmentSource $strategyAssignmentSource = null,
+        ?NegotiationPolicy $policy = null,
     ): void {
         if ($this->draft === null) {
             return;
@@ -205,7 +208,7 @@ final class DecisionRecorder
         $this->draft->strategyVersionId = $strategyVersionId;
         $this->draft->strategyAssignmentSource = $strategyAssignmentSource?->value;
 
-        [$meta, $content] = VerdictTrace::of($decision);
+        [$meta, $content] = VerdictTrace::of($decision, $policy);
         TraceDraft::appendTo($this->draft, TraceKind::PolicyVerdict, $meta, $content);
     }
 
@@ -245,6 +248,7 @@ final class DecisionRecorder
         $this->draft->violations = $applied->violations;
         $this->draft->writes = $writes;
         $this->draft->totalNetAfter = $applied->after->totals->totalNet;
+        $this->draft->totalGrossAfter = $applied->after->totals->totalGross;
         $this->draft->discountPercentGranted = GrantedDiscount::of(
             $this->draft->totalNetBefore,
             $applied->after->totals->totalNet,
@@ -296,6 +300,20 @@ final class DecisionRecorder
         }
 
         $this->draft->violations = [...($this->draft->violations ?? []), $detail];
+    }
+
+    /**
+     * A failure the pass caught and escalated on, so finish() never sees it:
+     * without this the row of a `model_unavailable` escalation carried no
+     * error at all. The pass still ends with an outcome, unlike a thrown one.
+     */
+    public function recordHandledError(\Throwable $error): void
+    {
+        if ($this->draft === null) {
+            return;
+        }
+
+        ErrorChain::applyTo($this->draft, $error);
     }
 
     public function recordModelCall(

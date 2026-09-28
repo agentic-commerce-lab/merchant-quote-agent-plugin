@@ -28,6 +28,26 @@ final class QuoteNegotiatePromptTest extends TestCase
         self::assertStringContainsString('at most twice', $prompt);
         self::assertStringContainsString('a third request sends the quote to a human', $prompt);
         self::assertStringContainsString('"historyRequest": {"kind": null, "productId": null}', $prompt);
+        self::assertStringContainsString('Never answer a price ask with no concession', $prompt);
+        self::assertStringContainsString('"buyer asks per unit net"', $prompt);
+        self::assertStringContainsString(
+            'column is the buyer\'s storefront figure and may already have been met in an',
+            $prompt,
+        );
+        self::assertStringContainsString(
+            'earlier round; check the earlier rounds before treating it as open.',
+            $prompt,
+        );
+    }
+
+    public function testThePromptOffersNoTermTheResponseSchemaNoLongerCarries(): void
+    {
+        // OfferTerms is price only; a prompt still describing payment and
+        // delivery terms invites a concession nothing can write.
+        $prompt = (string) file_get_contents(__DIR__ . '/../../../config/agents/quote-negotiate-agent.prompt.md');
+
+        self::assertStringNotContainsString('terms.payment', $prompt);
+        self::assertStringNotContainsString('terms.delivery', $prompt);
     }
 
     public function testThePromptSeparatesThisQuoteFromTheAccountHistory(): void

@@ -67,6 +67,7 @@ final class AnonymizedDecisionTest extends TestCase
         self::assertSame('unparsable-host', $row['modelHost']);
         self::assertSame('accepted', $row['terminalState']);
         self::assertSame(['updateQuote', 'recalculate'], $row['writes']);
+        self::assertSame(1190.0, $row['totalGrossAfter']);
     }
 
     public function testFreeTextIsAbsentByDefaultAndPresentWithTheFlag(): void
@@ -179,6 +180,7 @@ final class AnonymizedDecisionTest extends TestCase
         $record->outcome = 'offered';
         $record->band = 'grant';
         $record->discountPercentGranted = 12.5;
+        $record->totalGrossAfter = 1190.0;
         $record->modelHost = 'unparsable-host';
         $record->terminalState = 'accepted';
         $record->terminalAt = new \DateTimeImmutable('2026-09-14T10:00:00+00:00');

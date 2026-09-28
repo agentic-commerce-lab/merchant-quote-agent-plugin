@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Integration;
 use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Negotiation\StructuredAsk;
+use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -127,7 +128,15 @@ final class QuoteFixture
         QuoteGatewayInterface $gateway,
     ): string {
         foreach (self::editableQuoteCriteria($container, $context, [$state])->getIds() as $id) {
-            if (!StructuredAsk::isUnmet($gateway->fetchSnapshot($id))) {
+            $snapshot = $gateway->fetchSnapshot($id);
+
+            // isOpen(), not "unmet": an ask the last pass already answered
+            // is not new work, the same reading NegotiationPipeline uses. And
+            // never an open escalation: that stands the agent down whatever
+            // the buyer writes next (MerchantHandover), and the shop's history
+            // leaves some on open quotes. A merchant's last word is fine -- the
+            // caller's own buyer comment is newer.
+            if (!StructuredAsk::isOpen($snapshot) && !PendingEscalation::awaitsAHuman($snapshot->lifecycle)) {
                 return $id;
             }
         }
