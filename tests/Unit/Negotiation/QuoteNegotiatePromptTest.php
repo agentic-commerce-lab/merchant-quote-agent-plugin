@@ -30,6 +30,16 @@ final class QuoteNegotiatePromptTest extends TestCase
         self::assertStringContainsString('"historyRequest": {"kind": null, "productId": null}', $prompt);
     }
 
+    public function testThePromptOffersNoTermTheResponseSchemaNoLongerCarries(): void
+    {
+        // OfferTerms is price only; a prompt still describing payment and
+        // delivery terms invites a concession nothing can write.
+        $prompt = (string) file_get_contents(__DIR__ . '/../../../config/agents/quote-negotiate-agent.prompt.md');
+
+        self::assertStringNotContainsString('terms.payment', $prompt);
+        self::assertStringNotContainsString('terms.delivery', $prompt);
+    }
+
     public function testThePromptSeparatesThisQuoteFromTheAccountHistory(): void
     {
         // The buyer's "you already gave us 15%" case. Nothing in code can tell

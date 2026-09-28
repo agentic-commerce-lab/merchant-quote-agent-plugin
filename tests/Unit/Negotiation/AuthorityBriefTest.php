@@ -32,6 +32,17 @@ final class AuthorityBriefTest extends TestCase
         ));
     }
 
+    public function testTheCapIsShownRoundedDownSoTheShownFigureIsAlwaysGrantable(): void
+    {
+        // PM testing: a 7.2488% ceiling was shown as "7.25%", the model offered
+        // exactly that, and PriceOfferCheck (full precision) rejected it --
+        // eleven proposal_rejected escalations. The shown cap must never exceed
+        // the true one.
+        $brief = AuthorityBrief::of(new NegotiationPolicy(price: new QuoteLimits(maxDiscountPercent: 7.2488279)), null);
+
+        self::assertStringContainsString('- maximum discount you may grant: 7.24%', $brief);
+    }
+
     public function testACounteredAskIsCalledOut(): void
     {
         $brief = AuthorityBrief::of(self::policy(), counteredRequestPercent: 25.0);
