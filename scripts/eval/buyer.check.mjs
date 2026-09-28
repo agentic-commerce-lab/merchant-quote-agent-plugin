@@ -85,4 +85,10 @@ assert.match(calls[0].body, /refresh_token=r1/);
 assert.equal(JSON.parse(readFile(tokenFile, 'utf8')).refreshToken, 'r2');
 assert.equal(statSync(tokenFile).mode & 0o777, 0o600);
 
+// concurrent lanes on an expired grant share one refresh: a second POST would present the revoked r2
+calls.length = 0;
+store.save({ access_token: 'a2', refresh_token: 'r2', expires_in: -1 });
+assert.deepEqual(await Promise.all([1, 2, 3, 4].map(() => store.accessToken())), ['a2', 'a2', 'a2', 'a2']);
+assert.equal(calls.length, 1, 'exactly one refresh for four concurrent callers');
+
 console.log('buyer: ok');

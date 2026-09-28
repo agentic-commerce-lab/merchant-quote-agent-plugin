@@ -96,10 +96,7 @@ export function tokenStore({ file, tokenEndpoint, profileUri, privateKey, fetchI
             expiresAt: Date.now() + (grant.expires_in ?? 0) * 1000,
         }));
     };
-    const accessToken = async () => {
-        if (!existsSync(file)) throw new Error('no buyer grant -- run `composer run eval:setup`');
-        const current = JSON.parse(readFileSync(file, 'utf8'));
-        if (current.accessToken && current.expiresAt > Date.now() + 60_000) return current.accessToken;
+    const refresh = async (current) => {
         const refreshed = await signedFetch({ fetchImpl, privateKey, profileUri }, 'POST', tokenEndpoint, {
             form: { grant_type: 'refresh_token', refresh_token: current.refreshToken, client_id: profileUri },
         });
@@ -108,6 +105,17 @@ export function tokenStore({ file, tokenEndpoint, profileUri, privateKey, fetchI
         }
         save(refreshed.body);
         return refreshed.body.access_token;
+    };
+    // Single-flight: parallel lanes share one refresh. A second POST would
+    // present a refresh token the first one already rotated out (and revoked).
+    let inflight;
+    const accessToken = async () => {
+        if (!existsSync(file)) throw new Error('no buyer grant -- run `composer run eval:setup`');
+        const current = JSON.parse(readFileSync(file, 'utf8'));
+        if (current.accessToken && current.expiresAt > Date.now() + 60_000) return current.accessToken;
+        return (inflight ??= refresh(current).finally(() => {
+            inflight = undefined;
+        }));
     };
     return { save, accessToken };
 }
