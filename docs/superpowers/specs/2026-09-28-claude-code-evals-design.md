@@ -20,9 +20,11 @@ folds that JSONL through the admin's own `measures.ts`.
 The bench **measures, it never grades**. Three gaps make it unable to answer
 "is the logic still correct":
 
-1. **`expectedBand` is parsed and never read.** `Scenario.php:45` carries it;
-   nothing compares it with what happened. No bench run can fail because the
-   negotiation logic broke.
+1. **The live bench never checks an expectation.** `expectedBand`
+   (`Scenario.php:45`) is read only by the unit-level `ScenarioPipelineTest`,
+   which drives a *scripted* model and asserts the JSON's own value next to a
+   hand-written outcome. Nothing compares a live run with what should have
+   happened, so no bench run can fail because the negotiation logic broke.
 2. **`expectedBand`'s values match no enum the PHP writes.** The ten scenarios
    say `auto` / `clarify` / `escalate`; the decision row stores
    `NegotiationOutcome` (`offered`, `countered`, `escalated`, `nothing_to_do`,
@@ -108,8 +110,13 @@ bench run without paying for the negotiations again; `--from=check` re-runs
 
 ### Eval mode
 
-`BenchRunTest` gains an eval mode behind `QUOTE_AGENT_EVAL=1`. It is the same
-runner, not a second one.
+A thin driver, `EvalRunTest`, runs behind `QUOTE_AGENT_EVAL=1`. It reuses
+`BenchNegotiation` (the negotiation loop), `CellSettings`, `DecisionRowMapper`
+and `RunWriter` unchanged, so there is still exactly one negotiation loop; only
+the matrix differs (one model, one strategy, *n* repetitions). It is its own
+test class rather than a mode inside `BenchRunTest` because that file is
+already 571 lines and its matrix loop is `@mago-expect`ed for complexity.
+Refined from "a mode on `BenchRunTest`" while planning.
 
 | Variable | Eval mode meaning |
 |---|---|
@@ -122,20 +129,40 @@ runner, not a second one.
 The buyer is always the scripted buyer in eval mode, so only the agent side
 varies between repetitions.
 
+### Running on a remote shop
+
+`scripts/test-integration.sh` runs phpunit on the shop — over SSH for
+sw-ag.dev — and forwards none of the caller's environment, so the bench's own
+env variables never reach the remote process, and the JSONL is written on the
+remote host. Two additions, both opt-in by variable:
+
+- `MQA_REMOTE_ENV` — space-separated variable *names*. Over SSH their values
+  are sent on the socket's **stdin** as `export` lines and sourced by the
+  remote shell, so an API key never appears in a remote process list. For
+  Docker they become `docker exec -e NAME` (value from the caller's env).
+- `MQA_FETCH_BACK` — a plugin-relative directory. After phpunit exits, it is
+  copied back through the same SSH socket (`tar` over `ssh -S`), or with
+  `docker cp`. One socket, one authentication, per the host's IP-ban rule.
+
+`scripts/sync-to-shop.sh` excludes `./var/eval` so earlier runs are not
+uploaded again.
+
 ### JSONL row additions
 
 Every row gains `rep` (1-based) and these decision-record columns, one SELECT
 away in `DecisionRowMapper::rows()`: `totalGrossBefore`, `totalGrossAfter`,
 `replyToBuyer`, `buyerAsk`, `escalationReason`, `maxDiscountPercent`.
 
-It also gains `linesAfter`: `[{lineItemId, productId, quantity, unitPriceNet}]`
-from the pass's `merchant_quote_agent_trace` row of kind `quote_after`
-(`QuoteTrace.php:52-70`). `quote_after` exists only when `OfferApplier` ran;
-otherwise `linesAfter` is `null`, never `[]`.
+It also gains `linesBefore` and `linesAfter`:
+`[{lineItemId, productId, quantity, unitPriceNet, totalNet, netRatio}]` from the
+pass's `merchant_quote_agent_trace` rows of kind `quote_before` and
+`quote_after` (JSON path `content.lines[]`, `QuoteTrace.php:52-70`).
+`quote_after` exists only when `OfferApplier` ran; otherwise `linesAfter` is
+`null`, never `[]`.
 
-The row also carries the scenario's `policy` block as `policy` (merged, so the
-checker never reconstructs it) and each line's `purchasePriceNet` from the
-scenario.
+The row also carries the merged `policy` (so the checker never reconstructs
+the bench defaults, which live only in PHP) and `purchasePricesNet`
+(`productId → price`) as resolved for this negotiation.
 
 Bench (non-eval) runs get the same additions; `bench-score.mjs` ignores fields
 it does not read.
@@ -153,8 +180,12 @@ default policy.
 
 The bench wires `new MarginFloorGuard(new FakePurchasePrices())`
 (`BenchNegotiation.php:274`), an empty fake, so no margin floor has ever
-applied in a bench run. Eval scenarios carry `purchasePriceNet` per line; the
-fake returns it for that line's product. The floor logic (`MarginFloors`,
+applied in a bench run. A scenario line may carry `purchasePriceRatio`: after
+the quote is created, the bench sets that product's purchase price to
+`ratio × the line's net unit price` and hands it to the fake. A ratio rather
+than an absolute price because `productRef: any-purchasable` resolves to
+whatever product the shop has — an absolute purchase price would port between
+shops no better than an absolute unit-price ask does (Ruling A14). The floor logic (`MarginFloors`,
 `MarginFloorClamp`, `MarginFloorVerifier`) runs for real; only the price
 source is faked. `PurchasePriceReader` keeps its own integration test.
 
@@ -192,7 +223,7 @@ is exhausted the buyer walks. The numeric rules still decide accept.
 ```json
 {
   "id": "margin-floor-holds",
-  "lines": [{"productRef": "any-purchasable", "quantity": 10, "purchasePriceNet": 80.0}],
+  "lines": [{"productRef": "any-purchasable", "quantity": 10, "purchasePriceRatio": 0.8}],
   "openingAsk": "Could you do 15% off?",
   "persona": "scripted:moderate",
   "maxRounds": 2,
@@ -217,9 +248,10 @@ is exhausted the buyer walks. The numeric rules still decide accept.
 - `expect.judge` — extra rubric lines for this scenario only.
 - `expectedBand` is removed; the ten existing files are migrated.
 
-A scenario whose `purchasePriceNet` implies a floor above the line's price
-fails parse: the floor is capped at today's price
-(`MarginFloors.php:37-40`), so such a scenario would test nothing.
+A scenario whose `purchasePriceRatio × (1 + minMarginPercent/100) ≥ 1` fails
+parse: the floor is capped at today's price (`MarginFloors.php:37-40`), so
+such a scenario would test nothing. `continueAfterEscalation` without a
+`counters` list also fails parse — the extra pass needs a comment to answer.
 
 ### The 21 scenarios
 
@@ -245,7 +277,7 @@ New eleven. All run under the bench policy unless `policy` says otherwise.
 |---|---|---|---|---|
 | A1 | `counter-band` | ask 20% | `countered` | counter band (`QuoteBandDecider.php:67-72`); written ≤ 15 |
 | A2 | `above-counter-max` | ask 35% | `escalated` | `discount_limit_exceeded`, no write |
-| A3 | `margin-floor-holds` | `minMarginPercent`, purchase price near the ask | `offered`, `countered` | H3: no line below its floor (`MarginFloorClamp`) |
+| A3 | `margin-floor-holds` | `minMarginPercent: 15`, `purchasePriceRatio: 0.8` (floor ≈ 8% off), ask 15% | `offered`, `countered` | H3: no line below its floor (`MarginFloorClamp`) |
 | A5 | `rounding-percent` | `discount_percent`, step 1, ask 20% | `countered` | H9: granted rate on the step |
 | A6 | `rounding-total` | `quote_total`, step 5, ask 20% | `countered` | H9: buyer-facing total a multiple of 5 |
 | B1 | `concession-retreat` | `counters`: ask 12%, then 8% | `offered` | H4: total never rises (never-retract fix) |
@@ -263,6 +295,11 @@ what makes the rounding path run. A6 has a known risk: `quote_total` rounding
 is skipped on a net quote (`QuoteTotalRounding.php:105-111`). If the bench
 shop's quotes are net, A6 fails H9 loudly, which is a finding about the shop,
 not a pass.
+
+Three existing scenarios ask for an absolute unit price (71.20, 106.68 gross,
+90 gross). Whether those land inside the band depends on the live product's
+price — the same limit as Ruling A14 — so their expectations are provisional
+until the first run.
 
 Expectations for the new scenarios come from reading the code on main
 (e50bdf2c). If one fails on its first real run, the failure is triaged with the
@@ -285,18 +322,19 @@ round and the numbers), or `n/a`. All apply to every scenario; `n/a` only where
 stated.
 
 Tolerances: money 0.005 (half a cent), percentages 0.01 pp — the same 0.01
-`DiscountTotalViolation.php:48` uses.
+`DiscountTotalViolation.php:48` uses. H8 widens these by the precision the
+reply itself wrote (below).
 
 | | Check | Rule |
 |---|---|---|
 | H1 | First outcome | round 1 `outcome` ∈ `expect.firstOutcome` |
 | H2 | Cap | for every pass with `totalNetAfter`: `(B − after) / B × 100 ≤ maxDiscountPercent + 0.01`, where **B is round 1's `totalNetBefore`** — never the previous round's |
-| H3 | Margin floor | `n/a` unless `policy.minMarginPercent`. Every line in `linesAfter` with a `purchasePriceNet` p and margin m: `unitPriceNet ≥ min(ceilToCent(p × (1 + m/100)), round-1 unit price) − 0.005`. Markup on purchase, per `QuoteLimits.php:49` |
+| H3 | Margin floor | `n/a` unless `policy.minMarginPercent`. For every line in `linesAfter` whose product has a purchase price p, with margin m: `unitPriceNet × G ≥ min(ceilToCent(p × (1 + m/100)), floorToCent(round-1 unitPriceNet)) − 0.005`, where G is `GoodsFactor` over `linesAfter` (a quote-wide % is a negative line, so the line price alone would hide it). Markup on purchase, per `QuoteLimits.php:49` and `MarginFloors.php:37-40` |
 | H4 | No retraction | for consecutive passes with non-null `totalNetAfter`: `after_n ≤ after_(n−1) + 0.005`; and every pass `after ≤ before + 0.005` |
 | H5 | Escalations | count of `escalated` rows ≤ `expect.maxEscalations`; with `continueAfterEscalation`, the extra pass must be `handed_over` |
 | H6 | Order | `n/a` unless `expect.order`. Buyer accepted → `orderId` non-null |
 | H7 | No cell failure | no `cellFailure` row for this negotiation |
-| H8 | Stated figures | `n/a` until stage 4 (needs the judgment). Every figure the judge extracted from a reply matches one of that pass's written numbers: `totalGrossAfter`, `totalNetAfter`, a `linesAfter` unit price net or its gross equivalent, or the baseline discount `(B − after)/B × 100`. An unmatched figure fails |
+| H8 | Stated figures | `n/a` until stage 4 (needs the judgment). Every figure the judge extracted from a reply matches one of that pass's written numbers: money against `totalGrossAfter`, `totalNetAfter`, a `linesAfter` unit price or line total — net, or grossed up by `totalGrossAfter/totalNetAfter` — and percentages against the baseline discount `(B − after)/B × 100`. Tolerance is precision-aware: `max(base, ½ × 10^−decimals)` with the judge reporting how many decimals the reply wrote, so "7%" against 6.97 matches while "7.50%" against 7.40 does not. An unmatched figure fails |
 | H9 | Rounding | `n/a` unless `policy.roundingMode` ≠ `off` and an offer was written. `discount_percent`: baseline discount is a multiple of `roundingStep` (± 0.01). `quote_total`: `totalGrossAfter ?? totalNetAfter` is a multiple of `roundingStep` (± 0.005) |
 
 H8 will likely flag the open question from PR #213, where a reply states a
@@ -320,9 +358,11 @@ claude -p --model "${EVAL_JUDGE_MODEL:-sonnet}" \
 - `--restricted` ignores user, project and local settings, so the
   developer's own hooks and plugins (session-start instructions, output
   styles) do not reach the judge. `--bare` is not used: it refuses OAuth and
-  would require `ANTHROPIC_API_KEY`. **The plan must include a probe proving no
-  SessionStart hook text reaches a `--restricted` judge**; if it does, the
-  judge gets a dedicated `--settings` file instead.
+  would require `ANTHROPIC_API_KEY`. **Probed 2026-09-28** (Claude Code
+  2.1.283, OAuth login): a `--restricted --tools ""` call ran on the login,
+  took 1,460 input tokens and reported no hook text; the answer arrives in
+  the result's `.structured_output`, with `.is_error` and `.total_cost_usd`
+  alongside.
 - **Input:** the transcript only, one block per round: the buyer's comment
   (`buyerAsk`, or the scenario comment when null) and the agent's reply
   (`replyToBuyer`), plus the scenario's `expect.judge` lines as extra rubric
@@ -334,7 +374,7 @@ claude -p --model "${EVAL_JUDGE_MODEL:-sonnet}" \
 {
   "rounds": [{
     "round": 1,
-    "statedFigures": [{"kind": "total|unit_price|percent", "value": 0.0, "quote": "verbatim span"}]
+    "statedFigures": [{"kind": "money|percent", "value": 0.0, "decimals": 2, "quote": "verbatim span"}]
   }],
   "rubric": [{"id": "J1|J2|J3|J4|J5.n", "pass": true, "reason": "one sentence"}]
 }
