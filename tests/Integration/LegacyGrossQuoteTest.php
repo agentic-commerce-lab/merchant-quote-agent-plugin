@@ -11,11 +11,25 @@ use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
+use MerchantQuoteAgentPlugin\Negotiation\OfferWrite;
+use MerchantQuoteAgentPlugin\Negotiation\PredictedWrite;
+use MerchantQuoteAgentPlugin\Negotiation\QuoteTotalRounding;
+use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
+use MerchantQuoteAgentPlugin\Policy\Data\OfferedPrice;
+use MerchantQuoteAgentPlugin\Policy\Data\ProposedOffer;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
+use MerchantQuoteAgentPlugin\Policy\Data\RoundingMode;
+use MerchantQuoteAgentPlugin\Policy\GoodsFactor;
+use MerchantQuoteAgentPlugin\Policy\QuoteWidePercent;
 use Shopware\Core\Checkout\Cart\Price\Struct\CalculatedPrice;
 use Shopware\Core\Checkout\Cart\Price\Struct\CartPrice;
+use Shopware\Core\Checkout\Cart\Tax\Struct\CalculatedTax;
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Entity;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 
@@ -56,6 +70,140 @@ final class LegacyGrossQuoteTest extends IntegrationTestCase
 
         $this->assertRepricedLineSurvivesAsGrossedUpNet($created->id);
         $this->assertAbsoluteDiscountIsConsumedAsGross($created->id);
+    }
+
+    /**
+     * Rounding control, quote_total mode (spec 2026-09-28), through
+     * SwagCommercial's own recalculation, on the hardest shape a gross quote
+     * takes: two tax rates (19% and 7%) and a shipping charge. The absolute
+     * discount QuoteTotalRounding computes lands the buyer-facing total
+     * exactly on the step, SwagCommercial takes it off the goods alone (the
+     * shipping charge does not move), PredictedWrite's net prediction of it
+     * is what the shop books, so the pre-write checks measure the real
+     * result, and the next round reads it off the discount line as the same
+     * goods factor.
+     *
+     * Deliberately no post-write `verified` assertion: on a quote with
+     * shipping, the line check's NetFactor counts the negative discount line
+     * in its denominator and reports a false "above its reference price"
+     * (pre-existing, fixed by PR #212). Assert it once that lands.
+     */
+    public function testARoundedAbsoluteDiscountLandsOnTheRoundTotal(): void
+    {
+        $lines = array_map(static fn(string $productId): array => [
+            'product_id' => $productId,
+            'quantity' => 20,
+        ], self::twoRatesWithShipping());
+        $created = $this->buyerGateway()->requestQuote(self::grossContext(), $lines, 'Rounding landing proof.');
+        self::assertSame(CartPrice::TAX_STATE_GROSS, $created->taxStatus);
+
+        $price = $this->quote($created->id)->get('price');
+        self::assertInstanceOf(CartPrice::class, $price);
+        $rates = array_map(
+            static fn(CalculatedTax $tax): float => $tax->getTaxRate(),
+            array_values($price->getCalculatedTaxes()->getElements()),
+        );
+        sort($rates);
+        self::assertSame([7.0, 19.0], $rates, 'The quote under test does not carry both tax rates.');
+        $shipping = $this->quote($created->id)->get('shippingCosts');
+        self::assertInstanceOf(CalculatedPrice::class, $shipping);
+        self::assertGreaterThan(0.0, $shipping->getTotalPrice(), 'The quote under test carries no shipping.');
+
+        $gateway = static::gateway();
+        $reference = $gateway->fetchSnapshot($created->id);
+        $live = SnapshotAdapter::toPolicy($reference);
+        $offer = new ProposedOffer($live->totalNet, new OfferedPrice(discountPercent: 7.34));
+        [$write, $rounding] = QuoteTotalRounding::of(
+            OfferWrite::of($offer, null, $reference, QuoteWidePercent::of($offer, $live->lines, $live->lines)),
+            $reference,
+            $live,
+            new QuoteLimits(
+                maxDiscountPercent: 10.0,
+                validityDays: 14,
+                roundingMode: RoundingMode::QuoteTotal,
+                roundingStep: 1.0,
+            ),
+            false,
+        );
+
+        self::assertNotNull($rounding);
+        self::assertNull($rounding->skipped, 'A fresh gross quote must round, not skip: ' . $rounding->skipped?->value);
+        self::assertSame(DiscountType::Absolute, $write->discount?->type);
+
+        $gateway->updateQuote($created->id, new QuoteUpdate(discount: $write->discount));
+        $gateway->recalculate($created->id);
+        $after = $gateway->fetchSnapshot($created->id);
+
+        self::assertEqualsWithDelta(
+            $rounding->rounded,
+            $after->totals->buyerFacingTotal(),
+            0.001,
+            'The absolute discount did not land the buyer-facing total on the round figure.',
+        );
+        $shippingAfter = $this->quote($created->id)->get('shippingCosts');
+        self::assertInstanceOf(CalculatedPrice::class, $shippingAfter);
+        self::assertEqualsWithDelta(
+            $shipping->getTotalPrice(),
+            $shippingAfter->getTotalPrice(),
+            0.001,
+            'The absolute discount was spread over the shipping charge, not over the goods alone.',
+        );
+        self::assertEqualsWithDelta(
+            PredictedWrite::of($write, $live)->snapshot->totalNet,
+            $after->totals->totalNet,
+            0.02,
+            'PredictedWrite mispredicts the net relief of an absolute discount.',
+        );
+        self::assertEqualsWithDelta(
+            $write->discountFactor,
+            GoodsFactor::of(SnapshotAdapter::toPolicy($after)->lines),
+            0.001,
+            'The next round reads the absolute discount off its line as a different goods factor.',
+        );
+    }
+
+    /**
+     * Two products at 19% and 7%, and a shipping charge, inside this test's
+     * rolled-back transaction: the seeded shop has every product at the
+     * standard rate and ships for 0.00 (scripts/shop-check-shipping.sh).
+     *
+     * @return list<string> the two product ids
+     */
+    private static function twoRatesWithShipping(): array
+    {
+        $container = static::getContainer();
+        $context = Context::createDefaultContext();
+        $productIds = self::connection($container)
+            ->fetchFirstColumn('SELECT LOWER(HEX(id)) FROM product'
+            . ' WHERE active = 1 AND version_id = :version AND parent_id IS NULL'
+            . ' AND child_count = 0 ORDER BY product_number LIMIT 2', [
+                'version' => Uuid::fromHexToBytes(Defaults::LIVE_VERSION),
+            ]);
+        self::assertCount(2, $productIds, 'The shop has fewer than two simple active products to quote.');
+        $productIds = array_map(strval(...), $productIds);
+
+        $reducedRate = self::repository($container, 'tax.repository')
+            ->searchIds((new Criteria())->addFilter(new EqualsFilter('taxRate', 7.0)), $context)
+            ->firstId();
+        self::assertNotNull($reducedRate, 'The shop has no 7% tax rate.');
+        self::repository($container, 'product.repository')
+            ->update([['id' => $productIds[1], 'taxId' => $reducedRate]], $context);
+
+        $shippingPrices = self::repository($container, 'shipping_method_price.repository')
+            ->searchIds(new Criteria(), $context)
+            ->getIds();
+        self::repository($container, 'shipping_method_price.repository')
+            ->update(array_map(static fn(mixed $id): array => [
+                'id' => $id,
+                'currencyPrice' => [[
+                    'currencyId' => Defaults::CURRENCY,
+                    'net' => 5.0,
+                    'gross' => 5.95,
+                    'linked' => false,
+                ]],
+            ], array_values($shippingPrices)), $context);
+
+        return $productIds;
     }
 
     private static function grossContext(): SalesChannelContext
@@ -139,8 +287,9 @@ final class LegacyGrossQuoteTest extends IntegrationTestCase
     private function assertAbsoluteDiscountIsConsumedAsGross(string $quoteId): void
     {
         $gateway = static::gateway();
-        $subtotalNet = $this->quoteFloat($quoteId, 'subtotalNet');
-        $taxFactor = $this->quoteFloat($quoteId, 'amountTotal') / $this->quoteFloat($quoteId, 'amountNet');
+        $subtotalNet = (float) $this->quote($quoteId)->get('subtotalNet');
+        $taxFactor =
+            (float) $this->quote($quoteId)->get('amountTotal') / (float) $this->quote($quoteId)->get('amountNet');
         self::assertGreaterThan(1.0, $taxFactor, 'The quote is tax-free, so gross and net cannot be told apart.');
 
         $gateway->updateQuote($quoteId, new QuoteUpdate(discount: new Discount(DiscountType::Absolute, 10.0)));
@@ -174,8 +323,8 @@ final class LegacyGrossQuoteTest extends IntegrationTestCase
         return $price;
     }
 
-    /** A raw float straight off the quote entity, for fields the read model does not carry. */
-    private function quoteFloat(string $quoteId, string $field): float
+    /** The raw quote entity, for fields the read model does not carry. */
+    private function quote(string $quoteId): Entity
     {
         /** @var EntityRepository<covariant \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection> $repository */
         $repository = static::getContainer()->get('quote.repository');
@@ -185,7 +334,7 @@ final class LegacyGrossQuoteTest extends IntegrationTestCase
             ->first();
         self::assertNotNull($quote, 'The quote under test disappeared.');
 
-        return (float) $quote->get($field);
+        return $quote;
     }
 
     /**

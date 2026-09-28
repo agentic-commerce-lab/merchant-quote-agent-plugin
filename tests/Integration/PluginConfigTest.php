@@ -158,6 +158,22 @@ final class PluginConfigTest extends IntegrationTestCase
         );
     }
 
+    /**
+     * roundingMode ships `off` as a string, the type RoundingMode::from()
+     * reads. It is saved here the way install and update save config.xml's
+     * defaults (override on, inside this rolled-back transaction), because the
+     * test-shop sync never re-saves them. A shop installed before the field
+     * existed has no row for it at all, and that reads as off too, just not
+     * through this path.
+     */
+    public function testTheRoundingModeDefaultIsPersistedAsItsEnumString(): void
+    {
+        $config = self::systemConfig();
+        $config->savePluginConfiguration(static::getKernel()->getBundle('MerchantQuoteAgentPlugin'), true);
+
+        self::assertSame('off', $config->get(QuoteAgentSettingsReader::DOMAIN . 'roundingMode'));
+    }
+
     private static function systemConfig(): SystemConfigService
     {
         $config = static::getContainer()->get(SystemConfigService::class);

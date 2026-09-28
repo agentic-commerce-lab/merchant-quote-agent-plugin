@@ -531,6 +531,8 @@ first.
 | `maxDiscountPercent` | `0` | `0` means every price ask escalates. |
 | `counterOfferMaxPercent` | — | Blank means no counter band. |
 | `minMarginPercent` | — | Markup on each product's purchase price that no offer may go below (`purchase × (1 + m/100)`, rounded up to the cent). Clamps the offer to that floor rather than escalating. Products without a purchase price have no floor. Blank means off; `0` means never below cost. The purchase price never reaches the model or the buyer. |
+| `roundingMode` | `off` | `off`, `discount_percent` (the model's quote-wide percentage is floored to the step before authorization, so the checks, the per-line conversion and the reply all see it) or `quote_total` (a quote-wide write becomes an absolute discount that lands the buyer-facing total, shipping included, on the next multiple of the step). Never the buyer's own figure, never below a standing concession, never to nothing, and not on a net quote with tax on top; each skip is recorded on the `rounding` trace event. |
+| `roundingStep` | — | Percentage points in `discount_percent`, currency units of the buyer-facing total in `quote_total`. Blank or `0` means off whatever the mode. |
 | `maxQuoteValueNet` | — | Per currency, net. A currency left blank escalates. Blank everywhere means no ceiling. |
 | `validityDays` | `14` | How long an auto-offer stays valid. At least 1 — blank or `0` takes the channel out of service rather than sending an offer stamped as already expired. A shop updating from a release that defaulted this to `0` has that `0` rewritten to `14`; a value the merchant set is left alone. |
 | `escalationSlaHours` | — | Dashboard benchmark only. Changes nothing the agent does. |
