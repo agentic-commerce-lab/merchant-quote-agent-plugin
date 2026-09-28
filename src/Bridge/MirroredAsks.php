@@ -12,7 +12,7 @@ namespace MerchantQuoteAgentPlugin\Bridge;
  * quote shows what was asked for — but three guards read that field as
  * buyer-only, and all three break if the agent's own number reaches them:
  * ServicingFingerprint's ask component would differ from its own stamp and buy
- * a free pass, StructuredAsk::isUnmet() would report a countered ask as
+ * a free pass, StructuredAsk::isOpen() would report a countered ask as
  * unanswered, and AskGate would treat it as the answer to an ambiguous
  * comment. Subtracting the mirror at the single read boundary
  * (QuoteLineMapper) leaves every one of them seeing exactly what it saw

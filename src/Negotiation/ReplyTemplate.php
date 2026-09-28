@@ -80,11 +80,12 @@ final class ReplyTemplate
     }
 
     /**
-     * #175: the sentence for a pass that granted nothing -- the band allowed
-     * a concession and the model, or the rules, chose to hold. That is a
-     * legitimate outcome, not a 0% discount: `compose()` announcing "down by
-     * 0%" implied a concession that never happened, twice, in the same
-     * session that produced #174. No percentage in it at all, so
+     * #175: the sentence for a real write too small to print at two
+     * decimals -- 0.50 EUR off a 34456.73 quote reads as `0`. `compose()`
+     * announcing "down by 0%" implied a concession the buyer cannot see,
+     * twice, in the same session that produced #174. A pass that wrote
+     * nothing never reaches here: `PostWriteOutcome` escalates it as
+     * `no_further_concession`. No percentage in it at all, so
      * `RewordingGuard` has no reduction figure to compare a hallucinated one
      * against -- only the total and the date.
      */

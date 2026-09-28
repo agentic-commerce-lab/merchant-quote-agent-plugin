@@ -25,7 +25,8 @@
             "verification_failed": "Verification failed",
             "structural_change_requested": "Change to what's being sold",
             "non_price_term_requested": "Non-price term requested",
-            "unplaceable_ask": "Ask could not be placed"
+            "unplaceable_ask": "Ask could not be placed",
+            "no_further_concession": "No further concession"
         },
         "trigger": {
             "state_entered": "Quote changed state",
@@ -335,7 +336,8 @@
             "verification_failed": "The quote was changed, but re-reading it did not match what had been authorised, so it needs a person to confirm before the customer is told anything.",
             "structural_change_requested": "The customer asked to change what is being sold — quantity, a removed line, or an added product — rather than its price. The agent only negotiates price, so a person needs to make this change.",
             "non_price_term_requested": "The customer asked for a delivery or payment term. The agent can only negotiate price, and nothing here can grant or write a non-price term, so a person needs to answer that part.",
-            "unplaceable_ask": "The agent could not tell which line, or what, the customer's comment was asking about, and a follow-up question did not resolve it. A person needs to read the conversation directly."
+            "unplaceable_ask": "The agent could not tell which line, or what, the customer's comment was asking about, and a follow-up question did not resolve it. A person needs to read the conversation directly.",
+            "no_further_concession": "The customer asked for a better price, but this pass could not lower the quote: your maximum discount or minimum margin is already reached, or the agent found nothing it could offer. A person decides whether to go further."
         },
         "write": {
             "claim": "Moved the quote into review",

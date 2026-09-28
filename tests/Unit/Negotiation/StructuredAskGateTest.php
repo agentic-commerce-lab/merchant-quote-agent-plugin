@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
+use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -50,11 +53,11 @@ final class StructuredAskGateTest extends TestCase
         // The one empty extraction the extract prompt asks for BY NAME: "a
         // comment that merely POINTS at [a requested price] ... send
         // null/empty fields and NO clarificationQuestion". While the target is
-        // unmet that is safe — isUnmet() carries the pass and the appliers
+        // unmet that is safe — isOpen() carries the pass and the appliers
         // read the line directly, which ClarificationGateTest pins.
         //
         // Once the target has been granted, the line reads 98 against a quoted
-        // 98, so isUnmet() is false and the same comment lands in #177's gate.
+        // 98, so isOpen() is false and the same comment lands in #177's gate.
         // There is no concession left to make, and an escalation would hand a
         // human a quote nobody needs to look at.
         //
@@ -100,5 +103,49 @@ final class StructuredAskGateTest extends TestCase
         self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
         self::assertSame(0, $harness->spy->calls);
         self::assertSame([], $harness->gateway->calls);
+    }
+
+    public function testAThanksAfterACounteredStructuredAskIsAcknowledged(): void
+    {
+        // The storefront asked 80 against 100 and the cap countered to 85:
+        // SwagCommercial keeps `requested_price` at 80, so the line still asks
+        // for less than it is quoted at, forever. The ask is ANSWERED all the
+        // same — the last pass stamped its token — and a later "thanks" must
+        // be acknowledged, not sent back to the band, where the write moves
+        // nothing and escalates as no_further_concession with the quote stuck
+        // in_review and the buyer unable to accept.
+        $harness = PipelineHarness::with(['{}']);
+        $answered = NegotiationFixture::snapshot(state: 'replied', totalNet: 850.0, requestedUnitPrice: 80.0);
+        $snapshot = NegotiationFixture::withCustomFields(
+            NegotiationFixture::snapshot(
+                state: 'change_requested',
+                totalNet: 850.0,
+                requestedUnitPrice: 80.0,
+                comments: [
+                    NegotiationFixture::buyerComment("thanks, I'll take it", '2026-09-24 09:00:00'),
+                ],
+            ),
+            [ServicingFingerprint::MARKER_KEY => ServicingFingerprint::stamp($answered, 'replied')],
+        );
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
+        self::assertSame(1, $harness->spy->calls, 'The extract call ran; nothing after it did.');
+        self::assertSame(
+            [ReplyTemplate::acknowledges(
+                $snapshot->totals->buyerFacingTotal(),
+                'EUR',
+                $snapshot->lifecycle->expiresAt,
+            )],
+            $harness->gateway->comments,
+        );
+        self::assertSame([QuoteTransition::AdminResend], $harness->gateway->transitions);
+        self::assertSame([], $harness->gateway->customFieldWrites, 'No escalation marker.');
     }
 }

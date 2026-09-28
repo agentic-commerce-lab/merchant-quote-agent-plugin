@@ -10,7 +10,6 @@ use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
-use MerchantQuoteAgentPlugin\Policy\Epsilon;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use Psr\Log\LoggerInterface;
@@ -120,19 +119,24 @@ final readonly class OfferRound
         // #174/#175: only when this pass actually wrote something.
         // $applied->beforeNet is OfferApplier's own pre-write read — never the
         // baseline — so this compares what THIS pass started at against what
-        // it ended at. A pass that changed nothing (the band allowed a
-        // concession and the model, or the rules, held) is a real outcome,
-        // not a 0% discount, and gets its own sentence below instead of a
-        // baseline percentage describing movement this pass did not make.
+        // it ended at. A pass that changed nothing escalates below
+        // (no_further_concession): a price ask is never answered with no
+        // concession.
         // For a pass that DID write, OfferApplier's never-raise check has
         // already stopped any write above $applied->beforeNet from being
         // accepted as verified, so the baseline figure below can no longer
         // describe an increase as a discount the way it did for quotes 1039
         // and 1048 -- and on the rare case it still disagrees (a stale
-        // pass-start baseline race; see ReductionForPass), that class turns
-        // it into an escalation instead of letting the exception reach here.
-        $grantedThisPass = abs($applied->after->totals->totalNet - $applied->beforeNet) > Epsilon::MONEY;
-        [$reductionPercent, $disagreedWithTheWrite] = ReductionForPass::of(
+        // pass-start baseline race; see ReductionForPass), PostWriteOutcome
+        // turns it into an escalation instead of letting the exception reach
+        // here.
+        //
+        // A write that moved nothing (no_further_concession), or a figure
+        // that disagrees with a write that already landed
+        // (verification_failed): see PostWriteOutcome for both.
+        [$reductionPercent, $reason] = PostWriteOutcome::of(
+            $this->logger,
+            $applied,
             // Not $context->baseline?->totalNet: that baseline was read from
             // the PASS-START snapshot, whose custom fields predate
             // claimAttempt()'s extension for a line added this pass (#54) —
@@ -140,37 +144,10 @@ final readonly class OfferRound
             // anchored() re-extends in memory from $snapshot's own lines, so
             // it is correct even though the stored fragment is stale.
             SnapshotAdapter::anchored($snapshot)->totalNet,
-            $applied->after->totals->totalNet,
-            $grantedThisPass,
         );
 
-        if ($disagreedWithTheWrite) {
-            // The never-raise check above only escalates a write BEFORE
-            // $applied->verified is trusted; it cannot un-write one that
-            // already landed (OfferApplier never rolls back — see its own
-            // docblock). Reaching here means that check did not catch an
-            // increase and the bad write already landed on the quote. This
-            // must escalate rather than let ReductionForPass's caught
-            // NegativeReduction have propagated: that exception is not
-            // ModelUnavailable|CrossCustomerRead, so uncaught it would leave
-            // NegotiationPipeline::run() unhandled, and ServiceQuoteHandler
-            // rethrows after clearing the attempt counter — Messenger would
-            // redeliver against a quote that still carries the write, with no
-            // reply ever reaching the buyer. Escalating instead routes it
-            // through the exact same funnel a verification failure already
-            // uses: a human sees that the database disagrees with what this
-            // pass applied.
-            $this->logger->error('The figure to report disagreed with the write that already landed; escalating instead of replying.', [
-                'quoteId' => $snapshot->identity->quoteId,
-            ]);
-
-            return $this->escalated(
-                $gateway,
-                $applied->after,
-                QuoteEscalationReason::VerificationFailed,
-                $extractHash,
-                $answer->promptHash,
-            );
+        if ($reason !== null) {
+            return $this->escalated($gateway, $applied->after, $reason, $extractHash, $answer->promptHash);
         }
 
         $replyHash = $this->reply->reply(
