@@ -91,4 +91,63 @@ store.save({ access_token: 'a2', refresh_token: 'r2', expires_in: -1 });
 assert.deepEqual(await Promise.all([1, 2, 3, 4].map(() => store.accessToken())), ['a2', 'a2', 'a2', 'a2']);
 assert.equal(calls.length, 1, 'exactly one refresh for four concurrent callers');
 
+import { adminClient } from './admin.mjs';
+import { buildRows } from './rows.mjs';
+import { effectivePolicy, planSettings } from './settings.mjs';
+
+// the Admin API client -- one token for many calls, criteria in the body
+const adminCalls = [];
+const adminFetch = async (url, init = {}) => {
+    adminCalls.push({ url, method: init.method ?? 'GET', body: init.body ? JSON.parse(init.body) : null });
+    if (url.endsWith('/api/oauth/token')) return new Response(JSON.stringify({ access_token: 'adm', expires_in: 600 }));
+    return new Response(JSON.stringify({ total: 1, data: [{ id: 'd1', quoteId: 'q1', outcome: 'offered' }] }));
+};
+const admin = adminClient({ shop: 'https://shop', clientId: 'id', clientSecret: 'secret', fetchImpl: adminFetch });
+assert.deepEqual((await admin.decisions('q1')).map((d) => d.id), ['d1']);
+await admin.traces(['d1']);
+assert.equal(adminCalls.filter((c) => c.url.endsWith('/api/oauth/token')).length, 1, 'the admin token is reused');
+const decisionSearch = adminCalls.find((c) => c.url.endsWith('/api/search/merchant-quote-agent-decision'));
+assert.deepEqual(decisionSearch.body.filter, [{ type: 'equals', field: 'quoteId', value: 'q1' }]);
+assert.deepEqual(decisionSearch.body.sort, [{ field: 'createdAt', order: 'ASC' }]);
+
+// rows -- the exact JSONL shape the checker reads
+const snapshotLines = [{ identity: { lineItemId: 'l1', productId: 'p1' }, quantity: 10, unitPriceNet: 9.5, totalNet: 95, netRatio: 1 }];
+const rows = buildRows({
+    runId: 'r', scenarioId: 's', rep: 2,
+    decisions: [
+        { id: 'd1', outcome: 'offered', band: 'grant', escalationReason: null, discountPercentGranted: 5, maxDiscountPercent: 15, totalNetBefore: 100, totalNetAfter: 95, totalGrossBefore: 119, totalGrossAfter: 113.05, replyToBuyer: 'r1', buyerAsk: 'a1', model: 'm', promptTokens: 1, completionTokens: 2, strategyVersionId: 'v', createdAt: '2026-09-28T10:00:00.000+00:00' },
+        { id: 'd2', outcome: 'escalated', totalNetBefore: 95, totalNetAfter: null, createdAt: '2026-09-28T10:01:00.000+00:00' },
+    ],
+    traces: [
+        { decisionId: 'd1', kind: 'quote_before', content: { content: { lines: [{ ...snapshotLines[0], unitPriceNet: 10, totalNet: 100 }] } } },
+        { decisionId: 'd1', kind: 'quote_after', content: { content: { lines: snapshotLines } } },
+        { decisionId: 'd2', kind: 'quote_before', content: { content: { lines: snapshotLines } } },
+    ],
+    policy: { maxDiscountPercent: 15, counterOfferMaxPercent: 25, minMarginPercent: null, roundingMode: 'off', roundingStep: null },
+    purchasePricesNet: {}, terminal: 'walk', orderId: null, orderFailure: null, followUpRefused: false,
+});
+assert.deepEqual(rows.map((r) => [r.round, r.rep, r.decisionId]), [[1, 2, 'd1'], [2, 2, 'd2']]);
+assert.deepEqual(rows[0].linesAfter, [{ lineItemId: 'l1', productId: 'p1', quantity: 10, unitPriceNet: 9.5, totalNet: 95, netRatio: 1 }]);
+assert.equal(rows[1].linesAfter, null, 'no quote_after: null, never []');
+assert.equal(rows[0].replyToBuyer, 'r1');
+assert.equal(rows[1].terminal, 'walk');
+
+// settings -- effective value, the write scope, and a restore that deletes what was unset (Review Focus 4)
+const g = { 'MerchantQuoteAgentPlugin.config.maxDiscountPercent': 15, 'MerchantQuoteAgentPlugin.config.counterOfferMaxPercent': 25 };
+const c = { 'MerchantQuoteAgentPlugin.config.counterOfferMaxPercent': 30 };
+assert.equal(effectivePolicy(g, c).counterOfferMaxPercent, 30);
+assert.equal(effectivePolicy(g, c).minMarginPercent, null);
+assert.equal(effectivePolicy(g, {}).roundingMode, 'off');
+const plan = planSettings({ globalValues: g, channelValues: c, overrides: { maxDiscountPercent: 0, counterOfferMaxPercent: 20, minMarginPercent: 15 } });
+assert.deepEqual(plan.writes, [
+    { scope: 'global', key: 'MerchantQuoteAgentPlugin.config.maxDiscountPercent', value: 0 },
+    { scope: 'channel', key: 'MerchantQuoteAgentPlugin.config.counterOfferMaxPercent', value: 20 },
+    { scope: 'global', key: 'MerchantQuoteAgentPlugin.config.minMarginPercent', value: 15 },
+]);
+assert.deepEqual(plan.restore, [
+    { scope: 'global', key: 'MerchantQuoteAgentPlugin.config.maxDiscountPercent', value: 15 },
+    { scope: 'channel', key: 'MerchantQuoteAgentPlugin.config.counterOfferMaxPercent', value: 30 },
+    { scope: 'global', key: 'MerchantQuoteAgentPlugin.config.minMarginPercent', value: null },
+]);
+
 console.log('buyer: ok');
