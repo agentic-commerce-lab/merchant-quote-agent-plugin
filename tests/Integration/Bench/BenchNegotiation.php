@@ -33,7 +33,6 @@ use MerchantQuoteAgentPlugin\Tests\Bench\Scenario;
 use MerchantQuoteAgentPlugin\Tests\Bench\SyntheticBuyer;
 use MerchantQuoteAgentPlugin\Tests\Integration\BuyerQuoteContextFixture;
 use MerchantQuoteAgentPlugin\Tests\Integration\BuyerQuoteFixture;
-use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\FakePurchasePrices;
 use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -113,8 +112,14 @@ final readonly class BenchNegotiation
         $pipeline = $this->pipeline();
         $outcome = NegotiationOutcome::NothingToDo;
 
+        // The buyer measures every round against the opening price, the same
+        // anchor the engine checks against (ScriptedBuyer's docblock); only
+        // lastAgentReply() needs this round's own pre-pass snapshot.
+        $opening = null;
+
         for ($round = 1; $round <= $scenario->maxRounds; $round++) {
             $before = $this->gateway->fetchSnapshot($quoteId);
+            $opening ??= $before;
             $outcome = $pipeline->service(
                 $before,
                 $this->gateway,
@@ -132,7 +137,7 @@ final readonly class BenchNegotiation
             }
 
             $after = $this->gateway->fetchSnapshot($quoteId);
-            $move = $buyer->respond($before, $after, self::lastAgentReply($before, $after), $round);
+            $move = $buyer->respond($opening, $after, self::lastAgentReply($before, $after), $round);
 
             if ($move->kind !== BuyerMoveKind::Counter) {
                 $order = $move->kind === BuyerMoveKind::Accept
@@ -256,7 +261,9 @@ final readonly class BenchNegotiation
      * The same collaborator graph PipelineFixture::pipelineWithSpy() builds,
      * with the constructor's own ModelPlatform standing in for
      * ScriptedClient::spy(...) — a real client for the matrix driver, a
-     * scripted one for BenchNegotiationTest.
+     * scripted one for BenchNegotiationTest. One deliberate difference: the
+     * margin floor is the container's, reading the shop's real purchase
+     * prices, so a bench run measures the floor a merchant would get.
      */
     private function pipeline(): NegotiationPipeline
     {
@@ -271,7 +278,7 @@ final readonly class BenchNegotiation
 
         $round = new OfferRound(
             new OfferProposer($this->model, $prompts, $authorizer, $recorder, $historyFactory),
-            new OfferApplier($verifier, $logger, $recorder, new MarginFloorGuard(new FakePurchasePrices())),
+            new OfferApplier($verifier, $logger, $recorder, $this->service(MarginFloorGuard::class)),
             new ReplyComposer($this->model, $prompts, $logger, $recorder),
             $escalator,
             $logger,

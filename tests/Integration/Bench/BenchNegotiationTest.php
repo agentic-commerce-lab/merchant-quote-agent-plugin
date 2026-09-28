@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Integration\Bench;
 
+use MerchantQuoteAgentPlugin\Bridge\AgentContext;
 use MerchantQuoteAgentPlugin\Bridge\BuyerQuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
@@ -14,11 +15,17 @@ use MerchantQuoteAgentPlugin\Tests\Bench\BuyerMove;
 use MerchantQuoteAgentPlugin\Tests\Bench\BuyerMoveKind;
 use MerchantQuoteAgentPlugin\Tests\Bench\Scenario;
 use MerchantQuoteAgentPlugin\Tests\Bench\SyntheticBuyer;
+use MerchantQuoteAgentPlugin\Tests\Integration\BuyerQuoteContextFixture;
+use MerchantQuoteAgentPlugin\Tests\Integration\BuyerQuoteFixture;
 use MerchantQuoteAgentPlugin\Tests\Integration\PipelineFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\ScriptedClient;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteList;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteSnapshot as UcpQuoteSnapshot;
+use Shopware\Core\Content\Product\ProductEntity;
 use Shopware\Core\Defaults;
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Pricing\Price;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 
 /**
@@ -28,9 +35,10 @@ use Shopware\Core\System\SalesChannel\SalesChannelContext;
  * (one of the two tiny SyntheticBuyer stand-ins below) are substituted.
  *
  * @mago-expect lint:too-many-methods
- * Seven real end-to-end cases plus the small handful of private fixture
+ * Nine real end-to-end cases plus the small handful of private fixture
  * builders (`structuredOnlyScenario()`, `acceptingScenario()`,
- * `benchSettings()`, `generousSettings()`) they share. Splitting one
+ * `benchSettings()`, `flooredSettings()`, `generousSettings()`,
+ * `quotedUnitNet()`) they share. Splitting one
  * negotiation loop's coverage into a second file would scatter the set
  * this test exists to keep together, the same call `ScenarioPipelineTest`
  * already makes.
@@ -275,6 +283,151 @@ final class BenchNegotiationTest extends BenchTestCase
         );
     }
 
+    public function testEveryRoundHandsTheBuyerTheOpeningSnapshot(): void
+    {
+        // ScriptedBuyer measures its realized discount against `$before`; the
+        // engine anchors on the original price, so round two must still see
+        // round one's pre-pass total, not the already-reduced one.
+        $scenario = Scenario::fromArray([
+            'id' => 'plain-percentage',
+            'description' => 'A five percent ask inside the band.',
+            'lines' => [['productRef' => 'any-purchasable', 'quantity' => 3]],
+            'openingAsk' => 'Could you do 5% off?',
+            'persona' => 'scripted:moderate',
+            'maxRounds' => 2,
+        ]);
+
+        $bench = new BenchNegotiation(
+            static::getContainer(),
+            self::gateway(),
+            self::buyerGateway(),
+            ScriptedClient::returning([
+                '{"price":{"additionalDiscountPercent":5}}',
+                '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
+                self::reworded(...),
+                '{"price":{"additionalDiscountPercent":8}}',
+                '{"action":"offer","message":"8% off.","terms":{"discountPercent":8}}',
+                self::reworded(...),
+            ]),
+        );
+
+        $buyer = new RecordingBuyer();
+        $bench->run($scenario, $buyer, self::benchSettings(), 'test-run');
+
+        self::assertCount(expectedCount: 2, haystack: $buyer->befores);
+        self::assertSame($buyer->befores[0]->totals->totalNet, $buyer->befores[1]->totals->totalNet);
+        self::assertLessThan(
+            $buyer->befores[1]->totals->totalNet,
+            $buyer->afters[0]->totals->totalNet,
+            'Round one must have reduced the quote, or equal before-totals prove nothing.',
+        );
+    }
+
+    public function testTheMinimumMarginFloorHoldsABenchOffer(): void
+    {
+        // Purchase at 90% of the quoted price with a 10% margin puts the floor
+        // at 99%, so the scripted 5% offer must be raised to it. With no
+        // purchase prices at all, the floor never binds and 95% is written.
+        $container = static::getContainer();
+        $products = self::repository($container, 'product.repository');
+        $productId = BuyerQuoteFixture::anyPurchasableProductId($container);
+        $context = Context::createDefaultContext();
+        $product = $products->search(new Criteria([$productId]), $context)->first();
+        self::assertInstanceOf(ProductEntity::class, $product);
+        $purchaseNet = round(self::quotedUnitNet($productId, quantity: 3) * 0.9, precision: 2);
+
+        // BenchTestCase commits, so the product's own purchase prices go back afterwards.
+        $original = $product->getPurchasePrices()?->map(static fn(Price $price): array => [
+            'currencyId' => $price->getCurrencyId(),
+            'net' => $price->getNet(),
+            'gross' => $price->getGross(),
+            'linked' => $price->getLinked(),
+        ]);
+        $products->update([[
+            'id' => $productId,
+            'purchasePrices' => [[
+                'currencyId' => Defaults::CURRENCY,
+                'net' => $purchaseNet,
+                'gross' => $purchaseNet,
+                'linked' => false,
+            ]],
+        ]], $context);
+
+        try {
+            $bench = new BenchNegotiation(
+                $container,
+                self::gateway(),
+                self::buyerGateway(),
+                ScriptedClient::returning([
+                    '{"price":{"additionalDiscountPercent":5}}',
+                    '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
+                    self::reworded(...),
+                ]),
+            );
+            $buyer = new RecordingBuyer();
+            $bench->run(
+                Scenario::fromArray([
+                    'id' => 'plain-percentage',
+                    'description' => 'A five percent ask the floor must hold back.',
+                    'lines' => [['productRef' => 'any-purchasable', 'quantity' => 3]],
+                    'openingAsk' => 'Could you do 5% off?',
+                    'persona' => 'scripted:moderate',
+                    'maxRounds' => 1,
+                ]),
+                $buyer,
+                self::flooredSettings(),
+                'test-run',
+            );
+        } finally {
+            $products->update([[
+                'id' => $productId,
+                'purchasePrices' => $original === null ? null : array_values($original),
+            ]], $context);
+        }
+
+        $opening = $buyer->befores[0]->content->lines[0]->unitPriceNet;
+        $floor = ceil(round($purchaseNet * 110, precision: 6)) / 100;
+        self::assertLessThan($opening, $floor, 'A floor at today\'s price would concede nothing and escalate.');
+        self::assertLessThan($floor, $opening * 0.95, 'The unclamped 5% offer must breach the floor.');
+        self::assertEqualsWithDelta(
+            $floor,
+            $buyer->afters[0]->content->lines[0]->unitPriceNet,
+            0.01,
+            'The offer must be written at the floor, not below it.',
+        );
+        self::assertEqualsWithDelta(
+            3 * $floor,
+            $buyer->afters[0]->totals->totalNet,
+            0.01,
+            'No quote discount may be left stacked on the floored line.',
+        );
+    }
+
+    /**
+     * What a quote actually charges per unit, read off a throwaway quote: the
+     * product's list price does not say, since tiered advanced prices apply.
+     */
+    private static function quotedUnitNet(string $productId, int $quantity): float
+    {
+        $container = static::getContainer();
+        $context = BuyerQuoteContextFixture::contextForCustomer(
+            $container,
+            BuyerQuoteFixture::anyQuoteCapableCustomerId($container),
+        );
+        $context->getContext()->addState(AgentContext::STATE, Context::SKIP_TRIGGER_FLOW);
+        $quote = self::buyerGateway()
+            ->requestQuote(
+                $context,
+                [[
+                    'product_id' => $productId,
+                    'quantity' => $quantity,
+                ]],
+                null,
+            );
+
+        return self::gateway()->fetchSnapshot($quote->id)->content->lines[0]->unitPriceNet;
+    }
+
     /** Loaded from disk, not built inline: this is the real structured-only.json, the file the bench actually ships. */
     private static function structuredOnlyScenario(): Scenario
     {
@@ -314,6 +467,21 @@ final class BenchNegotiationTest extends BenchTestCase
         );
     }
 
+    /** benchSettings() with a 10% minimum margin configured, so the floor is live. */
+    private static function flooredSettings(): QuoteAgentSettings
+    {
+        return new QuoteAgentSettings(
+            new NegotiationPolicy(price: new QuoteLimits(
+                maxDiscountPercent: 20.0,
+                counterOfferMaxPercent: 20.0,
+                validityDays: 14,
+                minMarginPercent: 10.0,
+            )),
+            llm: new ModelAccess('sk-test', 'https://api.example.com/v1', 'gpt-4o-mini'),
+            strategyPrompt: null,
+        );
+    }
+
     /**
      * A cap generous enough that structured-only's requested price (whatever
      * discount it works out to against this shop's own product price) never
@@ -339,6 +507,24 @@ final class AlwaysCountersBuyer implements SyntheticBuyer
 {
     public function respond(QuoteSnapshot $before, QuoteSnapshot $after, string $agentReply, int $round): BuyerMove
     {
+        return BuyerMove::counter('Still not enough, can you do better?');
+    }
+}
+
+/** Counters every offer, keeping the snapshots it was handed for the test to inspect. */
+final class RecordingBuyer implements SyntheticBuyer
+{
+    /** @var list<QuoteSnapshot> */
+    public array $befores = [];
+
+    /** @var list<QuoteSnapshot> */
+    public array $afters = [];
+
+    public function respond(QuoteSnapshot $before, QuoteSnapshot $after, string $agentReply, int $round): BuyerMove
+    {
+        $this->befores[] = $before;
+        $this->afters[] = $after;
+
         return BuyerMove::counter('Still not enough, can you do better?');
     }
 }
