@@ -34,6 +34,8 @@ assert.equal(render('Could you do 5% off?', 80), 'Could you do 5% off?');
 // the scripted buyer -- same rules as tests/Bench/ScriptedBuyer.php
 assert.deepEqual(buyerMove(base(), { openingNet: 1000, currentNet: 890, round: 1 }), { kind: 'accept' }); // 11% >= 10% default
 assert.deepEqual(buyerMove(base(), { openingNet: 1000, currentNet: 960, round: 1 }), { kind: 'counter', comment: 'That still leaves us short. Can you get to 7.0% off?' });
+// 4.5% realized asks 7.25%: PHP's sprintf('%.1f') rounds that exact tie to even, toFixed would print 7.3
+assert.deepEqual(buyerMove(base(), { openingNet: 1000, currentNet: 955, round: 1 }), { kind: 'counter', comment: 'That still leaves us short. Can you get to 7.2% off?' });
 assert.deepEqual(buyerMove(base({ buyer: { targetDiscountPercent: 5 } }), { openingNet: 1000, currentNet: 950, round: 1 }), { kind: 'accept' });
 const retreat = base({ buyer: { targetDiscountPercent: 50 }, counters: ['8% would work.'] });
 assert.deepEqual(buyerMove(retreat, { openingNet: 1000, currentNet: 880, round: 1 }), { kind: 'counter', comment: '8% would work.' });

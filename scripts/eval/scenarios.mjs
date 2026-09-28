@@ -92,5 +92,11 @@ export function buyerMove(scenario, { openingNet, currentNet, round }) {
         return next === undefined ? { kind: 'walk' } : { kind: 'counter', comment: next };
     }
     const ask = realized + (targetDiscountPercent - realized) * concessionRatio;
-    return { kind: 'counter', comment: `That still leaves us short. Can you get to ${ask.toFixed(1)}% off?` };
+    return { kind: 'counter', comment: `That still leaves us short. Can you get to ${sprintfOneDecimal(ask)}% off?` };
+}
+
+/** PHP's sprintf('%.1f'): an exact tie (7.25) goes to even, where toFixed(1) rounds it away from zero. */
+function sprintfOneDecimal(value) {
+    const exact = value.toFixed(100).match(/^(-?\d+\.(\d))(\d*)$/);
+    return exact && /^50*$/.test(exact[3]) && Number(exact[2]) % 2 === 0 ? exact[1] : value.toFixed(1);
 }
