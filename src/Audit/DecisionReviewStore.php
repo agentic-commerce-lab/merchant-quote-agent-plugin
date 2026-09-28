@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Audit;
 
+use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -49,7 +50,7 @@ final readonly class DecisionReviewStore implements DecisionReviewStoreInterface
         );
 
         $payload = [];
-        $versionIds = [];
+        $superseded = [];
 
         foreach ($this->records->search($criteria, $context)->getEntities() as $record) {
             if (!$record instanceof QuoteDecisionRecord) {
@@ -62,17 +63,17 @@ final readonly class DecisionReviewStore implements DecisionReviewStoreInterface
                 'draftVersionId' => null,
                 'sentChanges' => null,
             ];
-
-            if ($record->draftVersionId !== null) {
-                $versionIds[] = $record->draftVersionId;
-            }
+            $superseded[] = [
+                'versionId' => $record->draftVersionId,
+                'clarified' => $record->outcome === NegotiationOutcome::Clarified->value,
+            ];
         }
 
         if ($payload !== []) {
             $this->records->update($payload, $context);
         }
 
-        return $versionIds;
+        return $superseded;
     }
 
     #[\Override]

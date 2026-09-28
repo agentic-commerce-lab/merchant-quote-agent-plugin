@@ -20,11 +20,12 @@ final class DecisionReviewStoreTest extends TestCase
     public function testSupersedingMarksPendingRowsAndHandsBackTheirVersions(): void
     {
         $pending = self::record('pending', '0190aaaa0000700080000000000000aa');
+        $pending->outcome = 'offered';
         $repository = self::repository([$pending]);
 
-        $versions = (new DecisionReviewStore($repository))->supersedePending('quote-1');
+        $superseded = (new DecisionReviewStore($repository))->supersedePending('quote-1');
 
-        self::assertSame(['0190aaaa0000700080000000000000aa'], $versions);
+        self::assertSame([['versionId' => '0190aaaa0000700080000000000000aa', 'clarified' => false]], $superseded);
         self::assertSame(
             [['id' => $pending->id, 'reviewStatus' => 'superseded', 'draftVersionId' => null, 'sentChanges' => null]],
             $repository->updates[0],
@@ -35,6 +36,18 @@ final class DecisionReviewStoreTest extends TestCase
                 new EqualsFilter('reviewStatus', 'pending'),
             ],
             $repository->searched?->getFilters(),
+        );
+    }
+
+    /** The caller releases the clarification marker such a draft set live, so it has to know which one it was. */
+    public function testSupersedingAClarificationSaysSo(): void
+    {
+        $pending = self::record('pending', null);
+        $pending->outcome = 'clarified';
+
+        self::assertSame(
+            [['versionId' => null, 'clarified' => true]],
+            (new DecisionReviewStore(self::repository([$pending])))->supersedePending('quote-1'),
         );
     }
 

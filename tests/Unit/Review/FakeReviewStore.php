@@ -9,8 +9,8 @@ use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 
 final class FakeReviewStore implements DecisionReviewStoreInterface
 {
-    /** @var list<string> version ids supersedePending() hands back */
-    public array $pendingVersions = [];
+    /** @var list<array{versionId: ?string, clarified: bool}> what supersedePending() hands back */
+    public array $pending = [];
 
     /** @var list<array{string, string, ?array<string, mixed>}> */
     public array $sent = [];
@@ -40,10 +40,10 @@ final class FakeReviewStore implements DecisionReviewStoreInterface
     #[\Override]
     public function supersedePending(string $quoteId): array
     {
-        $versions = $this->pendingVersions;
-        $this->pendingVersions = [];
+        $pending = $this->pending;
+        $this->pending = [];
 
-        return $versions;
+        return $pending;
     }
 
     #[\Override]

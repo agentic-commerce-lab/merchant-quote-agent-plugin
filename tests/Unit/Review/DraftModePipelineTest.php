@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Review;
 
 use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Negotiation\ClarificationMarker;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Review\DraftingQuoteGateway;
@@ -16,6 +17,7 @@ use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\QuoteSnapshotFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\ServicingSettingsFixture;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class DraftModePipelineTest extends TestCase
@@ -23,13 +25,46 @@ final class DraftModePipelineTest extends TestCase
     public function testOutsideDraftModeTheInnerPipelineGetsTheLiveGatewayButPendingDraftsAreStillSuperseded(): void
     {
         $h = self::harness(NegotiationOutcome::Offered);
-        $h->reviews->pendingVersions = ['0190aaaa0000700080000000000000aa'];
+        $h->reviews->pending = [['versionId' => '0190aaaa0000700080000000000000aa', 'clarified' => false]];
 
         $h->pipeline->service($h->snapshot, $h->live, self::settings(draftMode: false), self::context());
 
         self::assertSame($h->live, $h->inner->gateway);
         self::assertSame(['0190aaaa0000700080000000000000aa'], $h->versions->deleted);
         self::assertSame([], $h->notifier->notices);
+        self::assertSame([], $h->live->customFieldWrites, 'Only a superseded clarification holds the marker.');
+        self::assertSame($h->snapshot, $h->inner->snapshot);
+    }
+
+    /**
+     * A drafted clarification set the marker live although the buyer never
+     * saw the question. Superseding it must release the marker, and the next
+     * pass must decide on a snapshot that no longer carries it — the one the
+     * handler read still does, and ClarificationRound would escalate the
+     * still-ambiguous ask as already asked.
+     */
+    #[DataProvider('draftModes')]
+    public function testSupersedingAClarificationReleasesItsMarkerBeforeTheNextPassDecides(bool $draftMode): void
+    {
+        $h = self::harness(NegotiationOutcome::Clarified);
+        $marked = QuoteSnapshotFixture::snapshot(customFields: ClarificationMarker::set());
+        $released = QuoteSnapshotFixture::snapshot();
+        $h->live->replaceSnapshots([$released]);
+        $h->reviews->pending = [['versionId' => null, 'clarified' => true]];
+
+        $h->pipeline->service($marked, $h->live, self::settings(draftMode: $draftMode), self::context());
+
+        self::assertSame([[ClarificationMarker::MARKER_KEY => null]], $h->live->customFieldWrites);
+        self::assertSame(['updateQuote', 'fetchSnapshot'], \array_slice($h->live->calls, offset: 0, length: 2));
+        self::assertSame($released, $h->inner->snapshot);
+        self::assertSame([], $h->versions->deleted, 'A clarification has no version to delete.');
+    }
+
+    /** @return iterable<string, array{bool}> */
+    public static function draftModes(): iterable
+    {
+        yield 'in Draft Mode' => [true];
+        yield 'out of Draft Mode' => [false];
     }
 
     public function testADraftedOfferNotifiesTheMerchantAndKeepsItsVersion(): void

@@ -14,10 +14,12 @@ use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingPipelineInterface;
 
-/** Stands in for NegotiationPipeline: records the gateway it was given, optionally writes a price, returns or throws. */
+/** Stands in for NegotiationPipeline: records the snapshot and gateway it was given, optionally writes a price, returns or throws. */
 final class RecordingInnerPipeline implements QuoteServicingPipelineInterface
 {
     public ?QuoteGatewayInterface $gateway = null;
+
+    public ?QuoteSnapshot $snapshot = null;
 
     public function __construct(
         private readonly ?NegotiationOutcome $returns,
@@ -32,6 +34,7 @@ final class RecordingInnerPipeline implements QuoteServicingPipelineInterface
         PassContext $context,
     ): NegotiationOutcome {
         $this->gateway = $gateway;
+        $this->snapshot = $snapshot;
 
         if ($this->writesAPrice) {
             $gateway->updateQuote('q1', new QuoteUpdate(discount: new Discount(DiscountType::Percentage, 5.0)));

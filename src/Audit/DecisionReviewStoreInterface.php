@@ -17,7 +17,12 @@ interface DecisionReviewStoreInterface
     /**
      * Marks every pending draft of the quote superseded.
      *
-     * @return list<string> the draft version ids those rows held, for the caller to delete
+     * Per row, what the caller must undo: the draft version it held, to
+     * delete (null for a draft without prices), and whether it was a
+     * clarification, whose marker the drafting pass set on the live quote
+     * although the buyer never saw the question.
+     *
+     * @return list<array{versionId: ?string, clarified: bool}>
      */
     public function supersedePending(string $quoteId): array;
 
