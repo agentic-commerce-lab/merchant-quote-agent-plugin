@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Policy\Data;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteValueCeiling;
+use MerchantQuoteAgentPlugin\Policy\Data\RoundingMode;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Validator\Validation;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -87,14 +88,34 @@ final class NegotiationPolicyValidationTest extends TestCase
         self::assertSame([], self::paths(self::validator()->validate($policy)));
     }
 
-    public function testTighteningTheDiscountCapKeepsTheMinimumMargin(): void
+    public function testTighteningTheDiscountCapKeepsTheMarginAndTheRounding(): void
     {
         // CappedAuthority rebuilds the limits through withMaxDiscountPercent()
         // on every round where the buyer asks for less than the cap. Dropping
-        // the margin there would switch the floor off on exactly those rounds.
-        $limits = new QuoteLimits(maxDiscountPercent: 15.0, validityDays: 14, minMarginPercent: 10.0);
+        // either field there would switch it off on exactly those rounds.
+        $limits = new QuoteLimits(
+            maxDiscountPercent: 15.0,
+            validityDays: 14,
+            minMarginPercent: 10.0,
+            roundingMode: RoundingMode::QuoteTotal,
+            roundingStep: 10.0,
+        );
+        $tightened = $limits->withMaxDiscountPercent(5.0);
 
-        self::assertSame(10.0, $limits->withMaxDiscountPercent(5.0)->minMarginPercent);
+        self::assertSame(10.0, $tightened->minMarginPercent);
+        self::assertSame(10.0, $tightened->stepFor(RoundingMode::QuoteTotal));
+    }
+
+    public function testANegativeRoundingStepIsRejected(): void
+    {
+        $policy = new NegotiationPolicy(price: new QuoteLimits(
+            maxDiscountPercent: 5.0,
+            validityDays: 14,
+            roundingMode: RoundingMode::DiscountPercent,
+            roundingStep: -0.5,
+        ));
+
+        self::assertSame(['price.roundingStep'], self::paths(self::validator()->validate($policy)));
     }
 
     private static function validator(): ValidatorInterface

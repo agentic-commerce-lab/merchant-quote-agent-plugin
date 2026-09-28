@@ -14,6 +14,11 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  * via its own total/line-sum ratio so the per-line comparison is
  * price-space-proof.
  *
+ * Only positive lines count. A quote-wide write lands as SwagCommercial's
+ * negative discount line while totalNet also carries shipping; counting that
+ * line shrank the sum and scaled every line up past its reference. Left out,
+ * the discount folds into each line's price, as PredictedWrite prices it.
+ *
  * Ported from `netFactor` in the retired TS agent (policy/offer-verification.ts).
  */
 final class NetFactor
@@ -22,7 +27,7 @@ final class NetFactor
     {
         $rawLineSum = 0.0;
         foreach ($snapshot->lines as $line) {
-            $rawLineSum += $line->unitPriceNet * $line->quantity;
+            $rawLineSum += max(0.0, $line->unitPriceNet * $line->quantity);
         }
 
         return $rawLineSum > 0 && $snapshot->totalNet > 0 ? $snapshot->totalNet / $rawLineSum : 1.0;

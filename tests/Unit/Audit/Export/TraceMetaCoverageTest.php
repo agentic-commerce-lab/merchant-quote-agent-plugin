@@ -22,6 +22,9 @@ use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteAutoReplyDetails;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
+use MerchantQuoteAgentPlugin\Policy\Data\Rounding;
+use MerchantQuoteAgentPlugin\Policy\Data\RoundingMode;
+use MerchantQuoteAgentPlugin\Policy\Data\RoundingSkip;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\EmissionOutcome;
 use MerchantQuoteAgentPlugin\Protocol\Emitter\SellerActJournal;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
@@ -120,6 +123,9 @@ final class TraceMetaCoverageTest extends TestCase
             10.0,
             policy: NegotiationFixture::settings()->policy,
         ); // policy_verdict
+        $recorder->recordRounding(
+            new Rounding(RoundingMode::QuoteTotal, 10.0, 1356.47, 1360.0, RoundingSkip::StandingPrice),
+        ); // rounding
 
         // model_call (the reply) and reply_guard: a rewording the guard rejects.
         [$client] = ScriptedClient::spy(['Anna, we will be in touch soon.'], $recorder);

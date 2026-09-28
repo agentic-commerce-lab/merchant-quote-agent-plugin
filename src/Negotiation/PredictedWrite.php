@@ -15,7 +15,8 @@ use MerchantQuoteAgentPlugin\Policy\GoodsFactor;
  * 2026-09-28), so OfferApplier can refuse a write BEFORE it is made.
  *
  * In the verifier's terms: every positive live line at the net price the buyer
- * would pay (the quote discount folded in, as OfferLanding prices it), negative
+ * would pay (the quote discount folded in: OfferWrite::$discountFactor for a
+ * discount the write sets, whether a percentage or an absolute amount), negative
  * lines dropped, and the total moved by exactly what the goods moved. The
  * expiry is left null, so the prediction does not check it: the write sets it
  * from validityDays, and the post-write verification checks what the database
@@ -41,7 +42,10 @@ final readonly class PredictedWrite
         }
 
         $goodsFactor = GoodsFactor::of($live->lines);
-        $factor = $write->discount === null ? $goodsFactor : 1 - ($write->discount->value / 100);
+        // Any discount the write sets, percentage or absolute (spec
+        // 2026-09-28): OfferWrite states what share of its live price every
+        // good keeps under it. None keeps today's.
+        $factor = $write->discountFactor ?? $goodsFactor;
         $lines = [];
         $refusals = [];
         $moved = 0.0;
