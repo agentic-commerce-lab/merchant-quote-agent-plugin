@@ -235,6 +235,14 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         self::assertNull($settings->policy->price->stepFor(RoundingMode::QuoteTotal));
     }
 
+    public function testOffHasNoStepEvenWithOneLeftBehind(): void
+    {
+        $settings = self::build(['roundingMode' => 'off', 'roundingStep' => 10.0]);
+
+        self::assertNotNull($settings);
+        self::assertNull($settings->policy->price->stepFor(RoundingMode::Off));
+    }
+
     public function testABlankOrZeroStepIsOffWhateverTheMode(): void
     {
         foreach ([null, 0.0] as $step) {

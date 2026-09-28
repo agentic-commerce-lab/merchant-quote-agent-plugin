@@ -62,12 +62,10 @@ final readonly class QuoteLimits
         public ?float $roundingStep = null,
     ) {}
 
-    /** The step `$mode` rounds to; null when `$mode` is not the one set, or the step is blank or zero. */
+    /** The step `$mode` rounds to; see RoundingMode::stepUnder(). */
     public function stepFor(RoundingMode $mode): ?float
     {
-        $step = $this->roundingStep ?? 0.0;
-
-        return $this->roundingMode === $mode && $step > 0.0 ? $step : null;
+        return $mode->stepUnder($this->roundingMode, $this->roundingStep);
     }
 
     /** The same limits with a tightened discount cap — see AskedDiscountCeiling. */

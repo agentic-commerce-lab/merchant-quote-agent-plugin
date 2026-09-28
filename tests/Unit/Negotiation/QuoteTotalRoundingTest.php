@@ -120,6 +120,14 @@ final class QuoteTotalRoundingTest extends TestCase
             100.0,
             'to_zero',
         ];
+        // 1250.00 × 0.997 + 0.01 = 1246.26 → 1250.00: a 0.01 discount, which is nothing.
+        yield 'one cent above 1250.00, only that cent is left' => [
+            static fn() => RoundingFixture::netQuote(1250.01, 1250.01),
+            0.3,
+            null,
+            10.0,
+            'to_zero',
+        ];
     }
 
     /** @param \Closure(): \MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot $quote */

@@ -76,7 +76,10 @@ final class QuoteTotalRounding
     }
 
     /**
-     * To-zero comes before standing-price for a reason beyond order:
+     * To-zero counts a cent or less as nothing: a 0.01 discount line would
+     * show on the quote while ReductionForPass reports a hold.
+     *
+     * It comes before standing-price for a reason beyond order:
      * SwagCommercial writes `-abs($value)`, so a negative amount would turn
      * into a discount, and nothing negative may get past this method. Its
      * other half keeps factorAfter() inside (0, 1]: an amount that takes the
@@ -102,7 +105,7 @@ final class QuoteTotalRounding
         return match (true) {
             $buyersFigure => RoundingSkip::BuyerFigure,
             $goods->taxOnTop => RoundingSkip::TaxOnTop,
-            $absolute < Epsilon::MONEY || $absolute >= $goods->gross => RoundingSkip::ToZero,
+            $absolute <= Epsilon::MONEY || $absolute >= $goods->gross => RoundingSkip::ToZero,
             PredictedWrite::of($rounded, $live)->refusals !== [] => RoundingSkip::StandingPrice,
             default => null,
         };

@@ -105,12 +105,13 @@ final class RoundingFixture
 
     /**
      * The same goods and shipping on a `net` quote (stored prices net, ratio
-     * 1.0): 1255.00 net. A `$totalGross` of 1255.00 is tax-free; above it, tax
-     * is added on top.
+     * 1.0): 1255.00 net. A `$totalGross` equal to `$totalNet` is tax-free;
+     * above it, tax is added on top. Lines not in `$totalNet` read as other
+     * costs (5.00 shipping by default).
      */
-    public static function netQuote(float $totalGross): QuoteSnapshot
+    public static function netQuote(float $totalGross, float $totalNet = 1255.0): QuoteSnapshot
     {
-        return self::quote(self::goods(1.0, 1.0), 1255.0, $totalGross);
+        return self::quote(self::goods(1.0, 1.0), $totalNet, $totalGross);
     }
 
     /** @return list<QuoteLineSnapshot> */
