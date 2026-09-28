@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
 use MerchantQuoteAgentPlugin\Config\ModelAccess;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
+use MerchantQuoteAgentPlugin\Negotiation\ModelUnavailable;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
@@ -211,6 +212,11 @@ final class RecordedPassTest extends TestCase
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertCount(1, $harness->writer->drafts);
         self::assertSame('escalated', $harness->writer->drafts[0]->outcome);
+        // Handled, so finish() never sees it: the escalation itself has to
+        // leave the failure on the row, or the export shows a model_unavailable
+        // escalation with no error at all.
+        self::assertSame(ModelUnavailable::class, $harness->writer->drafts[0]->errorClass);
+        self::assertSame(ModelUnavailable::class, $harness->writer->drafts[0]->errorChain[0]['class'] ?? null);
     }
 
     public function testAnAuditWriteFailureDoesNotFailThePass(): void

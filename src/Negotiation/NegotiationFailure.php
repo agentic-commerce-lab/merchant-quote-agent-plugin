@@ -25,6 +25,9 @@ final readonly class NegotiationFailure
         QuoteSnapshot $snapshot,
         ModelUnavailable|CrossCustomerRead $error,
     ): NegotiationPass {
+        // Caught here, so finish() never sees it. Messages in the chain are
+        // withheld from an export without free text and cleared on erasure.
+        $this->recorder->recordHandledError($error);
         $reason = QuoteEscalationReason::ModelUnavailable;
         $message = 'The model was unavailable, so this quote goes to a human.';
 

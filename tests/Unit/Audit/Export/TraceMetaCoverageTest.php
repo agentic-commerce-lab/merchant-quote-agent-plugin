@@ -118,6 +118,7 @@ final class TraceMetaCoverageTest extends TestCase
                 QuoteDecision::autoReply(new QuoteAutoReplyDetails(5.0, false, [], 14)),
             ),
             10.0,
+            policy: NegotiationFixture::settings()->policy,
         ); // policy_verdict
 
         // model_call (the reply) and reply_guard: a rewording the guard rejects.
