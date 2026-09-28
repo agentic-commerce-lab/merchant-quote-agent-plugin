@@ -97,13 +97,12 @@ final readonly class BenchNegotiation
         $quote = $this->buyerGateway->requestQuote($context, $lineItems, null);
         $quoteId = $quote->id;
 
-        // `{unit*f}` asks are relative to the quote's own unit price, in its
-        // own price space (stored price = net / netRatio), so they port
-        // between products (spec "Placeholders").
-        $firstLine = $this->gateway->fetchSnapshot($quoteId)->content->lines[0] ?? null;
-        $openingAsk = $firstLine === null
-            ? $scenario->openingAsk
-            : ScenarioAsk::render($scenario->openingAsk, $firstLine->unitPriceNet / $firstLine->netRatio);
+        // `{unit*f}` asks are relative to the quote's own stored unit price,
+        // so they port between products (spec "Placeholders").
+        $openingAsk = ScenarioAsk::forLine(
+            $scenario->openingAsk,
+            $this->gateway->fetchSnapshot($quoteId)->content->lines[0] ?? null,
+        );
 
         // Empty on purpose for a structured-only ask: `structured-only`
         // writes no buyer comment at all, so AskInterpreter sees nothing to
