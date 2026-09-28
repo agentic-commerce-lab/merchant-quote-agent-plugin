@@ -27,7 +27,7 @@ use PHPUnit\Framework\TestCase;
  * stamp, and for anchor() as the one reference authorize and verify share.
  *
  * @mago-expect lint:too-many-methods
- * Fifteen cases plus six private helpers (a fixture snapshot, a snapshot with
+ * Eighteen cases plus six private helpers (a fixture snapshot, a snapshot with
  * swapped-in lines, a bridge-space line builder, a policy-space snapshot, a
  * policy line builder, and a stamped-and-read baseline) shared
  * across them.
@@ -281,6 +281,27 @@ final class QuoteBaselineTest extends TestCase
             1e-9,
             'NetFactor must stay put even when the stored factor is not 1.0.',
         );
+    }
+
+    /**
+     * A baseline stamped over a merchant's quote discount stores its negative
+     * line. NetFactor leaves negative lines out of its line sum, so the
+     * scaling must too, or the ratio drifts on every extension.
+     */
+    public function testExtendingOverAStoredDiscountLineLeavesTheNetFactorWhereItWas(): void
+    {
+        // Goods 1000, discount 100, shipping 100: totalNet 1000.
+        $baseline = new QuoteBaselineLines(1000.0, [
+            self::policyLine('line-1', 100.0, 4),
+            self::policyLine('line-2', 300.0, 2),
+            self::policyLine('discount', -100.0),
+        ]);
+        $live = self::policySnapshot();
+        $before = NetFactor::of($baseline->anchor($live));
+
+        $extended = $baseline->extendedWith([...$baseline->lines, self::policyLine('line-3', 50.0, 2)]);
+
+        self::assertEqualsWithDelta($before, NetFactor::of($extended->anchor($live)), 1e-9);
     }
 
     /**
