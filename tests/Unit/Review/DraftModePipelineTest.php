@@ -17,7 +17,7 @@ use MerchantQuoteAgentPlugin\Tests\Unit\Audit\FakeDecisionWriter;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\QuoteSnapshotFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\ServicingSettingsFixture;
-use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 
 final class DraftModePipelineTest extends TestCase
@@ -25,12 +25,17 @@ final class DraftModePipelineTest extends TestCase
     public function testOutsideDraftModeTheInnerPipelineGetsTheLiveGatewayButPendingDraftsAreStillSuperseded(): void
     {
         $h = self::harness(NegotiationOutcome::Offered);
-        $h->reviews->pending = [['versionId' => '0190aaaa0000700080000000000000aa', 'clarified' => false]];
+        $h->reviews->pending = [[
+            'id' => 'rec-1',
+            'versionId' => '0190aaaa0000700080000000000000aa',
+            'clarified' => false,
+        ]];
 
         $h->pipeline->service($h->snapshot, $h->live, self::settings(draftMode: false), self::context());
 
         self::assertSame($h->live, $h->inner->gateway);
         self::assertSame(['0190aaaa0000700080000000000000aa'], $h->versions->deleted);
+        self::assertSame([], $h->reviews->pending);
         self::assertSame([], $h->notifier->notices);
         self::assertSame([], $h->live->customFieldWrites, 'Only a superseded clarification holds the marker.');
         self::assertSame($h->snapshot, $h->inner->snapshot);
@@ -43,14 +48,15 @@ final class DraftModePipelineTest extends TestCase
      * handler read still does, and ClarificationRound would escalate the
      * still-ambiguous ask as already asked.
      */
-    #[DataProvider('draftModes')]
+    #[TestWith([true], 'in Draft Mode')]
+    #[TestWith([false], 'out of Draft Mode')]
     public function testSupersedingAClarificationReleasesItsMarkerBeforeTheNextPassDecides(bool $draftMode): void
     {
         $h = self::harness(NegotiationOutcome::Clarified);
         $marked = QuoteSnapshotFixture::snapshot(customFields: ClarificationMarker::set());
         $released = QuoteSnapshotFixture::snapshot();
         $h->live->replaceSnapshots([$released]);
-        $h->reviews->pending = [['versionId' => null, 'clarified' => true]];
+        $h->reviews->pending = [['id' => 'rec-1', 'versionId' => null, 'clarified' => true]];
 
         $h->pipeline->service($marked, $h->live, self::settings(draftMode: $draftMode), self::context());
 
@@ -60,11 +66,36 @@ final class DraftModePipelineTest extends TestCase
         self::assertSame([], $h->versions->deleted, 'A clarification has no version to delete.');
     }
 
-    /** @return iterable<string, array{bool}> */
-    public static function draftModes(): iterable
+    /**
+     * The marker write can fail once the drafts were read, and Messenger then
+     * redelivers the pass. The retry has to find the clarification still
+     * pending: marked superseded first, it would find nothing to undo and the
+     * marker would stay set for good.
+     */
+    public function testAFailedMarkerReleaseLeavesTheClarificationPendingForTheRetry(): void
     {
-        yield 'in Draft Mode' => [true];
-        yield 'out of Draft Mode' => [false];
+        $h = self::harness(NegotiationOutcome::Clarified);
+        $marked = QuoteSnapshotFixture::snapshot(customFields: ClarificationMarker::set());
+        $released = QuoteSnapshotFixture::snapshot();
+        $h->live->replaceSnapshots([$released]);
+        $h->reviews->pending = [['id' => 'rec-1', 'versionId' => null, 'clarified' => true]];
+        $h->live->updateThrows = new \RuntimeException('quote write failed');
+
+        try {
+            $h->pipeline->service($marked, $h->live, self::settings(draftMode: true), self::context());
+            self::fail('The failed marker write must reach Messenger.');
+        } catch (\RuntimeException $e) {
+            self::assertSame('quote write failed', $e->getMessage());
+        }
+
+        self::assertCount(1, $h->reviews->pending, 'The failed pass must leave the clarification pending.');
+
+        $h->live->updateThrows = null;
+        $h->pipeline->service($marked, $h->live, self::settings(draftMode: true), self::context());
+
+        self::assertSame([[ClarificationMarker::MARKER_KEY => null]], $h->live->customFieldWrites);
+        self::assertSame($released, $h->inner->snapshot);
+        self::assertSame([], $h->reviews->pending, 'The retry supersedes it once the marker is released.');
     }
 
     public function testADraftedOfferNotifiesTheMerchantAndKeepsItsVersion(): void

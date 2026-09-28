@@ -9,7 +9,7 @@ use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 
 final class FakeReviewStore implements DecisionReviewStoreInterface
 {
-    /** @var list<array{versionId: ?string, clarified: bool}> what supersedePending() hands back */
+    /** @var list<array{id: string, versionId: ?string, clarified: bool}> what pendingOf() hands back until superseded */
     public array $pending = [];
 
     /** @var list<array{string, string, ?array<string, mixed>}> */
@@ -38,12 +38,18 @@ final class FakeReviewStore implements DecisionReviewStoreInterface
     }
 
     #[\Override]
-    public function supersedePending(string $quoteId): array
+    public function pendingOf(string $quoteId): array
     {
-        $pending = $this->pending;
-        $this->pending = [];
+        return $this->pending;
+    }
 
-        return $pending;
+    #[\Override]
+    public function supersede(array $decisionIds): void
+    {
+        $this->pending = array_values(array_filter(
+            $this->pending,
+            static fn(array $row): bool => !\in_array($row['id'], $decisionIds, strict: true),
+        ));
     }
 
     #[\Override]

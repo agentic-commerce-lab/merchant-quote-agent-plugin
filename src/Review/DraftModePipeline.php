@@ -92,6 +92,10 @@ final readonly class DraftModePipeline implements QuoteServicingPipelineInterfac
      * still-ambiguous ask would escalate as "already asked" for a question
      * they never saw.
      *
+     * The marker is released before the rows are marked, as DraftRejecter
+     * does: if the write throws, Messenger redelivers the pass and the retry
+     * still finds the clarification pending.
+     *
      * @return QuoteSnapshot the snapshot the pass decides on: re-read once a
      *                       marker was released, because the one handed in
      *                       still carries it and ClarificationRound reads
@@ -100,20 +104,25 @@ final readonly class DraftModePipeline implements QuoteServicingPipelineInterfac
     private function retirePending(QuoteSnapshot $snapshot, QuoteGatewayInterface $gateway): QuoteSnapshot
     {
         $quoteId = $snapshot->identity->quoteId;
-        $clarified = false;
+        $pending = $this->reviews->pendingOf($quoteId);
 
-        foreach ($this->reviews->supersedePending($quoteId) as $superseded) {
-            $this->discard($quoteId, $superseded['versionId']);
-            $clarified = $clarified || $superseded['clarified'];
-        }
-
-        if (!$clarified) {
+        if ($pending === []) {
             return $snapshot;
         }
 
-        $gateway->updateQuote($quoteId, new QuoteUpdate(customFields: [ClarificationMarker::MARKER_KEY => null]));
+        $clarified = \in_array(true, array_column($pending, 'clarified'), strict: true);
 
-        return $gateway->fetchSnapshot($quoteId);
+        if ($clarified) {
+            $gateway->updateQuote($quoteId, new QuoteUpdate(customFields: [ClarificationMarker::MARKER_KEY => null]));
+        }
+
+        $this->reviews->supersede(array_column($pending, 'id'));
+
+        foreach ($pending as $superseded) {
+            $this->discard($quoteId, $superseded['versionId']);
+        }
+
+        return $clarified ? $gateway->fetchSnapshot($quoteId) : $snapshot;
     }
 
     private function discard(string $quoteId, ?string $versionId): void

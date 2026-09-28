@@ -15,16 +15,24 @@ interface DecisionReviewStoreInterface
     public function find(string $decisionId): ?QuoteDecisionRecord;
 
     /**
-     * Marks every pending draft of the quote superseded.
+     * The quote's pending drafts, and per row what the caller must undo
+     * before superseding it: the draft version it held, to delete (null for
+     * a draft without prices), and whether it was a clarification, whose
+     * marker the drafting pass set on the live quote although the buyer never
+     * saw the question.
      *
-     * Per row, what the caller must undo: the draft version it held, to
-     * delete (null for a draft without prices), and whether it was a
-     * clarification, whose marker the drafting pass set on the live quote
-     * although the buyer never saw the question.
-     *
-     * @return list<array{versionId: ?string, clarified: bool}>
+     * @return list<array{id: string, versionId: ?string, clarified: bool}>
      */
-    public function supersedePending(string $quoteId): array;
+    public function pendingOf(string $quoteId): array;
+
+    /**
+     * Marks the rows pendingOf() returned superseded. Called only once their
+     * clarification marker is released: a failed release then leaves them
+     * pending for the redelivered pass to find again.
+     *
+     * @param list<string> $decisionIds
+     */
+    public function supersede(array $decisionIds): void;
 
     /** Remember a successful price/date preview across page reloads until Send. */
     public function markPreviewEdited(string $decisionId): void;

@@ -40,40 +40,44 @@ final readonly class DecisionReviewStore implements DecisionReviewStoreInterface
     }
 
     #[\Override]
-    public function supersedePending(string $quoteId): array
+    public function pendingOf(string $quoteId): array
     {
-        $context = Context::createDefaultContext();
         $criteria = new Criteria();
         $criteria->addFilter(
             new EqualsFilter('quoteId', $quoteId),
             new EqualsFilter('reviewStatus', ReviewStatus::Pending->value),
         );
 
-        $payload = [];
-        $superseded = [];
+        $pending = [];
 
-        foreach ($this->records->search($criteria, $context)->getEntities() as $record) {
+        foreach ($this->records->search($criteria, Context::createDefaultContext())->getEntities() as $record) {
             if (!$record instanceof QuoteDecisionRecord) {
                 continue;
             }
 
-            $payload[] = [
+            $pending[] = [
                 'id' => $record->id,
-                'reviewStatus' => ReviewStatus::Superseded->value,
-                'draftVersionId' => null,
-                'sentChanges' => null,
-            ];
-            $superseded[] = [
                 'versionId' => $record->draftVersionId,
                 'clarified' => $record->outcome === NegotiationOutcome::Clarified->value,
             ];
         }
 
-        if ($payload !== []) {
-            $this->records->update($payload, $context);
+        return $pending;
+    }
+
+    #[\Override]
+    public function supersede(array $decisionIds): void
+    {
+        if ($decisionIds === []) {
+            return;
         }
 
-        return $superseded;
+        $this->records->update(array_map(static fn(string $id): array => [
+            'id' => $id,
+            'reviewStatus' => ReviewStatus::Superseded->value,
+            'draftVersionId' => null,
+            'sentChanges' => null,
+        ], $decisionIds), Context::createDefaultContext());
     }
 
     #[\Override]

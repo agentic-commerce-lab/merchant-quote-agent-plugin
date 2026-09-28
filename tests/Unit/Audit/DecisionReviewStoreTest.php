@@ -17,19 +17,19 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 
 final class DecisionReviewStoreTest extends TestCase
 {
-    public function testSupersedingMarksPendingRowsAndHandsBackTheirVersions(): void
+    public function testPendingOfHandsBackEachDraftsVersionAndWritesNothing(): void
     {
         $pending = self::record('pending', '0190aaaa0000700080000000000000aa');
         $pending->outcome = 'offered';
         $repository = self::repository([$pending]);
 
-        $superseded = (new DecisionReviewStore($repository))->supersedePending('quote-1');
+        $found = (new DecisionReviewStore($repository))->pendingOf('quote-1');
 
-        self::assertSame([['versionId' => '0190aaaa0000700080000000000000aa', 'clarified' => false]], $superseded);
         self::assertSame(
-            [['id' => $pending->id, 'reviewStatus' => 'superseded', 'draftVersionId' => null, 'sentChanges' => null]],
-            $repository->updates[0],
+            [['id' => $pending->id, 'versionId' => '0190aaaa0000700080000000000000aa', 'clarified' => false]],
+            $found,
         );
+        self::assertSame([], $repository->updates, 'Reading must leave the rows pending until the caller undid them.');
         self::assertEquals(
             [
                 new EqualsFilter('quoteId', 'quote-1'),
@@ -40,14 +40,26 @@ final class DecisionReviewStoreTest extends TestCase
     }
 
     /** The caller releases the clarification marker such a draft set live, so it has to know which one it was. */
-    public function testSupersedingAClarificationSaysSo(): void
+    public function testPendingOfSaysWhichWasAClarification(): void
     {
         $pending = self::record('pending', null);
         $pending->outcome = 'clarified';
 
         self::assertSame(
-            [['versionId' => null, 'clarified' => true]],
-            (new DecisionReviewStore(self::repository([$pending])))->supersedePending('quote-1'),
+            [['id' => $pending->id, 'versionId' => null, 'clarified' => true]],
+            (new DecisionReviewStore(self::repository([$pending])))->pendingOf('quote-1'),
+        );
+    }
+
+    public function testSupersedingMarksTheGivenRows(): void
+    {
+        $repository = self::repository([]);
+
+        (new DecisionReviewStore($repository))->supersede(['rec-1']);
+
+        self::assertSame(
+            [['id' => 'rec-1', 'reviewStatus' => 'superseded', 'draftVersionId' => null, 'sentChanges' => null]],
+            $repository->updates[0],
         );
     }
 
@@ -55,7 +67,8 @@ final class DecisionReviewStoreTest extends TestCase
     {
         $repository = self::repository([]);
 
-        self::assertSame([], (new DecisionReviewStore($repository))->supersedePending('quote-1'));
+        (new DecisionReviewStore($repository))->supersede([]);
+
         self::assertSame([], $repository->updates);
     }
 
