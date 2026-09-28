@@ -112,8 +112,7 @@ final readonly class ServicingPreflight
             // The problems stay in the log line above. escalate() writes into
             // the conversation the CUSTOMER reads and deliberately accepts no
             // text, so there is nowhere to pass them even by accident.
-            $this->escalator->escalate($gateway, $snapshot, QuoteEscalationReason::NotConfigured);
-            $this->record($snapshot, $context, $e->problems);
+            $this->escalate($gateway, $snapshot, $context, $e->problems);
 
             return null;
         }
@@ -149,8 +148,7 @@ final readonly class ServicingPreflight
                 'problem' => $e->getMessage(),
             ]);
 
-            $this->escalator->escalate($gateway, $snapshot, QuoteEscalationReason::NotConfigured);
-            $this->record($snapshot, $context, [$e->getMessage()]);
+            $this->escalate($gateway, $snapshot, $context, [$e->getMessage()]);
 
             return null;
         }
@@ -169,13 +167,23 @@ final readonly class ServicingPreflight
      * already nested inside check(), and a third level there would sit at
      * mago's nesting cap.
      *
-     * Called after escalate(), never before: the escalation is the thing that
-     * must happen and this describes it.
+     * Recorded after the escalation, never before: the escalation is the thing
+     * that must happen and the row describes it. And only when it happened —
+     * a repeat escalate() suppresses writes nothing, and a row per buyer
+     * comment for it is the noise the silent refusals avoid.
      *
      * @param list<string> $problems
      */
-    private function record(QuoteSnapshot $snapshot, PassContext $context, array $problems): void
-    {
+    private function escalate(
+        QuoteGatewayInterface $gateway,
+        QuoteSnapshot $snapshot,
+        PassContext $context,
+        array $problems,
+    ): void {
+        if (!$this->escalator->escalate($gateway, $snapshot, QuoteEscalationReason::NotConfigured)) {
+            return;
+        }
+
         try {
             $this->recorder->recordRefusal($snapshot, $context, QuoteEscalationReason::NotConfigured, $problems);
         } catch (\Throwable $e) {

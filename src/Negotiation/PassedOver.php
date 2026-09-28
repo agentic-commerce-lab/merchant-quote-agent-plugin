@@ -6,7 +6,6 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
-use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
 
 /**
  * What a pass with nothing to answer does instead: acknowledge the buyer, or
@@ -19,10 +18,10 @@ use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
  * counter until it does (live quote 1056). It is still not an escalation --
  * #167 exists so that "thanks" never reaches a human.
  *
- * Silent `NothingToDo` is left for two cases. No comment was read at all (a
+ * Silent `NothingToDo` is left for one case: no comment was read at all (a
  * duplicate trigger, or a reply stranded in `in_review`, which is finished
- * here as before). Or the escalation still awaits a human: they own the
- * quote, the buyer already has the escalation notice, and moving it to
+ * here as before). An escalation still awaiting a human never gets here:
+ * MerchantHandover stands the pass down first, because moving the quote to
  * `replied` would make `SellerActPublisher::recordApproval()` read the
  * unreleased marker as a human standing behind terms nobody approved. Once a
  * merchant has sent an answer since the escalation, the terms are theirs and
@@ -43,10 +42,10 @@ final class PassedOver
         ?InterpretedAsk $ask,
         OfferRound $round,
     ): NegotiationPass {
-        if ($ask === null || PendingEscalation::awaitsAHuman($snapshot->lifecycle)) {
+        if ($ask === null) {
             $round->finishStrandedReply($gateway, $snapshot, $conversation);
 
-            return new NegotiationPass(NegotiationOutcome::NothingToDo, extractHash: $ask?->promptHash);
+            return new NegotiationPass(NegotiationOutcome::NothingToDo);
         }
 
         $round->acknowledge($gateway, $snapshot);

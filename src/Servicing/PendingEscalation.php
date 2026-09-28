@@ -39,8 +39,26 @@ final class PendingEscalation
      * anywhere else is still working on it, possibly with half-edited
      * prices, and moving it to `replied` for them would make
      * SellerActPublisher::recordApproval() receipt terms nobody sent. After a
-     * send the terms are the human's, and that receipt is true. A tie, and a
-     * marker written before the time was recorded, stay with the human.
+     * send the terms are the human's, and that receipt is true. A tie stays
+     * with the human.
+     *
+     * A marker written before its time was recorded cannot be ordered against
+     * the send, so ANY send releases it. The lifecycle carries only the last
+     * admin transition, so this has a known ceiling: a legacy quote a merchant
+     * sent before it escalated is released too. That is still better than the
+     * alternative. MerchantHandover stands the agent down while this is true,
+     * so an undated marker that never released would keep the quote silent
+     * for good.
+     *
+     * Known limit, the other way round: some sends never release it. A send
+     * into `replied` with no admin user behind it (an integration or ERP
+     * send) is invisible here, because MerchantActionReader only reads
+     * history rows with a `user_id`. And the marker's time is this host's
+     * clock while the send's is the DAL's `createdAt`, so skew between them
+     * can leave a real send at or before `escalatedAt` under `<=`. Either way
+     * the marker has to be cleared by hand. Widening the release to
+     * author-less transitions is not the fix: the agent's own writes are
+     * author-less too, and would release it.
      */
     public static function awaitsAHuman(QuoteLifecycle $lifecycle): bool
     {
@@ -55,6 +73,6 @@ final class PendingEscalation
             ? $lifecycle->lastAdminTransitionAt?->format('U.u')
             : null;
 
-        return !\is_string($escalatedAt) || $sentAt === null || $sentAt <= $escalatedAt;
+        return $sentAt === null || \is_string($escalatedAt) && $sentAt <= $escalatedAt;
     }
 }
