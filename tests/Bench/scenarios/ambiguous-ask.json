@@ -7,5 +7,5 @@
     "openingAsk": "Can you sharpen up the pricing on this a bit?",
     "persona": "scripted:vague",
     "maxRounds": 3,
-    "expectedBand": "clarify"
+    "expect": {"firstOutcome": ["clarified"]}
 }

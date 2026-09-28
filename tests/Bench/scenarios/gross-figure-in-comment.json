@@ -7,5 +7,5 @@
     "openingAsk": "We can do 90 a unit including tax and we'll place the order today.",
     "persona": "scripted:direct",
     "maxRounds": 2,
-    "expectedBand": "auto"
+    "expect": {"firstOutcome": ["offered", "countered"]}
 }

@@ -7,5 +7,6 @@
     "openingAsk": "Could you do 5% off?",
     "persona": "scripted:moderate",
     "maxRounds": 6,
-    "expectedBand": "auto"
+    "buyer": {"targetDiscountPercent": 5},
+    "expect": {"firstOutcome": ["offered"], "order": true}
 }

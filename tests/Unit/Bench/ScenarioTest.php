@@ -7,6 +7,12 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Bench;
 use MerchantQuoteAgentPlugin\Tests\Bench\Scenario;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * @mago-expect lint:too-many-methods
+ * Thirteen cases plus the shared `minimal()` builder, one per scenario-file
+ * rule (round cap, lines, expect block, loading). Each is a field the
+ * bench, the pipeline test and the UCP eval all read from the same files.
+ */
 final class ScenarioTest extends TestCase
 {
     public function testARoundCapIsMandatoryBecauseNothingElseBoundsTheLoop(): void
@@ -32,28 +38,47 @@ final class ScenarioTest extends TestCase
             'openingAsk' => 'Could you do 5% off?',
             'persona' => 'scripted:moderate',
             'maxRounds' => 6,
-            'expectedBand' => 'auto',
+            'expect' => ['firstOutcome' => ['offered'], 'order' => true],
         ]);
 
-        self::assertSame('plain-percentage', $scenario->id);
+        self::assertSame(['offered'], $scenario->expect->firstOutcome);
         self::assertSame(6, $scenario->maxRounds);
-        self::assertSame('auto', $scenario->expectedBand);
-        self::assertSame(3, $scenario->lines[0]['quantity']);
     }
 
-    public function testAnAbsentExpectedBandIsNullRatherThanAGuess(): void
+    public function testAnAbsentExpectBlockAssertsNothing(): void
     {
-        // Not every scenario asserts an outcome; some exist to observe one.
-        $scenario = Scenario::fromArray([
-            'id' => 'plain-percentage',
-            'description' => 'A five percent ask inside the band.',
-            'lines' => [['productRef' => 'any-purchasable', 'quantity' => 3]],
-            'openingAsk' => 'Could you do 5% off?',
-            'persona' => 'scripted:moderate',
-            'maxRounds' => 4,
-        ]);
+        self::assertSame([], self::minimal([])->expect->firstOutcome);
+    }
 
-        self::assertNull($scenario->expectedBand);
+    public function testExpectedBandIsRefusedWithAPointerToItsReplacement(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/expect\.firstOutcome/');
+
+        self::minimal(['expectedBand' => 'auto']);
+    }
+
+    public function testAFirstOutcomeOutsideTheEnumIsRefused(): void
+    {
+        // `replied` sits in old decision rows; no NegotiationOutcome emits it.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/replied.*NegotiationOutcome/');
+
+        self::minimal(['expect' => ['firstOutcome' => ['replied']]]);
+    }
+
+    public function testEveryShippedScenarioDeclaresItsFirstOutcome(): void
+    {
+        foreach (Scenario::all(__DIR__ . '/../../Bench/scenarios') as $scenario) {
+            self::assertNotSame(
+                [],
+                $scenario->expect->firstOutcome,
+                sprintf(
+                    '%s: a shipped scenario must say what round 1 should record -- the eval checks it (H1).',
+                    $scenario->id,
+                ),
+            );
+        }
     }
 
     public function testARoundCapOfZeroIsRefused(): void
@@ -194,5 +219,19 @@ final class ScenarioTest extends TestCase
         ]);
 
         self::assertNull($scenario->lines[0]['requestedUnitPrice']);
+    }
+
+    /** @param array<string, mixed> $extra */
+    private static function minimal(array $extra): Scenario
+    {
+        return Scenario::fromArray([
+            'id' => 'plain-percentage',
+            'description' => 'A five percent ask inside the band.',
+            'lines' => [['productRef' => 'any-purchasable', 'quantity' => 3]],
+            'openingAsk' => 'Could you do 5% off?',
+            'persona' => 'scripted:moderate',
+            'maxRounds' => 2,
+            ...$extra,
+        ]);
     }
 }

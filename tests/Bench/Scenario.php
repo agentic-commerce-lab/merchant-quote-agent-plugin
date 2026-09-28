@@ -26,6 +26,9 @@ namespace MerchantQuoteAgentPlugin\Tests\Bench;
  * for the unit it actually lands in on the quote. `structured-only` exists
  * to carry one -- see BenchNegotiation, which maps it onto requestQuote()'s
  * `requested_unit_price` only when present, never as an explicit null.
+ *
+ * `expect` and the other eval fields are documented in the eval spec; PHP
+ * reads only `expect.firstOutcome`.
  */
 final readonly class Scenario
 {
@@ -42,7 +45,7 @@ final readonly class Scenario
 
     public int $maxRounds;
 
-    public ?string $expectedBand;
+    public ScenarioExpect $expect;
 
     /**
      * @param array{
@@ -52,7 +55,7 @@ final readonly class Scenario
      *     openingAsk: string,
      *     persona: string,
      *     maxRounds: int,
-     *     expectedBand: ?string,
+     *     expect: ScenarioExpect,
      * } $fields
      */
     private function __construct(array $fields)
@@ -63,7 +66,7 @@ final readonly class Scenario
         $this->openingAsk = $fields['openingAsk'];
         $this->persona = $fields['persona'];
         $this->maxRounds = $fields['maxRounds'];
-        $this->expectedBand = $fields['expectedBand'];
+        $this->expect = $fields['expect'];
     }
 
     /**
@@ -78,7 +81,7 @@ final readonly class Scenario
             'openingAsk' => ScenarioFields::string($data, 'openingAsk', allowEmpty: true),
             'persona' => ScenarioFields::string($data, 'persona'),
             'maxRounds' => ScenarioFields::maxRounds($data),
-            'expectedBand' => ScenarioFields::optionalString($data, 'expectedBand'),
+            'expect' => ScenarioExpect::from($data),
         ]);
     }
 

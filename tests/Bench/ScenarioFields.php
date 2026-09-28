@@ -34,14 +34,6 @@ final class ScenarioFields
         return $value;
     }
 
-    /** @param array<string, mixed> $data */
-    public static function optionalString(array $data, string $key): ?string
-    {
-        $value = $data[$key] ?? null;
-
-        return $value === null ? null : self::string($data, $key);
-    }
-
     /**
      * `maxRounds` has no default: nothing else bounds the negotiation loop,
      * so an omitted or zero cap would let a non-converging run go forever.
