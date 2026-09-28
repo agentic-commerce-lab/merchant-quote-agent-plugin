@@ -83,7 +83,8 @@ final class BaselineExtension
         $storedSum = 0.0;
 
         foreach ($stored as $line) {
-            $storedSum += $line->unitPriceNet * $line->quantity;
+            // Positive lines only, as NetFactor::of() sums them.
+            $storedSum += max(0.0, $line->unitPriceNet * $line->quantity);
         }
 
         // Mirrors NetFactor's own 1.0 fallback: with no usable stored ratio

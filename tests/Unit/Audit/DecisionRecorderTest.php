@@ -12,9 +12,11 @@ use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPass;
 use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
+use MerchantQuoteAgentPlugin\Policy\Data\NegotiationPolicy;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteAutoReplyDetails;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\Rounding;
 use MerchantQuoteAgentPlugin\Policy\Data\RoundingMode;
 use MerchantQuoteAgentPlugin\Policy\Data\RoundingSkip;
@@ -336,6 +338,48 @@ final class DecisionRecorderTest extends TestCase
         self::assertTrue(Uuid::isValid($id));
         self::assertSame($id, $writer->drafts[0]->id);
         self::assertNull($recorder->decisionId(), 'finish() closes the pass; no id may outlive it.');
+    }
+
+    /**
+     * The reply states the gross total (ReplyComposer), so the row has to
+     * carry one too, read off the same two snapshots as the net figures. An
+     * export with only net made every taxed reply look like a mismatch.
+     */
+    public function testTheGrossTotalsComeFromTheSameSnapshotsAsTheNet(): void
+    {
+        $writer = new FakeDecisionWriter();
+        $recorder = new DecisionRecorder($writer);
+
+        $recorder->begin(NegotiationFixture::grossSnapshot(), self::context()); // 800 net, 1000 gross
+        $recorder->recordApplied(new AppliedOffer(true, [], NegotiationFixture::snapshot(totalNet: 950.0), 800.0), []);
+        $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+        $draft = $writer->drafts[0];
+        self::assertSame(800.0, $draft->totalNetBefore);
+        self::assertSame(1000.0, $draft->totalGrossBefore);
+        self::assertSame(950.0, $draft->totalGrossAfter);
+    }
+
+    public function testTheVerdictNamesThePolicyThatBoundIt(): void
+    {
+        $hash = static function (float $maxDiscountPercent): mixed {
+            $writer = new FakeDecisionWriter();
+            $recorder = new DecisionRecorder($writer);
+            $recorder->begin(NegotiationFixture::snapshot(), self::context());
+            $recorder->recordDecision(
+                self::grantDecision(),
+                $maxDiscountPercent,
+                policy: new NegotiationPolicy(new QuoteLimits($maxDiscountPercent, validityDays: 14)),
+            );
+            $recorder->finish(new NegotiationPass(NegotiationOutcome::Offered));
+
+            return $writer->drafts[0]->trace[1]->meta['policyHash'];
+        };
+
+        self::assertIsString($hash(10.0));
+        self::assertMatchesRegularExpression('/^[0-9a-f]{16}$/', $hash(10.0));
+        self::assertSame($hash(10.0), $hash(10.0), 'The same settings must give the same hash.');
+        self::assertNotSame($hash(10.0), $hash(12.0), 'A changed limit must change the hash.');
     }
 
     private static function context(): PassContext

@@ -377,8 +377,10 @@ link on purpose.
 - When the agent acted, what triggered it, and when the quote was last changed.
 - What the customer asked for, as the agent understood it: prices, quantities,
   delivery and payment terms.
-- What your rules allowed, the currency, the totals before and after, and the
-  discount granted.
+- What your rules allowed, the currency, the totals before and after (net, and
+  gross as the customer saw it), and the discount granted. Each verdict also
+  carries a short code for the limits it was decided under: the same code means
+  the same settings, and the settings themselves do not leave.
 - What the agent decided and why, whether its offer passed the checks, and which
   changes it made to the quote.
 - Which prompt version ran, the model name and the host it was called on, token

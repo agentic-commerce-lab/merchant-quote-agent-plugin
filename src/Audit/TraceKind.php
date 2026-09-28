@@ -62,6 +62,7 @@ enum TraceKind: string
                 'validityDays',
                 'counteredRequestPercent',
                 'escalationReasons',
+                'policyHash',
             ],
             self::QuoteBefore, self::QuoteAfter => ['lineCount'],
             self::Skip => ['source', 'reason', 'trigger', 'attempt'],

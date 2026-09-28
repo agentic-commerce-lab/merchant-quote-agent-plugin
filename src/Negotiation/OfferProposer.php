@@ -191,15 +191,6 @@ final readonly class OfferProposer
         NegotiationContext $context,
     ): string {
         $conversation = $context->conversation;
-        $lines = array_map(static fn(PolicyQuoteLineSnapshot $l): string => sprintf(
-            '%s | %s | %s | %d | %.2f',
-            $l->lineItemId(),
-            $l->identity->productId ?? '',
-            $l->label() ?? '',
-            $l->quantity,
-            $l->unitPriceNet,
-        ), $snapshot->lines);
-
         // Everything above and below prices in net, and the buyer's comment
         // does not: on a gross quote the figure in their sentence carries the
         // tax. Naming their target in the prompt's own space is what stops the
@@ -237,12 +228,11 @@ final readonly class OfferProposer
             );
 
         return sprintf(
-            "Quote total (net): %.2f %s\n%s\nLine items (lineItemId | productId | label | quantity | unit price net):\n%s\n\nYOUR AUTHORITY:\n%s\n\n"
-            . "%sBuyer's latest comment:\n%s",
+            "Quote total (net): %.2f %s\n%s\n%s\n\nYOUR AUTHORITY:\n%s\n\n" . "%sBuyer's latest comment:\n%s",
             $snapshot->totalNet,
             $snapshot->currencyIso,
             $buyerTarget,
-            implode("\n", $lines),
+            NegotiateLineBlock::of($snapshot->lines),
             AuthorityBrief::of($settings->policy, $decision->autoReply?->counteredRequestPercent),
             $earlierRounds,
             $conversation->newestBuyerText(),

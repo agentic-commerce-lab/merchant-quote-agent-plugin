@@ -240,19 +240,15 @@ final class NegotiationPipelineTest extends TestCase
         self::assertSame([QuoteTransition::Sent], $harness->gateway->transitions);
     }
 
-    public function testAnEscalatedQuoteStaysSilent(): void
+    public function testAnEscalatedQuoteStandsDownEvenOnARealPriceAsk(): void
     {
-        // A human owns this quote and the buyer already has the escalation
-        // notice. Acknowledging would contradict it -- and moving the quote to
-        // replied makes SellerActPublisher::recordApproval() read the
-        // unreleased marker as a human standing behind terms nobody approved.
-        $harness = PipelineHarness::with(['{}']);
-        $snapshot = NegotiationFixture::withCustomFields(
-            NegotiationFixture::snapshot(state: 'change_requested', comments: [
-                NegotiationFixture::buyerComment('ok, thanks', '2026-09-23 09:00:00'),
-            ]),
-            [QuoteEscalator::MARKER_KEY => 'discount_limit_exceeded'],
-        );
+        // A human owns this quote until they send it. Running the pipeline
+        // again escalated the same quote two and three times in PM testing,
+        // and under a different reason told the buyer a second time.
+        $harness = PipelineHarness::with(self::fivePercentOffer());
+        $snapshot = self::escalated(sentAt: null, comments: [
+            NegotiationFixture::buyerComment('5% please', '2026-09-23 10:00:00'),
+        ]);
 
         $outcome = $harness->pipeline->service(
             $snapshot,
@@ -261,15 +257,27 @@ final class NegotiationPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
-        self::assertSame([], $harness->gateway->comments);
-        self::assertSame([], $harness->gateway->transitions);
-        $context = $harness->logger->contextOf('Nothing to answer on this quote');
-        self::assertTrue($context['commentRead'] ?? null);
-        self::assertFalse(
-            $context['acknowledged'] ?? null,
-            'An escalated quote is left to the human, and the log must say so.',
+        self::assertSame(NegotiationOutcome::HandedOver, $outcome);
+        self::assertSame(0, $harness->spy->calls, 'An escalation awaiting a human must not pay for a model call.');
+        self::assertSame([], $harness->gateway->calls, 'Standing down writes nothing at all.');
+    }
+
+    public function testAnEscalatedQuoteAHumanHasSentIsNegotiatedAgain(): void
+    {
+        $harness = PipelineHarness::with(self::fivePercentOffer());
+        $snapshot = self::escalated(sentAt: '2026-09-23 10:00:00', comments: [
+            NegotiationFixture::buyerComment('5% please', '2026-09-23 11:00:00'),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
         );
+
+        self::assertSame(NegotiationOutcome::Offered, $outcome);
+        self::assertSame(3, $harness->spy->calls);
     }
 
     public function testAnEscalatedQuoteAHumanHasAnsweredIsAcknowledged(): void
@@ -543,5 +551,43 @@ final class NegotiationPipelineTest extends TestCase
         );
 
         self::assertSame('handed_over', $harness->writer->drafts[0]->outcome);
+    }
+
+    /** @return list<string> */
+    private static function fivePercentOffer(): array
+    {
+        return [
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"5% off, valid until 2026-09-11.","terms":{"discountPercent":5}}',
+            PipelineHarness::rewordedReply(),
+        ];
+    }
+
+    /**
+     * Escalated at 2026-09-23 09:00, and sent by a merchant since when $sentAt is given.
+     *
+     * @param list<QuoteComment> $comments
+     */
+    private static function escalated(?string $sentAt, array $comments): QuoteSnapshot
+    {
+        $quote = NegotiationFixture::snapshot(state: 'change_requested', comments: $comments);
+
+        return new QuoteSnapshot(
+            identity: $quote->identity,
+            revision: $quote->revision,
+            totals: $quote->totals,
+            lifecycle: new QuoteLifecycle(
+                stateTechnicalName: 'change_requested',
+                customFields: [
+                    QuoteEscalator::MARKER_KEY => QuoteEscalationReason::DiscountLimitExceeded->value,
+                    PendingEscalation::ESCALATED_AT_KEY => (new \DateTimeImmutable('2026-09-23 09:00:00'))->format(
+                        'U.u',
+                    ),
+                ],
+                lastAdminTransitionAt: $sentAt === null ? null : new \DateTimeImmutable($sentAt),
+                lastAdminTransitionTo: $sentAt === null ? null : 'replied',
+            ),
+            content: $quote->content,
+        );
     }
 }

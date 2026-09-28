@@ -121,6 +121,7 @@ final class TraceMetaCoverageTest extends TestCase
                 QuoteDecision::autoReply(new QuoteAutoReplyDetails(5.0, false, [], 14)),
             ),
             10.0,
+            policy: NegotiationFixture::settings()->policy,
         ); // policy_verdict
         $recorder->recordRounding(
             new Rounding(RoundingMode::QuoteTotal, 10.0, 1356.47, 1360.0, RoundingSkip::StandingPrice),

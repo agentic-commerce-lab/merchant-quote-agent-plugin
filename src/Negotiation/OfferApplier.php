@@ -30,6 +30,11 @@ use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
  * Every write is ABSOLUTE — a unit price, a discount percentage, an expiry
  * date, never a delta — so re-running the whole pass after a crash produces
  * the same quote rather than compounding a second discount onto the first.
+ * The price of that: a retry after the write landed but before the reply went
+ * out (ReplyComposer threw, Messenger redelivered) re-applies the same write,
+ * moves nothing, and PostWriteOutcome escalates it as no_further_concession.
+ * That fails safe — the human it reaches sees a quote already carrying the
+ * offer, and the buyer is never told the same concession twice.
  *
  * A verification failure escalates and LEAVES THE CHANGES IN PLACE. Rolling
  * back is itself a fallible write with no transaction around it, and a failed
