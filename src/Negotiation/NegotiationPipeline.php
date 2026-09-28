@@ -263,6 +263,7 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             $settings->policy->price->maxDiscountPercent,
             $settings->strategyVersionId,
             $settings->strategyAssignmentSource,
+            $settings->policy,
         );
 
         if ($decision->overall === Band::Escalate) {
