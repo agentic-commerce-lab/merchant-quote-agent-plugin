@@ -150,4 +150,93 @@ assert.deepEqual(plan.restore, [
     { scope: 'global', key: 'MerchantQuoteAgentPlugin.config.minMarginPercent', value: null },
 ]);
 
+import { negotiate, pool } from './negotiate.mjs';
+
+/**
+ * A fake shop: each POST that should trigger a pass appends the next scripted
+ * decision; GET returns the quote with the net total that decision wrote.
+ */
+function fakeShop(passes, { refuseCounterUnlessReplied = true } = {}) {
+    const decisions = [];
+    const posted = [];
+    let state = 'open';
+    let net = 1000;
+    const pass = () => {
+        const next = passes[decisions.length];
+        if (!next) return;
+        decisions.push({ id: `d${decisions.length + 1}`, createdAt: String(decisions.length), totalNetBefore: net, ...next });
+        if (next.totalNetAfter != null) net = next.totalNetAfter;
+        state = next.outcome === 'offered' || next.outcome === 'countered' || next.outcome === 'acknowledged' ? 'replied' : 'open';
+    };
+    const quote = () => ({ id: 'q1', state, totals: { net, gross: net * 1.19, tax_status: 'gross' }, line_items: [{ unit_price: 119 }] });
+    const ucp = {
+        async request(method, path, { json } = {}) {
+            posted.push({ method, path, json });
+            if (method === 'POST' && path === '/ucp/quotes') { pass(); return { status: 201, body: quote() }; }
+            if (method === 'GET') return { status: 200, body: quote() };
+            if (path.endsWith('/counter')) {
+                if (refuseCounterUnlessReplied && state !== 'replied') return { status: 400, body: { error: 'not replied' } };
+                pass();
+                return { status: 200, body: quote() };
+            }
+            if (path.endsWith('/accept')) { state = 'accepted'; return { status: 200, body: { ...quote(), order: { id: 'o1' } } }; }
+            if (path.endsWith('/decline')) { state = 'declined'; return { status: 200, body: quote() }; }
+            return { status: 404, body: {} };
+        },
+    };
+    const admin = { decisions: async () => decisions, traces: async () => [] };
+    return { ucp, admin, posted };
+}
+const policy0 = { maxDiscountPercent: 15, counterOfferMaxPercent: 25, minMarginPercent: null, roundingMode: 'off', roundingStep: null };
+const run = (scenario, shop) => negotiate({ ...shop, scenario: validateScenario(scenario), rep: 1, runId: 'r', policy: policy0, purchasePricesNet: {}, unitPrice: 119, productId: 'p1', timeouts: { pass: 1, standDown: 0.1, poll: 0.01 }, sleep: () => Promise.resolve() });
+
+// accept: 5% granted, buyer targets 5% -> accept -> order
+const accepted = await run(base({ buyer: { targetDiscountPercent: 5 } }), fakeShop([{ outcome: 'offered', totalNetAfter: 950 }]));
+assert.deepEqual(accepted.map((r) => [r.round, r.outcome, r.terminal, r.orderId]), [[1, 'offered', 'accept', 'o1']]);
+
+// counter then walk at maxRounds, never a counter past the last round
+const walkShop = fakeShop([{ outcome: 'offered', totalNetAfter: 980 }, { outcome: 'offered', totalNetAfter: 970 }]);
+const walked = await run(base({ maxRounds: 2 }), walkShop);
+assert.equal(walked.length, 2);
+assert.equal(walkShop.posted.filter((p) => p.path.endsWith('/counter')).length, 1);
+assert.ok(walkShop.posted.some((p) => p.path.endsWith('/decline')), 'an unsettled quote is declined at the end');
+
+// placeholders render against the product's unit price, inside the create request
+const rendered = fakeShop([{ outcome: 'offered', totalNetAfter: 950 }]);
+await run(base({ openingAsk: '{unit*0.85} including tax', buyer: { targetDiscountPercent: 5 } }), rendered);
+assert.equal(rendered.posted[0].json.comment, '101.15 including tax');
+assert.deepEqual(rendered.posted[0].json.line_items, [{ product_id: 'p1', quantity: 10 }]);
+// an empty openingAsk sends no comment at all (structured-only)
+const silentAsk = fakeShop([{ outcome: 'escalated', totalNetAfter: null }]);
+await run(base({ openingAsk: '' }), silentAsk);
+assert.equal('comment' in silentAsk.posted[0].json, false);
+
+// escalation ends the loop, and the quote is declined
+const escalatedShop = fakeShop([{ outcome: 'escalated', totalNetAfter: null }]);
+const escalated = await run(base(), escalatedShop);
+assert.deepEqual(escalated.map((r) => r.outcome), ['escalated']);
+assert.ok(escalatedShop.posted.some((p) => p.path.endsWith('/decline')));
+
+// continueAfterEscalation, refused follow-up: recorded, no second row
+const refused = await run(base({ counters: ['Any news?'], continueAfterEscalation: true }), fakeShop([{ outcome: 'escalated', totalNetAfter: null }]));
+assert.equal(refused.length, 1);
+assert.equal(refused[0].followUpRefused, true);
+
+// continueAfterEscalation, accepted follow-up: the next row is what the shop recorded
+const handedOver = await run(base({ counters: ['Any news?'], continueAfterEscalation: true }), fakeShop([{ outcome: 'escalated', totalNetAfter: null }, { outcome: 'handed_over', totalNetAfter: null }], { refuseCounterUnlessReplied: false }));
+assert.deepEqual(handedOver.map((r) => r.outcome), ['escalated', 'handed_over']);
+
+// a pass that never comes is a failure row, not a hang
+const timedOut = await run(base(), fakeShop([]));
+assert.equal(timedOut.length, 1);
+assert.equal(timedOut[0].cellFailure, true);
+assert.equal(timedOut[0].failureClass, 'PassTimeout');
+
+// pool keeps at most `limit` workers in flight and keeps order
+let inFlight = 0;
+let peak = 0;
+const pooled = await pool([1, 2, 3, 4, 5], 2, async (n) => { inFlight++; peak = Math.max(peak, inFlight); await new Promise((r) => setTimeout(r, 5)); inFlight--; return n * 2; });
+assert.deepEqual(pooled, [2, 4, 6, 8, 10]);
+assert.equal(peak, 2);
+
 console.log('buyer: ok');

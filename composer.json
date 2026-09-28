@@ -56,6 +56,7 @@
         }
     },
     "config": {
+        "process-timeout": 0,
         "sort-packages": true,
         "platform": {
             "php": "8.3.32"
@@ -95,7 +96,9 @@
         ],
         "quality:deps": "composer outdated --direct",
         "quality:maintainability": "phpcca analyse src",
-        "quality:hotspots": "phpcca churn src"
+        "quality:hotspots": "phpcca churn src",
+        "eval:setup": "node scripts/eval/buyer.mjs setup",
+        "eval:restore": "node scripts/eval/buyer.mjs restore"
     },
     "extra": {
         "shopware-plugin-class": "MerchantQuoteAgentPlugin\\MerchantQuoteAgentPlugin",
