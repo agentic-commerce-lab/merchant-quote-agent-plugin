@@ -120,4 +120,48 @@ final class StandingConcessionTest extends TestCase
         self::assertFalse($applied->written);
         self::assertNotContains('updateQuote', $gateway->calls);
     }
+
+    /**
+     * Quote 1187 on the live shop: one gross line, 10 × 335.57 at 7%. Its net
+     * total is 3355.70 − 219.53 = 3136.17, which is `amountNet` to the cent,
+     * but the cent-rounded unit price is 313.62, and 313.62 × 10 = 3136.20.
+     * Summing units instead of line totals refused every gross quote whose
+     * rounding drift passed a cent, before the write.
+     */
+    public function testAGrossLineWhoseUnitRoundingDriftsIsNotReadAsAHiddenDiscount(): void
+    {
+        $snapshot = NegotiationFixture::snapshot();
+        $live = NegotiationFixture::withCustomFields(
+            new QuoteSnapshot(
+                identity: $snapshot->identity,
+                revision: $snapshot->revision,
+                totals: new QuoteTotals(totalNet: 3136.17, totalGross: 3355.70),
+                lifecycle: $snapshot->lifecycle,
+                content: new QuoteContent(lines: [new QuoteLineSnapshot(
+                    new QuoteLineIdentity('a', 'a'),
+                    10,
+                    313.62,
+                    3136.17,
+                )], comments: []),
+            ),
+            [
+                QuoteBaseline::KEY => [
+                    'totalNet' => 3136.17,
+                    'lines' => [['lineItemId' => 'a', 'unitPriceNet' => 313.62, 'quantity' => 10]],
+                ],
+            ],
+        );
+        $gateway = new FakeQuoteGateway([$live, $live]);
+
+        $applied = self::applier()
+            ->apply(
+                $gateway,
+                $live,
+                NegotiationFixture::settings(maxDiscountPercent: 15.0),
+                new ProposedOffer(orderTotalNet: 3136.17, price: new OfferedPrice(discountPercent: 6.0)),
+            );
+
+        self::assertTrue($applied->written, implode('; ', $applied->violations));
+        self::assertContains('updateQuote', $gateway->calls);
+    }
 }
