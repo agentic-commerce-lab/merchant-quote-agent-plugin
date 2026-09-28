@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Config;
 use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
+use MerchantQuoteAgentPlugin\Policy\Data\RoundingMode;
 use MerchantQuoteAgentPlugin\Strategy\ResolvedStrategy;
 use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
 use MerchantQuoteAgentPlugin\Strategy\UnknownStrategy;
@@ -208,5 +209,13 @@ final class QuoteAgentSettingsReaderTest extends TestCase
 
         self::assertNotNull($settings);
         self::assertSame(12.5, $settings->policy->price->minMarginPercent);
+    }
+
+    public function testTheRoundingSettingsAreReadFromSystemConfig(): void
+    {
+        $settings = $this->reader(['roundingMode' => 'discount_percent', 'roundingStep' => 0.5])->forSalesChannel(null);
+
+        self::assertNotNull($settings);
+        self::assertSame(0.5, $settings->policy->price->stepFor(RoundingMode::DiscountPercent));
     }
 }

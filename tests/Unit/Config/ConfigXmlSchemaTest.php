@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Config;
 
 use DOMDocument;
+use MerchantQuoteAgentPlugin\Policy\Data\RoundingMode;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -137,5 +138,27 @@ final class ConfigXmlSchemaTest extends TestCase
         $nodes = (new \DOMXPath($document))->query('//input-field[name="negotiationStrategy"]');
         self::assertNotNull($nodes);
         self::assertSame(0, $nodes->count());
+    }
+
+    /** The admin's options and RoundingMode::from() must agree, or a saved option takes the channel out of service. */
+    public function testTheRoundingModeOptionsAreTheEnumsCasesAndDefaultToOff(): void
+    {
+        $document = new DOMDocument();
+        self::assertTrue($document->load(__DIR__ . '/../../../src/Resources/config/config.xml'));
+
+        $xpath = new \DOMXPath($document);
+        $field = $xpath->query('//input-field[name="roundingMode"]')?->item(0);
+        self::assertInstanceOf(\DOMElement::class, $field);
+        self::assertSame('single-select', $field->getAttribute('type'));
+        self::assertSame('off', $xpath->query('defaultValue', $field)?->item(0)?->textContent);
+
+        $nodes = $xpath->query('options/option/id', $field);
+        self::assertInstanceOf(\DOMNodeList::class, $nodes);
+        $ids = [];
+        foreach ($nodes as $node) {
+            $ids[] = $node->textContent;
+        }
+
+        self::assertSame(array_map(static fn(RoundingMode $mode): string => $mode->value, RoundingMode::cases()), $ids);
     }
 }

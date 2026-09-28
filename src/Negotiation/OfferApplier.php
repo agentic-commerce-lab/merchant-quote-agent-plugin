@@ -20,6 +20,7 @@ use MerchantQuoteAgentPlugin\Policy\Epsilon;
 use MerchantQuoteAgentPlugin\Policy\MarginFloorClamp;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use MerchantQuoteAgentPlugin\Policy\QuoteWidePercent;
+use MerchantQuoteAgentPlugin\Policy\RoundingStep;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
 
@@ -56,6 +57,7 @@ final readonly class OfferApplier
         QuoteSnapshot $snapshot,
         QuoteAgentSettings $settings,
         ProposedOffer $offer,
+        ?float $askedDiscountPercent = null,
     ): AppliedOffer {
         $quoteId = $snapshot->identity->quoteId;
         $limits = $settings->policy->price;
@@ -91,6 +93,19 @@ final readonly class OfferApplier
             $reference,
             QuoteWidePercent::of($offer, $live->lines, $anchored->lines),
         );
+
+        // Rounding control, quote_total mode (spec 2026-09-28): a quote-wide
+        // write becomes an absolute discount that lands the buyer-facing
+        // total on the merchant's step. Before rejected(), so the prediction
+        // below measures the write that will actually be made.
+        [$write, $rounding] = QuoteTotalRounding::of(
+            $write,
+            $reference,
+            $live,
+            $limits,
+            RoundingStep::isBuyersFigure($offer->price->discountPercent, $askedDiscountPercent),
+        );
+        $this->recorder->recordRounding($rounding);
 
         // Design note 2026-09-28: the same verification, on the write's
         // PREDICTED result, before anything lands. A failure here writes
@@ -161,6 +176,18 @@ final readonly class OfferApplier
                 $reference->totals->totalNet,
                 $after->totals->totalNet,
             );
+        }
+
+        // Rule 5: a round target the write missed is not accepted silently.
+        // The checks above still decide the pass; this says the absolute
+        // arithmetic and SwagCommercial's recalculation disagreed (a shipping
+        // cost that moved with the cart value, say). The target is on the
+        // rounding trace event.
+        if (QuoteTotalRounding::missed($rounding, $after->totals->buyerFacingTotal())) {
+            $this->logger->warning('The rounded quote total did not land on its round figure.', [
+                'quoteId' => $quoteId,
+                'landed' => $after->totals->buyerFacingTotal(),
+            ]);
         }
 
         $applied = new AppliedOffer($violations === [], $violations, $after, $reference->totals->totalNet);
