@@ -41,4 +41,48 @@ const retreat = base({ buyer: { targetDiscountPercent: 50 }, counters: ['8% woul
 assert.deepEqual(buyerMove(retreat, { openingNet: 1000, currentNet: 880, round: 1 }), { kind: 'counter', comment: '8% would work.' });
 assert.deepEqual(buyerMove(retreat, { openingNet: 1000, currentNet: 880, round: 2 }), { kind: 'walk' });
 
+import { createPublicKey, verify } from 'node:crypto';
+import { mkdtempSync, readFileSync as readFile, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as joinPath } from 'node:path';
+import { canonicalUri, loadOrCreateKey, profileDocument, signHeaders, signatureBase, tokenStore } from './ucp.mjs';
+
+// the vectors from ucp-quote-agent.py --selftest
+assert.equal(canonicalUri('https://x/a?b=2&a=1'), 'https://x/a?a=1&b=2');
+assert.equal(canonicalUri('https://x/a?s=a:b/c'), 'https://x/a?s=a%3Ab%2Fc');
+assert.equal(canonicalUri('https://x/a?s=x y'), 'https://x/a?s=x%20y');
+assert.equal(canonicalUri('https://x/a?s=-._~'), 'https://x/a?s=-._~');
+assert.equal(canonicalUri('https://x/ucp/quotes'), 'https://x/ucp/quotes');
+assert.equal(canonicalUri('https://x/a#frag'), 'https://x/a');
+assert.deepEqual(signatureBase('POST', 'https://x/ucp/quotes', 'sha-256=:abc:', '("@method");created=1').split('\n'), [
+    '"@method": POST', '"@target-uri": https://x/ucp/quotes', '"content-digest": sha-256=:abc:', '"@signature-params": ("@method");created=1',
+]);
+
+// a signature the port produces verifies as DER (the PHP SDK's openssl_verify)
+const keyDir = mkdtempSync(joinPath(tmpdir(), 'eval-key-'));
+const { privateKey, jwk } = loadOrCreateKey(joinPath(keyDir, 'key.pem'));
+assert.equal(statSync(joinPath(keyDir, 'key.pem')).mode & 0o777, 0o600);
+assert.equal(loadOrCreateKey(joinPath(keyDir, 'key.pem')).jwk.x, jwk.x, 'the key is created once and reused');
+const headers = signHeaders(privateKey, 'POST', 'https://x/ucp/quotes', Buffer.from('{}'), 1_700_000_000_000);
+const params = headers['Signature-Input'].slice('sig='.length);
+assert.match(params, /created=1700000000;expires=1700000120;keyid="eval-buyer";alg="ES256"/);
+const der = Buffer.from(headers.Signature.slice('sig=:'.length, -1), 'base64');
+assert.ok(verify('sha256', Buffer.from(signatureBase('POST', 'https://x/ucp/quotes', headers['Content-Digest'], params)), createPublicKey(privateKey), der));
+assert.deepEqual(Object.keys(profileDocument({ q: {} }, jwk)).sort(), ['signing_keys', 'ucp']);
+
+// Review Focus 5 -- a rotated refresh token is on disk before the access token is used
+const tokenFile = joinPath(keyDir, 'token.json');
+const calls = [];
+const fakeFetch = async (url, init) => {
+    calls.push({ url, body: String(init.body) });
+    return new Response(JSON.stringify({ access_token: 'a2', refresh_token: 'r2', expires_in: 3600 }), { status: 200 });
+};
+const store = tokenStore({ file: tokenFile, tokenEndpoint: 'https://shop/token', profileUri: 'https://p/.well-known/ucp', privateKey, fetchImpl: fakeFetch });
+store.save({ access_token: 'a1', refresh_token: 'r1', expires_in: -1 });
+assert.equal(await store.accessToken(), 'a2');
+assert.match(calls[0].body, /grant_type=refresh_token/);
+assert.match(calls[0].body, /refresh_token=r1/);
+assert.equal(JSON.parse(readFile(tokenFile, 'utf8')).refreshToken, 'r2');
+assert.equal(statSync(tokenFile).mode & 0o777, 0o600);
+
 console.log('buyer: ok');
