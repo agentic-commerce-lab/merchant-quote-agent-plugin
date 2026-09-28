@@ -24,22 +24,22 @@ final class PluginConfigTest extends IntegrationTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        self::clearConfigCaches();
+    }
 
-        // DatabaseTransactionBehaviour rolls the database back between
-        // tests, but config reads go through two caches neither of which
-        // knows that happened: MemoizedSystemConfigStore (an in-process
-        // array) and, behind it, CachedSystemConfigLoader (a persisted pool).
-        // A set() in one test primes both with post-write values that
-        // survive the rollback and leak into a later test that only reads.
-        // Clearing both is what makes every test see what is actually
-        // persisted, regardless of what ran before it.
-        $store = static::getContainer()->get(MemoizedSystemConfigStore::class);
-        self::assertInstanceOf(MemoizedSystemConfigStore::class, $store);
-        $store->reset();
-
-        $cacheInvalidator = static::getContainer()->get(CacheInvalidator::class);
-        self::assertInstanceOf(CacheInvalidator::class, $cacheInvalidator);
-        $cacheInvalidator->invalidate([CachedSystemConfigLoader::CACHE_TAG], true);
+    /**
+     * Once more on the way out: testTheRoundingModeDefaultIsPersistedAsItsEnumString
+     * saves every config.xml default, and the caches refill from those
+     * uncommitted values. The rollback restores the rows but not the caches,
+     * so without this every later test class in the run would read the
+     * install defaults (agent disabled, 0% maximum) instead of the shop's
+     * real configuration.
+     */
+    #[\Override]
+    protected function tearDown(): void
+    {
+        self::clearConfigCaches();
+        parent::tearDown();
     }
 
     /**
@@ -172,6 +172,26 @@ final class PluginConfigTest extends IntegrationTestCase
         $config->savePluginConfiguration(static::getKernel()->getBundle('MerchantQuoteAgentPlugin'), true);
 
         self::assertSame('off', $config->get(QuoteAgentSettingsReader::DOMAIN . 'roundingMode'));
+    }
+
+    /**
+     * DatabaseTransactionBehaviour rolls the database back between tests,
+     * but config reads go through two caches neither of which knows that
+     * happened: MemoizedSystemConfigStore (an in-process array) and, behind
+     * it, CachedSystemConfigLoader (a persisted pool). A write in one test
+     * primes both with post-write values that survive the rollback and leak
+     * into a later test that only reads. Clearing both is what makes every
+     * test see what is actually persisted, regardless of what ran before it.
+     */
+    private static function clearConfigCaches(): void
+    {
+        $store = static::getContainer()->get(MemoizedSystemConfigStore::class);
+        self::assertInstanceOf(MemoizedSystemConfigStore::class, $store);
+        $store->reset();
+
+        $cacheInvalidator = static::getContainer()->get(CacheInvalidator::class);
+        self::assertInstanceOf(CacheInvalidator::class, $cacheInvalidator);
+        $cacheInvalidator->invalidate([CachedSystemConfigLoader::CACHE_TAG], true);
     }
 
     private static function systemConfig(): SystemConfigService
