@@ -63,6 +63,31 @@
             <label>Minimum margin on purchase price (%)</label>
             <helpText>The agent never prices a product below its purchase price plus this markup: a purchase price of 100 and 10 here make 110 the lowest it may offer. It lowers an offer to that floor instead of escalating. Products without a purchase price have no floor. Blank means off; 0 means never below cost.</helpText>
         </input-field>
+        <input-field type="single-select">
+            <name>roundingMode</name>
+            <label>Round the agent's offers</label>
+            <defaultValue>off</defaultValue>
+            <options>
+                <option>
+                    <id>off</id>
+                    <name>Off: offers go out exactly as computed</name>
+                </option>
+                <option>
+                    <id>discount_percent</id>
+                    <name>Round the discount percentage down</name>
+                </option>
+                <option>
+                    <id>quote_total</id>
+                    <name>Round the quote total up</name>
+                </option>
+            </options>
+            <helpText>Rounding only ever gives less discount, so it never breaks the limits above. It never rounds a figure the customer asked for, never takes back a discount they already hold, and never rounds a discount away to nothing: in each case the offer goes out unrounded. Quote-total rounding works on quote-wide offers only and writes a fixed-amount discount.</helpText>
+        </input-field>
+        <input-field type="float">
+            <name>roundingStep</name>
+            <label>Rounding step</label>
+            <helpText>Percentage points when rounding the discount (0.5 turns 7.34% into 7.0%); your currency when rounding the total the customer sees, shipping included (10 turns 12,356.12 into 12,360.00). Blank or 0 means off whatever you picked above.</helpText>
+        </input-field>
         <input-field type="float">
             <name>maxQuoteValueNet</name>
             <label>Maximum quote value for negotiation (net)</label>

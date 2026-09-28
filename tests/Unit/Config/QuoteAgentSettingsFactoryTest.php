@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Config;
 
 use MerchantQuoteAgentPlugin\Config\InvalidQuoteAgentConfiguration;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsFactory;
+use MerchantQuoteAgentPlugin\Policy\Data\RoundingMode;
 use MerchantQuoteAgentPlugin\Strategy\StrategyAssignmentSource;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -120,6 +121,9 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         // sent, and PositiveOrZero waved both through.
         yield 'cleared offer validity' => [['validityDays' => null], 'price.validityDays'];
         yield 'zero offer validity' => [['validityDays' => 0], 'price.validityDays'];
+        yield 'unknown rounding mode' => [['roundingMode' => 'nearest'], 'RoundingMode'];
+        yield 'negative rounding step' => [['roundingStep' => -0.5], 'price.roundingStep'];
+        yield 'rounding step wrong type' => [['roundingStep' => '0.5'], 'roundingStep'];
     }
 
     /** @param array<string, mixed> $overrides */
@@ -206,5 +210,38 @@ final class QuoteAgentSettingsFactoryTest extends TestCase
         $cleared = self::build(['minMarginPercent' => null]);
         self::assertNotNull($cleared);
         self::assertNull($cleared->policy->price->minMarginPercent);
+    }
+
+    public function testTheRoundingSettingsMapOntoThePriceLimits(): void
+    {
+        $settings = self::build(['roundingMode' => 'quote_total', 'roundingStep' => 10.0]);
+
+        self::assertNotNull($settings);
+        self::assertSame(RoundingMode::QuoteTotal, $settings->policy->price->roundingMode);
+        self::assertSame(10.0, $settings->policy->price->stepFor(RoundingMode::QuoteTotal));
+        self::assertNull(
+            $settings->policy->price->stepFor(RoundingMode::DiscountPercent),
+            'A step only counts for the mode it is set for.',
+        );
+    }
+
+    public function testAnUntouchedInstallDoesNotRound(): void
+    {
+        $settings = self::build();
+
+        self::assertNotNull($settings);
+        self::assertSame(RoundingMode::Off, $settings->policy->price->roundingMode);
+        self::assertNull($settings->policy->price->stepFor(RoundingMode::DiscountPercent));
+        self::assertNull($settings->policy->price->stepFor(RoundingMode::QuoteTotal));
+    }
+
+    public function testABlankOrZeroStepIsOffWhateverTheMode(): void
+    {
+        foreach ([null, 0.0] as $step) {
+            $settings = self::build(['roundingMode' => 'discount_percent', 'roundingStep' => $step]);
+
+            self::assertNotNull($settings);
+            self::assertNull($settings->policy->price->stepFor(RoundingMode::DiscountPercent));
+        }
     }
 }

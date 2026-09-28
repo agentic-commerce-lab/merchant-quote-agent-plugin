@@ -8,6 +8,13 @@ use Symfony\Component\Validator\Constraints as Assert;
 
 final readonly class QuoteLimits
 {
+    /**
+     * @mago-expect lint:excessive-parameter-list
+     * Seven merchant settings, each named at the one production construction
+     * site (fromArray()) and by name in every fixture; the two rounding
+     * fields are one setting's two halves, and a sub-object for two scalars
+     * would add a validated class for nothing.
+     */
     public function __construct(
         #[Assert\Range(min: 0, max: 100)]
         public float $maxDiscountPercent,
@@ -45,7 +52,23 @@ final readonly class QuoteLimits
          */
         #[Assert\PositiveOrZero]
         public ?float $minMarginPercent = null,
+        /**
+         * Rounding control (spec 2026-09-28). Off unless the merchant picks a
+         * mode AND a step above zero — see stepFor().
+         */
+        public RoundingMode $roundingMode = RoundingMode::Off,
+        /** Percentage points in discount_percent mode; currency units of the buyer-facing total in quote_total mode. */
+        #[Assert\PositiveOrZero]
+        public ?float $roundingStep = null,
     ) {}
+
+    /** The step `$mode` rounds to; null when `$mode` is not the one set, or the step is blank or zero. */
+    public function stepFor(RoundingMode $mode): ?float
+    {
+        $step = $this->roundingStep ?? 0.0;
+
+        return $this->roundingMode === $mode && $step > 0.0 ? $step : null;
+    }
 
     /** The same limits with a tightened discount cap — see AskedDiscountCeiling. */
     public function withMaxDiscountPercent(float $maxDiscountPercent): self
@@ -56,6 +79,8 @@ final readonly class QuoteLimits
             valueCeiling: $this->valueCeiling,
             validityDays: $this->validityDays,
             minMarginPercent: $this->minMarginPercent,
+            roundingMode: $this->roundingMode,
+            roundingStep: $this->roundingStep,
         );
     }
 
@@ -68,6 +93,11 @@ final readonly class QuoteLimits
             valueCeiling: self::ceiling($data),
             validityDays: OptionalShape::int($data, 'validityDays') ?? 0,
             minMarginPercent: OptionalShape::float($data, 'minMarginPercent'),
+            // from(), not tryFrom(): a mode nothing knows must refuse the
+            // channel (ValueError -> InvalidQuoteAgentConfiguration), not
+            // quietly read as off.
+            roundingMode: RoundingMode::from(OptionalShape::string($data, 'roundingMode') ?? RoundingMode::Off->value),
+            roundingStep: OptionalShape::float($data, 'roundingStep'),
         );
     }
 
