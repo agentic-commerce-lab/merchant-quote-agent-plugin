@@ -168,7 +168,7 @@ What setup does:
 - the effective shop config for the storefront sales channel is:
   - `enabled` on, `draftMode` off, `notifyBuyerOnEscalation` on;
   - `maxDiscountPercent` 15 and `counterOfferMaxPercent` 25, because every expectation in the scenario set assumes those values;
-  - `minMarginPercent` unset and `roundingMode` off;
+  - a shop-wide `minMarginPercent` or rounding is allowed and reported (decided 2026-09-29 against sw-ag.dev, which runs a 10% floor and a 0.5-point `discount_percent` step): H3 checks the floor against the eval product's own purchase price, and H9 checks the rounding with `DiscountRounding`'s skips;
 - every scenario file validates;
 - the judge canary passes.
 
@@ -349,7 +349,7 @@ reply itself wrote (below).
 | H6 | Order | `n/a` unless `expect.order`. Buyer accepted → `orderId` non-null |
 | H7 | No cell failure | no `cellFailure` row (HTTP error, `PassTimeout`) and at least one JSONL line for this negotiation |
 | H8 | Stated figures | `n/a` until stage 4 (needs the judgment). Every figure the judge extracted from a reply matches one of that pass's written numbers: money against `totalGrossAfter`, `totalNetAfter`, a `linesAfter` unit price or line total — net, or grossed up by `totalGrossAfter/totalNetAfter` — and percentages against the baseline discount `(B − after)/B × 100`. Tolerance is precision-aware: `max(base, ½ × 10^−decimals)` with the judge reporting how many decimals the reply wrote, so "7%" against 6.97 matches while "7.50%" against 7.40 does not. An unmatched figure fails |
-| H9 | Rounding | `n/a` unless `policy.roundingMode` ≠ `off` and an offer was written. `discount_percent`: baseline discount is a multiple of `roundingStep` (± 0.01). `quote_total`: `totalGrossAfter ?? totalNetAfter` is a multiple of `roundingStep` (± 0.005) |
+| H9 | Rounding | `n/a` unless `policy.roundingMode` ≠ `off` and an offer was written. `discount_percent`: baseline discount is a multiple of `roundingStep` (± 0.01), unless `Policy\DiscountRounding` leaves it unrounded on purpose: a per-line answer, the buyer's own stated percentage (± 0.01), rounding to zero, or rounding below the discount already held. `quote_total`: `totalGrossAfter ?? totalNetAfter` is a multiple of `roundingStep` (± 0.005) |
 
 H8 will likely flag the open question from PR #213, where a reply states a
 percentage measured on the total including shipping (6.97% against a written

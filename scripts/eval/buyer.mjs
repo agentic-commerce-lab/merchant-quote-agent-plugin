@@ -14,7 +14,7 @@ import { basename, join } from 'node:path';
 import { adminClient } from './admin.mjs';
 import { negotiate, pool } from './negotiate.mjs';
 import { loadScenarioDir } from './scenarios.mjs';
-import { applyWrites, effectivePolicy, planSettings } from './settings.mjs';
+import { applyWrites, effectivePolicy, planSettings, purchasePricesFor, writablePrices } from './settings.mjs';
 import { consent, loadOrCreateKey, startProfileServer, startTunnel, tokenStore, ucpClient } from './ucp.mjs';
 
 // The Admin API secret lives in a git-ignored, 0600 `.env.eval`, never on a
@@ -100,7 +100,10 @@ async function setup() {
     });
 }
 
-const EXPECTED_DEFAULTS = { maxDiscountPercent: 15, counterOfferMaxPercent: 25, minMarginPercent: null, roundingMode: 'off' };
+// A shop-wide minMarginPercent and rounding are allowed: H3 checks the floor
+// against the product's own purchase price, H9 checks the rounding with
+// DiscountRounding's own skips, and preflight reports both.
+const EXPECTED_DEFAULTS = { maxDiscountPercent: 15, counterOfferMaxPercent: 25 };
 
 async function shopState(ctx) {
     const salesChannelId = await ctx.admin.salesChannelFor(ctx.shop);
@@ -125,7 +128,14 @@ async function checks(ctx) {
     if (!product.price?.[0]) throw new UsageError(`EVAL_PRODUCT_ID ${product.id} has no own price (a variant inheriting it?); pick a simple product`);
     await ctx.tokens.accessToken();
     loadScenarioDir('tests/Bench/scenarios');
-    return { ...state, product, pluginVersion: await ctx.admin.pluginVersion(), model: state.value('llmModel') ?? null };
+    return { ...state, product, floorHeadroom: floorHeadroom(product, state.policy), pluginVersion: await ctx.admin.pluginVersion(), model: state.value('llmModel') ?? null };
+}
+
+/** How much off the product's net price the shop's own margin floor still allows, in percent; null without a floor. */
+function floorHeadroom(product, policy) {
+    const purchase = Object.values(purchasePricesFor(product, 'p', policy))[0];
+    if (purchase === undefined) return null;
+    return (1 - (purchase * (1 + policy.minMarginPercent / 100)) / product.price[0].net) * 100;
 }
 
 /** The product's price in the quote's price space: gross, unless the shop quotes net. */
@@ -157,7 +167,7 @@ async function run(runDir) {
         };
 
         // Phase A: the shop's own settings, in parallel.
-        await pool(cells(scenarios.filter((s) => !s.policy)), Number(env('EVAL_PARALLEL', '4')), play(state.policy, {}));
+        await pool(cells(scenarios.filter((s) => !s.policy)), Number(env('EVAL_PARALLEL', '4')), play(state.policy, purchasePricesFor(state.product, productId, state.policy)));
 
         // Phase B: one settings scenario at a time, restore file first.
         for (const scenario of scenarios.filter((s) => s.policy)) {
@@ -177,7 +187,7 @@ async function withSettings(ctx, runDir, scenario, work) {
     const { writes, restore } = planSettings({ globalValues: state.globalValues, channelValues: state.channelValues, overrides: scenario.policy });
     const ratio = scenario.lines.find((l) => l.purchasePriceRatio !== undefined)?.purchasePriceRatio;
     const restoreFile = join(runDir, 'restore.json');
-    writeFileSync(restoreFile, `${JSON.stringify({ salesChannelId: state.salesChannelId, config: restore, productId, purchasePrices: product.purchasePrices ?? null, touchesProduct: ratio !== undefined })}\n`);
+    writeFileSync(restoreFile, `${JSON.stringify({ salesChannelId: state.salesChannelId, config: restore, productId, purchasePrices: writablePrices(product.purchasePrices), touchesProduct: ratio !== undefined })}\n`);
     const undo = () => replayRestore(ctx, restoreFile);
     const onSignal = () => undo().finally(() => process.exit(130));
     process.once('SIGINT', onSignal);
@@ -195,6 +205,7 @@ async function withSettings(ctx, runDir, scenario, work) {
         for (const [key, value] of Object.entries(scenario.policy)) {
             if (after.policy[key] !== value) throw new Error(`${key} did not take effect: shop reads ${JSON.stringify(after.policy[key])}`);
         }
+        if (ratio === undefined) purchasePricesNet = purchasePricesFor(product, productId, after.policy);
         await work(after.policy, purchasePricesNet);
     } finally {
         process.removeListener('SIGINT', onSignal);
@@ -217,7 +228,15 @@ const verbs = {
         const ctx = context();
         await withProfile(ctx, async () => {
             const state = await preflight(ctx);
-            console.log(`preflight: ok -- plugin ${state.pluginVersion}, model ${state.model}, sales channel ${state.salesChannelId}`);
+            const margin = state.policy.minMarginPercent;
+            const floor = margin === null ? 'no margin floor'
+                : state.floorHeadroom === null ? `margin floor ${margin}% (not applied: the product has no purchase price)`
+                : `margin floor ${margin}% (allows up to ${state.floorHeadroom.toFixed(1)}% off)`;
+            const rounding = state.policy.roundingMode === 'off' || !state.policy.roundingStep ? 'no rounding' : `rounding ${state.policy.roundingMode} step ${state.policy.roundingStep}`;
+            console.log(`preflight: ok -- plugin ${state.pluginVersion}, model ${state.model}, sales channel ${state.salesChannelId}, ${floor}, ${rounding}`);
+            if (state.floorHeadroom !== null && state.floorHeadroom < state.policy.maxDiscountPercent) {
+                console.log(`preflight: warning -- the shop's floor binds below the ${state.policy.maxDiscountPercent}% cap; offer expectations may not hold`);
+            }
         });
     },
     run: () => run(runDir),

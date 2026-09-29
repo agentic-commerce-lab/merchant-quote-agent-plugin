@@ -93,7 +93,7 @@ assert.equal(calls.length, 1, 'exactly one refresh for four concurrent callers')
 
 import { adminClient } from './admin.mjs';
 import { buildRows } from './rows.mjs';
-import { effectivePolicy, planSettings } from './settings.mjs';
+import { effectivePolicy, planSettings, purchasePricesFor, writablePrices } from './settings.mjs';
 
 // the Admin API client -- one token for many calls, criteria in the body
 const adminCalls = [];
@@ -271,5 +271,15 @@ let peak = 0;
 const pooled = await pool([1, 2, 3, 4, 5], 2, async (n) => { inFlight++; peak = Math.max(peak, inFlight); await new Promise((r) => setTimeout(r, 5)); inFlight--; return n * 2; });
 assert.deepEqual(pooled, [2, 4, 6, 8, 10]);
 assert.equal(peak, 2);
+
+// a shop-wide margin floor: H3 checks against the product's own purchase price (sw-ag.dev runs one)
+const eur = 'b7d2554b0ce847cd82f3ac9bd1c0dfca';
+const shopProduct = { price: [{ currencyId: eur, net: 727.23, gross: 865.4 }], purchasePrices: [{ extensions: [], currencyId: 'usd', net: 999, gross: 999 }, { extensions: [], currencyId: eur, net: 231.85, gross: 275.9, linked: true, listPrice: null, percentage: null, regulationPrice: null, apiAlias: 'price' }] };
+assert.deepEqual(purchasePricesFor(shopProduct, 'p1', { minMarginPercent: 10 }), { p1: 231.85 }, 'the price currency, not the first entry');
+assert.deepEqual(purchasePricesFor(shopProduct, 'p1', { minMarginPercent: null }), {}, 'no floor, nothing to check');
+assert.deepEqual(purchasePricesFor({ price: shopProduct.price }, 'p1', { minMarginPercent: 10 }), {}, 'no purchase price, no floor applies');
+// an Admin API read carries read-only fields the DAL refuses on write
+assert.deepEqual(writablePrices(shopProduct.purchasePrices.slice(1)), [{ currencyId: eur, net: 231.85, gross: 275.9, linked: true, listPrice: null, percentage: null, regulationPrice: null }]);
+assert.equal(writablePrices(null), null);
 
 console.log('buyer: ok');

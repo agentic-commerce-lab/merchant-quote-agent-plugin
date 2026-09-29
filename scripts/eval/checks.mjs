@@ -91,11 +91,16 @@ export function h2Cap(rows) {
 }
 
 /** Mirrors Policy\MarginFloors::of over each pass's own linesBefore. */
-export function h3MarginFloor(rows) {
+export function h3MarginFloor(rows, scenario) {
     const margin = rows[0]?.policy?.minMarginPercent;
     if (margin === null || margin === undefined) return na('no minMarginPercent in the policy');
     const prices = rows[0].purchasePricesNet ?? {};
-    if (Object.keys(prices).length === 0) return fail('minMarginPercent is set but no purchase price reached the bench');
+    if (Object.keys(prices).length === 0) {
+        // A scenario that set a purchase price must see it; a shop-wide floor on a
+        // product without one applies no floor at all (MarginFloors skips the line).
+        const expected = scenario?.lines?.some((line) => line.purchasePriceRatio !== undefined);
+        return expected ? fail('minMarginPercent is set but no purchase price reached the bench') : na('the product has no purchase price, so no floor applies');
+    }
     const passes = rows.filter(written);
     if (passes.length === 0) return na('no pass wrote an offer');
     const untraced = passes.find((row) => !Array.isArray(row.linesBefore) || !Array.isArray(row.linesAfter));
@@ -154,6 +159,39 @@ export function h6Order(scenario, rows) {
     return last.orderId ? pass() : fail(`accepted, but no order: ${last.orderFailure ?? 'no failure recorded'}`);
 }
 
+/** RoundingStep::down: floor to the step, guarding float noise at 1e-6 first. */
+const stepDown = (value, step) => Number((Math.floor(Number((value / step).toFixed(6))) * step).toFixed(6));
+
+/** Every percentage a buyer comment states ("8.8%", "8,8 %"). */
+export function statedPercents(text) {
+    return [...String(text ?? '').matchAll(/(\d+(?:[.,]\d+)?)\s*%/g)].map((match) => Number(match[1].replace(',', '.')));
+}
+
+/** A positive line written below its before-price: the agent answered per line, not quote-wide. */
+function perLineAnswer(row) {
+    if (!Array.isArray(row.linesBefore) || !Array.isArray(row.linesAfter)) return false;
+    return row.linesAfter.some((line) => {
+        const was = row.linesBefore.find((before) => before.lineItemId === line.lineItemId);
+        return was !== undefined && was.unitPriceNet > 0 && line.unitPriceNet < was.unitPriceNet - MONEY;
+    });
+}
+
+/**
+ * Policy\DiscountRounding writes the unrounded rate on purpose: for a per-line
+ * answer (never rounded), for the buyer's own figure (within 0.01 pp), when
+ * rounding would reach zero, and when it would drop below what the buyer
+ * already holds. The held discount is approximated by the best earlier
+ * written baseline discount; PHP also counts the deepest line discount.
+ */
+function unroundedOnPurpose(rows, row, discount, step) {
+    if (perLineAnswer(row)) return true;
+    if (statedPercents(row.buyerAsk).some((asked) => Math.abs(asked - discount) <= RATE)) return true;
+    const roundedDown = stepDown(discount, step);
+    if (roundedDown <= 1e-6) return true;
+    const held = rows.filter((earlier) => earlier.round < row.round && written(earlier)).map((earlier) => baselineDiscount(rows, earlier.totalNetAfter) ?? 0);
+    return roundedDown < Math.max(0, ...held) - 1e-6;
+}
+
 export function h9Rounding(rows) {
     const { roundingMode, roundingStep } = rows[0]?.policy ?? {};
     if (!roundingMode || roundingMode === 'off' || !(roundingStep > 0)) return na('rounding is off');
@@ -163,7 +201,8 @@ export function h9Rounding(rows) {
         if (roundingMode === 'discount_percent') {
             const discount = baselineDiscount(rows, row.totalNetAfter);
             if (discount === null) return fail(NO_BASELINE);
-            if (Math.abs(discount - Math.round(discount / roundingStep) * roundingStep) > RATE) {
+            const onStep = Math.abs(discount - Math.round(discount / roundingStep) * roundingStep) <= RATE;
+            if (!onStep && !unroundedOnPurpose(rows, row, discount, roundingStep)) {
                 return fail(`round ${row.round}: ${discount.toFixed(4)}% off is not on the ${roundingStep}-point step`);
             }
         } else if (roundingMode === 'quote_total') {
@@ -188,7 +227,7 @@ export function checkNegotiation(scenario, negotiation) {
     return {
         H1: h1FirstOutcome(scenario, rows),
         H2: h2Cap(rows),
-        H3: h3MarginFloor(rows),
+        H3: h3MarginFloor(rows, scenario),
         H4: h4NoRetraction(rows),
         H5: h5Escalations(scenario, rows),
         H6: h6Order(scenario, rows),

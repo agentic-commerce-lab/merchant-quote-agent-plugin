@@ -41,3 +41,27 @@ export async function applyWrites(admin, salesChannelId, entries) {
         if (Object.keys(values).length > 0) await admin.writeConfig(scope === 'channel' ? salesChannelId : null, values);
     }
 }
+
+/**
+ * The product's own net purchase price, for H3, when a margin floor is in
+ * force; {} when none applies. Same currency as the price the eval renders,
+ * as Bridge\PurchasePriceReader reads it for the quote's currency.
+ */
+export function purchasePricesFor(product, productId, policy) {
+    if (policy.minMarginPercent === null || policy.minMarginPercent === undefined) return {};
+    const currencyId = product.price?.[0]?.currencyId;
+    const entry = (product.purchasePrices ?? []).find((price) => price.currencyId === currencyId);
+    return entry && entry.net > 0 ? { [productId]: entry.net } : {};
+}
+
+/** A price list as the DAL accepts it on write: an Admin API read adds `extensions` and `apiAlias`. */
+export function writablePrices(prices) {
+    if (!Array.isArray(prices)) return null;
+    const clean = ({ currencyId, net, gross, linked, listPrice, percentage, regulationPrice }) => ({
+        currencyId, net, gross, linked,
+        listPrice: listPrice ? clean(listPrice) : null,
+        percentage: percentage ?? null,
+        regulationPrice: regulationPrice ? clean(regulationPrice) : null,
+    });
+    return prices.map(clean);
+}

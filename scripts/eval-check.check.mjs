@@ -60,7 +60,8 @@ assert.equal(status(h3MarginFloor(floorRows(10, [line({ lineItemId: 'd', product
 assert.equal(status(h3MarginFloor([row()])), 'n/a');
 // An offer written with no quote_before/quote_after trace cannot be checked: fail, never n/a.
 assert.match(h3MarginFloor([row({ policy: policy({ minMarginPercent: 15 }), purchasePricesNet: { p1: 8 }, totalNetAfter: 50, linesBefore: null, linesAfter: null })]).reason, /round 1 wrote an offer but its quote_before\/quote_after trace is missing/);
-assert.equal(status(h3MarginFloor([row({ policy: policy({ minMarginPercent: 15 }) })])), 'fail'); // margin set, no purchase price
+assert.equal(status(h3MarginFloor([row({ policy: policy({ minMarginPercent: 15 }) })], scenario({ lines: [{ quantity: 10, purchasePriceRatio: 0.8 }] }))), 'fail'); // the scenario set a purchase price that never arrived
+assert.equal(status(h3MarginFloor([row({ policy: policy({ minMarginPercent: 10 }) })], scenario())), 'n/a'); // a shop-wide floor on a product without a purchase price: no floor applies
 
 // H4
 assert.equal(status(h4NoRetraction(creeping)), 'pass');
@@ -96,12 +97,25 @@ assert.equal(failedChecks.H1.status, 'n/a');
 assert.equal(checkNegotiation(scenario(), groupNegotiations([row()])[0]).H7.status, 'pass');
 
 // H9
-const rounded = (mode, step, after, gross) => [row({ policy: policy({ roundingMode: mode, roundingStep: step }), totalNetAfter: after, totalGrossAfter: gross })];
+// A quote-wide discount is a negative line; the positive line keeps its price.
+const quoteWide = (after) => [line(), line({ lineItemId: 'd', productId: null, quantity: 1, unitPriceNet: after - 100, totalNet: after - 100 })];
+const rounded = (mode, step, after, gross, over = {}) => [row({ policy: policy({ roundingMode: mode, roundingStep: step }), totalNetAfter: after, totalGrossAfter: gross, linesAfter: quoteWide(after), ...over })];
 assert.equal(status(h9Rounding(rounded('discount_percent', 1, 88, 104.72))), 'pass');
 assert.equal(status(h9Rounding(rounded('discount_percent', 1, 87.5, 104.13))), 'fail');
 assert.equal(status(h9Rounding(rounded('quote_total', 5, 95.8, 115))), 'pass');
 assert.equal(status(h9Rounding(rounded('quote_total', 5, 95.8, 113.05))), 'fail');
 assert.equal(status(h9Rounding([row()])), 'n/a');
+// The writes DiscountRounding deliberately leaves unrounded (a 0.5 step, as sw-ag.dev runs):
+assert.equal(status(h9Rounding(rounded('discount_percent', 0.5, 91.2, 108.53, { buyerAsk: 'Can you get to 8.8% off?' }))), 'pass'); // the buyer's own figure
+assert.equal(status(h9Rounding(rounded('discount_percent', 0.5, 91.2, 108.53, { buyerAsk: 'Can you get to 8,8 % off?' }))), 'pass'); // a decimal comma
+assert.equal(status(h9Rounding(rounded('discount_percent', 0.5, 91.2, 108.53))), 'fail'); // asked 5%, wrote 8.8%: not on the step, not theirs
+assert.equal(status(h9Rounding(rounded('discount_percent', 0.5, 99.7, 118.64))), 'pass'); // 0.3% would round to zero
+const held = [
+    row({ round: 1, policy: policy({ roundingMode: 'discount_percent', roundingStep: 0.5 }), totalNetAfter: 87.8, linesAfter: quoteWide(87.8), buyerAsk: 'Could you do 12.2% off?' }),
+    row({ round: 2, policy: policy({ roundingMode: 'discount_percent', roundingStep: 0.5 }), totalNetBefore: 87.8, totalNetAfter: 87.7, linesBefore: quoteWide(87.8), linesAfter: quoteWide(87.7), buyerAsk: 'A little more?' }),
+];
+assert.equal(status(h9Rounding(held)), 'pass'); // 12.3% rounds to 12.0%, below the 12.2% already held
+assert.equal(status(h9Rounding(rounded('discount_percent', 0.5, 91.3, 108.65, { linesAfter: [line({ unitPriceNet: 9.13, totalNet: 91.3 })] }))), 'pass'); // a per-line answer is never rounded
 // No round-1 baseline: the discount is NaN, which must fail rather than slip past the step test.
 const noBaseline = { policy: policy({ roundingMode: 'discount_percent', roundingStep: 1 }) };
 assert.equal(status(h9Rounding([row({ ...noBaseline, totalNetBefore: null, totalNetAfter: null }), row({ ...noBaseline, round: 2, totalNetBefore: 100, totalNetAfter: 87.5 })])), 'fail');
