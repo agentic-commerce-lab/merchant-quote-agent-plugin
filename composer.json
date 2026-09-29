@@ -97,6 +97,7 @@
         "quality:deps": "composer outdated --direct",
         "quality:maintainability": "phpcca analyse src",
         "quality:hotspots": "phpcca churn src",
+        "eval": "scripts/eval.sh",
         "eval:setup": "node scripts/eval/buyer.mjs setup",
         "eval:restore": "node scripts/eval/buyer.mjs restore"
     },

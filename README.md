@@ -201,6 +201,41 @@ repository: `CoreFloorCompatibilityTest` needs `shopware/shopware` (or
 6.7.1 floor, and `ReleaseCapabilityMatrixTest` needs a SwagCommercial clone to
 confirm the capability matrix still matches what each release declares.
 
+## Evals
+
+`composer run eval` answers "is the negotiation logic on the shop still correct?". It plays every scenario in `tests/Bench/scenarios/` three times as an external UCP buyer against the deployed shop (default `https://sw-ag.dev`), with no SSH involved. It reads the agent's decisions back through the Admin API, checks the money in code, lets Claude Code judge the replies, and exits 0 (all pass), 1 (a scenario failed) or 2 (inconclusive).
+
+It tests the **deployed** plugin: deploy a branch before you evaluate it.
+
+One-time setup:
+
+1. Claim an ngrok static domain and add it to the shop's *Agent access → Profile hosts*.
+2. Create an Admin API integration with read on `merchant_quote_agent_decision`, `merchant_quote_agent_trace`, `sales_channel` and `plugin`, read and write on `system_config`, and read and update on `product`.
+3. Pick a storefront customer with `QUOTE_MANAGEMENT`.
+4. Run the setup, which opens the shop's consent page for that customer:
+
+```bash
+EVAL_NGROK_DOMAIN=<your-domain>.ngrok-free.app EVAL_ADMIN_CLIENT_ID=... EVAL_ADMIN_CLIENT_SECRET=... \
+EVAL_PRODUCT_ID=<product uuid> composer run eval:setup
+```
+
+Every run:
+
+```bash
+EVAL_NGROK_DOMAIN=... EVAL_ADMIN_CLIENT_ID=... EVAL_ADMIN_CLIENT_SECRET=... EVAL_PRODUCT_ID=... composer run eval
+```
+
+Four scenarios need settings the shop doesn't have by default (a margin floor, rounding, a zero cap). They change the shop's config for about a minute each, then restore it. After a hard crash, run `composer run eval:restore var/eval/<runId>`.
+
+Output goes to `var/eval/<runId>/`:
+
+- `verdict.json`: the result;
+- `report.md`: Claude's write-up;
+- `runs.jsonl`: every decision row;
+- `judgments/`: the judge's answers.
+
+To re-judge without new negotiations: `composer run eval -- --from=judge var/eval/<runId>`.
+
 ## Documentation
 
 | Document | What it covers |
