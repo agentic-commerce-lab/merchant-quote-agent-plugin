@@ -63,6 +63,15 @@ final readonly class OfferWrite
     }
 
     /**
+     * Writes no price and leaves the quote discount as it is: the standing
+     * offer already sits at the minimum-margin floor (FloorHold::holds()).
+     */
+    public static function hold(): self
+    {
+        return new self([], null);
+    }
+
+    /**
      * An absolute quote discount of `$value` in the quote's own tax space
      * (Bridge\Data\Discount), leaving every positive line at `$factor` of its
      * live net price. Rounding control's quote_total mode (spec 2026-09-28).
