@@ -173,6 +173,49 @@ final class CommentTargetMergerTest extends TestCase
         self::assertNull($merged->buyerTargetNet);
     }
 
+    public function testABestPriceFlagSetToFalseIsNoPriceAsk(): void
+    {
+        $merged = (new CommentTargetMerger())->merge(
+            self::structured(98.0),
+            new CommentInterpretation(price: new PriceAsk(bestPriceRequested: false)),
+        );
+
+        self::assertSame(980.0, $merged->buyerTargetNet);
+    }
+
+    public function testACommentTargetTotalKeepsTheStorefrontAskOutOfTheTarget(): void
+    {
+        $merged = (new CommentTargetMerger())->merge(
+            self::structured(98.0),
+            new CommentInterpretation(price: new PriceAsk(targetTotal: 900.0)),
+        );
+
+        self::assertNull($merged->buyerTargetNet);
+    }
+
+    public function testAMarkedUpLineDoesNotCancelARealAskOnAnotherLine(): void
+    {
+        // Clamped per line like QuoteAutoReplyPricer: 100.00 + 1.00, not
+        // 190.00 + 1.00, so the band reads 49.5% rather than 4.5%.
+        $line = static fn(string $id, float $requested): QuoteLineSnapshot => new QuoteLineSnapshot(
+            identity: new QuoteLineIdentity($id),
+            quantity: 10,
+            unitPriceNet: 100.0,
+            totalNet: 1000.0,
+            requestedUnitPrice: $requested,
+        );
+        $snapshot = new QuoteSnapshot(
+            currencyIso: 'EUR',
+            totalNet: 2000.0,
+            lines: [$line('line-1', 190.0), $line('line-2', 1.0)],
+            lifecycle: new QuoteLifecycle(stateTechnicalName: 'open'),
+        );
+
+        $merged = (new CommentTargetMerger())->merge($snapshot, null);
+
+        self::assertSame(1010.0, $merged->buyerTargetNet);
+    }
+
     /** One 10 x 100.00 net line, optionally carrying a storefront requested price. */
     private static function structured(?float $requestedUnitPrice, ?float $buyerTargetNet = null): QuoteSnapshot
     {

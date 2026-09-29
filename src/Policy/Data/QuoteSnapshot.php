@@ -101,6 +101,21 @@ final readonly class QuoteSnapshot
         return false;
     }
 
+    /**
+     * The lines with every requested price clamped to `min(requested, quoted)`,
+     * the way QuoteAutoReplyPricer and AskedDiscountCeiling read them: a line
+     * asking for a markup must not cancel a real ask on another line when
+     * CommentTargetMerger rolls storefront asks up (#223).
+     *
+     * @return list<QuoteLineSnapshot>
+     */
+    public function linesWithAsksClampedToQuote(): array
+    {
+        return array_map(static fn(QuoteLineSnapshot $line): QuoteLineSnapshot => $line->requestedUnitPrice === null
+            ? $line
+            : $line->withRequestedUnitPrice(min($line->requestedUnitPrice, $line->unitPriceNet)), $this->lines);
+    }
+
     public function withBuyerTargetNet(?float $buyerTargetNet): self
     {
         return new self(

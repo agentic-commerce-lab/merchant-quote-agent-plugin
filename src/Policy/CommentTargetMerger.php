@@ -103,11 +103,16 @@ final class CommentTargetMerger
      * Never overrides a target something else already set, and only when a
      * line asks for less than it is quoted at — QuoteSnapshot::hasUntargetedLineAsk().
      * Nor when the comment states a price of its own (PriceAsk::isStated()).
+     * Each line is clamped to its quoted price first, as the pricer reads it;
+     * the comment path's rescale stays unclamped (TS parity).
      */
     private static function withStructuredTarget(QuoteSnapshot $snapshot, ?PriceAsk $commentPrice): QuoteSnapshot
     {
         return $snapshot->hasUntargetedLineAsk($commentPrice)
-            ? $snapshot->withBuyerTargetNet(self::rescaledBuyerTarget($snapshot, $snapshot->lines))
+            ? $snapshot->withBuyerTargetNet(self::rescaledBuyerTarget(
+                $snapshot,
+                $snapshot->linesWithAsksClampedToQuote(),
+            ))
             : $snapshot;
     }
 
