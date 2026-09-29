@@ -82,4 +82,68 @@ final class QuoteBandDeciderTest extends TestCase
 
         self::assertSame(QuoteDecisionKind::Escalate, $decision->kind);
     }
+
+    /**
+     * 10 x 727.23 net, 7272.27 for the line (sw-ag.dev's 865.40 gross unit),
+     * asking $targetNet: every figure is cent-rounded after the tax comes off.
+     */
+    private static function roundedQuoteAsking(float $targetNet): QuoteSnapshot
+    {
+        return new QuoteSnapshot(
+            currencyIso: 'EUR',
+            totalNet: 7272.27,
+            lines: [new QuoteLineSnapshot(
+                identity: new QuoteLineIdentity('line-1'),
+                quantity: 10,
+                unitPriceNet: 727.23,
+                totalNet: 7272.27,
+            )],
+            lifecycle: new QuoteLifecycle(stateTechnicalName: 'open'),
+            buyerTargetNet: $targetNet,
+        );
+    }
+
+    public function testAStorefrontAskAtExactlyTheCapIsGrantedAtTheCap(): void
+    {
+        // 15% off 865.40 gross is 735.59, 618.14 net a unit: 6181.40 against
+        // 7272.27 reads 15.0004%, cent noise and not an ask above the cap.
+        $limits = new QuoteLimits(maxDiscountPercent: 15.0, counterOfferMaxPercent: 25.0);
+
+        $decision = (new QuoteBandDecider())->decide(self::roundedQuoteAsking(6181.40), $limits);
+
+        self::assertSame(Band::Grant, (new PriceBandClassifier())->classify($decision));
+        self::assertSame(15.0, $decision->autoReply?->discountPercent, 'Granted at the cap, never past it.');
+    }
+
+    public function testAnAskAtExactlyTheCapIsGrantedWithNoCounterBandToo(): void
+    {
+        $decision = (new QuoteBandDecider())->decide(
+            self::roundedQuoteAsking(6181.40),
+            new QuoteLimits(maxDiscountPercent: 15.0),
+        );
+
+        self::assertSame(QuoteDecisionKind::AutoReply, $decision->kind);
+    }
+
+    public function testAnAskAtExactlyTheCounterCeilingCounters(): void
+    {
+        // sw-ag.dev quote 1036: 25% off 8654.00 gross is 6490.50, 5454.20 net,
+        // which reads 25.00003% and used to escalate.
+        $limits = new QuoteLimits(maxDiscountPercent: 15.0, counterOfferMaxPercent: 25.0);
+
+        $decision = (new QuoteBandDecider())->decide(self::roundedQuoteAsking(5454.20), $limits);
+
+        self::assertSame(Band::Counter, (new PriceBandClassifier())->classify($decision));
+    }
+
+    public function testAnAskACentPerUnitPastTheCapIsStillAboveIt(): void
+    {
+        // 617.13 a unit is 15.14% off: more than rounding can explain.
+        $decision = (new QuoteBandDecider())->decide(
+            self::roundedQuoteAsking(6171.30),
+            new QuoteLimits(maxDiscountPercent: 15.0),
+        );
+
+        self::assertSame(QuoteDecisionKind::Escalate, $decision->kind);
+    }
 }
