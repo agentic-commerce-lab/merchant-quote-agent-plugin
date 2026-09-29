@@ -125,6 +125,7 @@ assert.equal(status(h8StatedFigures(at(93.03), judged([figure(7, 0, 'percent')])
 assert.equal(status(h8StatedFigures(at(92.6), judged([figure(7.5, 2, 'percent')]))), 'fail');
 assert.equal(status(h8StatedFigures([row()], judged([]))), 'n/a');
 assert.equal(status(h8StatedFigures([row()], null)), 'judge_error');
+assert.equal(status(h8StatedFigures([row()], judged([figure(95)], 2))), 'judge_error'); // a round the negotiation lacks is the judge's error, not the agent's
 assert.ok(figureCandidates([row()], row()).money.includes(100), 'the original total is a legitimate "down from" figure');
 assert.deepEqual(figureCandidates([row({ totalNetBefore: null })], row({ totalNetBefore: null })).percent, [], 'no round-1 baseline: no percent candidate, never NaN');
 
@@ -167,6 +168,13 @@ assert.equal(oneOfThree.exitCode, 1);
 const judgeDown = run(reps3, [[`s#1`, rubric([])]]); // two judgments missing
 assert.equal(judgeDown.scenarios[0].checks.J1.result, 'err');
 assert.equal(judgeDown.exitCode, 2);
+
+// one rep's judgment omits J3: the item still passes 2/3, but the judge error makes the run exit 2, never 0
+const noJ3 = { ...rubric([]), rubric: rubric([]).rubric.filter((item) => item.id !== 'J3') };
+const itemMissing = run(reps3, [[`s#1`, noJ3], [`s#2`, rubric([])], [`s#3`, rubric([])]]);
+assert.equal(itemMissing.scenarios[0].checks.J3.result, 'pass');
+assert.equal(itemMissing.scenarios[0].status, 'err');
+assert.equal(itemMissing.exitCode, 2);
 
 // Review Focus 1 -- a rep with no JSONL line at all fails H7, never shrinks the denominator
 const missingRep = run([row({ rep: 1 }), row({ rep: 2 })], [[`s#1`, rubric([])], [`s#2`, rubric([])]]);

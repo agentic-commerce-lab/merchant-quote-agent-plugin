@@ -67,7 +67,7 @@ export function h8StatedFigures(rows, judgment) {
     let stated = 0;
     for (const round of judgment.rounds) {
         const row = rows.find((r) => r.round === round.round);
-        if (!row) return fail(`the judge reported round ${round.round}, which this negotiation does not have`);
+        if (!row) return { status: 'judge_error', reason: `the judge reported round ${round.round}, which this negotiation does not have` };
         const candidates = figureCandidates(rows, row);
         for (const figure of round.statedFigures) {
             stated++;
@@ -145,7 +145,9 @@ function scenarioVerdict(scenario, reps, negotiations, judgments) {
         checks[id] = { result, passes, of: reps, reps: reasons };
     }
     const results = Object.values(checks).map((c) => c.result);
-    const status = results.includes('fail') ? 'fail' : results.includes('err') ? 'err' : 'pass';
+    // Any rep's judge error marks the scenario err (exit 2), even when its item still clears 2/3.
+    const judgeError = Object.values(checks).some((c) => c.reps.some((r) => r.status === 'judge_error'));
+    const status = results.includes('fail') ? 'fail' : results.includes('err') || judgeError ? 'err' : 'pass';
     return { id: scenario.id, description: scenario.description, status, checks };
 }
 
