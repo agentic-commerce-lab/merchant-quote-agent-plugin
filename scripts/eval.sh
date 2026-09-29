@@ -86,7 +86,9 @@ if runs bench; then
   mkdir -p "$RUN_DIR"
   cp -R tests/Bench/scenarios "$RUN_DIR/scenarios"
   echo "bench: $RUN_DIR"
-  node scripts/eval/buyer.mjs run "$RUN_DIR" || echo "The UCP bench exited non-zero; the verdict decides from what it wrote." >&2
+  # A signal (Ctrl-C: 130) stops the run; any other failure leaves the verdict to decide.
+  node scripts/eval/buyer.mjs run "$RUN_DIR" \
+    || { rc=$?; [ "$rc" -ge 128 ] && exit "$rc"; echo "The UCP bench exited non-zero; the verdict decides from what it wrote." >&2; }
   [ -s "$RUN_DIR/runs.jsonl" ] || { echo "No rows in $RUN_DIR/runs.jsonl." >&2; exit 2; }
 fi
 
@@ -95,18 +97,21 @@ if runs check; then
 fi
 
 if runs judge; then
+  [ "$FROM" = bench ] || canary   # the bench path already ran it, before any negotiation
   rm -rf "$RUN_DIR/judgments" "$RUN_DIR/transcripts"
   mkdir -p "$RUN_DIR/judgments"
   node scripts/eval-check.mjs transcripts "$RUN_DIR"
   find "$RUN_DIR/transcripts" -name '*.txt' -print0 \
-    | xargs -0 -P "$PARALLEL" -I{} bash -c 'judge "$1" "$2/judgments/$(basename "$1" .txt)"' _ {} "$RUN_DIR"
+    | xargs -0 -P "$PARALLEL" -I{} bash -c 'judge "$1" "$2/judgments/$(basename "$1" .txt)"' _ {} "$RUN_DIR" \
+    || true   # a crashed judge leaves no judgment, which the verdict counts as err
 fi
 
 status=0
 if runs verdict; then
   node scripts/eval-check.mjs verdict "$RUN_DIR" || status=$?
 else
-  status="$(node -p "require('./$RUN_DIR/verdict.json').exitCode")"
+  status="$(node -p 'require(require("path").resolve(process.argv[1],"verdict.json")).exitCode' "$RUN_DIR")" || exit 2
+  case "$status" in 0|1|2) ;; *) exit 2 ;; esac
 fi
 
 if runs report; then

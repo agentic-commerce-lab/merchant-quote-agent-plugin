@@ -104,5 +104,11 @@ if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.me
         console.error(`usage: eval-check.mjs <${Object.keys(verbs).join('|')}> ...`);
         process.exit(64);
     }
-    verbs[verb](...args);
+    // A crash is exit 2 (inconclusive): 1 belongs to a failing scenario or a misgraded canary.
+    try {
+        verbs[verb](...args);
+    } catch (error) {
+        console.error(error);
+        process.exit(2);
+    }
 }

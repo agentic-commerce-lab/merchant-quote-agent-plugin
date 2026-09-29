@@ -210,7 +210,7 @@ It tests the **deployed** plugin: deploy a branch before you evaluate it.
 One-time setup:
 
 1. Claim an ngrok static domain and add it to the shop's *Agent access → Profile hosts*.
-2. Create an Admin API integration with read on `merchant_quote_agent_decision`, `merchant_quote_agent_trace`, `sales_channel` and `plugin`, read and write on `system_config`, and read and update on `product`.
+2. Create an Admin API integration with read on `merchant_quote_agent_decision`, `merchant_quote_agent_trace`, `sales_channel`, `sales_channel_domain` and `plugin`, read and write on `system_config`, and read and update on `product`.
 3. Pick a storefront customer with `QUOTE_MANAGEMENT`.
 4. Run the setup, which opens the shop's consent page for that customer:
 
