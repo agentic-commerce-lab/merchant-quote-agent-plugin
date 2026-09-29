@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Policy;
 use MerchantQuoteAgentPlugin\Policy\CommentTargetMerger;
 use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
 use MerchantQuoteAgentPlugin\Policy\Data\InterpretedLineChange;
+use MerchantQuoteAgentPlugin\Policy\Data\PriceAsk;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLifecycle;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineIdentity;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
@@ -158,6 +159,18 @@ final class CommentTargetMergerTest extends TestCase
         $merged = (new CommentTargetMerger())->merge(self::structured(1.0, buyerTargetNet: 900.0), null);
 
         self::assertSame(900.0, $merged->buyerTargetNet);
+    }
+
+    public function testACommentPriceAskKeepsTheStorefrontAskOutOfTheTarget(): void
+    {
+        // A later "can you do 5%?" on a line still holding an answered
+        // storefront price must not stack on that stale figure (#223).
+        $merged = (new CommentTargetMerger())->merge(
+            self::structured(98.0),
+            new CommentInterpretation(price: new PriceAsk(additionalDiscountPercent: 5.0)),
+        );
+
+        self::assertNull($merged->buyerTargetNet);
     }
 
     /** One 10 x 100.00 net line, optionally carrying a storefront requested price. */

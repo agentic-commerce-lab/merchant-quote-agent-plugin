@@ -81,14 +81,14 @@ final readonly class QuoteSnapshot
 
     /**
      * True when a line asks for less than it is quoted at and nothing has set
-     * a quote-level target yet: the storefront ask CommentTargetMerger rolls up
-     * when no comment did (#223). Here rather than in the merger, which has no
-     * complexity left for it. A requested price above the quote is no ask for
-     * a markup.
+     * a quote-level target yet — neither this snapshot nor a price the comment
+     * states: the storefront ask CommentTargetMerger rolls up when no comment
+     * did (#223). Here rather than in the merger, which has no complexity left
+     * for it. A requested price above the quote is no ask for a markup.
      */
-    public function hasUntargetedLineAsk(): bool
+    public function hasUntargetedLineAsk(?PriceAsk $commentPrice): bool
     {
-        if ($this->buyerTargetNet !== null) {
+        if ($this->buyerTargetNet !== null || $commentPrice?->isStated() === true) {
             return false;
         }
 

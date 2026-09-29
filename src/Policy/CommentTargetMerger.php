@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Policy;
 
 use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
+use MerchantQuoteAgentPlugin\Policy\Data\PriceAsk;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 
@@ -28,7 +29,7 @@ final class CommentTargetMerger
     {
         $targets = $this->lineTargets->extract($interpretation);
         if ($targets === []) {
-            return self::withStructuredTarget($snapshot);
+            return self::withStructuredTarget($snapshot, $interpretation?->price);
         }
 
         // Guarded on the EXTRACTED targets, not the adopted ones: an ask that
@@ -101,10 +102,11 @@ final class CommentTargetMerger
      *
      * Never overrides a target something else already set, and only when a
      * line asks for less than it is quoted at — QuoteSnapshot::hasUntargetedLineAsk().
+     * Nor when the comment states a price of its own (PriceAsk::isStated()).
      */
-    private static function withStructuredTarget(QuoteSnapshot $snapshot): QuoteSnapshot
+    private static function withStructuredTarget(QuoteSnapshot $snapshot, ?PriceAsk $commentPrice): QuoteSnapshot
     {
-        return $snapshot->hasUntargetedLineAsk()
+        return $snapshot->hasUntargetedLineAsk($commentPrice)
             ? $snapshot->withBuyerTargetNet(self::rescaledBuyerTarget($snapshot, $snapshot->lines))
             : $snapshot;
     }

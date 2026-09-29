@@ -27,4 +27,19 @@ final readonly class PriceAsk
         #[Assert\Positive]
         public ?float $targetTotal = null,
     ) {}
+
+    /**
+     * True when the comment names a quote-level price of its own. Then a
+     * storefront per-line ask is not rolled up into the buyer's target (#223):
+     * a later "can you do 5%?" on a line still holding an answered storefront
+     * price must not stack on that stale figure.
+     */
+    public function isStated(): bool
+    {
+        return (
+            $this->additionalDiscountPercent !== null
+            || $this->targetTotal !== null
+            || $this->bestPriceRequested === true
+        );
+    }
 }

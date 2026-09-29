@@ -76,13 +76,15 @@ final class DiscountCeilingTest extends TestCase
 
     public function testAnAskAboveTheCapLeavesTheCapStanding(): void
     {
-        // Requested 50.00 against 100.00 is a 50% ask. min() must leave the
-        // 15% cap standing so the existing counter instruction still fires;
-        // tightening UP to the ask would hand away 50%.
+        // Requested 82.00 against 100.00 is an 18% ask: above the 15% cap,
+        // inside the 20% counter band. min() must leave the 15% cap standing
+        // so the existing counter instruction still fires; tightening UP to
+        // the ask would hand away 18%. Was a 50% ask, which now escalates
+        // before any offer call (#223).
         $harness = PipelineHarness::with(['{}', self::OFFER_5_PERCENT, 'Here you go.'], reReadTotalNet: 950.0);
         $snapshot = NegotiationFixture::snapshot(comments: [
-            NegotiationFixture::buyerComment('we need 50 each', '2026-08-28 09:00:00'),
-        ], requestedUnitPrice: 50.0);
+            NegotiationFixture::buyerComment('we need 82 each', '2026-08-28 09:00:00'),
+        ], requestedUnitPrice: 82.0);
 
         $harness->pipeline->service(
             $snapshot,
@@ -95,6 +97,11 @@ final class DiscountCeilingTest extends TestCase
             'maximum discount you may grant: 15.00%',
             $harness->spy->userPrompts[1],
             'An ask above the cap must not raise the cap.',
+        );
+        self::assertStringContainsString(
+            'the buyer asked for 18.00%, which is above your cap: counter, do not grant it',
+            $harness->spy->userPrompts[1],
+            'The 18% ask goes through the counter band.',
         );
     }
 

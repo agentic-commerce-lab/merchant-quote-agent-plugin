@@ -22,7 +22,7 @@ Quote 1206: the buyer's storefront requested price is 0.84 net against 727.23, a
 
 The retired TS agent's snapshot builder supplied the field: fixture `quote-decision.json`, the "per-line asks" case. The port lost it.
 
-**Fix.** In `CommentTargetMerger::merge()`, the shared seam every decider path goes through: with no comment targets, still roll the snapshot's own per-line requested prices up into `buyerTargetNet` via `rescaledBuyerTarget()`, when the field is empty and at least one line carries a requested price below its quoted one. It never overrides a target that is already set, so it cannot double-count.
+**Fix.** In `CommentTargetMerger::merge()`, the shared seam every decider path goes through: with no comment targets, still roll the snapshot's own per-line requested prices up into `buyerTargetNet` via `rescaledBuyerTarget()`, when the field is empty and at least one line carries a requested price below its quoted one. It never overrides a target that is already set, so it cannot double-count. The rollup applies only when the comment makes no price ask of its own (no `additionalDiscountPercent`, `targetTotal` or `bestPriceRequested` on its `PriceAsk`), so a later "can you do 5%?" never stacks on a stale storefront price.
 
 **Effect.**
 
