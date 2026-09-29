@@ -414,7 +414,7 @@
             "currency_mismatch": "No maximum quote value is configured for {currency}, so the agent cannot tell whether this quote is inside your ceiling. Set one for that currency to let it negotiate.",
             "needs_human_review": "A person needs to complete this quote directly; no more specific category applies. If the customer's own request was recorded, it is shown alongside this reason.",
             "not_configured": "The agent is switched on but its configuration is incomplete or invalid, so it answered nothing rather than guess. The technical details below name the fields.",
-            "model_unavailable": "The model could not be reached or answered with something unusable. Nothing was written to the quote.",
+            "model_unavailable": "The model could not be reached or answered with something unusable. Decisions recorded by earlier versions of the agent also used this reason when the model chose to hand the quote to a person. Nothing was written to the quote.",
             "model_declined": "The agent reviewed this ask and chose to hand it to a person instead of making an offer. Nothing was written to the quote.",
             "proposal_rejected": "The model proposed terms outside the authority your policies allow, so the policy layer refused them. The quote was left untouched.",
             "verification_failed": "The quote was changed, but re-reading it did not match what had been authorised, so it needs a person to confirm before the customer is told anything.",

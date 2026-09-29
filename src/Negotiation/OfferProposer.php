@@ -228,11 +228,12 @@ final readonly class OfferProposer
                 $transcript,
             );
 
-        // #222: the table is net, the buyer's sentence is not. Said once, above
-        // both the earlier rounds and the latest comment, so no raw figure in
-        // either is read against a net price.
+        // #222: the table is net, the buyer's sentence is not, and neither are
+        // the earlier rounds: their "you offered" figures are gross too
+        // (ReplyComposer composes from buyerFacingTotal()). Said once, above
+        // both, so no raw figure in either is read against a net price.
         $buyerSpace = $context->buyerWritesGross
-            ? "The buyer's own figures below include tax (gross); every price above is net.\n"
+            ? "The figures in the earlier rounds and in the buyer's comment below include tax (gross); the total and the table above are net.\n"
             : '';
 
         return sprintf(
