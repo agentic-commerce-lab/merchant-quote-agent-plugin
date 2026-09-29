@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
-use MerchantQuoteAgentPlugin\Negotiation\NegotiateLineBlock;
-use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineIdentity;
-use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -111,27 +108,63 @@ final class NegotiateTargetSpaceTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertStringNotContainsString('include tax', $harness->spy->userPrompts[1] ?? '');
-    }
-
-    public function testAStorefrontPriceWinsTheColumnOverACommentTargetOnTheSameLine(): void
-    {
-        // Review Focus 4: CommentLineTargets::adoptedBy() lets a standing
-        // storefront ask win over a comment target; the column must show the
-        // number the policy layer prices against, not the one it ignored.
-        self::assertStringEndsWith('| 70.00', NegotiateLineBlock::of([self::line(requestedUnitPrice: 70.0)], [
-            'line-1' => 72.0,
-        ]));
-    }
-
-    private static function line(?float $requestedUnitPrice): QuoteLineSnapshot
-    {
-        return new QuoteLineSnapshot(
-            identity: new QuoteLineIdentity('line-1'),
-            quantity: 1,
-            unitPriceNet: 80.0,
-            totalNet: 80.0,
-            requestedUnitPrice: $requestedUnitPrice,
+        $negotiatePrompt = $harness->spy->userPrompts[1] ?? '';
+        self::assertStringContainsString(
+            'Line items (',
+            $negotiatePrompt,
+            'The negotiate prompt must have been written.',
         );
+        self::assertStringNotContainsString('include tax', $negotiatePrompt);
+    }
+
+    public function testInARenegotiationRoundTheCommentTargetWinsTheColumnOverAStandingStorefrontAsk(): void
+    {
+        // CommentLineTargets::adoptedBy(): in change_requested the newer comment
+        // ask is the one priced, even over a storefront "Requested price". The
+        // column must show that number, not the stale storefront one.
+        $harness = PipelineHarness::with([
+            '{"structural":{"lineChanges":[{"lineItemId":"line-1","targetUnitPrice":90.0}]}}',
+            '{"action":"offer","message":"Done.","terms":{"discountPercent":5}}',
+            'Here is your offer.',
+        ]);
+        $harness->before = NegotiationFixture::grossSnapshot([NegotiationFixture::buyerComment(
+            'Can you do 90 a unit?',
+            '2026-08-28 09:00:00',
+        )], requestedUnitPrice: 70.0);
+
+        $harness->pipeline->service(
+            $harness->before,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertMatchesRegularExpression('/line-1 \|[^\n]*\| 72\.00$/m', $harness->spy->userPrompts[1] ?? '');
+    }
+
+    public function testOutsideARenegotiationRoundAStandingStorefrontAskWinsTheColumn(): void
+    {
+        // The sibling: in `open` adoptedBy() drops the comment target for a
+        // line that carries a storefront ask, so the column shows that one,
+        // as stored.
+        $harness = PipelineHarness::with([
+            '{"structural":{"lineChanges":[{"lineItemId":"line-1","targetUnitPrice":90.0}]}}',
+            '{"action":"offer","message":"Done.","terms":{"discountPercent":5}}',
+            'Here is your offer.',
+        ]);
+        $harness->before = NegotiationFixture::grossSnapshot(
+            [NegotiationFixture::buyerComment('Can you do 90 a unit?', '2026-08-28 09:00:00')],
+            state: 'open',
+            requestedUnitPrice: 70.0,
+        );
+
+        $harness->pipeline->service(
+            $harness->before,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertMatchesRegularExpression('/line-1 \|[^\n]*\| 70\.00$/m', $harness->spy->userPrompts[1] ?? '');
     }
 }

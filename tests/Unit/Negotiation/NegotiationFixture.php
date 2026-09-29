@@ -92,8 +92,11 @@ final class NegotiationFixture
      *
      * @param list<QuoteComment> $comments
      */
-    public static function grossSnapshot(array $comments = [], string $state = 'change_requested'): QuoteSnapshot
-    {
+    public static function grossSnapshot(
+        array $comments = [],
+        string $state = 'change_requested',
+        ?float $requestedUnitPrice = null,
+    ): QuoteSnapshot {
         $snapshot = self::snapshot(comments: $comments, state: $state, totalNet: 800.0);
 
         return new QuoteSnapshot(
@@ -106,6 +109,7 @@ final class NegotiationFixture
                 quantity: 10,
                 unitPriceNet: 80.0,
                 totalNet: 800.0,
+                requestedUnitPrice: $requestedUnitPrice,
                 netRatio: 0.8,
             )], comments: $comments),
         );

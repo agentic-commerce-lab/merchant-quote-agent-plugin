@@ -19,7 +19,8 @@ final class NegotiateLineBlock
 
     /**
      * @param list<QuoteLineSnapshot> $lines
-     * @param array<string, float> $lineAsksNet a comment's adopted per-line targets, net (NegotiationContext)
+     * @param array<string, float> $lineAsksNet a comment's adopted per-line targets, net (NegotiationContext);
+     *                                          one present here wins its line's column
      */
     public static function of(array $lines, array $lineAsksNet = []): string
     {
@@ -32,12 +33,16 @@ final class NegotiateLineBlock
                 $l->label() ?? '',
                 $l->quantity,
                 $l->unitPriceNet,
-                // The storefront's per-line "Requested price", else the target
-                // the buyer typed in their comment, both net. Without the first
-                // a structured-only ask reached the model as no ask at all
-                // (sw-ag.dev quotes 1097/1099); without the second a comment's
-                // gross per-unit figure did (quote 1202, #222).
-                self::ask($l->requestedUnitPrice ?? $lineAsksNet[$l->lineItemId()] ?? null),
+                // The adopted comment target when there is one, else the
+                // storefront's per-line "Requested price", both net. The
+                // adopted target wins because CommentLineTargets::adoptedBy()
+                // already applied the precedence: it only adopts a comment
+                // target that IS the priced ask (a renegotiation round, or a
+                // line with no storefront ask). Without the storefront field a
+                // structured-only ask reached the model as no ask at all
+                // (sw-ag.dev quotes 1097/1099); without the comment target a
+                // comment's gross per-unit figure did (quote 1202, #222).
+                self::ask($lineAsksNet[$l->lineItemId()] ?? $l->requestedUnitPrice),
             ),
             $lines,
         ));

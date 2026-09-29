@@ -245,7 +245,7 @@ final readonly class OfferRound
             $snapshot->identity->quoteId,
             SnapshotAdapter::conversation($snapshot),
             QuoteBaseline::read($snapshot),
-            $ask?->interpretation->price->targetTotal,
+            buyerTargetNet: $ask?->interpretation->price->targetTotal,
             lineAsksNet: (new CommentTargetMerger())->adopted(
                 SnapshotAdapter::toPolicy($snapshot),
                 $ask?->interpretation,

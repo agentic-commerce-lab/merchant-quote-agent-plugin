@@ -54,7 +54,7 @@ Quote 1202: the buyer wrote "770.21 a unit", which is 11% off the 865.40 gross p
 
 **Fix (user's choice: fill the column and label the comment).**
 
-1. **Fill the column.** `NegotiationContext` gains the adopted per-line targets, net: `CommentTargetMerger::adopted()`, the number the policy layer prices against. `NegotiateLineBlock` shows a line's storefront `requestedUnitPrice`, else its adopted comment target.
+1. **Fill the column.** `NegotiationContext` gains the adopted per-line targets, net: `CommentTargetMerger::adopted()`, the number the policy layer prices against. `NegotiateLineBlock` shows a line's adopted comment target when there is one, else its storefront `requestedUnitPrice`. The adopted target wins because `CommentLineTargets::adoptedBy()` has already applied the precedence: in a renegotiation round (`change_requested`/`reopen`) the comment wins even over a storefront ask, otherwise only lines without one adopt it.
 2. **Label the comment.** On a quote whose lines are stored gross (any line `netRatio` < 1), the prompt tells the model that the buyer's figures include tax while the table is net.
 
 **Test.** In `NegotiateTargetSpaceTest`, on the gross fixture (net ratio 0.8), the comment "90 a unit" with extract `lineChanges` 90 must produce a negotiate prompt whose line row carries 72.00 and the gross label.
