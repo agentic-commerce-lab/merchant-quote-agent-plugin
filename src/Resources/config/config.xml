@@ -87,7 +87,7 @@
                     <name>Round the quote total up</name>
                 </option>
             </options>
-            <helpText>Rounding only ever gives less discount, so it never breaks the limits above. It never rounds a figure the customer asked for, never takes back a discount they already hold, and never rounds a discount away to nothing: in each case the offer goes out unrounded. Quote-total rounding works on quote-wide offers only and writes a fixed-amount discount.</helpText>
+            <helpText>Rounding only ever gives less discount, so it never breaks the limits above. It never rounds a figure the customer asked for, never takes back a discount they already hold, and never rounds a discount away to nothing: in each case the offer goes out unrounded. Both modes round quote-wide offers only: an offer that sets individual line prices goes out as the agent priced it. Quote-total rounding writes a fixed-amount discount.</helpText>
         </input-field>
         <input-field type="float">
             <name>roundingStep</name>

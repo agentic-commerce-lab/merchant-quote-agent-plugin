@@ -4,11 +4,14 @@ import {
     FEEDBACK_COMMENT_MAX,
     FEEDBACK_REASONS,
     INVALID_REASONS,
+    draftAmount,
+    draftPercent,
     editsPayload,
     exceedsCap,
     feedbackPayload,
     localDay,
     needsReplyReview,
+    replacesAmount,
     replyCheckedAfterPreview,
     reviewFailure,
     reviewIntroKey,
@@ -29,7 +32,7 @@ const view = {
     pricing: 'discount',
     reply: 'We can offer 5%.',
     previewEdited: false,
-    discountPercent: { live: null, draft: 5 },
+    discount: { live: null, draft: { type: 'percentage', value: 5 } },
     lines: [{ id: 'l1', draft: 9 }],
     expiresAt: { live: null, draft: '2026-10-07' },
 };
@@ -55,6 +58,25 @@ assert.deepEqual(editsPayload({ ...view, pricing: null }, { ...untouched, discou
 assert.deepEqual(editsPayload(lines, { ...untouched, linePrices: { l1: null, l2: 3.5 } }), { linePrices: { l2: 3.5 } });
 assert.deepEqual(editsPayload(lines, { ...untouched, linePrices: { l1: undefined, l2: 4 } }), {});
 assert.deepEqual(editsPayload(view, { ...untouched, discountPercent: null }), {});
+
+// QuoteTotalRounding drafts a fixed amount (DraftView.php). The percentage
+// field starts empty and an unedited send keeps the amount; a typed
+// percentage replaces it, which the card has to say.
+const rounded = { ...view, discount: { live: { type: 'percentage', value: 5 }, draft: { type: 'absolute', value: 90 } } };
+assert.equal(draftAmount(rounded), 90);
+assert.equal(draftPercent(rounded), null);
+assert.equal(draftAmount(view), null);
+assert.equal(draftPercent(view), 5);
+assert.equal(draftPercent({ ...view, discount: { live: null, draft: null } }), null);
+const roundedForm = { ...untouched, discountPercent: draftPercent(rounded) };
+assert.deepEqual(editsPayload(rounded, roundedForm), {});
+assert.equal(wasEdited(rounded, roundedForm), false);
+assert.equal(replacesAmount(rounded, roundedForm), false);
+assert.deepEqual(editsPayload(rounded, { ...roundedForm, discountPercent: 8 }), { discountPercent: 8 });
+assert.equal(replacesAmount(rounded, { ...roundedForm, discountPercent: 8 }), true);
+assert.equal(replacesAmount(rounded, { ...roundedForm, discountPercent: 0 }), true, 'Zero percent still drops the amount.');
+assert.equal(replacesAmount(view, edited), false);
+assert.equal(replacesAmount({ ...rounded, pricing: 'lines' }, { ...roundedForm, discountPercent: 8 }), false);
 
 assert.equal(exceedsCap(12, 10), true);
 assert.equal(exceedsCap(10, 10), false);
@@ -111,12 +133,19 @@ const cardKeys = [
     ...[{ pricing: 'lines' }, { pricing: null, outcome: 'clarified' }, { pricing: null, outcome: 'acknowledged' }].map(reviewIntroKey),
     ...INVALID_REASONS.map((reason) => `merchant-quote-agent.review.error.invalid.${reason}`),
     'merchant-quote-agent.review.error.send_failed',
+    'merchant-quote-agent.review.discountAmount',
+    'merchant-quote-agent.review.discountReplace',
+    'merchant-quote-agent.review.discountSwitch',
 ];
 
 for (const key of cardKeys) {
     for (const locale of ['en', 'de']) {
         assert.ok(typeof snippetAt(locale, key) === 'string', `snippet/${locale}.json is missing ${key}`);
     }
+}
+
+for (const locale of ['en', 'de']) {
+    assert.match(snippetAt(locale, 'merchant-quote-agent.review.discountAmount'), /\{amount\}.*\{total\}/, `${locale} amount copy lost a placeholder`);
 }
 
 // Meteor 5.7's MtTextarea declares `maxLength`; a `maxlength` attribute falls

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Review;
 
-use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 
 /**
@@ -12,6 +11,10 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
  * says which kind of price the agent drafted — per-line or quote-wide — so the
  * card offers the matching inputs; null is a draft that changes no price (a
  * clarification or an acknowledgement), which has none.
+ *
+ * The discount keeps its type: QuoteTotalRounding drafts an ABSOLUTE amount
+ * (Bridge\Data\Discount) that lands the gross total on a round figure, and a
+ * percent-only read shows that draft as no discount at all.
  */
 final class DraftView
 {
@@ -32,7 +35,7 @@ final class DraftView
             'currencyIso' => $live->identity->currencyIso,
             'maxDiscountPercent' => $record->maxDiscountPercent,
             'pricing' => self::pricing($pending),
-            'discountPercent' => ['live' => self::percent($live), 'draft' => self::percent($draft)],
+            'discount' => ['live' => self::discount($live), 'draft' => self::discount($draft)],
             'lines' => self::lines($live, $draft),
             'totals' => ['live' => self::totals($live), 'draft' => self::totals($draft)],
             'expiresAt' => [
@@ -53,11 +56,12 @@ final class DraftView
         return \in_array('updateLineItems', $pending->record->writes ?? [], strict: true) ? 'lines' : 'discount';
     }
 
-    private static function percent(QuoteSnapshot $snapshot): ?float
+    /** @return ?array{type: string, value: float} */
+    private static function discount(QuoteSnapshot $snapshot): ?array
     {
         $discount = $snapshot->totals->discount;
 
-        return $discount !== null && $discount->type === DiscountType::Percentage ? $discount->value : null;
+        return $discount === null ? null : ['type' => $discount->type->value, 'value' => $discount->value];
     }
 
     /** @return list<array{id: string, label: ?string, quantity: int, live: float, draft: float}> */

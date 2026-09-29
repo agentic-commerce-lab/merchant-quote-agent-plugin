@@ -51,8 +51,14 @@
             </table>
 
             <div v-else class="mqa-review__discount">
+                <p v-if="amount !== null" class="mqa-review__amount">
+                    {{ $t('merchant-quote-agent.review.discountAmount', {
+                        amount: formatCurrency(amount, view.currencyIso),
+                        total: formatCurrency(view.totals.draft.gross, view.currencyIso),
+                    }) }}
+                </p>
                 <mt-number-field
-                    :label="$tc('merchant-quote-agent.review.discount')"
+                    :label="$tc(amount === null ? 'merchant-quote-agent.review.discount' : 'merchant-quote-agent.review.discountReplace')"
                     :model-value="form.discountPercent"
                     :min="0"
                     :max="100"
@@ -60,6 +66,9 @@
                     :disabled="!canReview || blocked || isSaving"
                     @update:model-value="(value) => { form.discountPercent = value; }"
                 />
+                <p v-if="replacesAmount" class="mqa-review__hint">
+                    {{ $tc('merchant-quote-agent.review.discountSwitch') }}
+                </p>
                 <p v-if="overCap" class="mqa-review__hint">
                     {{ $t('merchant-quote-agent.review.overCap', { cap: formatPercent(view.maxDiscountPercent) }) }}
                 </p>
