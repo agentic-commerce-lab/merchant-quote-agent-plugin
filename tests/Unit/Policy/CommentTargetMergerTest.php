@@ -135,6 +135,49 @@ final class CommentTargetMergerTest extends TestCase
         self::assertSame([], (new CommentTargetMerger())->distributedAcrossLines($snapshot, 10.0));
     }
 
+    public function testAStorefrontRequestedPriceBecomesTheBuyersTargetWithoutAComment(): void
+    {
+        // #223: with no comment nothing set buyerTargetNet, so the band
+        // decider measured a 99.9% storefront ask as 0% and granted it.
+        $merged = (new CommentTargetMerger())->merge(self::structured(1.0), null);
+
+        self::assertSame(10.0, $merged->buyerTargetNet);
+    }
+
+    public function testARequestedPriceAboveTheQuotedOneIsNoAsk(): void
+    {
+        // Review Focus 1: a requested price above the quote is not a request
+        // for a markup; the snapshot stays as it was.
+        $merged = (new CommentTargetMerger())->merge(self::structured(120.0), null);
+
+        self::assertNull($merged->buyerTargetNet);
+    }
+
+    public function testATargetAlreadySetIsNeverOverridden(): void
+    {
+        $merged = (new CommentTargetMerger())->merge(self::structured(1.0, buyerTargetNet: 900.0), null);
+
+        self::assertSame(900.0, $merged->buyerTargetNet);
+    }
+
+    /** One 10 x 100.00 net line, optionally carrying a storefront requested price. */
+    private static function structured(?float $requestedUnitPrice, ?float $buyerTargetNet = null): QuoteSnapshot
+    {
+        return new QuoteSnapshot(
+            currencyIso: 'EUR',
+            totalNet: 1000.0,
+            lines: [new QuoteLineSnapshot(
+                identity: new QuoteLineIdentity('line-1'),
+                quantity: 10,
+                unitPriceNet: 100.0,
+                totalNet: 1000.0,
+                requestedUnitPrice: $requestedUnitPrice,
+            )],
+            lifecycle: new QuoteLifecycle(stateTechnicalName: 'open'),
+            buyerTargetNet: $buyerTargetNet,
+        );
+    }
+
     private static function interpretationAsking(float $target): CommentInterpretation
     {
         return new CommentInterpretation(structural: new StructuralAsks(lineChanges: [new InterpretedLineChange(

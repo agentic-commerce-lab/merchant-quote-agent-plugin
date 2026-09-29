@@ -79,6 +79,28 @@ final readonly class QuoteSnapshot
             : $this->withBuyerTargetNet(min($budgetNet, $this->buyerTargetNet ?? $this->totalNet));
     }
 
+    /**
+     * True when a line asks for less than it is quoted at and nothing has set
+     * a quote-level target yet: the storefront ask CommentTargetMerger rolls up
+     * when no comment did (#223). Here rather than in the merger, which has no
+     * complexity left for it. A requested price above the quote is no ask for
+     * a markup.
+     */
+    public function hasUntargetedLineAsk(): bool
+    {
+        if ($this->buyerTargetNet !== null) {
+            return false;
+        }
+
+        foreach ($this->lines as $line) {
+            if ($line->requestedUnitPrice !== null && $line->requestedUnitPrice < $line->unitPriceNet) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function withBuyerTargetNet(?float $buyerTargetNet): self
     {
         return new self(

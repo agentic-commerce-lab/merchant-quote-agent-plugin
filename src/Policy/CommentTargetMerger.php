@@ -28,7 +28,7 @@ final class CommentTargetMerger
     {
         $targets = $this->lineTargets->extract($interpretation);
         if ($targets === []) {
-            return $snapshot;
+            return self::withStructuredTarget($snapshot);
         }
 
         // Guarded on the EXTRACTED targets, not the adopted ones: an ask that
@@ -89,6 +89,24 @@ final class CommentTargetMerger
         }
 
         return $targets;
+    }
+
+    /**
+     * #223: a storefront per-line requested price is an ask on its own, but
+     * only rescaledBuyerTarget() rolls line asks up into the quote-level
+     * target the band decider reads, and it ran only for a comment's line
+     * targets. With no comment the band measured the ask as 0% and granted a
+     * 99.9% request (sw-ag.dev quote 1206). The retired TS snapshot builder
+     * supplied this field; the port lost it.
+     *
+     * Never overrides a target something else already set, and only when a
+     * line asks for less than it is quoted at — QuoteSnapshot::hasUntargetedLineAsk().
+     */
+    private static function withStructuredTarget(QuoteSnapshot $snapshot): QuoteSnapshot
+    {
+        return $snapshot->hasUntargetedLineAsk()
+            ? $snapshot->withBuyerTargetNet(self::rescaledBuyerTarget($snapshot, $snapshot->lines))
+            : $snapshot;
     }
 
     /** @param list<QuoteLineSnapshot> $lines */
