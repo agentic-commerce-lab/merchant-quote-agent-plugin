@@ -1,0 +1,7 @@
+{
+    "transcript": "EXTRA RUBRIC ITEMS:\n(none)\n\nTRANSCRIPT:\n\nROUND 1\nBUYER: Could you do 5% off this order?\nAGENT: Thanks for asking. We can offer 5% off: the quote now comes to 1,140.00 EUR including VAT and stays valid for 10 days.\n",
+    "labels": {
+        "rubric": {"J1": "pass", "J2": "pass", "J3": "pass", "J4": "pass"},
+        "figures": [{"round": 1, "value": 1140}]
+    }
+}

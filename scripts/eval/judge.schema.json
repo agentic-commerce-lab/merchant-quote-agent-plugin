@@ -1,0 +1,45 @@
+{
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["rounds", "rubric"],
+    "properties": {
+        "rounds": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["round", "statedFigures"],
+                "properties": {
+                    "round": {"type": "integer", "minimum": 1},
+                    "statedFigures": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "value", "decimals", "quote"],
+                            "properties": {
+                                "kind": {"enum": ["money", "percent"]},
+                                "value": {"type": "number"},
+                                "decimals": {"type": "integer", "minimum": 0, "maximum": 4},
+                                "quote": {"type": "string"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "rubric": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "verdict", "reason"],
+                "properties": {
+                    "id": {"type": "string", "pattern": "^J([1-4]|5\\.[0-9]+)$"},
+                    "verdict": {"enum": ["pass", "fail", "n/a"]},
+                    "reason": {"type": "string"}
+                }
+            }
+        }
+    }
+}

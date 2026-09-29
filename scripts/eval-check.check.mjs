@@ -18,6 +18,7 @@ import {
     h6Order,
     h9Rounding,
 } from './eval/checks.mjs';
+import { canaryMismatches, figureCandidates, h8StatedFigures, transcript, unwrapJudgeResult, verdict } from './eval/verdict.mjs';
 
 const line = (over = {}) => ({ lineItemId: 'l1', productId: 'p1', quantity: 10, unitPriceNet: 10, totalNet: 100, netRatio: 1, ...over });
 const policy = (over = {}) => ({ maxDiscountPercent: 15, counterOfferMaxPercent: 25, minMarginPercent: null, roundingMode: 'off', roundingStep: null, ...over });
@@ -110,4 +111,67 @@ const grouped = groupNegotiations([row({ round: 2 }), row({ round: 1 }), row({ r
 assert.equal(grouped.length, 2);
 assert.deepEqual(grouped[0].rows.map((r) => r.round), [1, 2]);
 
-console.log('eval-check (checks): ok');
+// H8 -- figures the reply states must match what the quote carries
+const figure = (value, decimals = 2, kind = 'money') => ({ kind, value, decimals, quote: String(value) });
+const judged = (figures, round = 1) => ({ rounds: [{ round, statedFigures: figures }], rubric: [] });
+assert.equal(status(h8StatedFigures([row()], judged([figure(113.05)]))), 'pass'); // gross total
+assert.equal(status(h8StatedFigures([row()], judged([figure(95)]))), 'pass'); // net total
+assert.equal(status(h8StatedFigures([row()], judged([figure(9.5)]))), 'pass'); // unit price net
+assert.equal(status(h8StatedFigures([row()], judged([figure(5, 0, 'percent')]))), 'pass');
+assert.equal(status(h8StatedFigures([row()], judged([figure(1299)]))), 'fail');
+// precision-aware: "7%" against 6.97 matches, "7.50%" against 7.40 does not
+const at = (after) => [row({ totalNetAfter: after })];
+assert.equal(status(h8StatedFigures(at(93.03), judged([figure(7, 0, 'percent')]))), 'pass');
+assert.equal(status(h8StatedFigures(at(92.6), judged([figure(7.5, 2, 'percent')]))), 'fail');
+assert.equal(status(h8StatedFigures([row()], judged([]))), 'n/a');
+assert.equal(status(h8StatedFigures([row()], null)), 'judge_error');
+assert.ok(figureCandidates([row()], row()).money.includes(100), 'the original total is a legitimate "down from" figure');
+assert.deepEqual(figureCandidates([row({ totalNetBefore: null })], row({ totalNetBefore: null })).percent, [], 'no round-1 baseline: no percent candidate, never NaN');
+
+// Review Focus 4 -- a silent pass
+const silent = transcript(scenario(), { rows: [row({ replyToBuyer: null })] });
+assert.match(silent, /AGENT: \(no reply\)/);
+assert.match(transcript(scenario({ expect: { judge: ['No stand for free.'] } }), { rows: [row()] }), /J5\.1: No stand for free\./);
+
+// unwrap -- the claude -p JSON result
+assert.deepEqual(unwrapJudgeResult(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, structured_output: { rounds: [], rubric: [] }, total_cost_usd: 0.01 })), { judgment: { rounds: [], rubric: [] }, costUsd: 0.01 });
+assert.ok(unwrapJudgeResult('not json').error);
+assert.ok(unwrapJudgeResult(JSON.stringify({ subtype: 'error_max_budget_usd', is_error: true })).error);
+assert.ok(unwrapJudgeResult(JSON.stringify({ subtype: 'success', is_error: false, result: 'text only' })).error);
+
+// canary
+const graded = { rounds: [{ round: 1, statedFigures: [figure(1140)] }], rubric: [{ id: 'J2', verdict: 'pass', reason: '' }] };
+assert.deepEqual(canaryMismatches(graded, { rubric: { J2: 'pass' }, figures: [{ round: 1, value: 1140 }] }), []);
+assert.equal(canaryMismatches(graded, { rubric: { J2: 'fail' }, figures: [] }).length, 1);
+assert.equal(canaryMismatches(graded, { rubric: {}, figures: [{ round: 1, value: 1299 }] }).length, 1);
+
+// verdict -- 3 reps: hard 3/3, rubric 2/3, judge errors are their own category
+const rubric = (verdicts) => ({ rounds: [{ round: 1, statedFigures: [] }], rubric: ['J1', 'J2', 'J3', 'J4'].map((id, i) => ({ id, verdict: verdicts[i] ?? 'pass', reason: '' })) });
+const reps3 = [1, 2, 3].map((rep) => row({ rep }));
+const run = (rows, judgments) => verdict({ scenarios: [scenario()], reps: 3, rows, judgments: new Map(judgments) });
+const allPass = run(reps3, [[`s#1`, rubric([])], [`s#2`, rubric([])], [`s#3`, rubric([])]]);
+assert.equal(allPass.exitCode, 0);
+assert.equal(allPass.scenarios[0].checks.H2.result, 'pass');
+assert.equal(allPass.scenarios[0].checks.H2.passes, 3);
+
+const oneHardFail = run([row({ rep: 1 }), row({ rep: 2, totalNetAfter: 80 }), row({ rep: 3 })], [[`s#1`, rubric([])], [`s#2`, rubric([])], [`s#3`, rubric([])]]);
+assert.equal(oneHardFail.exitCode, 1);
+assert.equal(oneHardFail.scenarios[0].checks.H2.result, 'fail');
+
+const twoOfThree = run(reps3, [[`s#1`, rubric([])], [`s#2`, rubric(['pass', 'fail'])], [`s#3`, rubric([])]]);
+assert.equal(twoOfThree.scenarios[0].checks.J2.result, 'pass');
+const oneOfThree = run(reps3, [[`s#1`, rubric(['pass', 'fail'])], [`s#2`, rubric(['pass', 'fail'])], [`s#3`, rubric([])]]);
+assert.equal(oneOfThree.scenarios[0].checks.J2.result, 'fail');
+assert.equal(oneOfThree.exitCode, 1);
+
+const judgeDown = run(reps3, [[`s#1`, rubric([])]]); // two judgments missing
+assert.equal(judgeDown.scenarios[0].checks.J1.result, 'err');
+assert.equal(judgeDown.exitCode, 2);
+
+// Review Focus 1 -- a rep with no JSONL line at all fails H7, never shrinks the denominator
+const missingRep = run([row({ rep: 1 }), row({ rep: 2 })], [[`s#1`, rubric([])], [`s#2`, rubric([])]]);
+assert.equal(missingRep.scenarios[0].checks.H7.result, 'fail');
+assert.match(missingRep.scenarios[0].checks.H7.reps[2].reason, /no JSONL line/);
+assert.equal(missingRep.exitCode, 1);
+
+console.log('eval-check: ok');
