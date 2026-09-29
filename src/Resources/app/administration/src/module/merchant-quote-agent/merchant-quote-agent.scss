@@ -166,6 +166,17 @@
     white-space: normal;
 }
 
+/* Seven columns of measures do not fit a card at their one-line header width
+   ("Discount granted (agent vs. baseline)" alone is ~300px), so the grid
+   scrolled sideways and clipped the last columns. Let the header wrap; the body
+   cells wrap through the columns' `multiLine`, which drops the core's fixed
+   64px cell height that made the aside lines overprint the next row. */
+.mqa-strategy-grid .sw-data-grid__header .sw-data-grid__cell-content {
+    height: auto;
+    text-align: left;
+    white-space: normal;
+}
+
 .mqa-list__toolbar {
     display: flex;
     align-items: flex-end;

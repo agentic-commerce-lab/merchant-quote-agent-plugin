@@ -181,6 +181,7 @@
             <sw-card :title="$tc('merchant-quote-agent.strategyComparison.title')" :is-loading="isLoading">
                 <sw-data-grid
                     v-if="strategyComparison.length"
+                    class="mqa-strategy-grid"
                     :data-source="strategyComparison"
                     :columns="strategyColumns"
                     :is-loading="isLoading"
@@ -396,12 +397,15 @@
                     :subline="$tc('merchant-quote-agent.list.emptyStateSubline')"
                 />
 
+                {# One step, not none: the component hides itself when total is not
+                   above Math.min(...steps), and Math.min() of an empty list is
+                   Infinity, so `[]` made the control unrenderable. A single step
+                   also keeps the per-page select out, the page size being fixed. #}
                 <sw-pagination
-                    v-if="pageCount > 1"
                     :page="page"
                     :limit="pageSize"
                     :total="filteredQuotes.length"
-                    :steps="[]"
+                    :steps="[pageSize]"
                     @page-change="onPageChange"
                 />
             </sw-card>
