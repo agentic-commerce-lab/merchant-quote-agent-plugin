@@ -92,6 +92,22 @@ final class SnapshotAdapter
         return new BuyerConversation($buyer, $agent, $merchant);
     }
 
+    /**
+     * A line whose stored price had tax taken off on the way in: the buyer's
+     * page shows gross. Here rather than on OfferRound, its only caller,
+     * because that class sits at mago's class-complexity threshold.
+     */
+    public static function storedGross(BridgeSnapshot $snapshot): bool
+    {
+        foreach ($snapshot->content->lines as $line) {
+            if ($line->netRatio < (1.0 - 1e-6)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static function line(BridgeLine $line): PolicyLine
     {
         return new PolicyLine(

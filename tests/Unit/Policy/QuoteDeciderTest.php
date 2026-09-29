@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Policy;
 
 use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteDecisionKind;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLimits;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Policy\QuoteDecider;
@@ -56,6 +57,39 @@ final class QuoteDeciderTest extends TestCase
                 self::assertSame($expected['humanReviewRequests'], $details->humanReviewRequests, $description);
             }
         }
+    }
+
+    public function testACommentLessStorefrontAskBeyondTheCounterCeilingEscalates(): void
+    {
+        // #223: no comment and no buyerTargetNet, only a line requesting
+        // 50.00 against 100.00. Not a TS fixture: the retired TS snapshot
+        // builder always supplied buyerTargetNet, so this path never existed there.
+        $snapshot = QuoteSnapshot::fromArray([
+            'stateTechnicalName' => 'open',
+            'currencyIso' => 'EUR',
+            'totalNet' => 1000,
+            'lines' => [
+                [
+                    'lineItemId' => 'l1',
+                    'quantity' => 10,
+                    'unitPriceNet' => 100,
+                    'totalNet' => 1000,
+                    'requestedUnitPrice' => 50,
+                ],
+            ],
+        ]);
+        $limits = QuoteLimits::fromArray([
+            'maxDiscountPercent' => 10,
+            'counterOfferMaxPercent' => 20,
+            'maxQuoteValueNet' => 50000,
+            'validityDays' => 14,
+        ]);
+
+        $decision = (new QuoteDecider())->decide($snapshot, $limits, null);
+
+        self::assertSame(QuoteDecisionKind::Escalate, $decision->kind);
+        self::assertSame(QuoteEscalationReason::DiscountLimitExceeded, $decision->escalation->reason);
+        self::assertEqualsWithDelta(50.0, $decision->escalation->requestedDiscountPercent, 0.01);
     }
 
     public static function fixtures(): iterable

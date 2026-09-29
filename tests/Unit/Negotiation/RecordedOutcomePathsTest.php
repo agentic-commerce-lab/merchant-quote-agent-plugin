@@ -76,9 +76,9 @@ final class RecordedOutcomePathsTest extends TestCase
         // itself declines via {"action":"escalate"} rather than proposing
         // something OfferAuthorizer then rejects. Distinguished from that
         // other null-offer branch (authorization rejected) by the
-        // escalationReason recorded: ModelUnavailable here (issue #169 --
-        // the model itself declining is one of that case's own three
-        // scenarios), ProposalRejected there -- and by the call count:
+        // escalationReason recorded: ModelDeclined here (#222 -- the model
+        // itself declining is its own reason, no longer folded into
+        // ModelUnavailable), ProposalRejected there -- and by the call count:
         // exactly extract + negotiate, since a null offer never reaches
         // apply() or reply().
         $harness = PipelineHarness::with([
@@ -100,7 +100,7 @@ final class RecordedOutcomePathsTest extends TestCase
         self::assertCount(1, $harness->writer->drafts);
         self::assertSame('escalated', $harness->writer->drafts[0]->outcome);
         self::assertSame(
-            QuoteEscalationReason::ModelUnavailable->value,
+            QuoteEscalationReason::ModelDeclined->value,
             $harness->writer->drafts[0]->escalationReason,
             'Confirms the model-declined branch, not the authorization-rejected one.',
         );

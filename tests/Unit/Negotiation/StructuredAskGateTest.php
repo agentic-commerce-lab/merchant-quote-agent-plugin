@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use PHPUnit\Framework\TestCase;
 
@@ -147,5 +148,29 @@ final class StructuredAskGateTest extends TestCase
         );
         self::assertSame([QuoteTransition::AdminResend], $harness->gateway->transitions);
         self::assertSame([], $harness->gateway->customFieldWrites, 'No escalation marker.');
+    }
+
+    public function testAStorefrontAskFarBeyondTheCounterCeilingEscalatesBeforeAnyModelCall(): void
+    {
+        // #223, sw-ag.dev quote 1206: 0.84 net requested against 727.23, no
+        // comment, was granted 15% and ordered. Here: 1.00 against 100.00 is
+        // a 99% ask; NegotiationFixture's settings cap at 10% and counter up
+        // to 20%, so the band must escalate as discount_limit_exceeded.
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::snapshot(requestedUnitPrice: 1.0);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Escalated, $outcome);
+        self::assertSame(0, $harness->spy->calls, 'The band decides before any model call.');
+        self::assertSame(
+            QuoteEscalationReason::DiscountLimitExceeded->value,
+            $harness->writer->drafts[0]->escalationReason,
+        );
     }
 }

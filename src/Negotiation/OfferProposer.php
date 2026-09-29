@@ -100,11 +100,12 @@ final readonly class OfferProposer
         $raw = (string) json_encode($response);
 
         if ($response->escalates()) {
-            // Issue #169: the model itself declined to offer anything — the
-            // "the model itself declined" half of ModelUnavailable's own
-            // remit, not the buyer asking for a human.
+            // #222: the model itself declined to offer anything. Recorded as
+            // its own reason: the model was reachable and answered, so this is
+            // a judgement to review, not an outage (it was ModelUnavailable
+            // under #169).
             return $this->recorded($raw, ProposedAnswer::escalate(
-                QuoteEscalationReason::ModelUnavailable,
+                QuoteEscalationReason::ModelDeclined,
                 $response->escalationReason ?? 'The agent declined to answer this ask.',
                 $prompt->hash,
             ));
@@ -227,13 +228,22 @@ final readonly class OfferProposer
                 $transcript,
             );
 
+        // #222: the table is net, the buyer's sentence is not, and neither are
+        // the earlier rounds: their "you offered" figures are gross too
+        // (ReplyComposer composes from buyerFacingTotal()). Said once, above
+        // both, so no raw figure in either is read against a net price.
+        $buyerSpace = $context->buyerWritesGross
+            ? "The figures in the earlier rounds and in the buyer's comment below include tax (gross); the total and the table above are net.\n"
+            : '';
+
         return sprintf(
-            "Quote total (net): %.2f %s\n%s\n%s\n\nYOUR AUTHORITY:\n%s\n\n" . "%sBuyer's latest comment:\n%s",
+            "Quote total (net): %.2f %s\n%s\n%s\n\nYOUR AUTHORITY:\n%s\n\n" . "%s%sBuyer's latest comment:\n%s",
             $snapshot->totalNet,
             $snapshot->currencyIso,
             $buyerTarget,
-            NegotiateLineBlock::of($snapshot->lines),
+            NegotiateLineBlock::of($snapshot->lines, $context->lineAsksNet),
             AuthorityBrief::of($settings->policy, $decision->autoReply?->counteredRequestPercent),
+            $buyerSpace,
             $earlierRounds,
             $conversation->newestBuyerText(),
         );

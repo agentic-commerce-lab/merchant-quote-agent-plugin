@@ -18,8 +18,9 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  *
  * Deliberately NOT read from `QuoteSnapshot::$buyerTargetNet`, which looks like
  * the right field and is not: `SnapshotAdapter::toPolicy()` never populates it,
- * and only CommentTargetMerger does — so it is null for exactly the
- * structured-ask quotes this exists for.
+ * and only CommentTargetMerger does. This class measures the storefront ask off
+ * the lines itself, so it must not depend on whether the merger already rolled
+ * that ask into `buyerTargetNet`.
  *
  * A buyer has four ways to name a number and all four bind the agent: a
  * percentage in the conversation, the storefront's per-line "Requested price"

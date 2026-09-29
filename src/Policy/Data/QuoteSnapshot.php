@@ -79,6 +79,43 @@ final readonly class QuoteSnapshot
             : $this->withBuyerTargetNet(min($budgetNet, $this->buyerTargetNet ?? $this->totalNet));
     }
 
+    /**
+     * True when a line asks for less than it is quoted at and nothing has set
+     * a quote-level target yet — neither this snapshot nor a price the comment
+     * states: the storefront ask CommentTargetMerger rolls up when no comment
+     * did (#223). Here rather than in the merger, which has no complexity left
+     * for it. A requested price above the quote is no ask for a markup.
+     */
+    public function hasUntargetedLineAsk(?PriceAsk $commentPrice): bool
+    {
+        if ($this->buyerTargetNet !== null || $commentPrice?->isStated() === true) {
+            return false;
+        }
+
+        foreach ($this->lines as $line) {
+            if ($line->requestedUnitPrice !== null && $line->requestedUnitPrice < $line->unitPriceNet) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The lines with every requested price clamped to `min(requested, quoted)`,
+     * the way QuoteAutoReplyPricer and AskedDiscountCeiling read them: a line
+     * asking for a markup must not cancel a real ask on another line when
+     * CommentTargetMerger rolls storefront asks up (#223).
+     *
+     * @return list<QuoteLineSnapshot>
+     */
+    public function linesWithAsksClampedToQuote(): array
+    {
+        return array_map(static fn(QuoteLineSnapshot $line): QuoteLineSnapshot => $line->requestedUnitPrice === null
+            ? $line
+            : $line->withRequestedUnitPrice(min($line->requestedUnitPrice, $line->unitPriceNet)), $this->lines);
+    }
+
     public function withBuyerTargetNet(?float $buyerTargetNet): self
     {
         return new self(

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Policy;
 
 use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
+use MerchantQuoteAgentPlugin\Policy\Data\PriceAsk;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
 
@@ -28,7 +29,7 @@ final class CommentTargetMerger
     {
         $targets = $this->lineTargets->extract($interpretation);
         if ($targets === []) {
-            return $snapshot;
+            return self::withStructuredTarget($snapshot, $interpretation?->price);
         }
 
         // Guarded on the EXTRACTED targets, not the adopted ones: an ask that
@@ -89,6 +90,30 @@ final class CommentTargetMerger
         }
 
         return $targets;
+    }
+
+    /**
+     * #223: a storefront per-line requested price is an ask on its own, but
+     * only rescaledBuyerTarget() rolls line asks up into the quote-level
+     * target the band decider reads, and it ran only for a comment's line
+     * targets. With no comment the band measured the ask as 0% and granted a
+     * 99.9% request (sw-ag.dev quote 1206). The retired TS snapshot builder
+     * supplied this field; the port lost it.
+     *
+     * Never overrides a target something else already set, and only when a
+     * line asks for less than it is quoted at — QuoteSnapshot::hasUntargetedLineAsk().
+     * Nor when the comment states a price of its own (PriceAsk::isStated()).
+     * Each line is clamped to its quoted price first, as the pricer reads it;
+     * the comment path's rescale stays unclamped (TS parity).
+     */
+    private static function withStructuredTarget(QuoteSnapshot $snapshot, ?PriceAsk $commentPrice): QuoteSnapshot
+    {
+        return $snapshot->hasUntargetedLineAsk($commentPrice)
+            ? $snapshot->withBuyerTargetNet(self::rescaledBuyerTarget(
+                $snapshot,
+                $snapshot->linesWithAsksClampedToQuote(),
+            ))
+            : $snapshot;
     }
 
     /** @param list<QuoteLineSnapshot> $lines */

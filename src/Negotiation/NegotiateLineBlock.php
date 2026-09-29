@@ -17,8 +17,12 @@ final class NegotiateLineBlock
 {
     private function __construct() {}
 
-    /** @param list<QuoteLineSnapshot> $lines */
-    public static function of(array $lines): string
+    /**
+     * @param list<QuoteLineSnapshot> $lines
+     * @param array<string, float> $lineAsksNet a comment's adopted per-line targets, net (NegotiationContext);
+     *                                          one present here wins its line's column
+     */
+    public static function of(array $lines, array $lineAsksNet = []): string
     {
         return "Line items (lineItemId | productId | label | quantity | unit price net | buyer asks per unit net):\n"
         . implode("\n", array_map(
@@ -29,12 +33,23 @@ final class NegotiateLineBlock
                 $l->label() ?? '',
                 $l->quantity,
                 $l->unitPriceNet,
-                // The storefront's per-line "Requested price", in net. Without it
-                // a structured-only ask reached the model as no ask at all
-                // (sw-ag.dev quotes 1097/1099) and was answered with 0%.
-                $l->requestedUnitPrice === null ? '' : sprintf('%.2f', $l->requestedUnitPrice),
+                // The adopted comment target when there is one, else the
+                // storefront's per-line "Requested price", both net. The
+                // adopted target wins because CommentLineTargets::adoptedBy()
+                // already applied the precedence: it only adopts a comment
+                // target that IS the priced ask (a renegotiation round, or a
+                // line with no storefront ask). Without the storefront field a
+                // structured-only ask reached the model as no ask at all
+                // (sw-ag.dev quotes 1097/1099); without the comment target a
+                // comment's gross per-unit figure did (quote 1202, #222).
+                self::ask($lineAsksNet[$l->lineItemId()] ?? $l->requestedUnitPrice),
             ),
             $lines,
         ));
+    }
+
+    private static function ask(?float $netPrice): string
+    {
+        return $netPrice === null ? '' : sprintf('%.2f', $netPrice);
     }
 }
