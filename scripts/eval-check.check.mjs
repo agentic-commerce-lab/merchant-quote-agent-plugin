@@ -115,7 +115,13 @@ const held = [
     row({ round: 1, policy: policy({ roundingMode: 'discount_percent', roundingStep: 0.5 }), totalNetAfter: 87.8, linesAfter: quoteWide(87.8), buyerAsk: 'Could you do 12.2% off?' }),
     row({ round: 2, policy: policy({ roundingMode: 'discount_percent', roundingStep: 0.5 }), totalNetBefore: 87.8, totalNetAfter: 87.7, linesBefore: quoteWide(87.8), linesAfter: quoteWide(87.7), buyerAsk: 'A little more?' }),
 ];
-assert.equal(status(h9Rounding(held)), 'pass'); // 12.3% rounds to 12.0%, below the 12.2% already held
+assert.equal(status(h9Rounding(held)), 'pass');
+// A buyer's figure given as a unit price, as sw-ag.dev's exactly-at-the-ceiling run showed: 735.59 gross is 15% off
+// 865.40 gross; the agent wrote 14.99% (read back as 14.9898% through the cent), which PHP left unrounded.
+const ceilingLine = (unitPriceNet) => line({ quantity: 1, unitPriceNet, totalNet: unitPriceNet, netRatio: 0.8403362606886989 });
+const ceiling = (ask) => [row({ policy: policy({ roundingMode: 'discount_percent', roundingStep: 0.5 }), totalNetBefore: 727.23, totalNetAfter: 618.22, totalGrossBefore: 865.4, totalGrossAfter: 735.68, buyerAsk: ask, linesBefore: [ceilingLine(727.23)], linesAfter: [ceilingLine(727.23), line({ lineItemId: 'd', productId: null, quantity: 1, unitPriceNet: -109.01, totalNet: -109.01 })] })];
+assert.equal(status(h9Rounding(ceiling('735.59 including tax and we have a deal.'))), 'pass');
+assert.equal(status(h9Rounding(ceiling('700.00 including tax and we have a deal.'))), 'fail'); // a price that is not what was written // 12.3% rounds to 12.0%, below the 12.2% already held
 assert.equal(status(h9Rounding(rounded('discount_percent', 0.5, 91.3, 108.65, { linesAfter: [line({ unitPriceNet: 9.13, totalNet: 91.3 })] }))), 'pass'); // a per-line answer is never rounded
 // No round-1 baseline: the discount is NaN, which must fail rather than slip past the step test.
 const noBaseline = { policy: policy({ roundingMode: 'discount_percent', roundingStep: 1 }) };

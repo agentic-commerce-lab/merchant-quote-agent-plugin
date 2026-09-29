@@ -167,6 +167,22 @@ export function statedPercents(text) {
     return [...String(text ?? '').matchAll(/(\d+(?:[.,]\d+)?)\s*%/g)].map((match) => Number(match[1].replace(',', '.')));
 }
 
+/**
+ * The percentages a buyer comment asks for: those it states, and those its
+ * unit prices imply against round 1's first positive line, gross and net
+ * ("735.59 including tax" on an 865.40 gross line is 15%). What
+ * AskedDiscountCeiling folds into one figure, read back from the text.
+ */
+export function askedPercents(rows, row) {
+    const first = (rows[0]?.linesBefore ?? []).find((line) => line.unitPriceNet > 0);
+    const units = first ? [first.unitPriceNet, first.unitPriceNet / (first.netRatio || 1)] : [];
+    const prices = [...String(row.buyerAsk ?? '').matchAll(/(\d+[.,]\d{2})(?!\d)(?!\s*%)/g)].map((match) => Number(match[1].replace(',', '.')));
+    return [...statedPercents(row.buyerAsk), ...prices.flatMap((price) => units.map((unit) => (1 - price / unit) * 100))];
+}
+
+/** The plugin's 0.01 pp buyer-figure tolerance, plus the cent a line price is written in (14.99% of 727.23 reads back as 14.9898%). */
+const BUYER_FIGURE = RATE + 0.005;
+
 /** A positive line written below its before-price: the agent answered per line, not quote-wide. */
 function perLineAnswer(row) {
     if (!Array.isArray(row.linesBefore) || !Array.isArray(row.linesAfter)) return false;
@@ -185,7 +201,7 @@ function perLineAnswer(row) {
  */
 function unroundedOnPurpose(rows, row, discount, step) {
     if (perLineAnswer(row)) return true;
-    if (statedPercents(row.buyerAsk).some((asked) => Math.abs(asked - discount) <= RATE)) return true;
+    if (askedPercents(rows, row).some((asked) => Math.abs(asked - discount) <= BUYER_FIGURE)) return true;
     const roundedDown = stepDown(discount, step);
     if (roundedDown <= 1e-6) return true;
     const held = rows.filter((earlier) => earlier.round < row.round && written(earlier)).map((earlier) => baselineDiscount(rows, earlier.totalNetAfter) ?? 0);
@@ -209,7 +225,7 @@ export function h9Rounding(rows) {
             const total = row.totalGrossAfter ?? row.totalNetAfter;
             const discount = baselineDiscount(rows, row.totalNetAfter);
             // QuoteTotalRounding leaves a per-line answer and the buyer's own figure unrounded too.
-            const unrounded = perLineAnswer(row) || (discount !== null && statedPercents(row.buyerAsk).some((asked) => Math.abs(asked - discount) <= RATE));
+            const unrounded = perLineAnswer(row) || (discount !== null && askedPercents(rows, row).some((asked) => Math.abs(asked - discount) <= BUYER_FIGURE));
             if (!unrounded && Math.abs(total - Math.round(total / roundingStep) * roundingStep) > MONEY) {
                 return fail(`round ${row.round}: the buyer-facing total ${total} is not a multiple of ${roundingStep}`);
             }
