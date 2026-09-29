@@ -207,7 +207,10 @@ export function h9Rounding(rows) {
             }
         } else if (roundingMode === 'quote_total') {
             const total = row.totalGrossAfter ?? row.totalNetAfter;
-            if (Math.abs(total - Math.round(total / roundingStep) * roundingStep) > MONEY) {
+            const discount = baselineDiscount(rows, row.totalNetAfter);
+            // QuoteTotalRounding leaves a per-line answer and the buyer's own figure unrounded too.
+            const unrounded = perLineAnswer(row) || (discount !== null && statedPercents(row.buyerAsk).some((asked) => Math.abs(asked - discount) <= RATE));
+            if (!unrounded && Math.abs(total - Math.round(total / roundingStep) * roundingStep) > MONEY) {
                 return fail(`round ${row.round}: the buyer-facing total ${total} is not a multiple of ${roundingStep}`);
             }
         } else {

@@ -37,6 +37,9 @@ assert.deepEqual(buyerMove(base(), { openingNet: 1000, currentNet: 960, round: 1
 // 4.5% realized asks 7.25%: PHP's sprintf('%.1f') rounds that exact tie to even, toFixed would print 7.3
 assert.deepEqual(buyerMove(base(), { openingNet: 1000, currentNet: 955, round: 1 }), { kind: 'counter', comment: 'That still leaves us short. Can you get to 7.2% off?' });
 assert.deepEqual(buyerMove(base({ buyer: { targetDiscountPercent: 5 } }), { openingNet: 1000, currentNet: 950, round: 1 }), { kind: 'accept' });
+// the shop cent-rounds: "5% off" of 2181.68 lands at 2072.60, 4.9998% -- still the 5% the buyer asked for
+assert.deepEqual(buyerMove(base({ buyer: { targetDiscountPercent: 5 } }), { openingNet: 2181.68, currentNet: 2072.6, round: 1 }), { kind: 'accept' });
+assert.equal(buyerMove(base({ buyer: { targetDiscountPercent: 5 } }), { openingNet: 1000, currentNet: 951, round: 1 }).kind, 'counter');
 const retreat = base({ buyer: { targetDiscountPercent: 50 }, counters: ['8% would work.'] });
 assert.deepEqual(buyerMove(retreat, { openingNet: 1000, currentNet: 880, round: 1 }), { kind: 'counter', comment: '8% would work.' });
 assert.deepEqual(buyerMove(retreat, { openingNet: 1000, currentNet: 880, round: 2 }), { kind: 'walk' });

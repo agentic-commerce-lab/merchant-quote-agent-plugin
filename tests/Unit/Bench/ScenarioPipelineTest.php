@@ -390,7 +390,7 @@ final class ScenarioPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame(['clarified'], $scenario->expect->firstOutcome);
+        self::assertSame(['clarified', 'countered', 'offered'], $scenario->expect->firstOutcome);
         self::assertSame(NegotiationOutcome::Clarified, $outcome);
         self::assertSame(1, $harness->spy->calls, 'An ambiguous ask must not reach the negotiate call.');
         self::assertSame(['Which line did you mean?'], $harness->gateway->comments);

@@ -84,7 +84,8 @@ export function render(text, unitPrice) {
 export function buyerMove(scenario, { openingNet, currentNet, round }) {
     const { targetDiscountPercent, concessionRatio } = { ...DEFAULT_BUYER, ...scenario.buyer };
     const realized = ((openingNet - currentNet) / openingNet) * 100;
-    if (realized >= targetDiscountPercent) return { kind: 'accept' };
+    // 0.01 pp: the shop cent-rounds totals, so "5% off" can land at 4.9998%.
+    if (realized >= targetDiscountPercent - 0.01) return { kind: 'accept' };
     if (round > scenario.maxRounds) return { kind: 'walk' };
     const counters = scenario.counters ?? [];
     if (counters.length > 0) {

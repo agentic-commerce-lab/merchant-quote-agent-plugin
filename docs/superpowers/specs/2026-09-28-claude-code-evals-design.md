@@ -513,17 +513,15 @@ fails, `eval.sh` still prints the verdict table itself, from `verdict.json`.
 
 ## Cost and time
 
-Estimates, to be replaced by the first run's measurements:
+Measured on the first live run (`eval-20260929-075002-113a05`, 2026-09-29, sw-ag.dev, plugin 1.0.113, `google/gemini-3.7-flash`, 1 rep):
 
-- **Negotiations:** 63, each 1–5 passes, on the shop's own configured model
-  key.
-- **Claude calls:** 63 judge calls plus 2 canary calls plus 1 report call.
-  Every call carries `--max-budget-usd`.
-- **Wall-clock:** 15–20 min. A pass takes about 20 s on the live worker, and
-  the bench runs 4 negotiations at a time in phase A. Judging runs 4 calls at
-  a time.
-- **Shop side effects per run:** about 63 quotes, 3–6 orders (from
-  `plain-percentage`), and about 4 minutes of overridden settings in phase B.
+- **Wall-clock:** 14 min for 21 negotiations (42 passes), including the canary, the judging and the report. A pass took about 10–20 s on the live worker. Expect about 35–40 min at 3 reps.
+- **Agent tokens (the shop's key):** 175,516 prompt + 71,455 completion across the 42 passes.
+- **Claude calls:** 21 judge calls cost $0.18 in total, plus 2 canary calls and 1 report call. At 3 reps, expect about $0.60 for judging.
+- **Shop side effects per run:**
+  - 21 quotes, 13 of them left open because UCP cannot decline them;
+  - 1–2 orders;
+  - four settings overrides of about a minute each. All restored exactly on this run, including the product's purchase price.
 
 ## Out of scope for v1
 

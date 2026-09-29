@@ -104,6 +104,7 @@ assert.equal(status(h9Rounding(rounded('discount_percent', 1, 88, 104.72))), 'pa
 assert.equal(status(h9Rounding(rounded('discount_percent', 1, 87.5, 104.13))), 'fail');
 assert.equal(status(h9Rounding(rounded('quote_total', 5, 95.8, 115))), 'pass');
 assert.equal(status(h9Rounding(rounded('quote_total', 5, 95.8, 113.05))), 'fail');
+assert.equal(status(h9Rounding(rounded('quote_total', 5, 85, 101.15, { buyerAsk: 'Can you get to 15.0% off?' }))), 'pass'); // the buyer's own figure is left unrounded (QuoteTotalRounding)
 assert.equal(status(h9Rounding([row()])), 'n/a');
 // The writes DiscountRounding deliberately leaves unrounded (a 0.5 step, as sw-ag.dev runs):
 assert.equal(status(h9Rounding(rounded('discount_percent', 0.5, 91.2, 108.53, { buyerAsk: 'Can you get to 8.8% off?' }))), 'pass'); // the buyer's own figure
