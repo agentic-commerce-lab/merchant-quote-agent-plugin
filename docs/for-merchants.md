@@ -589,8 +589,9 @@ as final values, not added on top of each other.
 Stated plainly, so nothing here is a surprise later:
 
 - It negotiates **price and offer validity**. Nothing else.
-- **Rounding the quote total** works on quote-wide offers only. A per-line
-  offer (mostly the customer's own line prices) goes out unrounded. It is also
+- **Rounding** (either mode) works on quote-wide offers only. A per-line
+  offer (mostly the customer's own line prices) goes out unrounded, so its
+  quote-wide percentage can read as, say, 3.73 %. Quote-total rounding is also
   skipped on a quote that adds tax on top of net prices: the tax is rounded
   per rate after the discount, so no fixed amount is guaranteed to land on a
   round total. (Rounding the discount percentage still works there.) A gross
