@@ -227,13 +227,21 @@ final readonly class OfferProposer
                 $transcript,
             );
 
+        // #222: the table is net, the buyer's sentence is not. Said once, above
+        // both the earlier rounds and the latest comment, so no raw figure in
+        // either is read against a net price.
+        $buyerSpace = $context->buyerWritesGross
+            ? "The buyer's own figures below include tax (gross); every price above is net.\n"
+            : '';
+
         return sprintf(
-            "Quote total (net): %.2f %s\n%s\n%s\n\nYOUR AUTHORITY:\n%s\n\n" . "%sBuyer's latest comment:\n%s",
+            "Quote total (net): %.2f %s\n%s\n%s\n\nYOUR AUTHORITY:\n%s\n\n" . "%s%sBuyer's latest comment:\n%s",
             $snapshot->totalNet,
             $snapshot->currencyIso,
             $buyerTarget,
-            NegotiateLineBlock::of($snapshot->lines),
+            NegotiateLineBlock::of($snapshot->lines, $context->lineAsksNet),
             AuthorityBrief::of($settings->policy, $decision->autoReply?->counteredRequestPercent),
+            $buyerSpace,
             $earlierRounds,
             $conversation->newestBuyerText(),
         );

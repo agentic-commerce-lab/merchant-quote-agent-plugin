@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Negotiation\NegotiateLineBlock;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineIdentity;
+use MerchantQuoteAgentPlugin\Policy\Data\QuoteLineSnapshot;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -49,6 +52,86 @@ final class NegotiateTargetSpaceTest extends TestCase
             '760.00',
             $negotiatePrompt,
             "The model prices in net and must be told the buyer's target in net.",
+        );
+    }
+
+    public function testAPerLineAskTypedInACommentReachesTheLineTableInNet(): void
+    {
+        // #222, sw-ag.dev quote 1202: "770.21 a unit" on a gross quote was
+        // filed as 647.24 net, but the negotiate prompt showed only the raw
+        // comment beside NET unit prices, and the model escalated because
+        // "770.21 is higher than 727.23". The gross fixture's net ratio is
+        // 0.8: 90 gross is 72.00 net.
+        $harness = PipelineHarness::with([
+            '{"structural":{"lineChanges":[{"lineItemId":"line-1","targetUnitPrice":90.0}]}}',
+            '{"action":"offer","message":"Done.","terms":{"discountPercent":5}}',
+            'Here is your offer.',
+        ]);
+        $harness->before = NegotiationFixture::grossSnapshot([
+            NegotiationFixture::buyerComment('Can you do 90 a unit?', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $harness->before,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        $negotiatePrompt = $harness->spy->userPrompts[1] ?? '';
+        self::assertMatchesRegularExpression(
+            '/line-1 \|[^\n]*\| 72\.00$/m',
+            $negotiatePrompt,
+            'The line row must carry the converted ask in the "buyer asks per unit net" column.',
+        );
+        self::assertStringContainsString(
+            'include tax',
+            $negotiatePrompt,
+            "On a gross quote the model must be told the buyer's own figures are gross.",
+        );
+    }
+
+    public function testANetQuoteGetsNoGrossLabel(): void
+    {
+        // Review Focus 3: a net-stored quote's buyer writes net; a gross label
+        // there would mislead the other way.
+        $harness = PipelineHarness::with([
+            '{"price":{"additionalDiscountPercent":5}}',
+            '{"action":"offer","message":"Done.","terms":{"discountPercent":5}}',
+            'Here is your offer.',
+        ]);
+        $harness->before = NegotiationFixture::snapshot(comments: [
+            NegotiationFixture::buyerComment('5% off?', '2026-08-28 09:00:00'),
+        ]);
+
+        $harness->pipeline->service(
+            $harness->before,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertStringNotContainsString('include tax', $harness->spy->userPrompts[1] ?? '');
+    }
+
+    public function testAStorefrontPriceWinsTheColumnOverACommentTargetOnTheSameLine(): void
+    {
+        // Review Focus 4: CommentLineTargets::adoptedBy() lets a standing
+        // storefront ask win over a comment target; the column must show the
+        // number the policy layer prices against, not the one it ignored.
+        self::assertStringEndsWith('| 70.00', NegotiateLineBlock::of([self::line(requestedUnitPrice: 70.0)], [
+            'line-1' => 72.0,
+        ]));
+    }
+
+    private static function line(?float $requestedUnitPrice): QuoteLineSnapshot
+    {
+        return new QuoteLineSnapshot(
+            identity: new QuoteLineIdentity('line-1'),
+            quantity: 1,
+            unitPriceNet: 80.0,
+            totalNet: 80.0,
+            requestedUnitPrice: $requestedUnitPrice,
         );
     }
 }

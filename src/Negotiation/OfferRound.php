@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettings;
 use MerchantQuoteAgentPlugin\Policy\AskedDiscountCeiling;
+use MerchantQuoteAgentPlugin\Policy\CommentTargetMerger;
 use MerchantQuoteAgentPlugin\Policy\Data\Band;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationDecision;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
@@ -46,13 +47,7 @@ final readonly class OfferRound
         // prompt needs the total the buyer named, in the net space it prices
         // in. sw-ag.dev quote 1055 is why — see NegotiationContext.
         $extractHash = $ask?->promptHash;
-        $context = new NegotiationContext(
-            $snapshot->identity->customerId,
-            $snapshot->identity->quoteId,
-            SnapshotAdapter::conversation($snapshot),
-            QuoteBaseline::read($snapshot),
-            $ask?->interpretation->price->targetTotal,
-        );
+        $context = self::context($snapshot, $ask);
         if ($context->customerId === '') {
             $this->logger->warning('The quote carries no customer id; negotiating without account history.', [
                 'quoteId' => $snapshot->identity->quoteId,
@@ -240,6 +235,23 @@ final readonly class OfferRound
         ]);
 
         return $this->escalated($gateway, $applied->after, $applied->escalationReason(), $extractHash, $negotiateHash);
+    }
+
+    /** Its own method only to keep play() under mago's halstead-effort warning. */
+    private static function context(QuoteSnapshot $snapshot, ?InterpretedAsk $ask): NegotiationContext
+    {
+        return new NegotiationContext(
+            $snapshot->identity->customerId,
+            $snapshot->identity->quoteId,
+            SnapshotAdapter::conversation($snapshot),
+            QuoteBaseline::read($snapshot),
+            $ask?->interpretation->price->targetTotal,
+            lineAsksNet: (new CommentTargetMerger())->adopted(
+                SnapshotAdapter::toPolicy($snapshot),
+                $ask?->interpretation,
+            ),
+            buyerWritesGross: SnapshotAdapter::storedGross($snapshot),
+        );
     }
 
     /** A quote the agent has answered before carries the servicing fingerprint. */
