@@ -17,6 +17,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteLinePrice;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot as PolicySnapshot;
 use MerchantQuoteAgentPlugin\Policy\Data\VerifyOfferInput;
 use MerchantQuoteAgentPlugin\Policy\Epsilon;
+use MerchantQuoteAgentPlugin\Policy\FloorHold;
 use MerchantQuoteAgentPlugin\Policy\MarginFloorClamp;
 use MerchantQuoteAgentPlugin\Policy\OfferVerifier;
 use MerchantQuoteAgentPlugin\Policy\QuoteWidePercent;
@@ -87,12 +88,14 @@ final readonly class OfferApplier
             $this->logger->info('The offer was raised to the minimum-margin floor.', ['quoteId' => $quoteId]);
         }
 
-        $write = OfferWrite::of(
-            $offer,
-            $floored,
-            $reference,
-            QuoteWidePercent::of($offer, $live->lines, $anchored->lines),
-        );
+        $write = FloorHold::holds($floored, $live->lines)
+            ? OfferWrite::hold()
+            : OfferWrite::of(
+                $offer,
+                $floored,
+                $reference,
+                QuoteWidePercent::of($offer, $live->lines, $anchored->lines),
+            );
 
         // Rounding control, quote_total mode (spec 2026-09-28): a quote-wide
         // write becomes an absolute discount that lands the buyer-facing
