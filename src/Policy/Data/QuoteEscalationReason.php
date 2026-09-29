@@ -26,9 +26,13 @@ enum QuoteEscalationReason: string
     // Issue #5: the agent is enabled but cannot run — no API key, or config
     // that fails its own constraints.
     case NotConfigured = 'not_configured';
-    // Issue #18. The model could not be reached or answered unusably; the
-    // model itself declined; or the database disagreed with what we applied.
+    // Issue #18. The model could not be reached or answered unusably (the
+    // history budget ran out), or the database disagreed with what we applied.
     case ModelUnavailable = 'model_unavailable';
+    // #222: the negotiate model itself chose to escalate. Split out of
+    // ModelUnavailable (#169 had folded it in) because the dashboard read
+    // every such decision as an outage.
+    case ModelDeclined = 'model_declined';
     case ProposalRejected = 'proposal_rejected';
     case VerificationFailed = 'verification_failed';
     // Issue #169. The buyer asked to change what is being sold — quantity,

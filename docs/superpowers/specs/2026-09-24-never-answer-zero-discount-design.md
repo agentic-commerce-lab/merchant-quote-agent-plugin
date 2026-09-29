@@ -97,6 +97,9 @@ case NoFurtherConcession = 'no_further_concession';
 - The model's own `escalate` answer keeps its existing reason
   (`model_unavailable`, #169). This reason is only for an offer that went
   through and conceded nothing.
+
+  > **Superseded 2026-09-29 (#222):** a model-chosen `escalate` is now recorded as `model_declined`; `model_unavailable` keeps unreachable or unusable answers. See `2026-09-29-structured-and-per-line-asks-design.md`.
+
 - The buyer sees the existing generic escalation notice (`QuoteEscalator`,
   gated by `notifyBuyerOnEscalation`). No reason-specific text reaches the
   buyer.

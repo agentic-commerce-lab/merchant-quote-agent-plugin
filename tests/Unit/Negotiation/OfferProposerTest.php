@@ -261,7 +261,7 @@ final class OfferProposerTest extends TestCase
             );
 
         self::assertNull($answer->offer);
-        self::assertSame(QuoteEscalationReason::ModelUnavailable, $answer->escalation);
+        self::assertSame(QuoteEscalationReason::ModelDeclined, $answer->escalation);
         self::assertStringContainsString('term I cannot offer', $answer->escalationDetail);
     }
 }

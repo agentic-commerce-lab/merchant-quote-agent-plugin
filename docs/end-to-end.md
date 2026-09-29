@@ -454,10 +454,11 @@ reason into a custom field, and notifies the merchant through two channels: a
 administration notification. **It never transitions the quote**; the deal desk's
 own state change is the only observable sign of a human acting.
 
-The marker makes escalation idempotent for a given reason. The twelve reasons:
+The marker makes escalation idempotent for a given reason. The thirteen reasons:
 
 `discount_limit_exceeded`, `quote_value_limit_exceeded`, `needs_human_review`,
-`currency_mismatch`, `not_configured`, `model_unavailable`, `proposal_rejected`,
+`currency_mismatch`, `not_configured`, `model_unavailable`, `model_declined`,
+`proposal_rejected`,
 `verification_failed`, `structural_change_requested`,
 `non_price_term_requested`, `unplaceable_ask`, `no_further_concession`.
 

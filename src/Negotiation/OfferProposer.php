@@ -100,11 +100,12 @@ final readonly class OfferProposer
         $raw = (string) json_encode($response);
 
         if ($response->escalates()) {
-            // Issue #169: the model itself declined to offer anything — the
-            // "the model itself declined" half of ModelUnavailable's own
-            // remit, not the buyer asking for a human.
+            // #222: the model itself declined to offer anything. Recorded as
+            // its own reason: the model was reachable and answered, so this is
+            // a judgement to review, not an outage (it was ModelUnavailable
+            // under #169).
             return $this->recorded($raw, ProposedAnswer::escalate(
-                QuoteEscalationReason::ModelUnavailable,
+                QuoteEscalationReason::ModelDeclined,
                 $response->escalationReason ?? 'The agent declined to answer this ask.',
                 $prompt->hash,
             ));
