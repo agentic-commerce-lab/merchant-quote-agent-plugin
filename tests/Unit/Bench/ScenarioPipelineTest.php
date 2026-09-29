@@ -17,6 +17,7 @@ use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Servicing\Data\PassContext;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Tests\Bench\Scenario;
+use MerchantQuoteAgentPlugin\Tests\Bench\ScenarioAsk;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\FakeCustomerHistoryFactory;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\PipelineHarness;
@@ -26,19 +27,17 @@ use PHPUnit\Framework\TestCase;
  * Task 7's verification step: every scenario under `tests/Bench/scenarios/`
  * driven through the REAL pipeline (`NegotiationPipeline`, the same class
  * `BenchNegotiation` drives against a live shop) with a scripted model and no
- * network -- free, deterministic, CI-safe. Where a scenario declares an
- * `expectedBand`, the resulting `NegotiationOutcome` is asserted against it.
+ * network -- free, deterministic, CI-safe.
  *
- * `expectedBand` is not `Policy\Data\Band`'s own backing value (`grant` /
- * `counter` / `escalate`): Task 2 already shipped `plain-percentage.json`
- * with `"auto"`, so this test's own vocabulary extends that one rather than
- * replacing it -- `auto` (Offered/Countered via an auto-reply band, i.e. the
- * ask never leaves the agent's mandate), `escalate` (Escalated), `clarify`
- * (Clarified). A scenario's numbers cannot be derived from its portable JSON
- * fields alone (a symbolic `productRef` carries no unit price, no tax ratio,
- * no stored baseline) -- resolving those into a concrete fixture is this
- * test's own job here, the same way `BenchNegotiation::resolveProduct()`
- * resolves `productRef` against a real shop.
+ * Every file declares `expect.firstOutcome` in `NegotiationOutcome` values --
+ * what round 1 should record. This test pins the files' content and asserts
+ * the scripted-model outcome by hand; the live UCP eval (H1) checks
+ * `firstOutcome` against the real shop. A scenario's numbers cannot be
+ * derived from its portable JSON fields alone (a symbolic `productRef`
+ * carries no unit price, no tax ratio, no stored baseline) -- resolving
+ * those into a concrete fixture is this test's own job here, the same way
+ * `BenchNegotiation::resolveProduct()` resolves `productRef` against a real
+ * shop.
  *
  * Each test loads its scenario from the JSON file rather than restating its
  * id/description inline, so the assertions stay tied to what actually ships.
@@ -76,7 +75,7 @@ final class ScenarioPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame('auto', $scenario->expectedBand);
+        self::assertSame(['offered'], $scenario->expect->firstOutcome);
         self::assertSame(NegotiationOutcome::Offered, $outcome);
     }
 
@@ -86,10 +85,10 @@ final class ScenarioPipelineTest extends TestCase
      * Two model calls, not three: with no comment there is nothing for
      * `AskInterpreter` to extract, so the extract call never happens.
      *
-     * The JSON's own `expectedBand` is `escalate` -- Ruling A14: a scenario
-     * cannot know the unit price of a `productRef` resolved against a real
-     * shop, so the end-to-end bench run escalates instead of landing in a
-     * band. This test builds its own synthetic snapshot below (98.0 against
+     * The JSON's own `expect.firstOutcome` is `escalated` -- Ruling A14: a
+     * scenario cannot know the unit price of a `productRef` resolved against
+     * a real shop, so the end-to-end bench run escalates instead of landing
+     * in a band. This test builds its own synthetic snapshot below (98.0 against
      * a 980.0 net total, a 2% ask) precisely because it does NOT need that
      * resolved price -- it exercises the no-comment code path against a
      * hand-picked, in-band figure, so its own outcome is legitimately
@@ -115,7 +114,7 @@ final class ScenarioPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame('escalate', $scenario->expectedBand);
+        self::assertSame(['escalated'], $scenario->expect->firstOutcome);
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertSame(2, $harness->spy->calls, 'A structured-only ask needs no extraction call.');
     }
@@ -139,8 +138,13 @@ final class ScenarioPipelineTest extends TestCase
             '{"action":"offer","message":"10% off.","terms":{"discountPercent":10}}',
             'Confirmed, 10% off.',
         ]);
+        $ask = ScenarioAsk::forLine(
+            $scenario->openingAsk,
+            NegotiationFixture::grossSnapshot()->content->lines[0] ?? null,
+        );
+        self::assertStringContainsString('90.00 a unit', $ask, 'Rendered against the 100.00 gross unit price.');
         $snapshot = NegotiationFixture::grossSnapshot([
-            NegotiationFixture::buyerComment($scenario->openingAsk, '2026-08-28 09:00:00'),
+            NegotiationFixture::buyerComment($ask, '2026-08-28 09:00:00'),
         ]);
         $harness->gateway->replaceSnapshots([
             $snapshot,
@@ -154,7 +158,7 @@ final class ScenarioPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame('auto', $scenario->expectedBand);
+        self::assertSame(['offered', 'countered'], $scenario->expect->firstOutcome);
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertSame(
             72.0,
@@ -178,6 +182,11 @@ final class ScenarioPipelineTest extends TestCase
         self::assertSame(1, $scenario->lines[0]['quantity'], 'The fixture below assumes a single unit.');
 
         $before = self::ceilingSnapshot($scenario->openingAsk);
+        self::assertStringStartsWith(
+            '106.68 ',
+            $before->content->comments[0]->comment ?? '',
+            'Rendered against the 125.50 gross unit price.',
+        );
         $discountPercent = ((100.40 - 85.34) / 100.40) * 100;
         self::assertGreaterThan(
             15.0,
@@ -203,7 +212,7 @@ final class ScenarioPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame('auto', $scenario->expectedBand);
+        self::assertSame(['offered'], $scenario->expect->firstOutcome);
         self::assertSame(
             NegotiationOutcome::Offered,
             $outcome,
@@ -231,10 +240,17 @@ final class ScenarioPipelineTest extends TestCase
             '{"action":"offer","message":"11% off.","terms":{"discountPercent":11}}',
             'Here you go.',
         ]);
+        // Rendered against the quote as round 1 saw it (80.00/unit), the
+        // price the live bench renders the ask against -- not the reduced 72.00.
+        $ask = ScenarioAsk::forLine(
+            $scenario->openingAsk,
+            NegotiationFixture::snapshot(totalNet: 800.0)->content->lines[0] ?? null,
+        );
+        self::assertStringContainsString('71.20 a unit', $ask);
         $baseline = NegotiationFixture::baselineOf(800.0, 80.0);
         $before = NegotiationFixture::withCustomFields(
             NegotiationFixture::snapshot(
-                comments: [NegotiationFixture::buyerComment($scenario->openingAsk, '2026-08-28 09:00:00')],
+                comments: [NegotiationFixture::buyerComment($ask, '2026-08-28 09:00:00')],
                 totalNet: 720.0,
                 requestedUnitPrice: 71.2,
             ),
@@ -258,7 +274,7 @@ final class ScenarioPipelineTest extends TestCase
             new PassContext(ServicingTriggerReason::CommentWritten, attempt: 5),
         );
 
-        self::assertSame('auto', $scenario->expectedBand);
+        self::assertSame(['offered', 'countered'], $scenario->expect->firstOutcome);
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertStringContainsString(
             'maximum discount you may grant: 11.00%',
@@ -300,7 +316,7 @@ final class ScenarioPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame('auto', $scenario->expectedBand);
+        self::assertSame(['offered'], $scenario->expect->firstOutcome);
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertSame(3, $harness->spy->calls, 'A volume ask must be negotiated, not gated away.');
     }
@@ -328,7 +344,7 @@ final class ScenarioPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame('escalate', $scenario->expectedBand);
+        self::assertSame(['escalated'], $scenario->expect->firstOutcome);
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertSame(1, $harness->spy->calls, 'A structural ask must not reach the negotiate call.');
     }
@@ -351,7 +367,7 @@ final class ScenarioPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame('escalate', $scenario->expectedBand);
+        self::assertSame(['escalated'], $scenario->expect->firstOutcome);
         self::assertSame(NegotiationOutcome::Escalated, $outcome);
         self::assertSame(1, $harness->spy->calls, 'A payment-terms ask must not reach the negotiate call.');
     }
@@ -374,7 +390,7 @@ final class ScenarioPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame('clarify', $scenario->expectedBand);
+        self::assertSame(['clarified', 'countered', 'offered'], $scenario->expect->firstOutcome);
         self::assertSame(NegotiationOutcome::Clarified, $outcome);
         self::assertSame(1, $harness->spy->calls, 'An ambiguous ask must not reach the negotiate call.');
         self::assertSame(['Which line did you mean?'], $harness->gateway->comments);
@@ -419,7 +435,7 @@ final class ScenarioPipelineTest extends TestCase
             NegotiationFixture::context(),
         );
 
-        self::assertSame('auto', $scenario->expectedBand);
+        self::assertSame(['offered', 'countered'], $scenario->expect->firstOutcome);
         self::assertSame(NegotiationOutcome::Offered, $outcome);
         self::assertSame(
             ['cust-1'],
@@ -436,8 +452,16 @@ final class ScenarioPipelineTest extends TestCase
         }
     }
 
-    private static function ceilingSnapshot(string $comment): QuoteSnapshot
+    private static function ceilingSnapshot(string $ask): QuoteSnapshot
     {
+        $line = new QuoteLineSnapshot(
+            identity: new QuoteLineIdentity('line-1', 'Widget', 'prod-1'),
+            quantity: 1,
+            unitPriceNet: 100.40,
+            totalNet: 100.40,
+            netRatio: 0.8,
+        );
+
         return new QuoteSnapshot(
             identity: new QuoteIdentity('q1', '10001', 'EUR', 'sc1', 'cust-1'),
             revision: new QuoteRevision('v1', new \DateTimeImmutable('2026-08-28 10:00:00.000')),
@@ -446,13 +470,9 @@ final class ScenarioPipelineTest extends TestCase
                 stateTechnicalName: 'open',
                 expiresAt: new \DateTimeImmutable(NegotiationFixture::expires()),
             ),
-            content: new QuoteContent(lines: [new QuoteLineSnapshot(
-                identity: new QuoteLineIdentity('line-1', 'Widget', 'prod-1'),
-                quantity: 1,
-                unitPriceNet: 100.40,
-                totalNet: 100.40,
-                netRatio: 0.8,
-            )], comments: [NegotiationFixture::buyerComment($comment, '2026-08-28 09:00:00')]),
+            content: new QuoteContent(lines: [$line], comments: [
+                NegotiationFixture::buyerComment(ScenarioAsk::forLine($ask, $line), '2026-08-28 09:00:00'),
+            ]),
         );
     }
 

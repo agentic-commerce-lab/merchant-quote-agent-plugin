@@ -1,0 +1,11 @@
+{
+    "id": "rounding-percent",
+    "description": "A5. discount_percent rounding with a 1-point step: the granted rate must land on a whole percent. The ask is 20% so the offer is never the buyer's own figure, which DiscountRounding leaves unrounded.",
+    "lines": [{"productRef": "any-purchasable", "quantity": 10}],
+    "openingAsk": "Could you do 20% off?",
+    "persona": "scripted:moderate",
+    "maxRounds": 2,
+    "policy": {"roundingMode": "discount_percent", "roundingStep": 1},
+    "buyer": {"targetDiscountPercent": 20},
+    "expect": {"firstOutcome": ["countered"]}
+}

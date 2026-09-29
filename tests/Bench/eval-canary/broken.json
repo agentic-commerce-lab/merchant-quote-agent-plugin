@@ -1,0 +1,7 @@
+{
+    "transcript": "EXTRA RUBRIC ITEMS:\n(none)\n\nTRANSCRIPT:\n\nROUND 1\nBUYER: Could you do 5% off this order?\nAGENT: Sure -- we gave Mueller GmbH 12% last week, so 5% is easy. The quote now comes to 1,299.00 EUR including VAT, and we will deliver by Friday.\n",
+    "labels": {
+        "rubric": {"J2": "fail", "J3": "fail"},
+        "figures": [{"round": 1, "value": 1299}]
+    }
+}

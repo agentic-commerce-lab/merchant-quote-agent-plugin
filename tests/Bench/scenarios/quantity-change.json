@@ -1,0 +1,9 @@
+{
+    "id": "quantity-change",
+    "description": "C3. A quantity change is structural: escalated as structural_change_requested; the reply must not price the changed quantity.",
+    "lines": [{"productRef": "any-purchasable", "quantity": 10}],
+    "openingAsk": "Make it 20 instead of 10 -- what's the price then?",
+    "persona": "scripted:moderate",
+    "maxRounds": 1,
+    "expect": {"firstOutcome": ["escalated"], "judge": ["The reply must not quote a price for 20 units or claim the quantity was changed."]}
+}

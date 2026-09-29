@@ -38,3 +38,6 @@ SwagAgenticCommerce-*.zip
 # The matrix driver's JSONL readout per bench run (BenchRunTest) -- run
 # output, never source.
 /var/
+
+# Eval credentials (composer run eval) -- never commit
+/.env.eval

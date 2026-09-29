@@ -30,6 +30,7 @@ use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use MerchantQuoteAgentPlugin\Tests\Bench\BuyerMoveKind;
 use MerchantQuoteAgentPlugin\Tests\Bench\Scenario;
+use MerchantQuoteAgentPlugin\Tests\Bench\ScenarioAsk;
 use MerchantQuoteAgentPlugin\Tests\Bench\SyntheticBuyer;
 use MerchantQuoteAgentPlugin\Tests\Integration\BuyerQuoteContextFixture;
 use MerchantQuoteAgentPlugin\Tests\Integration\BuyerQuoteFixture;
@@ -95,13 +96,20 @@ final readonly class BenchNegotiation
         $quote = $this->buyerGateway->requestQuote($context, $lineItems, null);
         $quoteId = $quote->id;
 
+        // `{unit*f}` asks are relative to the quote's own stored unit price,
+        // so they port between products (spec "Placeholders").
+        $openingAsk = ScenarioAsk::forLine(
+            $scenario->openingAsk,
+            $this->gateway->fetchSnapshot($quoteId)->content->lines[0] ?? null,
+        );
+
         // Empty on purpose for a structured-only ask: `structured-only`
         // writes no buyer comment at all, so AskInterpreter sees nothing to
         // extract and the per-line requested_unit_price is the only thing
         // reaching the quote -- writing even an empty comment here would
         // still count as a newer buyer comment and defeat that.
         if ($scenario->openingAsk !== '') {
-            $this->writeComment($quoteId, $customerId, $scenario->openingAsk);
+            $this->writeComment($quoteId, $customerId, $openingAsk);
         }
 
         // Folded into run() rather than kept as its own negotiate() method:
