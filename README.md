@@ -212,18 +212,28 @@ One-time setup:
 1. Claim an ngrok static domain and add it to the shop's *Agent access → Profile hosts*.
 2. Create an Admin API integration with read on `merchant_quote_agent_decision`, `merchant_quote_agent_trace`, `sales_channel`, `sales_channel_domain` and `plugin`, read, update, create and delete on `system_config` (a restore to `null` deletes the key), and read and update on `product`.
 3. Pick a storefront customer with `QUOTE_MANAGEMENT`.
-4. Run the setup, which opens the shop's consent page for that customer:
+4. Put the four required variables in `.env.eval` at the repo root (git-ignored; `chmod 600` it), so the secret never lands on a command line or in shell history:
+
+```
+EVAL_ADMIN_CLIENT_ID=...
+EVAL_ADMIN_CLIENT_SECRET=...
+EVAL_NGROK_DOMAIN=<your-domain>.ngrok-free.app
+EVAL_PRODUCT_ID=<product uuid>
+```
+
+5. Run the setup, which opens the shop's consent page for that customer:
 
 ```bash
-EVAL_NGROK_DOMAIN=<your-domain>.ngrok-free.app EVAL_ADMIN_CLIENT_ID=... EVAL_ADMIN_CLIENT_SECRET=... \
-EVAL_PRODUCT_ID=<product uuid> composer run eval:setup
+composer run eval:setup
 ```
 
 Every run:
 
 ```bash
-EVAL_NGROK_DOMAIN=... EVAL_ADMIN_CLIENT_ID=... EVAL_ADMIN_CLIENT_SECRET=... EVAL_PRODUCT_ID=... composer run eval
+composer run eval
 ```
+
+The buyer loads `.env.eval` itself; a variable already set in your environment wins over the file.
 
 Optional variables: `EVAL_SHOP_URL` (default `https://sw-ag.dev`), `EVAL_REPS` (3), `EVAL_PARALLEL` (4), `EVAL_PASS_TIMEOUT` (180 s), `EVAL_STANDDOWN_WAIT` (60 s), `EVAL_PROFILE_PORT` (8787), and `EVAL_TAX_STATUS` (`gross` or `net`, default `gross`: the price space `{unit*f}` placeholders render in; a run whose quote prices the unit differently fails that negotiation). The judge and report settings are listed in the header of `scripts/eval.sh`.
 

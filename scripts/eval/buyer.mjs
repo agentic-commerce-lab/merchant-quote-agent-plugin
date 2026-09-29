@@ -17,6 +17,10 @@ import { loadScenarioDir } from './scenarios.mjs';
 import { applyWrites, effectivePolicy, planSettings } from './settings.mjs';
 import { consent, loadOrCreateKey, startProfileServer, startTunnel, tokenStore, ucpClient } from './ucp.mjs';
 
+// The Admin API secret lives in a git-ignored, 0600 `.env.eval`, never on a
+// command line. Variables already in the environment win over the file.
+if (existsSync('.env.eval')) process.loadEnvFile('.env.eval');
+
 const BUYER_DIR = 'var/eval/.buyer';
 const env = (name, fallback) => {
     const value = process.env[name] ?? fallback;
