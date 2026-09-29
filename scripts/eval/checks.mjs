@@ -42,11 +42,16 @@ export function goodsFactor(lines) {
     return positive > 0 ? Math.min(1, Math.max(0, (positive + negative) / positive)) : 1;
 }
 
-/** Percent off round 1's `totalNetBefore` -- the anchored baseline, never the previous round. */
+/**
+ * Percent off round 1's `totalNetBefore` -- the anchored baseline, never the
+ * previous round. `null` when round 1 has no positive baseline to measure against.
+ */
 export function baselineDiscount(rows, totalNet) {
-    const base = rows[0].totalNetBefore;
-    return ((base - totalNet) / base) * 100;
+    const base = rows[0]?.totalNetBefore;
+    return base > 0 ? ((base - totalNet) / base) * 100 : null;
 }
+
+const NO_BASELINE = 'round 1 has no totalNetBefore to measure against';
 
 export function groupNegotiations(rows) {
     const groups = new Map();
@@ -75,9 +80,9 @@ export function h1FirstOutcome(scenario, rows) {
 export function h2Cap(rows) {
     const offers = rows.filter(written);
     if (offers.length === 0) return na('no pass wrote an offer');
-    if (!(rows[0].totalNetBefore > 0)) return fail('round 1 has no totalNetBefore to measure against');
     for (const row of offers) {
         const discount = baselineDiscount(rows, row.totalNetAfter);
+        if (discount === null) return fail(NO_BASELINE);
         if (discount > row.policy.maxDiscountPercent + RATE) {
             return fail(`round ${row.round}: ${discount.toFixed(4)}% off the round-1 total exceeds the ${row.policy.maxDiscountPercent}% cap`);
         }
@@ -91,8 +96,10 @@ export function h3MarginFloor(rows) {
     if (margin === null || margin === undefined) return na('no minMarginPercent in the policy');
     const prices = rows[0].purchasePricesNet ?? {};
     if (Object.keys(prices).length === 0) return fail('minMarginPercent is set but no purchase price reached the bench');
-    const passes = rows.filter((row) => Array.isArray(row.linesAfter) && Array.isArray(row.linesBefore));
+    const passes = rows.filter(written);
     if (passes.length === 0) return na('no pass wrote an offer');
+    const untraced = passes.find((row) => !Array.isArray(row.linesBefore) || !Array.isArray(row.linesAfter));
+    if (untraced) return fail(`round ${untraced.round} wrote an offer but its quote_before/quote_after trace is missing`);
     for (const row of passes) {
         const before = goodsFactor(row.linesBefore);
         const after = goodsFactor(row.linesAfter);
@@ -155,6 +162,7 @@ export function h9Rounding(rows) {
     for (const row of moved) {
         if (roundingMode === 'discount_percent') {
             const discount = baselineDiscount(rows, row.totalNetAfter);
+            if (discount === null) return fail(NO_BASELINE);
             if (Math.abs(discount - Math.round(discount / roundingStep) * roundingStep) > RATE) {
                 return fail(`round ${row.round}: ${discount.toFixed(4)}% off is not on the ${roundingStep}-point step`);
             }

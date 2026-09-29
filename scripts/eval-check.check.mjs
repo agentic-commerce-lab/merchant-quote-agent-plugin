@@ -57,6 +57,8 @@ assert.equal(status(h3MarginFloor(floorRows(9.1))), 'fail');
 // A quote-wide 9% is a negative line: the line price alone (10) hides it.
 assert.equal(status(h3MarginFloor(floorRows(10, [line({ lineItemId: 'd', productId: null, quantity: 1, unitPriceNet: -9, totalNet: -9 })]))), 'fail');
 assert.equal(status(h3MarginFloor([row()])), 'n/a');
+// An offer written with no quote_before/quote_after trace cannot be checked: fail, never n/a.
+assert.match(h3MarginFloor([row({ policy: policy({ minMarginPercent: 15 }), purchasePricesNet: { p1: 8 }, totalNetAfter: 50, linesBefore: null, linesAfter: null })]).reason, /round 1 wrote an offer but its quote_before\/quote_after trace is missing/);
 assert.equal(status(h3MarginFloor([row({ policy: policy({ minMarginPercent: 15 }) })])), 'fail'); // margin set, no purchase price
 
 // H4
@@ -99,6 +101,9 @@ assert.equal(status(h9Rounding(rounded('discount_percent', 1, 87.5, 104.13))), '
 assert.equal(status(h9Rounding(rounded('quote_total', 5, 95.8, 115))), 'pass');
 assert.equal(status(h9Rounding(rounded('quote_total', 5, 95.8, 113.05))), 'fail');
 assert.equal(status(h9Rounding([row()])), 'n/a');
+// No round-1 baseline: the discount is NaN, which must fail rather than slip past the step test.
+const noBaseline = { policy: policy({ roundingMode: 'discount_percent', roundingStep: 1 }) };
+assert.equal(status(h9Rounding([row({ ...noBaseline, totalNetBefore: null, totalNetAfter: null }), row({ ...noBaseline, round: 2, totalNetBefore: 100, totalNetAfter: 87.5 })])), 'fail');
 
 // grouping sorts rounds and keys by rep
 const grouped = groupNegotiations([row({ round: 2 }), row({ round: 1 }), row({ rep: 2 })]);
