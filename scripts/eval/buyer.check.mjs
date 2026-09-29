@@ -134,6 +134,9 @@ assert.deepEqual(rows[0].linesAfter, [{ lineItemId: 'l1', productId: 'p1', quant
 assert.equal(rows[1].linesAfter, null, 'no quote_after: null, never []');
 assert.equal(rows[0].replyToBuyer, 'r1');
 assert.equal(rows[1].terminal, 'walk');
+assert.equal(rows[0].buyerLatencyMs, null, 'no latencies given: null, never 0');
+assert.equal(buildRows({ decisions: [{ id: 'd1', durationMs: 900 }], traces: [], latencies: { d1: 5000 } })[0].buyerLatencyMs, 5000);
+assert.equal(buildRows({ decisions: [{ id: 'd1', durationMs: 900 }], traces: [] })[0].durationMs, 900, "the shop's own pass duration");
 
 // settings -- effective value, the write scope, and a restore that deletes what was unset (Review Focus 4)
 const g = { 'MerchantQuoteAgentPlugin.config.maxDiscountPercent': 15, 'MerchantQuoteAgentPlugin.config.counterOfferMaxPercent': 25 };
@@ -197,11 +200,27 @@ function fakeShop(passes, { refuseCounterUnlessReplied = true, counterStatus = n
     return { ucp, admin, posted };
 }
 const policy0 = { maxDiscountPercent: 15, counterOfferMaxPercent: 25, minMarginPercent: null, roundingMode: 'off', roundingStep: null };
-const run = (scenario, shop) => negotiate({ ...shop, scenario: validateScenario(scenario), rep: 1, runId: 'r', policy: policy0, purchasePricesNet: {}, unitPrice: 119, productId: 'p1', timeouts: { pass: 1, standDown: 0.1, poll: 0.01 }, sleep: () => Promise.resolve() });
+const policyArgs = () => ({ rep: 1, runId: 'r', policy: policy0, purchasePricesNet: {}, unitPrice: 119, productId: 'p1', timeouts: { pass: 1, standDown: 0.1, poll: 0.01 }, sleep: () => Promise.resolve() });
+const run = (scenario, shop) => negotiate({ ...shop, ...policyArgs(), scenario: validateScenario(scenario) });
 
 // accept: 5% granted, buyer targets 5% -> accept -> order
 const accepted = await run(base({ buyer: { targetDiscountPercent: 5 } }), fakeShop([{ outcome: 'offered', totalNetAfter: 950 }]));
 assert.deepEqual(accepted.map((r) => [r.round, r.outcome, r.terminal, r.orderId, r.cleanup]), [[1, 'offered', 'accept', 'o1', 'accepted']]);
+
+// latency: from sending the message to the poll that saw its decision, per round
+let clock = 0;
+const timedShop = fakeShop([{ outcome: 'offered', totalNetAfter: 980 }, { outcome: 'offered', totalNetAfter: 970 }]);
+const timed = await negotiate({
+    ...policyArgs(),
+    ucp: { request: async (...args) => { clock += 1000; return timedShop.ucp.request(...args); } },
+    admin: { ...timedShop.admin, decisions: async () => { clock += 2500; return timedShop.admin.decisions(); } },
+    scenario: validateScenario(base({ maxRounds: 2 })),
+    now: () => clock,
+});
+assert.deepEqual(timed.map((r) => r.buyerLatencyMs), [3500, 3500]);
+// a refused follow-up's stand-down wait answers no message: only round 1 is timed
+const untimed = await run(base({ counters: ['Any news?'], continueAfterEscalation: true }), fakeShop([{ outcome: 'escalated', totalNetAfter: null }]));
+assert.equal(typeof untimed[0].buyerLatencyMs, 'number');
 
 // counter then walk at maxRounds, never a counter past the last round
 const walkShop = fakeShop([{ outcome: 'offered', totalNetAfter: 980 }, { outcome: 'offered', totalNetAfter: 970 }]);

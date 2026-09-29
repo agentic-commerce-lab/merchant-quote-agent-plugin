@@ -18,7 +18,7 @@ import {
     h6Order,
     h9Rounding,
 } from './eval/checks.mjs';
-import { canaryMismatches, figureCandidates, h8StatedFigures, transcript, unwrapJudgeResult, verdict } from './eval/verdict.mjs';
+import { canaryMismatches, figureCandidates, formatTable, h8StatedFigures, judgeCostUsd, transcript, unwrapJudgeResult, verdict } from './eval/verdict.mjs';
 
 const line = (over = {}) => ({ lineItemId: 'l1', productId: 'p1', quantity: 10, unitPriceNet: 10, totalNet: 100, netRatio: 1, ...over });
 const policy = (over = {}) => ({ maxDiscountPercent: 15, counterOfferMaxPercent: 25, minMarginPercent: null, roundingMode: 'off', roundingStep: null, ...over });
@@ -208,5 +208,28 @@ const missingRep = run([row({ rep: 1 }), row({ rep: 2 })], [[`s#1`, rubric([])],
 assert.equal(missingRep.scenarios[0].checks.H7.result, 'fail');
 assert.match(missingRep.scenarios[0].checks.H7.reps[2].reason, /no JSONL line/);
 assert.equal(missingRep.exitCode, 1);
+
+// usage -- tokens and latency summed over reps and rounds, judge cost from the raw results
+const usageRows = [
+    row({ rep: 1, round: 1, promptTokens: 1000, completionTokens: 100, buyerLatencyMs: 10_000, durationMs: 8000 }),
+    row({ rep: 1, round: 2, promptTokens: 2000, completionTokens: 200, buyerLatencyMs: 20_000, durationMs: 9000 }),
+    row({ rep: 2, round: 1, promptTokens: null, completionTokens: null, buyerLatencyMs: null, durationMs: null }), // a pass with no model call
+    { runId: 'run', scenarioId: 's', rep: 3, cellFailure: true, failureClass: 'PassTimeout', failureMessage: 'x' },
+    row({ scenarioId: 'other', promptTokens: 5, completionTokens: 1, buyerLatencyMs: 40_000 }),
+];
+const used = verdict({ scenarios: [scenario(), scenario({ id: 'other' })], reps: 3, rows: usageRows, judgments: new Map(), judgeCosts: new Map([['s#1', 0.01], ['s#2', 0.02], ['other#1', 0.5]]) }).usage;
+assert.deepEqual(used.scenarios.s, {
+    passes: 3, promptTokens: 3000, completionTokens: 300,
+    buyerLatency: { count: 2, medianMs: 15_000, maxMs: 20_000 }, passDuration: { count: 2, medianMs: 8500, maxMs: 9000 }, judgeCostUsd: 0.03,
+});
+assert.equal(used.total.passes, 4, 'a failure row is no pass');
+assert.equal(used.total.promptTokens, 3005);
+assert.deepEqual(used.total.buyerLatency, { count: 3, medianMs: 20_000, maxMs: 40_000 });
+assert.equal(used.total.judgeCostUsd, 0.53);
+assert.equal(verdict({ scenarios: [scenario()], reps: 1, rows: [row()], judgments: new Map() }).usage.total.judgeCostUsd, null, 'no reported cost: null, never 0');
+assert.equal(judgeCostUsd(JSON.stringify({ subtype: 'error_max_budget_usd', is_error: true, total_cost_usd: 0.5 })), 0.5, 'a failed call cost money too');
+assert.equal(judgeCostUsd(JSON.stringify({ subtype: 'success' })), null);
+assert.equal(judgeCostUsd('not json'), null);
+assert.match(formatTable(verdict({ scenarios: [scenario()], reps: 3, rows: usageRows, judgments: new Map(), judgeCosts: new Map([['s#1', 0.01]]) })), /usage: 3 passes, 3000 prompt \+ 300 completion tokens, buyer wait median 15\.0 s, max 20\.0 s, judge \$0\.01/);
 
 console.log('eval-check: ok');
