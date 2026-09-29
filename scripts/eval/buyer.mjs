@@ -23,7 +23,16 @@ const env = (name, fallback) => {
     if (value === undefined || value === '') throw new UsageError(`${name} must be set`);
     return value;
 };
+/** Exit 64: nothing was written to the shop yet. Any later abort exits 2; 1 belongs to the verdict. */
 class UsageError extends Error {}
+
+async function beforeShopWrites(work) {
+    try {
+        return await work();
+    } catch (error) {
+        throw error instanceof UsageError ? error : new UsageError(error.message, { cause: error });
+    }
+}
 
 const shopUrl = () => env('EVAL_SHOP_URL', 'https://sw-ag.dev').replace(/\/$/, '');
 const adminFromEnv = () => adminClient({ shop: shopUrl(), clientId: env('EVAL_ADMIN_CLIENT_ID'), clientSecret: env('EVAL_ADMIN_CLIENT_SECRET') });
@@ -55,10 +64,15 @@ async function shopCapabilities(shop) {
 
 /** The profile has to be up for every signed request: the shop fetches it to verify. */
 async function withProfile(ctx, work) {
-    const server = startProfileServer({ port: ctx.port, capabilities: await shopCapabilities(ctx.shop), jwk: ctx.jwk });
-    const tunnel = await startTunnel({ domain: ctx.domain, port: ctx.port }).catch((error) => {
-        server.close();
-        throw error;
+    const { server, tunnel } = await beforeShopWrites(async () => {
+        const started = startProfileServer({ port: ctx.port, capabilities: await shopCapabilities(ctx.shop), jwk: ctx.jwk });
+        try {
+            await started.listening;
+            return { server: started, tunnel: await startTunnel({ domain: ctx.domain, port: ctx.port }) };
+        } catch (error) {
+            started.close();
+            throw error;
+        }
     });
     try {
         return await work(server);
@@ -92,7 +106,9 @@ async function shopState(ctx) {
     return { salesChannelId, globalValues, channelValues, value, policy: effectivePolicy(globalValues, channelValues) };
 }
 
-async function preflight(ctx) {
+const preflight = (ctx) => beforeShopWrites(() => checks(ctx));
+
+async function checks(ctx) {
     const state = await shopState(ctx);
     if (state.value('enabled') !== true) throw new UsageError('the quote agent is not enabled on the shop');
     if (state.value('draftMode') === true) throw new UsageError('the shop runs in Draft Mode: replies are never sent');
@@ -117,9 +133,8 @@ function unitPriceOf(product, taxStatus) {
 async function run(runDir) {
     const ctx = context();
     await withProfile(ctx, async () => {
-        const state = await preflight(ctx);
+        const { state, scenarios } = await beforeShopWrites(async () => ({ state: await preflight(ctx), scenarios: loadScenarioDir(join(runDir, 'scenarios')) }));
         const reps = Number(env('EVAL_REPS', '3'));
-        const scenarios = loadScenarioDir(join(runDir, 'scenarios'));
         const timeouts = { pass: Number(env('EVAL_PASS_TIMEOUT', '180')), standDown: Number(env('EVAL_STANDDOWN_WAIT', '60')), poll: 5 };
         const productId = env('EVAL_PRODUCT_ID');
         const taxStatus = env('EVAL_TAX_STATUS', 'gross');
@@ -128,10 +143,12 @@ async function run(runDir) {
         writeFileSync(join(runDir, 'run.json'), `${JSON.stringify({ runId, shop: ctx.shop, reps, pluginVersion: state.pluginVersion, model: state.model, salesChannelId: state.salesChannelId, productId, judgeModel: process.env.EVAL_JUDGE_MODEL ?? 'sonnet' }, null, 2)}\n`);
         const out = join(runDir, 'runs.jsonl');
         const write = (rows) => rows.forEach((row) => appendFileSync(out, `${JSON.stringify(row)}\n`));
+        let leftOpen = 0;
         const cells = (list) => list.flatMap((scenario) => Array.from({ length: reps }, (_, i) => ({ scenario, rep: i + 1 })));
         const play = (policy, purchasePricesNet) => async ({ scenario, rep }) => {
             const rows = await negotiate({ ucp: ctx.ucp, admin: ctx.admin, scenario, rep, runId, policy, purchasePricesNet, unitPrice, productId, timeouts });
             write(rows);
+            if (rows[0]?.cleanup === 'left_open') leftOpen++;
             console.log(`${scenario.id} #${rep}: ${rows.map((r) => r.outcome ?? r.failureClass).join(' -> ')}`);
         };
 
@@ -144,6 +161,7 @@ async function run(runDir) {
                 await pool(cells([scenario]), reps, play(policy, purchasePricesNet));
             });
         }
+        console.log(`${leftOpen} quote(s) left open on the shop: UCP declines only a replied quote`);
     });
 }
 
@@ -205,5 +223,5 @@ if (!verbs[verb] || ((verb === 'run' || verb === 'restore') && !runDir)) {
 // .then: a verb that throws synchronously (a missing env var) still lands in .catch
 Promise.resolve().then(() => verbs[verb]()).catch((error) => {
     console.error(`${verb}: ${error.message}`);
-    process.exit(error instanceof UsageError ? 64 : 1);
+    process.exit(error instanceof UsageError ? 64 : 2);
 });

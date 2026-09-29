@@ -195,7 +195,7 @@ Other buyers on sw-ag.dev see the overrides for as long as each phase-B scenario
    - **walk:** `POST /ucp/quotes/{id}/decline`.
 
    A counter is only possible while the quote is `replied`. After an escalation or a clarification the negotiation ends, except for `continueAfterEscalation` (below).
-4. **Clean up.** A quote left open (escalated, clarified, or at the round cap) is declined, so runs don't pile escalations into the merchant's queue. Accepted quotes stay as real orders on the test shop.
+4. **Clean up.** A quote the buyer did not accept is declined (`POST /ucp/quotes/{id}/decline`). UCP only allows a decline in `replied` (`quote.openapi.json`), so a walk at the round cap is declined, while an escalated or clarified quote is refused and left open. Every row records `cleanup`: `declined`, `left_open`, or `accepted`. The run prints how many quotes it left open. Cleaning those up through the Admin API is a follow-up, once a state-transition name has been verified live. Accepted quotes stay as real orders on the test shop.
 5. **Build the rows** (next section).
 
 **`continueAfterEscalation` over UCP.** The buyer posts its first `counters` entry even though the quote is not `replied`. Two outcomes count as a correct stand-down:

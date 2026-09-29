@@ -2,13 +2,20 @@
  * One scenario x rep, played over UCP (spec "One negotiation"). Every
  * outcome writes a decision row, so "the pass is done" means the quote's
  * decision count grew; a pass that never comes is a PassTimeout failure row.
- * The quote is declined at the end unless the buyer accepted, so an eval run
- * does not pile escalations into the merchant's queue.
+ * The quote is declined at the end unless the buyer accepted. UCP declines
+ * only a `replied` quote (quote.openapi.json), so an escalated or clarified
+ * one stays open: every row records `cleanup` and buyer.mjs counts them.
  */
 import { buildRows } from './rows.mjs';
 import { buyerMove, render } from './scenarios.mjs';
 
 class PassTimeout extends Error {}
+
+/** 'declined' when the shop took the decline, 'left_open' when it refused or the call failed. */
+async function decline(ucp, quoteId) {
+    const response = await ucp.request('POST', `/ucp/quotes/${quoteId}/decline`, { json: {} }).catch(() => null);
+    return response && response.status >= 200 && response.status < 300 ? 'declined' : 'left_open';
+}
 
 const defaultSleep = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000));
 
@@ -50,6 +57,7 @@ export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purc
                 continued = true;
                 const seen = decisions.length;
                 const follow = await ucp.request('POST', `/ucp/quotes/${quoteId}/counter`, { json: { comment: render(scenario.counters[0], unitPrice) } });
+                if (follow.status >= 500) throw new Error(`the follow-up failed: HTTP ${follow.status} ${JSON.stringify(follow.body).slice(0, 300)}`);
                 if (follow.status >= 400) {
                     followUpRefused = true;
                     decisions = (await wait(quoteId, seen, timeouts.standDown)) ?? decisions;
@@ -79,13 +87,14 @@ export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purc
             if (!decisions) throw new PassTimeout(`no decision for round ${round + 1} within ${timeouts.pass} s`);
         }
 
-        if (terminal !== 'accept') await ucp.request('POST', `/ucp/quotes/${quoteId}/decline`, { json: {} });
+        const cleanup = terminal === 'accept' ? 'accepted' : await decline(ucp, quoteId);
         const all = await admin.decisions(quoteId);
         const traces = all.length > 0 ? await admin.traces(all.map((d) => d.id)) : [];
-        return buildRows({ runId, scenarioId: scenario.id, rep, decisions: all, traces, policy, purchasePricesNet, terminal, ...order, followUpRefused });
+        return buildRows({ runId, scenarioId: scenario.id, rep, decisions: all, traces, policy, purchasePricesNet, terminal, ...order, followUpRefused })
+            .map((row) => ({ ...row, cleanup }));
     } catch (error) {
-        if (quoteId) await ucp.request('POST', `/ucp/quotes/${quoteId}/decline`, { json: {} }).catch(() => {});
-        return [{ runId, scenarioId: scenario.id, rep, cellFailure: true, failureClass: error instanceof PassTimeout ? 'PassTimeout' : error.constructor.name, failureMessage: error.message, quoteId }];
+        const cleanup = quoteId ? await decline(ucp, quoteId) : null; // null: no quote was ever created
+        return [{ runId, scenarioId: scenario.id, rep, cellFailure: true, failureClass: error instanceof PassTimeout ? 'PassTimeout' : error.constructor.name, failureMessage: error.message, quoteId, cleanup }];
     }
 }
 

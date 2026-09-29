@@ -145,7 +145,12 @@ export function startProfileServer({ port, capabilities, jwk }) {
             response.writeHead(404).end('not found');
         }
     }).listen(port, '127.0.0.1');
-    return { callback, close: () => server.close() };
+    // rejects on a listen error (EADDRINUSE), which is otherwise an uncaught 'error' event
+    const listening = new Promise((resolve, reject) => {
+        server.once('listening', resolve);
+        server.once('error', reject);
+    });
+    return { callback, listening, close: () => server.close() };
 }
 
 /** ngrok v3 on the user's static domain; waits until the profile answers through it. */

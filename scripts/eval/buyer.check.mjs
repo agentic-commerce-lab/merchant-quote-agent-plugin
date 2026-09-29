@@ -156,7 +156,7 @@ import { negotiate, pool } from './negotiate.mjs';
  * A fake shop: each POST that should trigger a pass appends the next scripted
  * decision; GET returns the quote with the net total that decision wrote.
  */
-function fakeShop(passes, { refuseCounterUnlessReplied = true } = {}) {
+function fakeShop(passes, { refuseCounterUnlessReplied = true, counterStatus = null } = {}) {
     const decisions = [];
     const posted = [];
     let state = 'open';
@@ -175,12 +175,18 @@ function fakeShop(passes, { refuseCounterUnlessReplied = true } = {}) {
             if (method === 'POST' && path === '/ucp/quotes') { pass(); return { status: 201, body: quote() }; }
             if (method === 'GET') return { status: 200, body: quote() };
             if (path.endsWith('/counter')) {
+                if (counterStatus) return { status: counterStatus, body: { error: 'upstream '.repeat(100) } };
                 if (refuseCounterUnlessReplied && state !== 'replied') return { status: 400, body: { error: 'not replied' } };
                 pass();
                 return { status: 200, body: quote() };
             }
             if (path.endsWith('/accept')) { state = 'accepted'; return { status: 200, body: { ...quote(), order: { id: 'o1' } } }; }
-            if (path.endsWith('/decline')) { state = 'declined'; return { status: 200, body: quote() }; }
+            if (path.endsWith('/decline')) {
+                // quote.openapi.json: decline is "Valid only in state `replied`"
+                if (state !== 'replied') return { status: 400, body: { error: 'not replied' } };
+                state = 'declined';
+                return { status: 200, body: quote() };
+            }
             return { status: 404, body: {} };
         },
     };
@@ -192,7 +198,7 @@ const run = (scenario, shop) => negotiate({ ...shop, scenario: validateScenario(
 
 // accept: 5% granted, buyer targets 5% -> accept -> order
 const accepted = await run(base({ buyer: { targetDiscountPercent: 5 } }), fakeShop([{ outcome: 'offered', totalNetAfter: 950 }]));
-assert.deepEqual(accepted.map((r) => [r.round, r.outcome, r.terminal, r.orderId]), [[1, 'offered', 'accept', 'o1']]);
+assert.deepEqual(accepted.map((r) => [r.round, r.outcome, r.terminal, r.orderId, r.cleanup]), [[1, 'offered', 'accept', 'o1', 'accepted']]);
 
 // counter then walk at maxRounds, never a counter past the last round
 const walkShop = fakeShop([{ outcome: 'offered', totalNetAfter: 980 }, { outcome: 'offered', totalNetAfter: 970 }]);
@@ -200,6 +206,7 @@ const walked = await run(base({ maxRounds: 2 }), walkShop);
 assert.equal(walked.length, 2);
 assert.equal(walkShop.posted.filter((p) => p.path.endsWith('/counter')).length, 1);
 assert.ok(walkShop.posted.some((p) => p.path.endsWith('/decline')), 'an unsettled quote is declined at the end');
+assert.deepEqual(walked.map((r) => r.cleanup), ['declined', 'declined']);
 
 // placeholders render against the product's unit price, inside the create request
 const rendered = fakeShop([{ outcome: 'offered', totalNetAfter: 950 }]);
@@ -216,21 +223,34 @@ const escalatedShop = fakeShop([{ outcome: 'escalated', totalNetAfter: null }]);
 const escalated = await run(base(), escalatedShop);
 assert.deepEqual(escalated.map((r) => r.outcome), ['escalated']);
 assert.ok(escalatedShop.posted.some((p) => p.path.endsWith('/decline')));
+assert.equal(escalated[0].cleanup, 'left_open', 'UCP refuses a decline outside replied: counted, not hidden');
 
 // continueAfterEscalation, refused follow-up: recorded, no second row
 const refused = await run(base({ counters: ['Any news?'], continueAfterEscalation: true }), fakeShop([{ outcome: 'escalated', totalNetAfter: null }]));
 assert.equal(refused.length, 1);
 assert.equal(refused[0].followUpRefused, true);
+assert.equal(refused[0].cleanup, 'left_open');
+
+// a 5xx follow-up is the shop failing, not standing down: a failure row
+const brokenFollowUp = await run(base({ counters: ['Any news?'], continueAfterEscalation: true }), fakeShop([{ outcome: 'escalated', totalNetAfter: null }], { counterStatus: 503 }));
+assert.equal(brokenFollowUp.length, 1);
+assert.equal(brokenFollowUp[0].cellFailure, true);
+assert.match(brokenFollowUp[0].failureMessage, /HTTP 503/);
+assert.ok(brokenFollowUp[0].failureMessage.length < 400, 'the body is truncated');
+assert.equal(brokenFollowUp[0].followUpRefused, undefined);
+assert.equal(brokenFollowUp[0].cleanup, 'left_open');
 
 // continueAfterEscalation, accepted follow-up: the next row is what the shop recorded
 const handedOver = await run(base({ counters: ['Any news?'], continueAfterEscalation: true }), fakeShop([{ outcome: 'escalated', totalNetAfter: null }, { outcome: 'handed_over', totalNetAfter: null }], { refuseCounterUnlessReplied: false }));
 assert.deepEqual(handedOver.map((r) => r.outcome), ['escalated', 'handed_over']);
+assert.deepEqual(handedOver.map((r) => r.cleanup), ['left_open', 'left_open']);
 
 // a pass that never comes is a failure row, not a hang
 const timedOut = await run(base(), fakeShop([]));
 assert.equal(timedOut.length, 1);
 assert.equal(timedOut[0].cellFailure, true);
 assert.equal(timedOut[0].failureClass, 'PassTimeout');
+assert.equal(timedOut[0].cleanup, 'left_open', 'a failure row records its cleanup too');
 
 // pool keeps at most `limit` workers in flight and keeps order
 let inFlight = 0;
