@@ -29,6 +29,35 @@ import { ASSIGNMENT_SOURCE_SNIPPET_KEYS } from '../../assignment.ts';
 
 const { Criteria } = Shopware.Data;
 
+/**
+ * Every row a criteria matches, up to MAX_READ_PAGES pages. The caller's
+ * criteria is paged in place; `total` is the full match count, so a caller can
+ * tell a capped read from a complete one.
+ */
+async function searchAll(repository, criteria) {
+    criteria.setLimit(READ_PAGE_SIZE);
+    criteria.setTotalCountMode(1);
+
+    const rows = [];
+    let total = 0;
+
+    for (let page = 1; page <= MAX_READ_PAGES; page += 1) {
+        criteria.setPage(page);
+
+        // eslint-disable-next-line no-await-in-loop
+        const result = await repository.search(criteria, Shopware.Context.api);
+
+        rows.push(...Array.from(result));
+        total = result.total ?? rows.length;
+
+        if (rows.length >= total || result.length < READ_PAGE_SIZE) {
+            break;
+        }
+    }
+
+    return { rows, total };
+}
+
 interface PriceQuote {
     netBefore: number | null;
     latest: {
@@ -42,28 +71,22 @@ interface PriceQuote {
 }
 
 /**
- * ponytail: the page reads every pass in the period in one request and folds it
- * client-side, so the figures and the rows are one computation and cannot
- * disagree. The ceiling is PASS_LIMIT; past it the page says so rather than
- * quietly describing a subset. The upgrade path, if a shop ever services more
- * than this in 90 days, is a server-side latest-pass-per-quote read — DAL
- * `grouping` is not it: it returns the FIRST row per group regardless of
- * sorting and drops the total count.
+ * ponytail: the page reads every pass in the period and folds it client-side,
+ * so the figures and the rows are one computation and cannot disagree. One
+ * request returns at most READ_PAGE_SIZE rows (the admin API's own ceiling), so
+ * `searchAll` walks the pages; MAX_READ_PAGES bounds that walk. Past it the
+ * page says so rather than quietly describing a subset. The upgrade path, if a
+ * shop ever services more than this in 90 days, is a server-side
+ * latest-pass-per-quote read — DAL `grouping` is not it: it returns the FIRST
+ * row per group regardless of sorting and drops the total count.
  *
- * The read covers TWICE the selected range, because the auto-execution rate is
- * only meaningful as a trend and the previous equal-length window is the
- * comparison. The rows and every current-period figure filter to the recent
- * half. So the effective ceiling is half of PASS_LIMIT per window, which the
- * truncation banner already reports.
+ * The pass read covers TWICE the selected range, because the auto-execution
+ * rate is only meaningful as a trend and the previous equal-length window is
+ * the comparison. The rows and every current-period figure filter to the
+ * recent half.
  */
-const PASS_LIMIT = 500;
-
-/**
- * Accepted quotes in the period, both agent-negotiated and not. Far smaller
- * than the pass read — most quotes never reach `accepted` — so this ceiling is
- * generous rather than tight.
- */
-const QUOTE_LIMIT = 500;
+const READ_PAGE_SIZE = 500;
+const MAX_READ_PAGES = 20;
 const PAGE_SIZE = 25;
 
 Shopware.Component.register('merchant-quote-agent-list', {
@@ -158,7 +181,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
         },
 
         isTruncated() {
-            return this.passTotal > PASS_LIMIT;
+            return this.passTotal > this.passes.length;
         },
 
         autoExecution() {
@@ -173,7 +196,7 @@ Shopware.Component.register('merchant-quote-agent-list', {
         autoExecutionDelta() {
             // A truncated read drops the OLDEST rows first (loadPasses sorts
             // newest-first), which are the previous window's — so past
-            // PASS_LIMIT the previous window is a partial sample, not a
+            // MAX_READ_PAGES the previous window is a partial sample, not a
             // shorter one. Reporting a trend against it would be a specific,
             // wrong number rather than an absent one.
             if (this.isTruncated) {
@@ -240,13 +263,13 @@ Shopware.Component.register('merchant-quote-agent-list', {
 
         strategyColumns() {
             return [
-                { property: 'name', label: 'merchant-quote-agent.strategyComparison.columnStrategy', primary: true },
-                { property: 'quotes', label: 'merchant-quote-agent.strategyComparison.columnQuotes', width: '90px' },
-                { property: 'autoExecution', label: 'merchant-quote-agent.strategyComparison.columnAutoExecution' },
-                { property: 'escalations', label: 'merchant-quote-agent.strategyComparison.columnResolution' },
-                { property: 'priceRetention', label: 'merchant-quote-agent.strategyComparison.columnRetention' },
-                { property: 'cycleTime', label: 'merchant-quote-agent.strategyComparison.columnCycleTime' },
-                { property: 'tokens', label: 'merchant-quote-agent.strategyComparison.columnTokens' },
+                { property: 'name', label: 'merchant-quote-agent.strategyComparison.columnStrategy', primary: true, multiLine: true },
+                { property: 'quotes', label: 'merchant-quote-agent.strategyComparison.columnQuotes', width: '90px', multiLine: true },
+                { property: 'autoExecution', label: 'merchant-quote-agent.strategyComparison.columnAutoExecution', multiLine: true },
+                { property: 'escalations', label: 'merchant-quote-agent.strategyComparison.columnResolution', multiLine: true },
+                { property: 'priceRetention', label: 'merchant-quote-agent.strategyComparison.columnRetention', multiLine: true },
+                { property: 'cycleTime', label: 'merchant-quote-agent.strategyComparison.columnCycleTime', multiLine: true },
+                { property: 'tokens', label: 'merchant-quote-agent.strategyComparison.columnTokens', multiLine: true },
             ];
         },
 
@@ -256,10 +279,6 @@ Shopware.Component.register('merchant-quote-agent-list', {
             }
 
             return this.quotes.filter((quote) => quote.disposition === this.dispositionFilter);
-        },
-
-        pageCount() {
-            return Math.max(1, Math.ceil(this.filteredQuotes.length / PAGE_SIZE));
         },
 
         pagedQuotes() {
@@ -470,18 +489,17 @@ Shopware.Component.register('merchant-quote-agent-list', {
         },
 
         async loadPasses() {
-            const criteria = new Criteria(1, PASS_LIMIT);
+            const criteria = new Criteria();
             criteria.addFilter(this.trendRangeFilter);
             // Newest first is what foldToQuotes needs to pick each quote's
             // current state.
             criteria.addSorting(Criteria.sort('createdAt', 'DESC'));
-            criteria.setTotalCountMode(1);
 
             try {
-                const result = await this.decisionRepository.search(criteria, Shopware.Context.api);
+                const { rows, total } = await searchAll(this.decisionRepository, criteria);
 
-                this.passes = Array.from(result);
-                this.passTotal = result.total ?? this.passes.length;
+                this.passes = rows;
+                this.passTotal = total;
             } catch (error) {
                 this.passes = [];
                 this.passTotal = 0;
@@ -529,14 +547,12 @@ Shopware.Component.register('merchant-quote-agent-list', {
             try {
                 const quoteRepository = this.repositoryFactory.create('quote');
 
-                const criteria = new Criteria(1, QUOTE_LIMIT);
+                const criteria = new Criteria();
                 criteria.addFilter(this.rangeFilter);
                 criteria.addFilter(Criteria.equals('stateMachineState.technicalName', ORDER_PLACED_TERMINAL_STATE));
                 criteria.addSorting(Criteria.sort('createdAt', 'DESC'));
 
-                const result = await quoteRepository.search(criteria, Shopware.Context.api);
-
-                this.quoteRows = Array.from(result);
+                this.quoteRows = (await searchAll(quoteRepository, criteria)).rows;
             } catch (error) {
                 // Nulled rather than zeroed: a viewer without `quote:read`
                 // should see the figures absent, not see a 0% discount and a
