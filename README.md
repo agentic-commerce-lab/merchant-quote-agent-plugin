@@ -210,7 +210,7 @@ It tests the **deployed** plugin: deploy a branch before you evaluate it.
 One-time setup:
 
 1. Claim an ngrok static domain and add it to the shop's *Agent access → Profile hosts*.
-2. Create an Admin API integration with read on `merchant_quote_agent_decision`, `merchant_quote_agent_trace`, `sales_channel`, `sales_channel_domain` and `plugin`, read and write on `system_config`, and read and update on `product`.
+2. Create an Admin API integration with read on `merchant_quote_agent_decision`, `merchant_quote_agent_trace`, `sales_channel`, `sales_channel_domain` and `plugin`, read, update, create and delete on `system_config` (a restore to `null` deletes the key), and read and update on `product`.
 3. Pick a storefront customer with `QUOTE_MANAGEMENT`.
 4. Run the setup, which opens the shop's consent page for that customer:
 
@@ -224,6 +224,8 @@ Every run:
 ```bash
 EVAL_NGROK_DOMAIN=... EVAL_ADMIN_CLIENT_ID=... EVAL_ADMIN_CLIENT_SECRET=... EVAL_PRODUCT_ID=... composer run eval
 ```
+
+Optional variables: `EVAL_SHOP_URL` (default `https://sw-ag.dev`), `EVAL_REPS` (3), `EVAL_PARALLEL` (4), `EVAL_PASS_TIMEOUT` (180 s), `EVAL_STANDDOWN_WAIT` (60 s), `EVAL_PROFILE_PORT` (8787), and `EVAL_TAX_STATUS` (`gross` or `net`, default `gross`: the price space `{unit*f}` placeholders render in; a run whose quote prices the unit differently fails that negotiation). The judge and report settings are listed in the header of `scripts/eval.sh`.
 
 Four scenarios need settings the shop doesn't have by default (a margin floor, rounding, a zero cap). They change the shop's config for about a minute each, then restore it. After a hard crash, run `composer run eval:restore var/eval/<runId>`.
 

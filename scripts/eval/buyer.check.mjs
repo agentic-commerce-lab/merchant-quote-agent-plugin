@@ -156,7 +156,7 @@ import { negotiate, pool } from './negotiate.mjs';
  * A fake shop: each POST that should trigger a pass appends the next scripted
  * decision; GET returns the quote with the net total that decision wrote.
  */
-function fakeShop(passes, { refuseCounterUnlessReplied = true, counterStatus = null } = {}) {
+function fakeShop(passes, { refuseCounterUnlessReplied = true, counterStatus = null, quotedUnitPrice = 119, getStatus = 200 } = {}) {
     const decisions = [];
     const posted = [];
     let state = 'open';
@@ -168,12 +168,12 @@ function fakeShop(passes, { refuseCounterUnlessReplied = true, counterStatus = n
         if (next.totalNetAfter != null) net = next.totalNetAfter;
         state = next.outcome === 'offered' || next.outcome === 'countered' || next.outcome === 'acknowledged' ? 'replied' : 'open';
     };
-    const quote = () => ({ id: 'q1', state, totals: { net, gross: net * 1.19, tax_status: 'gross' }, line_items: [{ unit_price: 119 }] });
+    const quote = () => ({ id: 'q1', state, totals: { net, gross: net * 1.19, tax_status: 'gross' }, line_items: [{ unit_price: quotedUnitPrice }] });
     const ucp = {
         async request(method, path, { json } = {}) {
             posted.push({ method, path, json });
             if (method === 'POST' && path === '/ucp/quotes') { pass(); return { status: 201, body: quote() }; }
-            if (method === 'GET') return { status: 200, body: quote() };
+            if (method === 'GET') return getStatus === 200 ? { status: 200, body: quote() } : { status: getStatus, body: { error: 'unavailable '.repeat(100) } };
             if (path.endsWith('/counter')) {
                 if (counterStatus) return { status: counterStatus, body: { error: 'upstream '.repeat(100) } };
                 if (refuseCounterUnlessReplied && state !== 'replied') return { status: 400, body: { error: 'not replied' } };
@@ -213,6 +213,12 @@ const rendered = fakeShop([{ outcome: 'offered', totalNetAfter: 950 }]);
 await run(base({ openingAsk: '{unit*0.85} including tax', buyer: { targetDiscountPercent: 5 } }), rendered);
 assert.equal(rendered.posted[0].json.comment, '101.15 including tax');
 assert.deepEqual(rendered.posted[0].json.line_items, [{ product_id: 'p1', quantity: 10 }]);
+// the placeholder rendered from the admin price, but the quote carries another: a failure row naming both
+const repriced = await run(base({ openingAsk: '{unit*0.85} including tax' }), fakeShop([{ outcome: 'offered', totalNetAfter: 950 }], { quotedUnitPrice: 120 }));
+assert.equal(repriced.length, 1);
+assert.equal(repriced[0].cellFailure, true);
+assert.match(repriced[0].failureMessage, /120/);
+assert.match(repriced[0].failureMessage, /119/);
 // an empty openingAsk sends no comment at all (structured-only)
 const silentAsk = fakeShop([{ outcome: 'escalated', totalNetAfter: null }]);
 await run(base({ openingAsk: '' }), silentAsk);
@@ -244,6 +250,13 @@ assert.equal(brokenFollowUp[0].cleanup, 'left_open');
 const handedOver = await run(base({ counters: ['Any news?'], continueAfterEscalation: true }), fakeShop([{ outcome: 'escalated', totalNetAfter: null }, { outcome: 'handed_over', totalNetAfter: null }], { refuseCounterUnlessReplied: false }));
 assert.deepEqual(handedOver.map((r) => r.outcome), ['escalated', 'handed_over']);
 assert.deepEqual(handedOver.map((r) => r.cleanup), ['left_open', 'left_open']);
+
+// a failing quote GET is the shop failing, not "the buyer cannot move": a failure row
+const brokenGet = await run(base(), fakeShop([{ outcome: 'offered', totalNetAfter: 980 }], { getStatus: 503 }));
+assert.equal(brokenGet.length, 1);
+assert.equal(brokenGet[0].cellFailure, true);
+assert.match(brokenGet[0].failureMessage, /HTTP 503/);
+assert.ok(brokenGet[0].failureMessage.length < 400, 'the body is truncated');
 
 // a pass that never comes is a failure row, not a hang
 const timedOut = await run(base(), fakeShop([]));

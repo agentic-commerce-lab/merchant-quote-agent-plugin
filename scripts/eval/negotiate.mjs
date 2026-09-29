@@ -45,6 +45,11 @@ export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purc
         const created = await ucp.request('POST', '/ucp/quotes', { json: { line_items: lineItems, ...(opening ? { comment: opening } : {}) } });
         if (created.status !== 201) throw new Error(`the RFQ was refused: HTTP ${created.status} ${JSON.stringify(created.body).slice(0, 300)}`);
         quoteId = created.body.id;
+        // The ask was rendered from the admin price before the quote existed: a quote priced otherwise makes it a different ask.
+        const quotedUnitPrice = created.body.line_items?.[0]?.unit_price;
+        if (scenario.openingAsk.includes('{unit*') && !(Math.abs(quotedUnitPrice - unitPrice) <= 0.005)) {
+            throw new Error(`the quote prices the unit at ${quotedUnitPrice}, but the opening ask was rendered from ${unitPrice} (EVAL_TAX_STATUS?)`);
+        }
         let continued = false;
 
         let decisions = await wait(quoteId, 0, timeouts.pass);
@@ -67,7 +72,9 @@ export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purc
                 if (!decisions) throw new PassTimeout(`no decision after the follow-up within ${timeouts.pass} s`);
                 break;
             }
-            const quote = (await ucp.request('GET', `/ucp/quotes/${quoteId}`)).body;
+            const fetched = await ucp.request('GET', `/ucp/quotes/${quoteId}`);
+            if (fetched.status !== 200) throw new Error(`the quote could not be read: HTTP ${fetched.status} ${JSON.stringify(fetched.body).slice(0, 300)}`);
+            const quote = fetched.body;
             if (quote.state !== 'replied') break; // escalated, clarified, handed over: the buyer cannot move
             const move = buyerMove(scenario, { openingNet, currentNet: quote.totals.net, round });
             if (move.kind === 'accept') {

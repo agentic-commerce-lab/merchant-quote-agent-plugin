@@ -127,6 +127,12 @@ assert.equal(status(h8StatedFigures([row()], judged([]))), 'n/a');
 assert.equal(status(h8StatedFigures([row()], null)), 'judge_error');
 assert.equal(status(h8StatedFigures([row()], judged([figure(95)], 2))), 'judge_error'); // a round the negotiation lacks is the judge's error, not the agent's
 assert.ok(figureCandidates([row()], row()).money.includes(100), 'the original total is a legitimate "down from" figure');
+// a saving and a per-pass delta are figures the quote carries; a made-up saving is not
+assert.equal(status(h8StatedFigures([row()], judged([figure(5)]))), 'pass'); // "you save 5.00" on 100 -> 95
+assert.equal(status(h8StatedFigures([row()], judged([figure(5.95)]))), 'pass'); // the same saving, grossed
+assert.equal(status(h8StatedFigures([row()], judged([figure(7)]))), 'fail');
+const secondPass = [row({ round: 1, totalNetAfter: 90, totalGrossAfter: 107.1 }), row({ round: 2, totalNetBefore: 90, totalNetAfter: 85.5, totalGrossBefore: 107.1, totalGrossAfter: 101.745 })];
+assert.equal(status(h8StatedFigures(secondPass, judged([figure(5, 0, 'percent')], 2))), 'pass'); // "another 5%": 90 -> 85.5 this pass, 14.5% overall
 assert.deepEqual(figureCandidates([row({ totalNetBefore: null })], row({ totalNetBefore: null })).percent, [], 'no round-1 baseline: no percent candidate, never NaN');
 
 // Review Focus 4 -- a silent pass

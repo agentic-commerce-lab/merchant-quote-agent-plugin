@@ -7,10 +7,12 @@
 #   composer run eval -- --from=judge var/eval/<runId>    # re-judge without new negotiations
 #
 # Needs EVAL_ADMIN_CLIENT_ID, EVAL_ADMIN_CLIENT_SECRET, EVAL_PRODUCT_ID and
-# EVAL_NGROK_DOMAIN; EVAL_SHOP_URL defaults to https://sw-ag.dev. Optional:
-# EVAL_REPS (3), EVAL_PARALLEL (4), EVAL_PASS_TIMEOUT (180), EVAL_JUDGE_MODEL /
-# EVAL_REPORT_MODEL (sonnet), EVAL_JUDGE_BUDGET_USD (0.50 per call),
-# EVAL_REPORT_BUDGET_USD (2), EVAL_JUDGE_PARALLEL (4).
+# EVAL_NGROK_DOMAIN. Optional: EVAL_SHOP_URL (https://sw-ag.dev), EVAL_REPS (3),
+# EVAL_PARALLEL (4), EVAL_PASS_TIMEOUT (180), EVAL_STANDDOWN_WAIT (60),
+# EVAL_PROFILE_PORT (8787), EVAL_TAX_STATUS (gross|net, default gross: the
+# price space `{unit*f}` renders in), EVAL_JUDGE_MODEL / EVAL_REPORT_MODEL
+# (sonnet), EVAL_JUDGE_BUDGET_USD (0.50 per call), EVAL_REPORT_BUDGET_USD (2),
+# EVAL_JUDGE_PARALLEL (4).
 #
 # Exit: 0 every scenario passes, 1 a scenario failed, 2 inconclusive (a judge
 # error, a misgraded canary, no rows), 64 usage/preflight. Always from the
@@ -28,6 +30,10 @@ for arg in "$@"; do
     *) echo "Unknown argument: $arg" >&2; exit 64 ;;
   esac
 done
+if [ "$FROM" = bench ] && [ -n "$RUN_DIR" ]; then
+  echo "a run directory needs --from=<stage> (check, judge, verdict or report)" >&2
+  exit 64
+fi
 case " ${STAGES[*]} " in *" $FROM "*) ;; *) echo "--from must be one of: ${STAGES[*]}" >&2; exit 64 ;; esac
 if [ "$FROM" != bench ] && [ ! -f "$RUN_DIR/runs.jsonl" ]; then
   echo "--from=$FROM needs an existing run directory (var/eval/<runId> with runs.jsonl)" >&2

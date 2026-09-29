@@ -25,8 +25,8 @@ export function transcript(scenario, negotiation) {
 /**
  * Every number a reply may legitimately state up to this round: the opening
  * and each written total (net and grossed up), unit prices and line totals
- * with and without the quote-wide factor, and the discount off the round-1
- * baseline for each of those states.
+ * with and without the quote-wide factor, the saving and the discount off the
+ * round-1 baseline for each of those states, and each pass's own delta.
  *
  * ponytail: earlier rounds' figures also count, so "down from 8% to 10%"
  * passes; the ceiling is that a reply stating an older figure as current also
@@ -40,6 +40,7 @@ export function figureCandidates(rows, row) {
             net: r.totalNetAfter ?? r.totalNetBefore,
             gross: r.totalGrossAfter ?? r.totalGrossBefore,
             lines: r.linesAfter ?? r.linesBefore,
+            before: r.totalNetBefore,
         })),
     ];
     const money = [];
@@ -48,6 +49,11 @@ export function figureCandidates(rows, row) {
         if (!(state.net > 0)) continue;
         const grossFactor = state.gross > 0 ? state.gross / state.net : 1;
         money.push(state.net, state.net * grossFactor);
+        if (base.totalNetBefore > 0) {
+            const saving = base.totalNetBefore - state.net;
+            money.push(saving, saving * grossFactor);
+        }
+        if (state.before > 0) percent.push(((state.before - state.net) / state.before) * 100); // "another 5%": this pass alone
         const discount = baselineDiscount(rows, state.net);
         if (discount !== null) percent.push(discount); // no positive baseline: no percent candidate, never NaN
         const lines = Array.isArray(state.lines) ? state.lines : [];

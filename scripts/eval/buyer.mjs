@@ -157,7 +157,7 @@ async function run(runDir) {
 
         // Phase B: one settings scenario at a time, restore file first.
         for (const scenario of scenarios.filter((s) => s.policy)) {
-            await withSettings(ctx, runDir, state, scenario, async (policy, purchasePricesNet) => {
+            await withSettings(ctx, runDir, scenario, async (policy, purchasePricesNet) => {
                 await pool(cells([scenario]), reps, play(policy, purchasePricesNet));
             });
         }
@@ -165,12 +165,15 @@ async function run(runDir) {
     });
 }
 
-async function withSettings(ctx, runDir, state, scenario, work) {
-    const { writes, restore } = planSettings({ globalValues: state.globalValues, channelValues: state.channelValues, overrides: scenario.policy });
+async function withSettings(ctx, runDir, scenario, work) {
+    // Fresh, not the preflight snapshot: a merchant edit during phase A must survive the restore.
+    const state = await shopState(ctx);
     const productId = env('EVAL_PRODUCT_ID');
+    const product = await ctx.admin.product(productId);
+    const { writes, restore } = planSettings({ globalValues: state.globalValues, channelValues: state.channelValues, overrides: scenario.policy });
     const ratio = scenario.lines.find((l) => l.purchasePriceRatio !== undefined)?.purchasePriceRatio;
     const restoreFile = join(runDir, 'restore.json');
-    writeFileSync(restoreFile, `${JSON.stringify({ salesChannelId: state.salesChannelId, config: restore, productId, purchasePrices: state.product.purchasePrices ?? null, touchesProduct: ratio !== undefined })}\n`);
+    writeFileSync(restoreFile, `${JSON.stringify({ salesChannelId: state.salesChannelId, config: restore, productId, purchasePrices: product.purchasePrices ?? null, touchesProduct: ratio !== undefined })}\n`);
     const undo = () => replayRestore(ctx, restoreFile);
     const onSignal = () => undo().finally(() => process.exit(130));
     process.once('SIGINT', onSignal);
@@ -179,7 +182,7 @@ async function withSettings(ctx, runDir, state, scenario, work) {
         await applyWrites(ctx.admin, state.salesChannelId, writes);
         let purchasePricesNet = {};
         if (ratio !== undefined) {
-            const price = state.product.price[0];
+            const price = product.price[0];
             const net = Math.round(ratio * price.net * 100) / 100;
             await ctx.admin.writePurchasePrices(productId, [{ currencyId: price.currencyId, net, gross: Math.round(net * (price.gross / price.net) * 100) / 100, linked: false }]);
             purchasePricesNet = { [productId]: net };
