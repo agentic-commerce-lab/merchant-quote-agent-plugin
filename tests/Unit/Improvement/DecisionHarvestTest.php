@@ -12,6 +12,10 @@ use MerchantQuoteAgentPlugin\Policy\Data\CommentInterpretation;
 use MerchantQuoteAgentPlugin\Policy\Data\NegotiationAsks;
 use MerchantQuoteAgentPlugin\Policy\Data\PriceAsk;
 use MerchantQuoteAgentPlugin\Policy\Data\StructuralAsks;
+use MerchantQuoteAgentPlugin\Strategy\Strategy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
+use MerchantQuoteAgentPlugin\Strategy\StrategyVersion;
+use MerchantQuoteAgentPlugin\Strategy\VersionStatus;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
@@ -22,17 +26,32 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\RangeFilter;
 use Shopware\Core\Framework\Uuid\Uuid;
 
+/**
+ * The single-strategy behaviours: mapping every field (including the two the
+ * per-strategy brief added) and the window/sales-channel query. The
+ * multi-strategy grouping behaviours -- two strategies producing two groups,
+ * and a strategy-less decision being excluded -- are split into
+ * DecisionHarvestGroupingTest to keep this class under the method-count gate,
+ * the same reason ImprovementRunnerBillingTest was split out of
+ * ImprovementGeneratorTest.
+ */
 final class DecisionHarvestTest extends TestCase
 {
+    private const STRATEGY_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+    private const VERSION_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1';
+
     public function testItMapsEveryHarvestedField(): void
     {
-        $record = self::record(interpretedAsks: ['price' => ['additionalDiscountPercent' => 5.0]]);
-        $harvest = new DecisionHarvest($this->repository([$record]));
+        $record = self::record(self::VERSION_ID, interpretedAsks: ['price' => ['additionalDiscountPercent' => 5.0]]);
+        $harvest = new DecisionHarvest($this->decisionRepository([$record]), $this->oneStrategy());
 
-        $decisions = $harvest->forWindow(self::window(), 'sc-1', Context::createDefaultContext());
+        $groups = $harvest->forWindow(self::window(), 'sc-1', Context::createDefaultContext());
 
-        self::assertCount(1, $decisions);
-        $decision = $decisions[0];
+        self::assertCount(1, $groups);
+        self::assertSame(self::STRATEGY_ID, $groups[0]->strategyId);
+        self::assertCount(1, $groups[0]->decisions);
+        $decision = $groups[0]->decisions[0];
         self::assertSame($record->id, $decision->decisionId);
         self::assertSame($record->quoteId, $decision->quoteId);
         self::assertSame('grant', $decision->band);
@@ -43,6 +62,8 @@ final class DecisionHarvestTest extends TestCase
         self::assertSame(10.0, $decision->maxDiscountPercent);
         self::assertSame(['price' => ['additionalDiscountPercent' => 5.0]], $decision->interpretedAsks);
         self::assertSame('extract-hash', $decision->extractPromptHash);
+        self::assertSame(self::VERSION_ID, $decision->strategyVersionId);
+        self::assertSame('rule', $decision->strategyAssignmentSource);
     }
 
     public function testItFiltersOnTheHalfOpenWindowAndTheSalesChannel(): void
@@ -58,7 +79,11 @@ final class DecisionHarvestTest extends TestCase
             });
 
         $window = self::window();
-        (new DecisionHarvest($repository))->forWindow($window, 'sc-1', Context::createDefaultContext());
+        (new DecisionHarvest($repository, $this->oneStrategy()))->forWindow(
+            $window,
+            'sc-1',
+            Context::createDefaultContext(),
+        );
 
         self::assertInstanceOf(Criteria::class, $captured);
 
@@ -105,11 +130,11 @@ final class DecisionHarvestTest extends TestCase
         );
         $stored = InterpretationPayload::of($interpretation);
 
-        $record = self::record(interpretedAsks: $stored);
-        $harvest = new DecisionHarvest($this->repository([$record]));
-        $decisions = $harvest->forWindow(self::window(), 'sc-1', Context::createDefaultContext());
+        $record = self::record(self::VERSION_ID, interpretedAsks: $stored);
+        $harvest = new DecisionHarvest($this->decisionRepository([$record]), $this->oneStrategy());
+        $groups = $harvest->forWindow(self::window(), 'sc-1', Context::createDefaultContext());
 
-        $restored = InterpretationPayload::from($decisions[0]->interpretedAsks ?? []);
+        $restored = InterpretationPayload::from($groups[0]->decisions[0]->interpretedAsks ?? []);
 
         self::assertNotNull($restored, 'the raw stored shape must rehydrate');
         self::assertEquals($interpretation, $restored);
@@ -138,7 +163,7 @@ final class DecisionHarvestTest extends TestCase
     }
 
     /** @param array<string, mixed>|null $interpretedAsks */
-    private static function record(?array $interpretedAsks): QuoteDecisionRecord
+    private static function record(?string $strategyVersionId, ?array $interpretedAsks = null): QuoteDecisionRecord
     {
         $record = new QuoteDecisionRecord();
         $id = Uuid::randomHex();
@@ -153,12 +178,14 @@ final class DecisionHarvestTest extends TestCase
         $record->maxDiscountPercent = 10.0;
         $record->interpretedAsks = $interpretedAsks;
         $record->extractPromptHash = 'extract-hash';
+        $record->strategyVersionId = $strategyVersionId;
+        $record->strategyAssignmentSource = $strategyVersionId === null ? null : 'rule';
 
         return $record;
     }
 
     /** @param list<QuoteDecisionRecord> $records */
-    private function repository(array $records): EntityRepository
+    private function decisionRepository(array $records): EntityRepository
     {
         $repository = $this->createMock(EntityRepository::class);
         $repository
@@ -168,6 +195,53 @@ final class DecisionHarvestTest extends TestCase
                     'merchant_quote_agent_decision',
                     \count($records),
                     new EntityCollection($records),
+                    null,
+                    $criteria,
+                    $context,
+                ),
+            );
+
+        return $repository;
+    }
+
+    /**
+     * One strategy, one active version -- ignore-the-Criteria doubles are
+     * enough here because only one lineage is ever in play in this class;
+     * DecisionHarvestGroupingTest is where telling two lineages apart
+     * actually matters.
+     */
+    private function oneStrategy(): StrategyResolver
+    {
+        $strategy = new Strategy();
+        $strategy->setUniqueIdentifier(self::STRATEGY_ID);
+        $strategy->id = self::STRATEGY_ID;
+        $strategy->name = 'House style';
+
+        $version = new StrategyVersion();
+        $version->setUniqueIdentifier(self::VERSION_ID);
+        $version->id = self::VERSION_ID;
+        $version->strategyId = self::STRATEGY_ID;
+        $version->version = 1;
+        $version->prompt = 'hold firm';
+        $version->status = VersionStatus::Active->value;
+
+        return new StrategyResolver(
+            $this->ignoreCriteriaRepository([$strategy]),
+            $this->ignoreCriteriaRepository([$version]),
+        );
+    }
+
+    /** @param list<object> $entities */
+    private function ignoreCriteriaRepository(array $entities): EntityRepository
+    {
+        $repository = $this->createMock(EntityRepository::class);
+        $repository
+            ->method('search')
+            ->willReturnCallback(
+                static fn(Criteria $criteria, Context $context): EntitySearchResult => new EntitySearchResult(
+                    'test',
+                    \count($entities),
+                    new EntityCollection($entities),
                     null,
                     $criteria,
                     $context,

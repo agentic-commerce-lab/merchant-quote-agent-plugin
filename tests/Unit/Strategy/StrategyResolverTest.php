@@ -150,6 +150,38 @@ final class StrategyResolverTest extends TestCase
         $resolver->resolve(self::STRATEGY_ID, Context::createDefaultContext());
     }
 
+    /**
+     * byVersionId() answers "what did we send" -- unfiltered by status,
+     * unlike resolve() above -- so a PROPOSED row (not yet accepted, never
+     * reachable through resolve()'s status=active filter) is still a
+     * legitimate answer: the nightly replay's control arm must reproduce
+     * exactly what produced a recorded decision, whatever that version's
+     * status is today.
+     */
+    public function testByVersionIdIgnoresStatus(): void
+    {
+        $version = new StrategyVersion();
+        $version->setUniqueIdentifier('aaaabbbbccccddddeeeeffff00002222');
+        $version->id = 'aaaabbbbccccddddeeeeffff00002222';
+        $version->strategyId = self::STRATEGY_ID;
+        $version->version = null;
+        $version->prompt = 'a proposed draft';
+        $version->status = 'proposed';
+
+        $resolver = new StrategyResolver($this->repository([]), $this->repository([$version]));
+
+        $found = $resolver->byVersionId('aaaabbbbccccddddeeeeffff00002222', Context::createDefaultContext());
+
+        self::assertSame($version, $found);
+    }
+
+    public function testByVersionIdReturnsNullWhenTheVersionCannotBeFound(): void
+    {
+        $resolver = new StrategyResolver($this->repository([]), $this->repository([]));
+
+        self::assertNull($resolver->byVersionId('does-not-exist', Context::createDefaultContext()));
+    }
+
     private function liveStrategy(): Strategy
     {
         $strategy = new Strategy();

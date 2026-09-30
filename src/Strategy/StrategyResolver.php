@@ -69,4 +69,27 @@ readonly class StrategyResolver
 
         return new ResolvedStrategy($version->id, $version->prompt);
     }
+
+    /**
+     * The version that actually ran, by id -- unfiltered by status, unlike
+     * resolve() above. This answers "what did we send", the same question the
+     * decision detail page's own lookup answers, not "what may we send now":
+     * the nightly self-improvement replay's control arm must reproduce
+     * exactly what produced a recorded decision, whatever that version's
+     * status is today (active, proposed, or even rejected since).
+     *
+     * Null rather than a thrown UnknownStrategy: an unreadable version here is
+     * one reason among several a replay skips a decision (see
+     * ReplaySubjectResolver), not a misconfiguration that should abort a
+     * whole channel's night.
+     */
+    public function byVersionId(string $versionId, Context $context): ?StrategyVersion
+    {
+        $version = $this->versions
+            ->search(new Criteria([$versionId]), $context)
+            ->getEntities()
+            ->first();
+
+        return $version instanceof StrategyVersion ? $version : null;
+    }
 }

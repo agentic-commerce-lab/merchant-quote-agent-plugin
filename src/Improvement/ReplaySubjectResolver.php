@@ -10,6 +10,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use MerchantQuoteAgentPlugin\Bridge\QuoteSnapshotReader;
 use MerchantQuoteAgentPlugin\Negotiation\InterpretedAsk;
 use MerchantQuoteAgentPlugin\Negotiation\QuoteBaseline;
+use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
 use Shopware\Core\Framework\Context;
 
 /**
@@ -54,15 +55,27 @@ use Shopware\Core\Framework\Context;
  * ControlDivergence exists precisely to catch a night where that drift (or
  * anything else) has pulled the control arm's own numbers away from what
  * actually happened.
+ *
+ * The strategy check runs FIRST, before any DAL read of the quote: it needs
+ * nothing but the decision itself, so a decision that cannot even be
+ * attributed to a real prompt is rejected without the cost of a quote read
+ * that would only be thrown away.
  */
 final readonly class ReplaySubjectResolver
 {
     public function __construct(
         private QuoteSnapshotReader $quotes,
+        private StrategyResolver $strategies,
     ) {}
 
     public function resolve(HarvestedDecision $decision, Context $context): ?ReplaySubject
     {
+        $controlPrompt = $this->controlPrompt($decision, $context);
+
+        if ($controlPrompt === null) {
+            return null;
+        }
+
         try {
             $snapshot = $this->quotes->read($decision->quoteId, QuoteVersion::Live, $context);
         } catch (QuoteNotFoundException) {
@@ -79,7 +92,24 @@ final readonly class ReplaySubjectResolver
             return null;
         }
 
-        return new ReplaySubject($snapshot, $ask, $decision);
+        return new ReplaySubject($snapshot, $ask, $decision, $controlPrompt);
+    }
+
+    /**
+     * The prompt that actually produced this decision, by version id --
+     * unfiltered by status (StrategyResolver::byVersionId()), because this
+     * answers "what did we send", not "what may we send now". Null for a
+     * decision with no recorded strategy version, or one this read can no
+     * longer find: either way there is nothing honest to control against, so
+     * ReplayHarness never sees this decision at all.
+     */
+    private function controlPrompt(HarvestedDecision $decision, Context $context): ?string
+    {
+        if ($decision->strategyVersionId === null) {
+            return null;
+        }
+
+        return $this->strategies->byVersionId($decision->strategyVersionId, $context)?->prompt;
     }
 
     /** false signals "present but unusable"; null signals "legitimately absent". */
