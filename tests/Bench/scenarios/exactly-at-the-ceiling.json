@@ -1,6 +1,7 @@
 {
     "id": "exactly-at-the-ceiling",
     "description": "A gross ask that, once converted to a cent-rounded net baseline, lands a hair above the discount cap by float noise alone -- Epsilon::RATE is what keeps this a grant instead of an escalation. The ask is relative to the quote's own unit price (`{unit*f}`), so it ports between products.",
+    "tags": ["band", "gross"],
     "lines": [
         {"productRef": "any-purchasable", "quantity": 1}
     ],

@@ -1,6 +1,7 @@
 {
     "id": "multi-round-anchoring",
     "description": "Five rounds of counters. By the fifth, the ask must still be measured against the ORIGINAL price, never the previous round's already-reduced one. The ask is relative to the quote's own unit price (`{unit*f}`), so it ports between products.",
+    "tags": ["multi-round"],
     "lines": [
         {"productRef": "any-purchasable", "quantity": 10}
     ],

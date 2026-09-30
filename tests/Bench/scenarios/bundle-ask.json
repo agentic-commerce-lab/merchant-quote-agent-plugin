@@ -1,6 +1,7 @@
 {
     "id": "bundle-ask",
     "description": "An ask to throw in an extra product. That changes WHAT is sold, so it escalates as a structural change before the negotiate call -- unlike volume-ask, which is only about price.",
+    "tags": ["structure"],
     "lines": [
         {"productRef": "any-purchasable", "quantity": 3}
     ],

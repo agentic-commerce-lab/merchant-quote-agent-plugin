@@ -1,6 +1,7 @@
 {
     "id": "volume-ask",
     "description": "A volume ask with no number named. It is a price ask -- the merchant's own cap answers it -- so it must reach the negotiate call instead of escalating. Live regression: sw-ag.dev quote 1053 escalated this exact sentence.",
+    "tags": ["ambiguity"],
     "lines": [
         {"productRef": "any-purchasable", "quantity": 10}
     ],

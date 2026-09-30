@@ -5,10 +5,10 @@
  *     node scripts/eval/buyer.check.mjs
  */
 import assert from 'node:assert/strict';
-import { buyerMove, loadScenarioDir, render, validateScenario } from './scenarios.mjs';
+import { buyerMove, loadScenarioDir, render, selectByTags, validateScenario } from './scenarios.mjs';
 
 const base = (over = {}) => ({
-    id: 's', description: 'd', lines: [{ productRef: 'any-purchasable', quantity: 10 }], openingAsk: 'Could you do 5% off?',
+    id: 's', description: 'd', tags: ['band'], lines: [{ productRef: 'any-purchasable', quantity: 10 }], openingAsk: 'Could you do 5% off?',
     persona: 'scripted:moderate', maxRounds: 3, expect: { firstOutcome: ['offered'] }, ...over,
 });
 const refuses = (over, pattern) => assert.throws(() => validateScenario(base(over)), pattern);
@@ -25,6 +25,20 @@ refuses({ policy: { minMarginPercent: 15 } }, /purchasePriceRatio/);
 refuses({ policy: { minMarginPercent: 20 }, lines: [{ productRef: 'any-purchasable', quantity: 1, purchasePriceRatio: 0.9 }] }, /at or above/);
 refuses({ continueAfterEscalation: true }, /counters/);
 assert.equal(loadScenarioDir('tests/Bench/scenarios').length >= 10, true, 'the shipped scenarios validate');
+refuses({ tags: undefined }, /"tags"/);
+refuses({ tags: [] }, /"tags"/);
+refuses({ tags: [''] }, /"tags"/);
+refuses({ tags: ['Floor'] }, /"tags"/);
+refuses({ tags: 'floor' }, /"tags"/);
+validateScenario(base({ tags: ['multi-round', 'floor'] }));
+
+// EVAL_TAGS -- any listed tag selects a scenario; a tag nobody carries is refused, not an empty run
+const tagged = [base({ id: 'a', tags: ['floor'] }), base({ id: 'b', tags: ['rounding', 'gross'] }), base({ id: 'c', tags: ['band'] })];
+assert.deepEqual(selectByTags(tagged, 'floor,rounding').map((s) => s.id), ['a', 'b']);
+assert.deepEqual(selectByTags(tagged, ' gross ').map((s) => s.id), ['b']);
+assert.equal(selectByTags(tagged, undefined).length, 3);
+assert.equal(selectByTags(tagged, '').length, 3);
+assert.throws(() => selectByTags(tagged, 'floor,flor'), /EVAL_TAGS names flor, which no scenario carries/);
 
 // placeholders
 assert.equal(render('Can you get to {unit*0.89} a unit?', 80), 'Can you get to 71.20 a unit?');

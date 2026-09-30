@@ -164,7 +164,7 @@ function scenarioVerdict(scenario, reps, negotiations, judgments) {
     // Any rep's judge error marks the scenario err (exit 2), even when its item still clears 2/3.
     const judgeError = Object.values(checks).some((c) => c.reps.some((r) => r.status === 'judge_error'));
     const status = results.includes('fail') ? 'fail' : results.includes('err') || judgeError ? 'err' : 'pass';
-    return { id: scenario.id, description: scenario.description, status, checks };
+    return { id: scenario.id, description: scenario.description, tags: scenario.tags, status, checks };
 }
 
 const sum = (values) => values.reduce((total, value) => total + (Number.isFinite(value) ? value : 0), 0);
@@ -206,13 +206,26 @@ export function usage(scenarios, rows, judgeCosts) {
     };
 }
 
+/** Per tag: how many scenarios carry it and how many of those pass; `err` counts as not passing. */
+export function tagPassRates(results) {
+    const tags = {};
+    for (const result of results) {
+        for (const tag of result.tags) {
+            tags[tag] ??= { scenarios: 0, passing: 0 };
+            tags[tag].scenarios++;
+            if (result.status === 'pass') tags[tag].passing++;
+        }
+    }
+    return Object.fromEntries(Object.keys(tags).sort().map((tag) => [tag, { ...tags[tag], passRate: Number((tags[tag].passing / tags[tag].scenarios).toFixed(3)) }]));
+}
+
 /** `judgeCosts`: `<scenarioId>#<rep>` -> USD, for the judge calls that reported one. */
 export function verdict({ scenarios, reps, rows, judgments, judgeCosts = new Map() }) {
     const negotiations = new Map(groupNegotiations(rows).map((n) => [`${n.scenarioId}#${n.rep}`, n]));
     const results = scenarios.map((scenario) => scenarioVerdict(scenario, reps, negotiations, judgments));
     const failed = results.some((r) => r.status === 'fail');
     const errored = results.some((r) => r.status === 'err');
-    return { status: failed ? 'fail' : errored ? 'err' : 'pass', exitCode: failed ? 1 : errored ? 2 : 0, reps, scenarios: results, usage: usage(scenarios, rows, judgeCosts) };
+    return { status: failed ? 'fail' : errored ? 'err' : 'pass', exitCode: failed ? 1 : errored ? 2 : 0, reps, scenarios: results, tags: tagPassRates(results), usage: usage(scenarios, rows, judgeCosts) };
 }
 
 export function formatTable(result) {

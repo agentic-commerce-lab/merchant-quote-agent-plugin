@@ -1,6 +1,7 @@
 {
     "id": "gross-figure-in-comment",
     "description": "A gross per-unit figure typed in a comment on a taxed quote, once stored one tax factor above what the buyer meant. The ask is relative to the quote's own unit price (`{unit*f}`), so it ports between products.",
+    "tags": ["gross"],
     "lines": [
         {"productRef": "any-purchasable", "quantity": 10}
     ],

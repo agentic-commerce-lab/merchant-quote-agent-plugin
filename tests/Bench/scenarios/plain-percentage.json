@@ -1,6 +1,7 @@
 {
     "id": "plain-percentage",
     "description": "A five percent ask inside the band, and the order goes through. The buyer accepts 3% or more (decided 2026-09-29): Margin defender concedes in steps, and a buyer who halves the gap each round never reaches a 5% target.",
+    "tags": ["band", "order"],
     "lines": [
         {"productRef": "any-purchasable", "quantity": 3}
     ],

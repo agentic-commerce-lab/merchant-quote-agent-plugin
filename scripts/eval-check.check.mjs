@@ -18,7 +18,7 @@ import {
     h6Order,
     h9Rounding,
 } from './eval/checks.mjs';
-import { canaryMismatches, figureCandidates, formatTable, h8StatedFigures, judgeCostUsd, transcript, unwrapJudgeResult, verdict } from './eval/verdict.mjs';
+import { canaryMismatches, figureCandidates, formatTable, h8StatedFigures, judgeCostUsd, tagPassRates, transcript, unwrapJudgeResult, verdict } from './eval/verdict.mjs';
 
 const line = (over = {}) => ({ lineItemId: 'l1', productId: 'p1', quantity: 10, unitPriceNet: 10, totalNet: 100, netRatio: 1, ...over });
 const policy = (over = {}) => ({ maxDiscountPercent: 15, counterOfferMaxPercent: 25, minMarginPercent: null, roundingMode: 'off', roundingStep: null, ...over });
@@ -30,7 +30,7 @@ const row = (over = {}) => ({
     policy: policy(), purchasePricesNet: {}, terminal: null, orderId: null, orderFailure: null,
     ...over,
 });
-const scenario = (over = {}) => ({ id: 's', openingAsk: 'Could you do 5% off?', expect: { firstOutcome: ['offered'], maxEscalations: 1, order: false, judge: [] }, ...over });
+const scenario = (over = {}) => ({ id: 's', tags: ['band'], openingAsk: 'Could you do 5% off?', expect: { firstOutcome: ['offered'], maxEscalations: 1, order: false, judge: [] }, ...over });
 const status = (result) => result.status;
 
 // H1
@@ -208,6 +208,15 @@ const missingRep = run([row({ rep: 1 }), row({ rep: 2 })], [[`s#1`, rubric([])],
 assert.equal(missingRep.scenarios[0].checks.H7.result, 'fail');
 assert.match(missingRep.scenarios[0].checks.H7.reps[2].reason, /no JSONL line/);
 assert.equal(missingRep.exitCode, 1);
+
+// tags -- pass rate per tag over scenario statuses; an err is not a pass
+assert.deepEqual(tagPassRates([
+    { tags: ['floor', 'band'], status: 'pass' },
+    { tags: ['band'], status: 'fail' },
+    { tags: ['band'], status: 'err' },
+]), { band: { scenarios: 3, passing: 1, passRate: 0.333 }, floor: { scenarios: 1, passing: 1, passRate: 1 } });
+assert.deepEqual(allPass.tags, { band: { scenarios: 1, passing: 1, passRate: 1 } });
+assert.deepEqual(allPass.scenarios[0].tags, ['band']);
 
 // usage -- tokens and latency summed over reps and rounds, judge cost from the raw results
 const usageRows = [

@@ -9,7 +9,8 @@
 # Needs EVAL_ADMIN_CLIENT_ID, EVAL_ADMIN_CLIENT_SECRET, EVAL_PRODUCT_ID and
 # EVAL_NGROK_DOMAIN. Optional: EVAL_SHOP_URL (https://sw-ag.dev), EVAL_REPS (3),
 # EVAL_PARALLEL (4), EVAL_PASS_TIMEOUT (180), EVAL_STANDDOWN_WAIT (60),
-# EVAL_PROFILE_PORT (8787), EVAL_TAX_STATUS (gross|net, default gross: the
+# EVAL_PROFILE_PORT (8787), EVAL_TAGS (floor,rounding: only scenarios carrying
+# any listed tag; default all), EVAL_TAX_STATUS (gross|net, default gross: the
 # price space `{unit*f}` renders in), EVAL_JUDGE_MODEL / EVAL_REPORT_MODEL
 # (sonnet), EVAL_JUDGE_BUDGET_USD (0.50 per call), EVAL_REPORT_BUDGET_USD (2),
 # EVAL_JUDGE_PARALLEL (4).
@@ -90,7 +91,7 @@ if runs bench; then
   RUN_ID="eval-$(date -u +%Y%m%d-%H%M%S)-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')"
   RUN_DIR="var/eval/$RUN_ID"
   mkdir -p "$RUN_DIR"
-  cp -R tests/Bench/scenarios "$RUN_DIR/scenarios"
+  node scripts/eval/buyer.mjs scenarios "$RUN_DIR"   # EVAL_TAGS narrows the copy; later stages read only it
   echo "bench: $RUN_DIR"
   # A signal (Ctrl-C: 130) stops the run; any other failure leaves the verdict to decide.
   node scripts/eval/buyer.mjs run "$RUN_DIR" \
