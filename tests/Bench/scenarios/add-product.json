@@ -1,6 +1,7 @@
 {
     "id": "add-product",
     "description": "C2. A product addition is a structural change: escalated as structural_change_requested; the agent never adds lines itself.",
+    "tags": ["structure"],
     "lines": [{"productRef": "any-purchasable", "quantity": 10}],
     "openingAsk": "Please add 5 more of the matching stand to this quote.",
     "persona": "scripted:moderate",

@@ -100,6 +100,16 @@ export function unwrapJudgeResult(raw) {
     return { judgment, costUsd: parsed.total_cost_usd ?? null };
 }
 
+/** What a judge call cost, from its raw `claude -p` result -- an error result (a budget hit) cost money too. */
+export function judgeCostUsd(raw) {
+    try {
+        const cost = JSON.parse(raw).total_cost_usd;
+        return Number.isFinite(cost) ? cost : null;
+    } catch {
+        return null;
+    }
+}
+
 export function canaryMismatches(judgment, labels) {
     const out = [];
     for (const [id, want] of Object.entries(labels.rubric)) {
@@ -154,15 +164,68 @@ function scenarioVerdict(scenario, reps, negotiations, judgments) {
     // Any rep's judge error marks the scenario err (exit 2), even when its item still clears 2/3.
     const judgeError = Object.values(checks).some((c) => c.reps.some((r) => r.status === 'judge_error'));
     const status = results.includes('fail') ? 'fail' : results.includes('err') || judgeError ? 'err' : 'pass';
-    return { id: scenario.id, description: scenario.description, status, checks };
+    return { id: scenario.id, description: scenario.description, tags: scenario.tags, status, checks };
 }
 
-export function verdict({ scenarios, reps, rows, judgments }) {
+const sum = (values) => values.reduce((total, value) => total + (Number.isFinite(value) ? value : 0), 0);
+
+/** Median and max of the finite values, in ms; null when there are none. */
+function spread(values) {
+    const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+    if (sorted.length === 0) return null;
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    return { count: sorted.length, medianMs: Math.round(median), maxMs: sorted[sorted.length - 1] };
+}
+
+/**
+ * Tokens, latency and judge cost over some decision rows. Tokens are the
+ * shop's model, summed over every pass (no price: the provider's is unknown);
+ * `buyerLatency` is what the buyer waited per round, `passDuration` the
+ * shop's own `durationMs` per pass.
+ */
+function tally(rows, costs) {
+    return {
+        passes: rows.length,
+        promptTokens: sum(rows.map((row) => row.promptTokens)),
+        completionTokens: sum(rows.map((row) => row.completionTokens)),
+        buyerLatency: spread(rows.map((row) => row.buyerLatencyMs)),
+        passDuration: spread(rows.map((row) => row.durationMs)),
+        judgeCostUsd: costs.length === 0 ? null : Number(sum(costs).toFixed(6)),
+    };
+}
+
+/** Per scenario and run-wide; the total is the sum of the scenarios listed, so it adds up. */
+export function usage(scenarios, rows, judgeCosts) {
+    const ids = new Set(scenarios.map((s) => s.id));
+    const passes = rows.filter((row) => row.cellFailure !== true && ids.has(row.scenarioId));
+    const costs = (keep) => [...judgeCosts].filter(([key]) => keep(key.slice(0, key.lastIndexOf('#')))).map(([, cost]) => cost);
+    return {
+        total: tally(passes, costs((id) => ids.has(id))),
+        scenarios: Object.fromEntries(scenarios.map((s) => [s.id, tally(passes.filter((row) => row.scenarioId === s.id), costs((id) => id === s.id))])),
+    };
+}
+
+/** Per tag: how many scenarios carry it and how many of those pass; `err` counts as not passing. */
+export function tagPassRates(results) {
+    const tags = {};
+    for (const result of results) {
+        for (const tag of result.tags) {
+            tags[tag] ??= { scenarios: 0, passing: 0 };
+            tags[tag].scenarios++;
+            if (result.status === 'pass') tags[tag].passing++;
+        }
+    }
+    return Object.fromEntries(Object.keys(tags).sort().map((tag) => [tag, { ...tags[tag], passRate: Number((tags[tag].passing / tags[tag].scenarios).toFixed(3)) }]));
+}
+
+/** `judgeCosts`: `<scenarioId>#<rep>` -> USD, for the judge calls that reported one. */
+export function verdict({ scenarios, reps, rows, judgments, judgeCosts = new Map() }) {
     const negotiations = new Map(groupNegotiations(rows).map((n) => [`${n.scenarioId}#${n.rep}`, n]));
     const results = scenarios.map((scenario) => scenarioVerdict(scenario, reps, negotiations, judgments));
     const failed = results.some((r) => r.status === 'fail');
     const errored = results.some((r) => r.status === 'err');
-    return { status: failed ? 'fail' : errored ? 'err' : 'pass', exitCode: failed ? 1 : errored ? 2 : 0, reps, scenarios: results };
+    return { status: failed ? 'fail' : errored ? 'err' : 'pass', exitCode: failed ? 1 : errored ? 2 : 0, reps, scenarios: results, tags: tagPassRates(results), usage: usage(scenarios, rows, judgeCosts) };
 }
 
 export function formatTable(result) {
@@ -175,6 +238,12 @@ export function formatTable(result) {
         lines.push(`${s.id.padEnd(width)}  ${columns.map((c) => cell(s.checks[c]).padStart(4)).join(' ')}   ${j5 || '-'}  ${s.status.toUpperCase()}`);
     }
     const passing = result.scenarios.filter((s) => s.status === 'pass').length;
-    lines.push('', `${passing}/${result.scenarios.length} scenarios pass -- exit ${result.exitCode}`);
+    const { total } = result.usage;
+    const seconds = (spread) => (spread ? `median ${(spread.medianMs / 1000).toFixed(1)} s, max ${(spread.maxMs / 1000).toFixed(1)} s` : 'n/a');
+    lines.push(
+        '',
+        `usage: ${total.passes} passes, ${total.promptTokens} prompt + ${total.completionTokens} completion tokens, buyer wait ${seconds(total.buyerLatency)}, judge ${total.judgeCostUsd === null ? 'cost n/a' : `$${total.judgeCostUsd.toFixed(2)}`}`,
+        `${passing}/${result.scenarios.length} scenarios pass -- exit ${result.exitCode}`,
+    );
     return lines.join('\n');
 }

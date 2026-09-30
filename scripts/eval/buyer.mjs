@@ -5,16 +5,17 @@
  *
  *   node scripts/eval/buyer.mjs setup              one-time: key, profile, browser consent
  *   node scripts/eval/buyer.mjs preflight          free checks; exit 64 on the first failure
+ *   node scripts/eval/buyer.mjs scenarios <runDir> copy the scenarios EVAL_TAGS selects into the run
  *   node scripts/eval/buyer.mjs run <runDir>       phase A + phase B -> runs.jsonl, run.json
  *   node scripts/eval/buyer.mjs restore <runDir>   replay restore.json after a hard crash
  */
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { adminClient } from './admin.mjs';
 import { negotiate, pool } from './negotiate.mjs';
-import { loadScenarioDir } from './scenarios.mjs';
-import { applyWrites, effectivePolicy, planSettings, purchasePricesFor, writablePrices } from './settings.mjs';
+import { loadScenarioDir, selectByTags } from './scenarios.mjs';
+import { EXPECTED_DEFAULTS, applyWrites, effectivePolicy, planSettings, purchasePricesFor, writablePrices } from './settings.mjs';
 import { consent, loadOrCreateKey, startProfileServer, startTunnel, tokenStore, ucpClient } from './ucp.mjs';
 
 // The Admin API secret lives in a git-ignored, 0600 `.env.eval`, never on a
@@ -22,6 +23,8 @@ import { consent, loadOrCreateKey, startProfileServer, startTunnel, tokenStore, 
 if (existsSync('.env.eval')) process.loadEnvFile('.env.eval');
 
 const BUYER_DIR = 'var/eval/.buyer';
+const SCENARIO_DIR = 'tests/Bench/scenarios';
+const selectedScenarios = () => selectByTags(loadScenarioDir(SCENARIO_DIR), process.env.EVAL_TAGS);
 const env = (name, fallback) => {
     const value = process.env[name] ?? fallback;
     if (value === undefined || value === '') throw new UsageError(`${name} must be set`);
@@ -100,10 +103,9 @@ async function setup() {
     });
 }
 
-// A shop-wide minMarginPercent and rounding are allowed: H3 checks the floor
-// against the product's own purchase price, H9 checks the rounding with
-// DiscountRounding's own skips, and preflight reports both.
-const EXPECTED_DEFAULTS = { maxDiscountPercent: 15, counterOfferMaxPercent: 25 };
+// Beyond EXPECTED_DEFAULTS, a shop-wide minMarginPercent and rounding are
+// allowed: H3 checks the floor against the product's own purchase price, H9
+// checks the rounding with DiscountRounding's own skips, and preflight reports both.
 
 async function shopState(ctx) {
     const salesChannelId = await ctx.admin.salesChannelFor(ctx.shop);
@@ -127,7 +129,7 @@ async function checks(ctx) {
     if (!product) throw new UsageError(`EVAL_PRODUCT_ID ${process.env.EVAL_PRODUCT_ID} is not a product on the shop`);
     if (!product.price?.[0]) throw new UsageError(`EVAL_PRODUCT_ID ${product.id} has no own price (a variant inheriting it?); pick a simple product`);
     await ctx.tokens.accessToken();
-    loadScenarioDir('tests/Bench/scenarios');
+    selectedScenarios();
     return { ...state, product, floorHeadroom: floorHeadroom(product, state.policy), pluginVersion: await ctx.admin.pluginVersion(), model: state.value('llmModel') ?? null };
 }
 
@@ -154,7 +156,7 @@ async function run(runDir) {
         const taxStatus = env('EVAL_TAX_STATUS', 'gross');
         const unitPrice = unitPriceOf(state.product, taxStatus);
         const runId = basename(runDir);
-        writeFileSync(join(runDir, 'run.json'), `${JSON.stringify({ runId, shop: ctx.shop, reps, pluginVersion: state.pluginVersion, model: state.model, salesChannelId: state.salesChannelId, productId, judgeModel: process.env.EVAL_JUDGE_MODEL ?? 'sonnet' }, null, 2)}\n`);
+        writeFileSync(join(runDir, 'run.json'), `${JSON.stringify({ runId, shop: ctx.shop, reps, pluginVersion: state.pluginVersion, model: state.model, salesChannelId: state.salesChannelId, productId, judgeModel: process.env.EVAL_JUDGE_MODEL ?? 'sonnet', tags: process.env.EVAL_TAGS || null }, null, 2)}\n`);
         const out = join(runDir, 'runs.jsonl');
         const write = (rows) => rows.forEach((row) => appendFileSync(out, `${JSON.stringify(row)}\n`));
         let leftOpen = 0;
@@ -177,6 +179,21 @@ async function run(runDir) {
         }
         console.log(`${leftOpen} quote(s) left open on the shop: UCP declines only a replied quote`);
     });
+}
+
+/**
+ * The run directory's scenarios are what the run plays and what check,
+ * verdict and report read, so a tag filter is applied here, to the copy:
+ * a scenario left out is not a missing negotiation.
+ */
+function copyScenarios(runDir) {
+    const selected = new Set(selectedScenarios().map((scenario) => scenario.id));
+    const target = join(runDir, 'scenarios');
+    mkdirSync(target, { recursive: true });
+    for (const name of readdirSync(SCENARIO_DIR).filter((file) => file.endsWith('.json'))) {
+        if (selected.has(JSON.parse(readFileSync(join(SCENARIO_DIR, name), 'utf8')).id)) copyFileSync(join(SCENARIO_DIR, name), join(target, name));
+    }
+    console.log(`scenarios: ${selected.size}${process.env.EVAL_TAGS ? ` tagged ${process.env.EVAL_TAGS}` : ''}`);
 }
 
 async function withSettings(ctx, runDir, scenario, work) {
@@ -240,10 +257,11 @@ const verbs = {
         });
     },
     run: () => run(runDir),
+    scenarios: () => beforeShopWrites(async () => copyScenarios(runDir)),
     restore: () => replayRestore({ admin: adminFromEnv() }, join(runDir, 'restore.json')),
 };
-if (!verbs[verb] || ((verb === 'run' || verb === 'restore') && !runDir)) {
-    console.error('usage: buyer.mjs <setup|preflight|run <runDir>|restore <runDir>>');
+if (!verbs[verb] || (['run', 'restore', 'scenarios'].includes(verb) && !runDir)) {
+    console.error('usage: buyer.mjs <setup|preflight|scenarios <runDir>|run <runDir>|restore <runDir>>');
     process.exit(64);
 }
 // .then: a verb that throws synchronously (a missing env var) still lands in .catch

@@ -1,6 +1,7 @@
 {
     "id": "payment-terms-ask",
     "description": "A payment-terms ask the agent has no mandate over. Escalates before the negotiate call, same as a bundle ask.",
+    "tags": ["non-price"],
     "lines": [
         {"productRef": "any-purchasable", "quantity": 3}
     ],

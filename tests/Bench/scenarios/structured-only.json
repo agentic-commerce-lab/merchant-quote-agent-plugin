@@ -1,6 +1,7 @@
 {
     "id": "structured-only",
     "description": "A per-line requested price with no comment about it at all. This path once recorded a real price ask as nothing_to_do. Expects escalate, not a band: productRef resolves against whichever shop runs this, so the scenario cannot know the unit price at authoring time -- an escalation only proves the structured ask was seen.",
+    "tags": ["requested-price"],
     "lines": [
         {"productRef": "any-purchasable", "quantity": 10, "requestedUnitPrice": 1.0}
     ],

@@ -1,6 +1,7 @@
 {
     "id": "rounding-total",
     "description": "A6. quote_total rounding with a step of 5: the buyer-facing total must be a multiple of 5. Skipped on a net quote (QuoteTotalRounding), so a net bench shop fails this loudly rather than passing it.",
+    "tags": ["rounding", "gross"],
     "lines": [{"productRef": "any-purchasable", "quantity": 10}],
     "openingAsk": "Could you do 20% off?",
     "persona": "scripted:moderate",

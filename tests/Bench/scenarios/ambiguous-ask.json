@@ -1,6 +1,7 @@
 {
     "id": "ambiguous-ask",
     "description": "An ask that is clear in intent but vague in amount. A clarification question or a small counter are both fair answers (decided 2026-09-29 after the first live eval run); what it must not do is escalate or leak.",
+    "tags": ["ambiguity"],
     "lines": [
         {"productRef": "any-purchasable", "quantity": 5}
     ],

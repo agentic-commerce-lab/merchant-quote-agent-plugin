@@ -17,6 +17,8 @@ export const ROUNDING_MODES = ['off', 'discount_percent', 'quote_total'];
 export const DEFAULT_BUYER = { targetDiscountPercent: 10, concessionRatio: 0.5 };
 const BUYER_KEYS = Object.keys(DEFAULT_BUYER);
 const PLACEHOLDER = /\{unit\*([0-9]+(?:\.[0-9]+)?)\}/g;
+/** A tag is a short lowercase slug, so `EVAL_TAGS=floor` never misses a scenario tagged "Floor". */
+const TAG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const isNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 
@@ -27,6 +29,9 @@ export function validateScenario(scenario) {
     };
     if (typeof id !== 'string' || id === '') refuse('"id" must be a non-empty string');
     if ('expectedBand' in scenario) refuse('"expectedBand" was replaced by "expect.firstOutcome"');
+    if (!Array.isArray(scenario.tags) || scenario.tags.length === 0 || !scenario.tags.every((tag) => typeof tag === 'string' && TAG.test(tag))) {
+        refuse('"tags" must be a non-empty list of lowercase slugs ("floor", "multi-round")');
+    }
     if (!Array.isArray(scenario.lines) || scenario.lines.length === 0) refuse('"lines" must be a non-empty list');
     for (const line of scenario.lines) {
         if (!Number.isInteger(line.quantity) || line.quantity < 1) refuse('every line needs an integer quantity >= 1');
@@ -69,6 +74,20 @@ export function validateScenario(scenario) {
 export function loadScenarioDir(dir) {
     return readdirSync(dir).filter((name) => name.endsWith('.json')).sort()
         .map((name) => validateScenario(JSON.parse(readFileSync(join(dir, name), 'utf8'))));
+}
+
+/**
+ * EVAL_TAGS: a comma-separated list; a scenario runs when it carries any of
+ * them. Unset or empty runs everything. A tag no scenario carries is refused,
+ * so a typo never quietly shrinks the run.
+ */
+export function selectByTags(scenarios, list) {
+    const wanted = String(list ?? '').split(',').map((tag) => tag.trim()).filter((tag) => tag !== '');
+    if (wanted.length === 0) return scenarios;
+    const known = new Set(scenarios.flatMap((scenario) => scenario.tags));
+    const unknown = wanted.filter((tag) => !known.has(tag));
+    if (unknown.length > 0) throw new Error(`EVAL_TAGS names ${unknown.join(', ')}, which no scenario carries (known: ${[...known].sort().join(', ')})`);
+    return scenarios.filter((scenario) => scenario.tags.some((tag) => wanted.includes(tag)));
 }
 
 /** `{unit*f}` -> f x unitPrice, two decimals; the same rule as tests/Bench/ScenarioAsk.php. */

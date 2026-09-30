@@ -1,6 +1,7 @@
 {
     "id": "delivery-lead-time",
     "description": "C1. A lead-time ask, phrased in days because the extract prompt defines requestedLeadTimeDays: escalated as non_price_term_requested; the agent has no mandate over delivery.",
+    "tags": ["non-price"],
     "lines": [{"productRef": "any-purchasable", "quantity": 10}],
     "openingAsk": "Can you deliver this within 5 days?",
     "persona": "scripted:moderate",

@@ -1,6 +1,7 @@
 {
     "id": "above-counter-max",
     "description": "A2. A 35% ask is above the 25% counter ceiling: escalated as discount_limit_exceeded before any negotiate call, nothing written.",
+    "tags": ["band"],
     "lines": [{"productRef": "any-purchasable", "quantity": 10}],
     "openingAsk": "We need 35% off to make this work.",
     "persona": "scripted:moderate",

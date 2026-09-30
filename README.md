@@ -237,16 +237,27 @@ The buyer loads `.env.eval` itself; a variable already set in your environment w
 
 Optional variables: `EVAL_SHOP_URL` (default `https://sw-ag.dev`), `EVAL_REPS` (3), `EVAL_PARALLEL` (4), `EVAL_PASS_TIMEOUT` (180 s), `EVAL_STANDDOWN_WAIT` (60 s), `EVAL_PROFILE_PORT` (8787), and `EVAL_TAX_STATUS` (`gross` or `net`, default `gross`: the price space `{unit*f}` placeholders render in; a run whose quote prices the unit differently fails that negotiation). The judge and report settings are listed in the header of `scripts/eval.sh`.
 
+Every scenario carries `tags` (`band`, `floor`, `rounding`, `multi-round`, ...). `EVAL_TAGS=floor,rounding composer run eval` runs only the scenarios carrying any listed tag; a tag no scenario carries stops the run at preflight.
+
 Four scenarios need settings the shop doesn't have by default (a margin floor, rounding, a zero cap). They change the shop's config for about a minute each, then restore it. After a hard crash, run `composer run eval:restore var/eval/<runId>`.
 
 Output goes to `var/eval/<runId>/`:
 
-- `verdict.json`: the result;
+- `verdict.json`: the result, with the pass rate per tag (`tags`) and a `usage` block per scenario and run-wide: the shop model's prompt and completion tokens, passes, the buyer's wait per round (to the nearest 5 s poll), the shop's own duration per pass, and the judge's cost in USD;
 - `report.md`: Claude's write-up;
 - `runs.jsonl`: every decision row;
 - `judgments/`: the judge's answers.
 
 To re-judge without new negotiations: `composer run eval -- --from=judge var/eval/<runId>`.
+
+To turn a real problem quote into a regression scenario:
+
+```bash
+composer run eval:promote -- 1101                          # quote number or id; the draft on stdout
+composer run eval:promote -- 1101 --write my-new-scenario  # tests/Bench/scenarios/my-new-scenario.json
+```
+
+It reads the quote's decision rows and traces with the same Admin API credentials and prints a draft: lines, the buyer's asks (unit prices become `{unit*f}`), counters, `maxRounds`, and policy overrides against the eval defaults. It leaves `expect` out on purpose: the loader refuses a scenario without `expect.firstOutcome`, so a draft cannot run, or pass `quality:bench`, until you decide what should have happened. What the quote did is in the description. On stderr it lists what it could not carry over: `counterOfferMaxPercent`, `minMarginPercent` and the purchase price are today's values, not the quote's (the cap comes from the decision row, rounding from its trace when rounding ran); every line becomes `EVAL_PRODUCT_ID`, and discount lines are dropped; rounds without a buyer comment and rounds after an escalation are not replayed; and the customer's history, strategy and model are not reproduced.
 
 ## Documentation
 

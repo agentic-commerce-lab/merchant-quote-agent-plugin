@@ -1,6 +1,7 @@
 {
     "id": "zero-cap",
     "description": "B3. maxDiscountPercent 0: a 5% ask always escalates, and the buyer must never be told 0% (PR #207).",
+    "tags": ["band", "escalation"],
     "lines": [{"productRef": "any-purchasable", "quantity": 10}],
     "openingAsk": "Could you do 5% off?",
     "persona": "scripted:moderate",

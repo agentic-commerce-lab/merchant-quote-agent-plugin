@@ -1,6 +1,7 @@
 {
     "id": "concession-retreat",
     "description": "B1. 12% first, then the buyer retreats to 8%: the written total must never rise (never-retract fix). Round 2's outcome is recorded, not pinned -- see the spec's 'Recorded, not pinned'.",
+    "tags": ["multi-round"],
     "lines": [{"productRef": "any-purchasable", "quantity": 10}],
     "openingAsk": "Could you do 12% off?",
     "persona": "scripted:retreating",

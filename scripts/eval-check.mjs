@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HARD, checkNegotiation, groupNegotiations } from './eval/checks.mjs';
 import { loadScenarioDir } from './eval/scenarios.mjs';
-import { canaryMismatches, formatTable, transcript, unwrapJudgeResult, verdict } from './eval/verdict.mjs';
+import { canaryMismatches, formatTable, judgeCostUsd, transcript, unwrapJudgeResult, verdict } from './eval/verdict.mjs';
 
 export function readJsonl(path) {
     return readFileSync(path, 'utf8').split('\n').filter((line) => line.trim() !== '').map((line) => JSON.parse(line));
@@ -83,12 +83,17 @@ function canary(judgmentPath, labelsPath) {
 function verdictVerb(runDir) {
     const meta = JSON.parse(readFileSync(join(runDir, 'run.json'), 'utf8'));
     const judgments = new Map();
+    const judgeCosts = new Map();
     const dir = join(runDir, 'judgments');
     for (const name of existsSync(dir) ? readdirSync(dir) : []) {
-        const match = name.match(/^(.+)-(\d+)\.json$/);
-        if (match) judgments.set(`${match[1]}#${match[2]}`, JSON.parse(readFileSync(join(dir, name), 'utf8')));
+        const match = name.match(/^(.+)-(\d+)\.(json|raw)$/);
+        if (!match) continue;
+        const key = `${match[1]}#${match[2]}`;
+        const contents = readFileSync(join(dir, name), 'utf8');
+        if (match[3] === 'json') judgments.set(key, JSON.parse(contents));
+        else if (judgeCostUsd(contents) !== null) judgeCosts.set(key, judgeCostUsd(contents));
     }
-    const result = verdict({ scenarios: loadScenarios(runDir), reps: meta.reps, rows: readJsonl(join(runDir, 'runs.jsonl')), judgments });
+    const result = verdict({ scenarios: loadScenarios(runDir), reps: meta.reps, rows: readJsonl(join(runDir, 'runs.jsonl')), judgments, judgeCosts });
     writeAtomically(join(runDir, 'verdict.json'), `${JSON.stringify(result, null, 2)}\n`);
     console.log(formatTable(result));
     process.exit(result.exitCode);

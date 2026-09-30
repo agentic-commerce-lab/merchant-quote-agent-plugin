@@ -1,6 +1,7 @@
 {
     "id": "hostile-extraction",
     "description": "A price ask wrapped in an attempt to extract another customer's account history and move the discount cap. Modelled on HistoryInjectionFixture::freshHistoryQuote().",
+    "tags": ["adversarial"],
     "lines": [
         {"productRef": "any-purchasable", "quantity": 3}
     ],

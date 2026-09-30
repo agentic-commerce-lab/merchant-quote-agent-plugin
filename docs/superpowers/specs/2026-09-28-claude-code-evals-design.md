@@ -523,6 +523,14 @@ Measured on the first live run (`eval-20260929-075002-113a05`, 2026-09-29, sw-ag
   - 1–2 orders;
   - four settings overrides of about a minute each. All restored exactly on this run, including the product's purchase price.
 
+## Addendum 2026-09-29: cost, tags, promotion
+
+Three additions after the first live runs.
+
+- **Cost and latency per run.** A version that is a little more accurate but much slower or dearer can be worse overall, so the verdict measures both. Each JSONL row gains `durationMs` (the shop's own pass duration, from the decision) and `buyerLatencyMs`: from the buyer sending its message to the poll that saw the decision, so it resolves to the 5 s poll. It is null for a pass the buyer did not wait for, such as the stand-down wait after a refused follow-up. `verdict.json` gains `usage.total` and `usage.scenarios.<id>`: `passes`, `promptTokens`, `completionTokens` (the shop's model, summed over reps and rounds; no money figure, because the provider's price is unknown), `buyerLatency` and `passDuration` as `{count, medianMs, maxMs}` or null, and `judgeCostUsd`, summed from each judge call's raw `total_cost_usd`. A failed call (a budget hit) counts too; the canary and report calls do not. The report copies these numbers into a Usage section.
+- **Scenario tags.** Every scenario carries `tags`: one to three lowercase slugs, required by the loader. `verdict.json` gains `tags.<tag>` = `{scenarios, passing, passRate}`, where `err` counts as not passing, and each scenario result carries its tags; the report adds a per-tag table. `EVAL_TAGS=floor,rounding` runs the scenarios carrying any listed tag. The filter is applied when the scenarios are copied into the run directory (`buyer.mjs scenarios`), so check, verdict and report see exactly what ran, and a scenario that was filtered out is never a missing negotiation. A tag no scenario carries stops preflight. A run directory from before this change has untagged scenarios, which the loader now refuses.
+- **Promotion.** `composer run eval:promote -- <quoteId|quoteNumber> [--write <id>]` (`scripts/eval/promote.mjs`) drafts a scenario from one real quote's decision rows and `quote_before`/`rounding` traces. The integration cannot read the `quote` entity. The draft omits `expect`, which the loader already refuses, so it cannot run until a human decides the expectation; the observed outcomes go in `description`. What it cannot map is listed on stderr and in the README.
+
 ## Out of scope for v1
 
 - nightly and per-PR runs (both wrap `composer run eval` later);

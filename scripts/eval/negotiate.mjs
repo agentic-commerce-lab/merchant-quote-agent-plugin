@@ -5,6 +5,10 @@
  * The quote is declined at the end unless the buyer accepted. UCP declines
  * only a `replied` quote (quote.openapi.json), so an escalated or clarified
  * one stays open: every row records `cleanup` and buyer.mjs counts them.
+ *
+ * Each row the buyer waited for records `buyerLatencyMs`: from sending its
+ * message to the poll that saw the new decision, so it resolves to the poll
+ * interval (5 s live).
  */
 import { buildRows } from './rows.mjs';
 import { buyerMove, render } from './scenarios.mjs';
@@ -29,8 +33,14 @@ async function waitForDecision(admin, quoteId, seen, { timeoutSeconds, pollSecon
     }
 }
 
-export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purchasePricesNet, unitPrice, timeouts, sleep = defaultSleep, productId }) {
-    const wait = (quoteId, seen, timeoutSeconds) => waitForDecision(admin, quoteId, seen, { timeoutSeconds, pollSeconds: timeouts.poll ?? 5, sleep });
+export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purchasePricesNet, unitPrice, timeouts, sleep = defaultSleep, productId, now = Date.now }) {
+    const latencies = {};
+    // Times the decision that answers a message sent at `sentAt`; the refused follow-up's stand-down wait passes none.
+    const wait = async (quoteId, seen, timeoutSeconds, sentAt) => {
+        const decisions = await waitForDecision(admin, quoteId, seen, { timeoutSeconds, pollSeconds: timeouts.poll ?? 5, sleep });
+        if (decisions && sentAt !== undefined) latencies[decisions[seen].id] = now() - sentAt;
+        return decisions;
+    };
     let quoteId = null;
     let terminal = null;
     let order = { orderId: null, orderFailure: null };
@@ -42,6 +52,7 @@ export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purc
             ...(line.requestedUnitPrice !== undefined ? { requested_unit_price: line.requestedUnitPrice } : {}),
         }));
         const opening = scenario.openingAsk === '' ? undefined : render(scenario.openingAsk, unitPrice);
+        const openedAt = now();
         const created = await ucp.request('POST', '/ucp/quotes', { json: { line_items: lineItems, ...(opening ? { comment: opening } : {}) } });
         if (created.status !== 201) throw new Error(`the RFQ was refused: HTTP ${created.status} ${JSON.stringify(created.body).slice(0, 300)}`);
         quoteId = created.body.id;
@@ -52,7 +63,7 @@ export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purc
         }
         let continued = false;
 
-        let decisions = await wait(quoteId, 0, timeouts.pass);
+        let decisions = await wait(quoteId, 0, timeouts.pass, openedAt);
         if (!decisions) throw new PassTimeout(`no decision for round 1 within ${timeouts.pass} s`);
         // The quote before the agent touched it: the create response may already carry the first pass.
         const openingNet = decisions[0].totalNetBefore ?? created.body.totals.net;
@@ -61,6 +72,7 @@ export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purc
             if (last.outcome === 'escalated' && scenario.continueAfterEscalation === true && !continued) {
                 continued = true;
                 const seen = decisions.length;
+                const sentAt = now();
                 const follow = await ucp.request('POST', `/ucp/quotes/${quoteId}/counter`, { json: { comment: render(scenario.counters[0], unitPrice) } });
                 if (follow.status >= 500) throw new Error(`the follow-up failed: HTTP ${follow.status} ${JSON.stringify(follow.body).slice(0, 300)}`);
                 if (follow.status >= 400) {
@@ -68,7 +80,7 @@ export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purc
                     decisions = (await wait(quoteId, seen, timeouts.standDown)) ?? decisions;
                     break;
                 }
-                decisions = await wait(quoteId, seen, timeouts.pass);
+                decisions = await wait(quoteId, seen, timeouts.pass, sentAt);
                 if (!decisions) throw new PassTimeout(`no decision after the follow-up within ${timeouts.pass} s`);
                 break;
             }
@@ -88,16 +100,17 @@ export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purc
                 break;
             }
             const seen = decisions.length; // counted before the POST: a pass may land while it is in flight
+            const sentAt = now();
             const countered = await ucp.request('POST', `/ucp/quotes/${quoteId}/counter`, { json: { comment: render(move.comment, unitPrice) } });
             if (countered.status >= 400) throw new Error(`the counter was refused: HTTP ${countered.status} ${JSON.stringify(countered.body).slice(0, 300)}`);
-            decisions = await wait(quoteId, seen, timeouts.pass);
+            decisions = await wait(quoteId, seen, timeouts.pass, sentAt);
             if (!decisions) throw new PassTimeout(`no decision for round ${round + 1} within ${timeouts.pass} s`);
         }
 
         const cleanup = terminal === 'accept' ? 'accepted' : await decline(ucp, quoteId);
         const all = await admin.decisions(quoteId);
         const traces = all.length > 0 ? await admin.traces(all.map((d) => d.id)) : [];
-        return buildRows({ runId, scenarioId: scenario.id, rep, decisions: all, traces, policy, purchasePricesNet, terminal, ...order, followUpRefused })
+        return buildRows({ runId, scenarioId: scenario.id, rep, decisions: all, traces, policy, purchasePricesNet, terminal, ...order, followUpRefused, latencies })
             .map((row) => ({ ...row, cleanup }));
     } catch (error) {
         const cleanup = quoteId ? await decline(ucp, quoteId) : null; // null: no quote was ever created

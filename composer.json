@@ -64,6 +64,7 @@
         "allow-plugins": {
             "captainhook/hook-installer": true,
             "carthage-software/mago": true,
+            "php-http/discovery": false,
             "symfony/runtime": true
         }
     },
@@ -78,7 +79,7 @@
         "quality:filesize": "php scripts/check_file_length.php src",
         "quality:admin": "node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/decision.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/review.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/measures.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/strategy.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/strategy-measures.check.mjs && node --experimental-strip-types src/Resources/app/administration/src/module/merchant-quote-agent/assignment.check.mjs && node --experimental-strip-types src/Resources/app/storefront/src/agent-disclosure.check.mjs",
         "quality:admin:shop": "scripts/check-administration.sh",
-        "quality:bench": "node --experimental-strip-types scripts/bench-score.check.mjs && node scripts/eval/buyer.check.mjs && node scripts/eval-check.check.mjs",
+        "quality:bench": "node --experimental-strip-types scripts/bench-score.check.mjs && node scripts/eval/buyer.check.mjs && node scripts/eval/promote.check.mjs && node scripts/eval-check.check.mjs",
         "quality:dupes": "jscpd",
         "quality:boundaries": "mago guard",
         "quality:depcheck": "composer-dependency-analyser",
@@ -99,7 +100,8 @@
         "quality:hotspots": "phpcca churn src",
         "eval": "scripts/eval.sh",
         "eval:setup": "node scripts/eval/buyer.mjs setup",
-        "eval:restore": "node scripts/eval/buyer.mjs restore"
+        "eval:restore": "node scripts/eval/buyer.mjs restore",
+        "eval:promote": "node scripts/eval/promote.mjs"
     },
     "extra": {
         "shopware-plugin-class": "MerchantQuoteAgentPlugin\\MerchantQuoteAgentPlugin",
