@@ -6,8 +6,8 @@
 #   composer run eval                                     # canary, UCP bench, check, judge, verdict, report
 #   composer run eval -- --from=judge var/eval/<runId>    # re-judge without new negotiations
 #
-# Needs EVAL_ADMIN_CLIENT_ID, EVAL_ADMIN_CLIENT_SECRET, EVAL_PRODUCT_ID and
-# EVAL_NGROK_DOMAIN. Optional: EVAL_SHOP_URL (https://sw-ag.dev), EVAL_REPS (3),
+# Needs EVAL_ADMIN_CLIENT_ID, EVAL_ADMIN_CLIENT_SECRET, EVAL_PRODUCT_ID,
+# EVAL_NGROK_DOMAIN and EVAL_SHOP_URL. Optional: EVAL_REPS (3),
 # EVAL_PARALLEL (4), EVAL_PASS_TIMEOUT (180), EVAL_STANDDOWN_WAIT (60),
 # EVAL_PROFILE_PORT (8787), EVAL_TAGS (floor,rounding: only scenarios carrying
 # any listed tag; default all), EVAL_TAX_STATUS (gross|net, default gross: the
