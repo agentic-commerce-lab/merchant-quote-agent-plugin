@@ -51,13 +51,16 @@ final class QuoteBandDecider
 
         $discountPercent = max(0.0, MoneyMath::requestedDiscount($effective) ?? 0.0);
         $counterCeiling = $limits->counterOfferMaxPercent;
+        // The ask is derived from cent-rounded money, so an ask at exactly a
+        // limit can read a hair above it; Epsilon::RATE alone excluded it.
+        $slack = MoneyMath::roundingSlackPercent($effective);
 
-        if ($discountPercent > ($limits->maxDiscountPercent + Epsilon::RATE)) {
+        if ($discountPercent > ($limits->maxDiscountPercent + $slack)) {
             // The counter band, configured by #5: an ask the agent may not grant
             // outright but may answer with a fixed counter at its own cap. Above
             // the ceiling — or with no ceiling set — the pre-#18 behaviour stands
             // and a human decides.
-            if ($counterCeiling === null || $discountPercent > ($counterCeiling + Epsilon::RATE)) {
+            if ($counterCeiling === null || $discountPercent > ($counterCeiling + $slack)) {
                 return QuoteDecision::escalate(new QuoteEscalationDetails(
                     reason: QuoteEscalationReason::DiscountLimitExceeded,
                     requestedDiscountPercent: $discountPercent,
@@ -72,6 +75,11 @@ final class QuoteBandDecider
             ));
         }
 
-        return QuoteDecision::autoReply($this->pricer->price($effective, $discountPercent, $limits->validityDays));
+        // Inside the slack, granted at the cap, never past it.
+        return QuoteDecision::autoReply($this->pricer->price(
+            $effective,
+            min($discountPercent, $limits->maxDiscountPercent),
+            $limits->validityDays,
+        ));
     }
 }

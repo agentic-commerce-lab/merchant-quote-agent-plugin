@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineIdentity;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
@@ -172,5 +177,43 @@ final class StructuredAskGateTest extends TestCase
             QuoteEscalationReason::DiscountLimitExceeded->value,
             $harness->writer->drafts[0]->escalationReason,
         );
+    }
+
+    public function testAStorefrontAskAtExactlyTheCapIsGrantedNotCountered(): void
+    {
+        // 15% off 865.40 gross is 618.14 net a unit: 15.0004% on 10 x 727.23
+        // (7272.27), cent noise that used to land in the counter band and tell
+        // the buyer their own figure was "countered".
+        $quote = static fn(string $state, float $unit, float $total): QuoteSnapshot => new QuoteSnapshot(
+            identity: NegotiationFixture::snapshot()->identity,
+            revision: NegotiationFixture::snapshot()->revision,
+            totals: new QuoteTotals(totalNet: $total, totalGross: $total),
+            lifecycle: NegotiationFixture::snapshot(state: $state)->lifecycle,
+            content: new QuoteContent(lines: [new QuoteLineSnapshot(
+                identity: new QuoteLineIdentity('line-1', 'Widget', 'prod-1'),
+                quantity: 10,
+                unitPriceNet: $unit,
+                totalNet: $total,
+                requestedUnitPrice: 618.14,
+            )], comments: []),
+        );
+        $harness = PipelineHarness::with([
+            '{"action":"offer","message":"15% off.","terms":{"discountPercent":15}}',
+            'We can do 15%.',
+        ]);
+        $harness->gateway->replaceSnapshots([
+            $quote('in_review', 727.23, 7272.27),
+            $quote('in_review', 618.14, 6181.43),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $quote('open', 727.23, 7272.27),
+            $harness->gateway,
+            NegotiationFixture::settings(maxDiscountPercent: 15.0, counterOfferMaxPercent: 25.0),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Offered, $outcome);
+        self::assertSame('grant', $harness->writer->drafts[0]->band);
     }
 }
