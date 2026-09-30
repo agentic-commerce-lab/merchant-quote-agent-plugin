@@ -64,6 +64,7 @@
         "allow-plugins": {
             "captainhook/hook-installer": true,
             "carthage-software/mago": true,
+            "php-http/discovery": false,
             "symfony/runtime": true
         }
     },
