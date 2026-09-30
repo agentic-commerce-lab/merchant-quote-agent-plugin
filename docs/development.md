@@ -1,0 +1,185 @@
+# Development
+
+For whoever works on the plugin itself. Merchants start with the [README](../README.md).
+
+
+## Test shop
+
+The integration suite (`tests/Integration`) runs against a real Shopware with
+SwagCommercial. This repo defines that shop, and every worktree shares the one
+container.
+
+```bash
+cp docker/.env.example ~/.cache/merchant-quote-shop/.env   # fill licence + admin password
+scripts/shop-setup.sh                                     # first run: ~10 minutes
+composer run test:integration                             # from any worktree
+```
+
+`shop-setup.sh` is idempotent — rerun it after any failure. It downloads
+SwagCommercial 7.13.1 and Agentic Commerce 1.3.0 from their GitHub releases
+(`gh auth login` first; the SwagCommercial download needs access to its
+repository). Without access, put the two zips into
+`~/.cache/merchant-quote-shop/plugins/` by hand and rerun — which is the only
+route while Agentic Commerce 1.3.0 is unreleased. Anything
+older than 1.3.0 fails the container build against this plugin's SDK floor; see
+[docs/end-to-end.md §9](end-to-end.md#9-installing-into-a-shop).
+The database is seeded from `~/.cache/merchant-quote-shop/seed/shopware.sql.gz`;
+`scripts/shop-export-seed.sh` exports one from an existing SwagCommercial shop.
+
+| What | Where |
+|---|---|
+| Shop / admin | http://localhost:8095 (`SHOP_URL`, `SHOP_PORT`) — admin user from `.env` |
+| Caught mail | http://localhost:8096 (`SHOP_MAIL_PORT`) — the flows mail on `in_review` and `replied` |
+| Container | `merchant-quote-shop` (`SHOP_CONTAINER` to target another) |
+| State | `~/.cache/merchant-quote-shop/` (`MQ_SHOP_HOME`): `.env`, `plugins/`, `seed/` — never committed |
+| Shipping probe | `scripts/shop-check-shipping.sh` |
+
+**Mail transport.** This docker shop already has one: `MAILER_DSN`
+points at the `mailcatcher` container, which is what lets the `in_review` and
+`replied` flows show up at the "Caught mail" URL above. A shop built any other
+way — a bare `bin/console system:install`, a manual dev VM, a hand-rolled test
+shop — defaults to no transport at all (`mailer.dsn: 'null://null'` unless
+something sets it), and mail sent there vanishes silently: no error, no
+bounce, nothing in a log unless the sender happens to catch and report it.
+`ShopwareEscalationNotifier`'s Administration notification does not depend on
+mail and always works; the escalation flow this plugin ships
+(`Migration1789500001SeedEscalationMailAndFlow`, disabled by default — enable
+it in Flow Builder) does, so before concluding an escalation email is broken,
+confirm `MAILER_DSN`/`mailer.dsn` actually points somewhere on the shop under
+test.
+
+Every integration test runs inside a rolled-back transaction, so the seed stays
+as it was.
+
+The buyer-history tests need orders for at least two quote customers sharing a
+product. Populate the shop once after syncing:
+
+```bash
+scripts/sync-to-shop.sh
+docker exec merchant-quote-shop php8.3 /var/www/html/bin/console cache:clear --env=dev --no-debug
+docker exec -e APP_ENV=dev merchant-quote-shop php8.3 \
+  /var/www/html/custom/plugins/MerchantQuoteAgentPlugin/scripts/seed-order-history.php --per-customer=4
+```
+
+That creates quotes and orders through Commercial's real checkout flow with
+dates spread over 18 months. It prints the target database before writing,
+refuses production environments, skips existing seed slots on rerun, and
+suppresses mail and agent servicing. Existing quotes are left alone.
+
+Touched anything under `src/Resources/app/administration`? `sync-to-shop.sh`
+only pushes sources, so compile the bundle in the container:
+
+```bash
+docker exec merchant-quote-shop bash -lc 'cd /var/www/html && ./bin/build-administration.sh'
+```
+
+Skip it and the admin keeps serving the previous build. If the compiled bundle
+goes missing entirely, Shopware drops the module without a word and its routes
+render a blank administration rather than an error.
+
+## Checks
+
+```bash
+composer run test        # unit suite, no kernel
+composer run quality     # format, lint, typecheck, file size, admin checks, dupes, deps, audit
+```
+
+`composer run quality:admin` runs the administration module's assert-based
+self-checks, which stand in for a JS test runner the project deliberately does
+not have. Conventions and the per-change checks are in
+[`AGENTS.md`](../AGENTS.md).
+
+Those self-checks reach only the three extracted pure modules. The components
+are covered by a second command, which needs the test shop:
+
+```bash
+composer run quality:admin:shop                      # vue-tsc + ESLint, in the shop
+composer run quality:admin:shop -- --verbose         # show the baselined findings
+composer run quality:admin:shop -- --fix             # apply the ESLint autofixes
+```
+
+It syncs this checkout into the shop and runs Shopware's own extension
+toolchain against the live installed Administration types — the only surface
+that carries the real `Repository` class, so it catches a call to a method that
+does not exist. It is not part of `composer run quality` and does not run in
+CI, because the entity schema it needs is generated from a live database.
+
+The plugin's 677 pre-existing findings are recorded in
+`.shopware-admin-baseline.json`, so the check fails only on new ones. It does
+**not** validate icon names (`icon` is typed `string`) and nothing renders a
+component, so a method that type-checks and throws at runtime still ships. A
+change that both fixes one occurrence of a baselined message and introduces a
+new, unrelated occurrence of the identical message in the same file leaves the
+recorded count unchanged and so is not reported either.
+
+Two guards are skipped unless you have the relevant clone beside this
+repository: `CoreFloorCompatibilityTest` needs `shopware/shopware` (or
+`MQ_CORE_CLONE`) to confirm nothing in `src/` uses a core API newer than the
+6.7.1 floor, and `ReleaseCapabilityMatrixTest` needs a SwagCommercial clone to
+confirm the capability matrix still matches what each release declares.
+
+## Evals
+
+`composer run eval` answers "is the negotiation logic on the shop still correct?". It plays every scenario in `tests/Bench/scenarios/` three times as an external UCP buyer against the deployed shop in `EVAL_SHOP_URL`, with no SSH involved. It reads the agent's decisions back through the Admin API, checks the money in code, lets Claude Code judge the replies, and exits 0 (all pass), 1 (a scenario failed) or 2 (inconclusive).
+
+It tests the **deployed** plugin: deploy a branch before you evaluate it.
+
+One-time setup:
+
+1. Claim an ngrok static domain and add it to the shop's *Agent access → Profile hosts*.
+2. Create an Admin API integration with read on `merchant_quote_agent_decision`, `merchant_quote_agent_trace`, `sales_channel`, `sales_channel_domain` and `plugin`, read, update, create and delete on `system_config` (a restore to `null` deletes the key), and read and update on `product`.
+3. Pick a storefront customer with `QUOTE_MANAGEMENT`.
+4. Put the five required variables in `.env.eval` at the repo root (git-ignored; `chmod 600` it), so the secret never lands on a command line or in shell history:
+
+```
+EVAL_SHOP_URL=https://<your-shop>
+EVAL_ADMIN_CLIENT_ID=...
+EVAL_ADMIN_CLIENT_SECRET=...
+EVAL_NGROK_DOMAIN=<your-domain>.ngrok-free.app
+EVAL_PRODUCT_ID=<product uuid>
+```
+
+5. Run the setup, which opens the shop's consent page for that customer:
+
+```bash
+composer run eval:setup
+```
+
+Every run:
+
+```bash
+composer run eval
+```
+
+The buyer loads `.env.eval` itself; a variable already set in your environment wins over the file.
+
+Optional variables: `EVAL_REPS` (3), `EVAL_PARALLEL` (4), `EVAL_PASS_TIMEOUT` (180 s), `EVAL_STANDDOWN_WAIT` (60 s), `EVAL_PROFILE_PORT` (8787), and `EVAL_TAX_STATUS` (`gross` or `net`, default `gross`: the price space `{unit*f}` placeholders render in; a run whose quote prices the unit differently fails that negotiation). The judge and report settings are listed in the header of `scripts/eval.sh`.
+
+Every scenario carries `tags` (`band`, `floor`, `rounding`, `multi-round`, ...). `EVAL_TAGS=floor,rounding composer run eval` runs only the scenarios carrying any listed tag; a tag no scenario carries stops the run at preflight.
+
+Four scenarios need settings the shop doesn't have by default (a margin floor, rounding, a zero cap). They change the shop's config for about a minute each, then restore it. After a hard crash, run `composer run eval:restore var/eval/<runId>`.
+
+Output goes to `var/eval/<runId>/`:
+
+- `verdict.json`: the result, with the pass rate per tag (`tags`) and a `usage` block per scenario and run-wide: the shop model's prompt and completion tokens, passes, the buyer's wait per round (to the nearest 5 s poll), the shop's own duration per pass, and the judge's cost in USD;
+- `report.md`: Claude's write-up;
+- `runs.jsonl`: every decision row;
+- `judgments/`: the judge's answers.
+
+To re-judge without new negotiations: `composer run eval -- --from=judge var/eval/<runId>`.
+
+To turn a real problem quote into a regression scenario:
+
+```bash
+composer run eval:promote -- <quote-number>                       # quote number or id; the draft on stdout
+composer run eval:promote -- <quote-number> --write my-new-scenario  # tests/Bench/scenarios/my-new-scenario.json
+```
+
+It reads the quote's decision rows and traces with the same Admin API credentials and prints a draft: lines, the buyer's asks (unit prices become `{unit*f}`), counters, `maxRounds`, and policy overrides against the eval defaults. It leaves `expect` out on purpose: the loader refuses a scenario without `expect.firstOutcome`, so a draft cannot run, or pass `quality:bench`, until you decide what should have happened. What the quote did is in the description. On stderr it lists what it could not carry over: `counterOfferMaxPercent`, `minMarginPercent` and the purchase price are today's values, not the quote's (the cap comes from the decision row, rounding from its trace when rounding ran); every line becomes `EVAL_PRODUCT_ID`, and discount lines are dropped; rounds without a buyer comment and rounds after an escalation are not replayed; and the customer's history, strategy and model are not reproduced.
+
+
+## Design records
+
+- [`evals-design.md`](evals-design.md): what each negotiation-eval check (H1–H9, J1–J5) means.
+- [`2026-08-25-quote-agent-shopware-plugin-design.md`](2026-08-25-quote-agent-shopware-plugin-design.md): why this is a plugin rather than a hosted app.
+- [`adr/`](adr/): architectural decisions.

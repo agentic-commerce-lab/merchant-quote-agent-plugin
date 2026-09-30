@@ -8,8 +8,8 @@ policy, not here.
 
 - Format + lint a change: `composer run format:check && composer run lint` (both cover `src` and `tests`)
 - Add type checking for code changes: `composer run typecheck` (Mago analyze — scoped to `src` only; over `tests` it reports hundreds of test idioms and no real bug)
-- Behaviour: `composer run test` (unit, no kernel). `composer run test:integration` needs the test shop — see the README.
-- Negotiation evals (is the deployed logic still correct?): `composer run eval` — an external UCP buyer against the shop in `EVAL_SHOP_URL` (`.env.eval`), judged by Claude Code; paid, not in `quality` or CI. One-time `composer run eval:setup`. See the README's Evals section.
+- Behaviour: `composer run test` (unit, no kernel). `composer run test:integration` needs the test shop — see `docs/development.md`.
+- Negotiation evals (is the deployed logic still correct?): `composer run eval` — an external UCP buyer against the shop in `EVAL_SHOP_URL` (`.env.eval`), judged by Claude Code; paid, not in `quality` or CI. One-time `composer run eval:setup`. See the Evals section of `docs/development.md`.
 - Administration module changes: `composer run quality:admin` (assert-based self-checks; there is no JS test runner) and `composer run quality:admin:shop` (vue-tsc + ESLint via Shopware's extension toolchain; needs the test shop, so it is outside `quality` and outside CI)
 - Architecture / import / cleanup changes: `composer run quality:depcheck`
 - Broad refactor or gate change: `composer run quality`

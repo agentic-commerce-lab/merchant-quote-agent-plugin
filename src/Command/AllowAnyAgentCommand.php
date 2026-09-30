@@ -100,7 +100,7 @@ final class AllowAnyAgentCommand extends Command
                 . ' inoperative: the installation-wide allowlist freezes at whatever the worker\'s'
                 . ' first request of any kind produced, which is almost never the agent\'s, and restarting the'
                 . ' worker only re-runs the same lottery. Do not widen the permanent allowlists to compensate --'
-                . ' see the README.',
+                . ' see docs/end-to-end.md, "Deciding which agents may transact".',
                 $channels[$salesChannelId],
             ));
 
