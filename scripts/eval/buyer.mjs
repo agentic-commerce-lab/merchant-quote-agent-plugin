@@ -15,7 +15,7 @@ import { basename, join } from 'node:path';
 import { adminClient } from './admin.mjs';
 import { negotiate, pool } from './negotiate.mjs';
 import { loadScenarioDir, selectByTags } from './scenarios.mjs';
-import { applyWrites, effectivePolicy, planSettings, purchasePricesFor, writablePrices } from './settings.mjs';
+import { EXPECTED_DEFAULTS, applyWrites, effectivePolicy, planSettings, purchasePricesFor, writablePrices } from './settings.mjs';
 import { consent, loadOrCreateKey, startProfileServer, startTunnel, tokenStore, ucpClient } from './ucp.mjs';
 
 // The Admin API secret lives in a git-ignored, 0600 `.env.eval`, never on a
@@ -103,10 +103,9 @@ async function setup() {
     });
 }
 
-// A shop-wide minMarginPercent and rounding are allowed: H3 checks the floor
-// against the product's own purchase price, H9 checks the rounding with
-// DiscountRounding's own skips, and preflight reports both.
-const EXPECTED_DEFAULTS = { maxDiscountPercent: 15, counterOfferMaxPercent: 25 };
+// Beyond EXPECTED_DEFAULTS, a shop-wide minMarginPercent and rounding are
+// allowed: H3 checks the floor against the product's own purchase price, H9
+// checks the rounding with DiscountRounding's own skips, and preflight reports both.
 
 async function shopState(ctx) {
     const salesChannelId = await ctx.admin.salesChannelFor(ctx.shop);

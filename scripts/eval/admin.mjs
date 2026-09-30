@@ -39,15 +39,16 @@ export function adminClient({ shop, clientId, clientSecret, fetchImpl = fetch })
 
     return {
         search,
-        decisions: (quoteId) => search('merchant-quote-agent-decision', {
-            filter: [{ type: 'equals', field: 'quoteId', value: quoteId }],
+        // `field` 'quoteNumber' lets promote.mjs take the number a merchant sees
+        decisions: (value, field = 'quoteId') => search('merchant-quote-agent-decision', {
+            filter: [{ type: 'equals', field, value }],
             sort: [{ field: 'createdAt', order: 'ASC' }],
             limit: 100,
         }),
-        traces: (decisionIds) => search('merchant-quote-agent-trace', {
+        traces: (decisionIds, kinds = ['quote_before', 'quote_after']) => search('merchant-quote-agent-trace', {
             filter: [
                 { type: 'equalsAny', field: 'decisionId', value: decisionIds },
-                { type: 'equalsAny', field: 'kind', value: ['quote_before', 'quote_after'] },
+                { type: 'equalsAny', field: 'kind', value: kinds },
             ],
             limit: 500,
         }),

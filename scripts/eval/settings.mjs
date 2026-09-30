@@ -10,6 +10,9 @@ import { POLICY_KEYS } from './scenarios.mjs';
 
 const full = (key) => `${CONFIG_DOMAIN}.${key}`;
 
+/** The shop policy every scenario expectation assumes (preflight asserts it); a scenario's `policy` overrides from here. */
+export const EXPECTED_DEFAULTS = { maxDiscountPercent: 15, counterOfferMaxPercent: 25 };
+
 export function effectivePolicy(globalValues, channelValues) {
     const value = (key) => channelValues[full(key)] ?? globalValues[full(key)] ?? null;
     return {
