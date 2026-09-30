@@ -82,4 +82,20 @@ final readonly class QuoteAgentSettings
             $this->draftMode,
         );
     }
+
+    /**
+     * The one field a nightly replay arm changes (Task 11): every candidate
+     * arm is the SAME settings as the control, with only the strategy prompt
+     * swapped, so the delta between arms is attributable to the prompt alone.
+     */
+    public function withStrategyPrompt(?string $strategyPrompt): self
+    {
+        return new self(
+            $this->policy,
+            $this->llm,
+            $strategyPrompt,
+            $this->notifyBuyerOnEscalation,
+            $this->strategyVersionId,
+        );
+    }
 }

@@ -44,6 +44,7 @@ final class MerchantQuoteAgentPluginTest extends TestCase
         'merchant_quote_agent_strategy_assignment',
         'merchant_quote_agent_strategy_version',
         'merchant_quote_agent_strategy',
+        'merchant_quote_agent_improvement_run',
     ];
 
     /**

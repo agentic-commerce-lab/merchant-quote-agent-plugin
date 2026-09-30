@@ -251,6 +251,7 @@ class MerchantQuoteAgentPlugin extends Plugin
             'merchant_quote_agent_strategy_assignment',
             'merchant_quote_agent_strategy_version',
             'merchant_quote_agent_strategy',
+            'merchant_quote_agent_improvement_run',
         ] as $table) {
             $connection->executeStatement(\sprintf('DROP TABLE IF EXISTS `%s`', $table));
         }

@@ -1,0 +1,226 @@
+{% block merchant_quote_agent_improvements %}
+<sw-page class="merchant-quote-agent-improvements">
+    {% block merchant_quote_agent_improvements_smart_bar_header %}
+    <template #smart-bar-header>
+        <h2>{{ $tc('merchant-quote-agent.improvement.title') }}</h2>
+    </template>
+    {% endblock %}
+
+    {% block merchant_quote_agent_improvements_content %}
+    <template #content>
+        <sw-card-view>
+            {% block merchant_quote_agent_improvements_runs_card %}
+            <sw-card :title="$tc('merchant-quote-agent.improvement.runsTitle')" :is-loading="isLoading">
+                <mt-banner v-if="error" variant="critical">
+                    {{ error }}
+                </mt-banner>
+
+                {# Four situations, four sentences, because each needs a different
+                   action from the merchant -- see runsEmptyState()'s own docblock.
+                   "disabled" and "noData" can appear alongside a populated table
+                   below (history the feature made before it was turned off, or
+                   before its last, empty-handed run); "noWorker" only ever appears
+                   with nothing to show underneath it. #}
+                <mt-banner v-if="emptyState === 'disabled'" variant="attention">
+                    {{ $tc('merchant-quote-agent.improvement.emptyState.disabled') }}
+                </mt-banner>
+                <mt-banner v-else-if="emptyState === 'noWorker'" variant="critical">
+                    {{ $tc('merchant-quote-agent.improvement.emptyState.noWorker') }}
+                </mt-banner>
+                <mt-banner v-else-if="emptyState === 'noData'" variant="neutral">
+                    {{ $tc('merchant-quote-agent.improvement.emptyState.noData') }}
+                </mt-banner>
+                <mt-banner v-else-if="emptyState === 'notDueYet' && nextDueAt" variant="info">
+                    {{ $t('merchant-quote-agent.improvement.emptyState.notDueYet', { date: formatDate(nextDueAt.toISOString()) }) }}
+                </mt-banner>
+
+                {# The same fact, shown here only when nothing above already said it
+                   ("notDueYet" already spells out the date) or made it misleading
+                   ("disabled" and "noWorker" both mean nothing is actually going to
+                   run on that date). #}
+                <p
+                    v-if="runs.length && nextDueAt && (emptyState === null || emptyState === 'noData')"
+                    class="mqa-figure__aside"
+                >
+                    {{ $t('merchant-quote-agent.improvement.nextRunDue', { date: formatDate(nextDueAt.toISOString()) }) }}
+                </p>
+
+                <sw-data-grid
+                    v-if="runs.length"
+                    :data-source="runs"
+                    :columns="columns"
+                    :is-loading="isLoading"
+                    :plain-appearance="true"
+                    :show-selection="false"
+                    :show-settings="false"
+                    :show-actions="false"
+                    :allow-column-edit="false"
+                >
+                    <template #column-startedAt="{ item }">
+                        {{ formatDate(item.startedAt) }}
+                    </template>
+
+                    <template #column-salesChannelId="{ item }">
+                        {{ salesChannelLabel(item.salesChannelId) }}
+                    </template>
+
+                    <template #column-window="{ item }">
+                        {{ windowLabel(item) }}
+                    </template>
+
+                    <template #column-sampled="{ item }">
+                        {{ $t('merchant-quote-agent.improvement.sampledSkipped', { sampled: item.sampled, skipped: item.skipped }) }}
+                    </template>
+
+                    <template #column-findings="{ item }">
+                        {{ item.findings ? item.findings.length : 0 }}
+                    </template>
+
+                    <template #column-tokens="{ item }">
+                        {{ tokensLabel(item) }}
+                    </template>
+
+                    <template #column-status="{ item }">
+                        <mt-badge :variant="statusVariant(item.status)">{{ statusLabel(item.status) }}</mt-badge>
+                    </template>
+                </sw-data-grid>
+            </sw-card>
+            {% endblock %}
+
+            {# The newest run's findings only -- older runs' findings are still in
+               the table above, in the Findings column count, but re-listing every
+               past run's patterns here would bury the one a merchant actually
+               needs to read next to today's proposals. #}
+            {% block merchant_quote_agent_improvements_findings_card %}
+            <sw-card :title="$tc('merchant-quote-agent.improvement.findingsTitle')" :is-loading="isLoading">
+                <ul v-if="findings.length" class="mqa-findings">
+                    <li v-for="finding in findings" :key="finding.pattern" class="mqa-finding">
+                        <p class="mqa-finding__pattern">{{ finding.pattern }}</p>
+                        <span class="mqa-finding__count">
+                            {{ $t('merchant-quote-agent.improvement.findingCount', { count: finding.count }) }}
+                        </span>
+                        <ul v-if="finding.evidence.length" class="mqa-finding__evidence">
+                            <li v-for="(item, index) in finding.evidence" :key="index">{{ item }}</li>
+                        </ul>
+                    </li>
+                </ul>
+                <p v-else-if="!isLoading">
+                    {{ newestRun ? $tc('merchant-quote-agent.improvement.noFindings') : $tc('merchant-quote-agent.improvement.noFindingsYet') }}
+                </p>
+            </sw-card>
+            {% endblock %}
+
+            {% block merchant_quote_agent_improvements_proposals_card %}
+            <sw-card :title="$tc('merchant-quote-agent.improvement.proposalsTitle')" :is-loading="isLoading">
+                <mt-banner v-if="!canEdit" variant="attention">
+                    {{ $tc('merchant-quote-agent.improvement.readOnlyHint') }}
+                </mt-banner>
+
+                <p v-if="!proposals.length && !isLoading">
+                    {{ $tc('merchant-quote-agent.improvement.noProposals') }}
+                </p>
+
+                <div v-for="proposal in proposals" :key="proposal.id" class="mqa-proposal">
+                    <h3 class="mqa-proposal__title">
+                        {{ strategyNameFor(proposal.strategyId) || proposal.strategyId }}
+                    </h3>
+
+                    <p v-if="activeVersionNumberFor(proposal.strategyId) !== null" class="mqa-strategy__version">
+                        {{ $t('merchant-quote-agent.strategy.currentVersion', { version: activeVersionNumberFor(proposal.strategyId) }) }}
+                    </p>
+
+                    <p v-if="proposal.rationale" class="mqa-proposal__rationale">
+                        <strong>{{ $tc('merchant-quote-agent.improvement.rationaleLabel') }}:</strong>
+                        {{ proposal.rationale }}
+                    </p>
+
+                    <div class="mqa-proposal__diff">
+                        <div class="mqa-proposal__diff-col">
+                            <mt-textarea
+                                :label="$tc('merchant-quote-agent.improvement.currentPromptLabel')"
+                                :model-value="activePromptFor(proposal.strategyId) || ''"
+                                :disabled="true"
+                            />
+                        </div>
+                        <div class="mqa-proposal__diff-col">
+                            <mt-textarea
+                                :label="$tc('merchant-quote-agent.improvement.proposedPromptLabel')"
+                                :model-value="proposal.prompt"
+                                :disabled="true"
+                            />
+                        </div>
+                    </div>
+
+                    {# Never simulated -- said in words next to every comparison,
+                       not once at the top of the page where scrolling loses it. #}
+                    <p class="mqa-proposal__note">{{ $tc('merchant-quote-agent.improvement.notSimulated') }}</p>
+
+                    {# Above the numbers, not below: a merchant must not read the
+                       escalation-rate delta before learning it may not mean anything
+                       this round. #}
+                    <mt-banner v-if="proposal.evaluation.diverged" variant="critical">
+                        {{ $tc('merchant-quote-agent.improvement.diverged') }}
+                    </mt-banner>
+
+                    <sw-data-grid
+                        :data-source="abRows(proposal.evaluation)"
+                        :columns="abColumns()"
+                        :plain-appearance="true"
+                        :show-selection="false"
+                        :show-settings="false"
+                        :show-actions="false"
+                        :allow-column-edit="false"
+                    >
+                        <template #column-escalationRate="{ item }">
+                            {{ formatPercent(item.escalationRate * 100) }}
+                        </template>
+
+                        <template #column-meanGrantedPercent="{ item }">
+                            {{ formatPercent(item.meanGrantedPercent) }}
+                        </template>
+                    </sw-data-grid>
+
+                    {# The delta, its sample size and its skipped count travel
+                       together -- see this module's honesty requirements: a delta
+                       shown without them is a number a merchant cannot judge. #}
+                    <p class="mqa-proposal__stats">
+                        <mt-badge v-if="isBetter(proposal.evaluation)" variant="positive">
+                            {{ $t('merchant-quote-agent.improvement.betterBadge', {
+                                delta: formatPercent(Math.abs(escalationDelta(proposal.evaluation.control, proposal.evaluation.candidate))),
+                            }) }}
+                        </mt-badge>
+                        <span v-else-if="unshowableReasonLabel(proposal.evaluation)" class="mqa-proposal__unshowable">
+                            {{ unshowableReasonLabel(proposal.evaluation) }}
+                        </span>
+                        <span class="mqa-figure__aside">
+                            {{ $t('merchant-quote-agent.improvement.sampleSize', { size: proposal.evaluation.sampleSize }) }}
+                        </span>
+                        <span class="mqa-figure__aside">
+                            {{ $t('merchant-quote-agent.improvement.skipped', { count: proposal.evaluation.skipped }) }}
+                        </span>
+                    </p>
+
+                    <div class="mqa-proposal__actions">
+                        <mt-button
+                            variant="primary"
+                            :disabled="!canEdit || actingOn === proposal.id"
+                            @click="accept(proposal.id)"
+                        >
+                            {{ $tc('merchant-quote-agent.improvement.accept') }}
+                        </mt-button>
+                        <mt-button
+                            variant="critical"
+                            :disabled="!canEdit || actingOn === proposal.id"
+                            @click="reject(proposal.id)"
+                        >
+                            {{ $tc('merchant-quote-agent.improvement.reject') }}
+                        </mt-button>
+                    </div>
+                </div>
+            </sw-card>
+            {% endblock %}
+        </sw-card-view>
+    </template>
+    {% endblock %}
+</sw-page>
+{% endblock %}

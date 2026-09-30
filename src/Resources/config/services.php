@@ -92,12 +92,29 @@ use MerchantQuoteAgentPlugin\Identity\Authorization\RequestRuntimeConfigurationR
 use MerchantQuoteAgentPlugin\Identity\Authorization\SalesChannelDomainUrlReader;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentAuthorizationRequestController;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
+use MerchantQuoteAgentPlugin\Improvement\DecisionHarvest;
+use MerchantQuoteAgentPlugin\Improvement\ImprovementGenerator;
+use MerchantQuoteAgentPlugin\Improvement\ImprovementJudge;
+use MerchantQuoteAgentPlugin\Improvement\ImprovementRun;
+use MerchantQuoteAgentPlugin\Improvement\ImprovementRunner;
+use MerchantQuoteAgentPlugin\Improvement\ImprovementRunWriter;
+use MerchantQuoteAgentPlugin\Improvement\ImprovementSettingsReader;
+use MerchantQuoteAgentPlugin\Improvement\ImproveStrategyTask;
+use MerchantQuoteAgentPlugin\Improvement\ImproveStrategyTaskHandler;
+use MerchantQuoteAgentPlugin\Improvement\ProposalController;
+use MerchantQuoteAgentPlugin\Improvement\ReplayEvaluator;
+use MerchantQuoteAgentPlugin\Improvement\ReplayHarness;
+use MerchantQuoteAgentPlugin\Improvement\ReplaySubjectResolver;
+use MerchantQuoteAgentPlugin\Improvement\RunSettingsResolver;
+use MerchantQuoteAgentPlugin\Improvement\StrategyProposalWriter;
+use MerchantQuoteAgentPlugin\Improvement\TallyingDecisionWriter;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Negotiation\AskInterpreter;
 use MerchantQuoteAgentPlugin\Negotiation\CustomerHistoryFactoryInterface;
 use MerchantQuoteAgentPlugin\Negotiation\MarginFloorGuard;
 use MerchantQuoteAgentPlugin\Negotiation\ModelPlatform;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationPipeline;
+use MerchantQuoteAgentPlugin\Negotiation\NoCustomerHistoryFactory;
 use MerchantQuoteAgentPlugin\Negotiation\OfferApplier;
 use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
 use MerchantQuoteAgentPlugin\Negotiation\OfferRound;
@@ -417,6 +434,24 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(StrategyVersion::class);
     $services->set(StrategyAssignment::class);
 
+    // One row per nightly self-improvement run, per sales channel (Task 4).
+    // Registered unconditionally like the entities above; the repository is
+    // DAL-generated from the #[Entity] attribute and named explicitly by
+    // later tasks that need it (Task 11's writer, Task 13's admin listing).
+    $services->set(ImprovementRun::class);
+
+    // The merchant-facing configuration for the nightly loop (Task 5): cadence,
+    // sample size, candidate count and the optional model override. Registered
+    // unconditionally, like QuoteAgentSettingsReader below it depends on --
+    // reading configuration needs neither SwagCommercial nor a UCP surface.
+    // `$agent` is typed against the interface rather than the concrete reader
+    // so a caller can never depend on more than "resolve settings for a
+    // channel", the same seam ServicingPreflight already depends through.
+    $services->set(ImprovementSettingsReader::class)->args([
+        service(SystemConfigService::class),
+        service(QuoteAgentSettingsSource::class),
+    ]);
+
     // Resolves a strategy id to its newest version's prompt (Task 6). The
     // repositories are DAL-generated from the #[Entity] attributes above, so
     // they are not autowirable by type and have to be named explicitly.
@@ -427,12 +462,16 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
 
     // Enforces the two invariants #[Protection] was deliberately left off of:
     // a version row is never updated or deleted, and a built-in strategy row
-    // is never updated or deleted. Registered unconditionally and outside the
-    // SwagCommercial guard below, like the entities themselves -- an admin API
-    // token bypasses the administration, so the rule has to hold server-side
-    // on any shop where these tables exist. autoconfigure() picks up
-    // EventSubscriberInterface, so no explicit tag.
-    $services->set(StrategyWriteGuard::class);
+    // is never updated or deleted -- plus the one narrow transition Task 3
+    // admits (a proposal becoming accepted or rejected). Registered
+    // unconditionally and outside the SwagCommercial guard below, like the
+    // entities themselves -- an admin API token bypasses the administration,
+    // so the rule has to hold server-side on any shop where these tables
+    // exist. autoconfigure() picks up EventSubscriberInterface, so no
+    // explicit tag; the Connection is named because the guard reads the
+    // current status of the rows a write touches in one query rather than
+    // trusting the payload's claim about its own starting state.
+    $services->set(StrategyWriteGuard::class)->args([service(Connection::class)]);
 
     // The repositories are created by the DAL from the #[Entity] attributes;
     // they are not autowirable by type, so name them.
@@ -477,6 +516,18 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     ]);
     $services->alias(DecisionEraserInterface::class, DecisionEraser::class);
     $services->set(DecisionForgetCommand::class)->tag('console.command');
+
+    // Accepting or rejecting a nightly proposal (Task 12). Registered
+    // unconditionally, like StrategyWriteGuard above: an admin API token
+    // bypasses the administration, so the accept/reject endpoints have to
+    // exist on any shop where these tables do, independent of the
+    // SwagCommercial-gated replay that produced the proposal in the first
+    // place. The repository is named for the same reason as everywhere else
+    // in this file -- it is DAL-generated and not autowirable by type.
+    $services
+        ->set(ProposalController::class)
+        ->args([service(Connection::class), service('merchant_quote_agent_strategy_version.repository')])
+        ->tag('controller.service_arguments');
 
     // The outcome half of the audit trail (#33): a subscriber on the core
     // quote state machine stamps terminal_state / terminal_at onto the newest
@@ -1040,6 +1091,100 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service(ServicingPreflight::class),
         service(QuoteGatewayInterface::class)->ignoreOnInvalid(),
         service(QuoteServicingPipelineInterface::class)->ignoreOnInvalid(),
+    ]);
+
+    // The nightly self-improvement loop (Task 11). Inside this same guard,
+    // like the negotiation stack above it: the replay harness re-reads live
+    // quotes through QuoteSnapshotReader, which is SwagCommercial's, so a shop
+    // without it has nothing to replay -- the same reasoning that gates
+    // QuoteServicingTrigger above.
+    //
+    // The repositories are DAL-generated from #[Entity] attributes and are not
+    // autowirable by type, so every one of them is named explicitly.
+    $services->set(DecisionHarvest::class)->args([service('merchant_quote_agent_decision.repository')]);
+    $services->set(StrategyProposalWriter::class)->args([service('merchant_quote_agent_strategy_version.repository')]);
+    $services->set(ImprovementRunWriter::class)->args([
+        service('merchant_quote_agent_improvement_run.repository'),
+        service(StrategyProposalWriter::class),
+    ]);
+
+    // The replay's OWN negotiation stack, entirely separate from the shared
+    // one above. ReplayEvaluator runs production code (NegotiationDecider,
+    // OfferProposer) but must leave no trace: `merchant_quote_agent.improvement.recorder`
+    // writes through TallyingDecisionWriter, which persists nothing (see that
+    // class's own docblock), and `merchant_quote_agent.improvement.customer_history`
+    // never reads a company's history. `merchant_quote_agent.improvement.model_platform`
+    // is its own ModelPlatform instance, wired to the SAME private recorder --
+    // reusing the shared ModelPlatform::class service would tally this
+    // token usage onto a recorder with no open draft, and it would be lost
+    // rather than reaching RunTally (see ReplayHarness's own docblock).
+    $services->set(TallyingDecisionWriter::class);
+    $services->set('merchant_quote_agent.improvement.recorder', DecisionRecorder::class)->args([
+        service(TallyingDecisionWriter::class),
+    ]);
+    $services->set('merchant_quote_agent.improvement.model_platform', ModelPlatform::class)->args([
+        service('merchant_quote_agent.model_http_client'),
+        service('logger'),
+        service('merchant_quote_agent.improvement.recorder'),
+    ]);
+    $services->set('merchant_quote_agent.improvement.customer_history', NoCustomerHistoryFactory::class);
+
+    // The judge's one call a night, over this SAME private pair -- never the
+    // container's shared ModelPlatform::class/DecisionRecorder::class, whose
+    // recorder has no open draft outside a live servicing pass and would
+    // silently drop this call's tokens. See ImprovementJudge's own docblock.
+    $services->set(ImprovementJudge::class)->args([
+        service('merchant_quote_agent.improvement.model_platform'),
+        service('merchant_quote_agent.improvement.recorder'),
+    ]);
+
+    // Private and explicitly named, per the design brief: this must NOT be the
+    // container's shared OfferProposer::class, which writes through the real
+    // DecisionRecordWriterInterface onto merchant_quote_agent_decision. A
+    // replay is not a decision -- no buyer was answered -- so it must never
+    // reach that table.
+    $services->set('merchant_quote_agent.improvement.proposer', OfferProposer::class)->args([
+        service('merchant_quote_agent.improvement.model_platform'),
+        service(PromptComposer::class),
+        service(OfferAuthorizer::class),
+        service('merchant_quote_agent.improvement.recorder'),
+        service('merchant_quote_agent.improvement.customer_history'),
+    ]);
+    $services->set(ReplayEvaluator::class)->args([
+        service(NegotiationDecider::class),
+        service('merchant_quote_agent.improvement.proposer'),
+        service('merchant_quote_agent.improvement.recorder'),
+    ]);
+
+    $services->set(ReplaySubjectResolver::class)->args([service(QuoteSnapshotReader::class)]);
+    $services->set(ReplayHarness::class)->args([
+        service(ReplaySubjectResolver::class),
+        service(ReplayEvaluator::class),
+        service(TallyingDecisionWriter::class),
+    ]);
+    $services->set(RunSettingsResolver::class)->args([
+        service(ImprovementSettingsReader::class),
+        service(QuoteAgentSettingsSource::class),
+    ]);
+    $services->set(ImprovementRunner::class)->args([
+        service(RunSettingsResolver::class),
+        service(DecisionHarvest::class),
+        service(ImprovementJudge::class),
+        service(ReplayHarness::class),
+        service(ImprovementRunWriter::class),
+    ]);
+    $services->set(ImprovementGenerator::class)->args([
+        service('sales_channel.repository'),
+        service(ImprovementRunner::class),
+    ]);
+
+    $services->set(ImproveStrategyTask::class)->tag('shopware.scheduled.task');
+    // autoconfigure() picks up #[AsMessageHandler]; only the repository and the
+    // logger need naming.
+    $services->set(ImproveStrategyTaskHandler::class)->args([
+        service('scheduled_task.repository'),
+        service('logger'),
+        service(ImprovementGenerator::class),
     ]);
 
     // The A2CN services that ALSO need SwagCommercial, so they sit here rather

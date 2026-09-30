@@ -257,8 +257,15 @@ Shopware.Component.register('merchant-quote-agent-strategy-select', {
                 return;
             }
 
+            // Active only: a nightly proposal is a real row in this table with
+            // `version = NULL` until a human accepts it, and this preview
+            // promises the merchant the prompt their agent WILL send. Without
+            // the filter that promise would rest on MySQL sorting NULLs last
+            // under DESC. Mirrors StrategyResolver, which enforces the same
+            // rule on the negotiation path itself.
             const criteria = new Criteria(1, 1);
             criteria.addFilter(Criteria.equals('strategyId', this.value));
+            criteria.addFilter(Criteria.equals('status', 'active'));
             criteria.addSorting(Criteria.sort('version', 'DESC'));
 
             const result = await this.versionRepository.search(criteria, Shopware.Context.api);
