@@ -39,7 +39,7 @@ import webbrowser
 
 UCP_VERSION = "2026-08-25"
 KID = "quote-test-agent"
-DEFAULT_SHOP = "https://agenticquote-shoelscher.eu-core-1.shopdev.de"
+DEFAULT_SHOP = "https://sw-ag.dev"
 QUOTE_CAPABILITY = "com.shopware.quote"
 SHOPPING_SERVICE = "dev.ucp.shopping"
 IDENTITY_CAPABILITY = "identity_linking"

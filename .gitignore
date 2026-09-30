@@ -4,6 +4,8 @@
 .phpunit.result.cache
 .phpactor.json
 /.superpowers/
+# working specs and plans stay local; the repo is public
+/docs/superpowers/
 
 # transient key the UCP test agent generates per run (scripts/ucp-quote-agent.py).
 # The script deletes it in a finally block, but a killed run leaves it on disk -

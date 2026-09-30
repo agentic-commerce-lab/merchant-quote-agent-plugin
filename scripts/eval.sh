@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Negotiation evals, run and judged by Claude Code, played over UCP against
-# the deployed shop. Spec: docs/superpowers/specs/2026-09-28-claude-code-evals-design.md
+# the deployed shop. Spec: docs/evals-design.md
 #
 #   composer run eval:setup                               # once: buyer key, profile, browser consent
 #   composer run eval                                     # canary, UCP bench, check, judge, verdict, report

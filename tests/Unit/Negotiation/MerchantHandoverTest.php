@@ -16,8 +16,6 @@ use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use PHPUnit\Framework\TestCase;
 
 /**
- * @see docs/superpowers/specs/2026-09-16-merchant-handover-stand-down-design.md
- *
  * @mago-expect lint:too-many-methods
  * Fourteen cases plus four private helpers (single-line and multi-line quote
  * builders, a line builder, and the merchant-comment builder) covering both

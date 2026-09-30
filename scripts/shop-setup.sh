@@ -2,8 +2,7 @@
 # Bring merchant-quote-shop from nothing to "integration suite green".
 #
 # Idempotent: every step checks its own postcondition and skips when it already
-# holds, so rerun this after any failure. Design and the reasons behind each
-# step: docs/superpowers/specs/2026-08-27-dedicated-test-shop-design.md
+# holds, so rerun this after any failure.
 #
 #   cp docker/.env.example ~/.cache/merchant-quote-shop/.env   # fill it in
 #   scripts/shop-setup.sh

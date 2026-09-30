@@ -4,15 +4,14 @@ Date: 2026-09-28
 
 ## Status
 
-Approved in brainstorming 2026-09-28. Stage 1 was redesigned the same day, from an in-shop PHPUnit driver to an external UCP buyer, at the user's direction: "our tests should run via UCP". Planned in `docs/superpowers/plans/2026-09-28-claude-code-evals.md`.
+Approved in brainstorming 2026-09-28. Stage 1 was redesigned the same day, from an in-shop PHPUnit driver to an external UCP buyer, at the user's direction: "our tests should run via UCP".
 
 ## Context
 
 The user: "We need an EVALs pipeline, to check if the logic is still correct!
 The pipeline should be powered by Claude Code."
 
-The repo already has a negotiation bench (spec
-`2026-09-17-negotiation-bench-design.md`, Track A): `BenchRunTest` runs
+The repo already has a negotiation bench: `BenchRunTest` runs
 `scenario × strategy × model` against the live sw-ag.dev shop with a synthetic
 buyer and writes one JSONL row per decision-record pass. `bench-score.mjs`
 folds that JSONL through the admin's own `measures.ts`.

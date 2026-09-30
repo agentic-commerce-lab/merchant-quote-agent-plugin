@@ -6,7 +6,7 @@ Write the report for a negotiation eval run of the Merchant Quote Agent Shopware
 - `scenarios/*.json`: what each scenario asks and expects.
 - `run.json`: the shop, deployed plugin version, model, reps and product.
 
-Every check (H1–H9, J1–J5) is defined in `docs/superpowers/specs/2026-09-28-claude-code-evals-design.md`.
+Every check (H1–H9, J1–J5) is defined in `docs/evals-design.md`.
 
 Output Markdown only, with these sections in order:
 

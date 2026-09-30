@@ -10,7 +10,7 @@ use Override;
 use Shopware\Core\Framework\Migration\MigrationStep;
 
 /**
- * The run trace (docs/superpowers/specs/2026-09-23-run-trace-capture-design.md).
+ * The run trace.
  * Hand-written like every table here, and in step with Audit\TraceEvent.
  *
  * No foreign key to the decision table: a trace row outlives a deleted

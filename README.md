@@ -267,6 +267,5 @@ It reads the quote's decision rows and traces with the same Admin API credential
 | [`docs/for-merchants.md`](docs/for-merchants.md) | **The same story for whoever runs the shop.** No code: setup, decisions, escalations, costs, data. |
 | [`docs/for-merchants.md#costs-and-data`](docs/for-merchants.md#costs-and-data) | **What the anonymized export sends, and what it never does.** Read before running `merchant-quote-agent:export`. |
 | [`docs/adr/`](docs/adr/) | Architectural decisions. |
+| [`docs/evals-design.md`](docs/evals-design.md) | What each negotiation-eval check (H1–H9, J1–J5) means. |
 | [`docs/2026-08-25-quote-agent-shopware-plugin-design.md`](docs/2026-08-25-quote-agent-shopware-plugin-design.md) | Why this is a plugin rather than a hosted app. |
-| [`docs/superpowers/specs/`](docs/superpowers/specs/) | Per-feature design records, one per issue. |
-| [`docs/superpowers/plans/`](docs/superpowers/plans/) | The implementation plans those specs produced. |
