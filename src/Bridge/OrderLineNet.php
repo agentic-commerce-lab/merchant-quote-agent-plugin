@@ -23,8 +23,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity;
  *
  * The unit is derived from the line's NET TOTAL rather than from its stored
  * unit price, so unit * quantity reconciles with the total. This mirrors
- * QuoteLineNet, which does the same thing on the quote side and was validated
- * against 36 live quotes.
+ * QuoteLineNet, which does the same thing on the quote side.
  *
  * Note that `calculatedTaxes` is the tax for the WHOLE LINE, not per unit —
  * dividing it by the quantity before subtracting would be a second, hidden

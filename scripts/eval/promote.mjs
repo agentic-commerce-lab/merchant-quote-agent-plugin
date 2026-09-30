@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Turns one real quote's decision records into a draft scenario (spec
- * 2026-09-28-claude-code-evals-design, addendum 2026-09-29). Two plugin bugs
+ * Turns one real quote's decision records into a draft scenario
+ * (docs/evals-design.md, addendum 2026-09-29). Two plugin bugs
  * were each found from a single live quote; this makes such a quote a
  * regression scenario.
  *

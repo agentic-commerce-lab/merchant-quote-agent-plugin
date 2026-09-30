@@ -259,14 +259,14 @@ final class OfferRoundTest extends TestCase
     }
 
     /**
-     * Issue #174, quote 1039's exact shape, end to end through the round: a
+     * Issue #174's exact shape, end to end through the round: a
      * per-line — here quote-wide — offer priced from the baseline (2114.56)
      * lands above the quote's current total (1818.20). Every EXISTING check
      * (baseline discount cap, line bounds, expiry) reads this as a clean 5%
      * discount; only the never-raise check catches it. The pass must
      * escalate, and the false "discount" must never reach the buyer.
      */
-    public function testANeverRaiseViolationEscalatesTheWholePassQuote1039Shape(): void
+    public function testANeverRaiseViolationEscalatesTheWholePass(): void
     {
         $recorder = new DecisionRecorder(new FakeDecisionWriter());
         $logger = new RecordingLogger();
@@ -297,13 +297,13 @@ final class OfferRoundTest extends TestCase
     }
 
     /**
-     * Quote 1045's shape (#174/#175): the write changes nothing (34000.00 ->
+     * #174/#175: the write changes nothing (34000.00 ->
      * 34000.00) against a stored baseline of 34456.73. That used to be
      * answered "This quote stands at 34000.00 EUR"; the user's rule is that a
      * price ask is never answered with no concession, so it now goes to a
      * human (spec 2026-09-24-never-answer-zero-discount).
      */
-    public function testAPassThatGrantsNothingEscalatesInsteadOfReplyingQuote1045Shape(): void
+    public function testAPassThatGrantsNothingEscalatesInsteadOfReplying(): void
     {
         $recorder = new DecisionRecorder(new FakeDecisionWriter());
         $logger = new RecordingLogger();

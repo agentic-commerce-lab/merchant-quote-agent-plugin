@@ -122,7 +122,7 @@ final class StandingConcessionTest extends TestCase
     }
 
     /**
-     * Quote 1187 on the live shop: one gross line, 10 × 335.57 at 7%. Its net
+     * A quote with one gross line, 10 × 335.57 at 7%. Its net
      * total is 3355.70 − 219.53 = 3136.17, which is `amountNet` to the cent,
      * but the cent-rounded unit price is 313.62, and 313.62 × 10 = 3136.20.
      * Summing units instead of line totals refused every gross quote whose

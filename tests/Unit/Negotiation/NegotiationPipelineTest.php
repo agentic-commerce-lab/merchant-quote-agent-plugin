@@ -165,9 +165,9 @@ final class NegotiationPipelineTest extends TestCase
 
     public function testAnExtractionWithNoAskInAnyFieldAcknowledgesTheBuyer(): void
     {
-        // #177: quote 1039, "Nice, thanks!" -- every field null or empty. The
+        // #177: "Nice, thanks!" -- every field null or empty. The
         // pass must not reach the band (no unsolicited offer) and must not
-        // escalate (#167). Live quote 1056 is why it must still ANSWER: the
+        // escalate (#167). It must still ANSWER: the
         // comment moved the quote to change_requested, only a reply moves it
         // back to replied, and over UCP the buyer can neither accept nor
         // counter until it does.
@@ -285,7 +285,7 @@ final class NegotiationPipelineTest extends TestCase
         // The merchant sent an answer after the escalation, so the terms on
         // the quote are theirs and a receipt for them is true. Silence here
         // parked the quote in change_requested, where over UCP the buyer can
-        // neither accept nor counter -- quote 1056's dead end again.
+        // neither accept nor counter -- the same dead end again.
         $harness = PipelineHarness::with(['{}']);
         $escalated = NegotiationFixture::snapshot(state: 'change_requested', comments: [
             NegotiationFixture::buyerComment('ok, thanks', '2026-09-23 11:00:00'),

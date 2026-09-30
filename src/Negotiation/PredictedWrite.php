@@ -57,7 +57,7 @@ final readonly class PredictedWrite
 
             // The line's own total, not unit × quantity: the unit is rounded
             // to the cent after the tax comes off, so on a gross quote ten
-            // units drift up to five cents past `totalNet` (quote 1187).
+            // units drift up to five cents past `totalNet`.
             $goods += $line->totalNet;
             $today = $line->unitPriceNet * $goodsFactor;
             $price = ($named[$line->lineItemId()] ?? $line->unitPriceNet) * $factor;

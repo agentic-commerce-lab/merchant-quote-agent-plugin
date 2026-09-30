@@ -308,7 +308,7 @@ const pooled = await pool([1, 2, 3, 4, 5], 2, async (n) => { inFlight++; peak = 
 assert.deepEqual(pooled, [2, 4, 6, 8, 10]);
 assert.equal(peak, 2);
 
-// a shop-wide margin floor: H3 checks against the product's own purchase price (sw-ag.dev runs one)
+// a shop-wide margin floor: H3 checks against the product's own purchase price (a shop may run one)
 const eur = 'b7d2554b0ce847cd82f3ac9bd1c0dfca';
 const shopProduct = { price: [{ currencyId: eur, net: 727.23, gross: 865.4 }], purchasePrices: [{ extensions: [], currencyId: 'usd', net: 999, gross: 999 }, { extensions: [], currencyId: eur, net: 231.85, gross: 275.9, linked: true, listPrice: null, percentage: null, regulationPrice: null, apiAlias: 'price' }] };
 assert.deepEqual(purchasePricesFor(shopProduct, 'p1', { minMarginPercent: 10 }), { p1: 231.85 }, 'the price currency, not the first entry');

@@ -92,7 +92,7 @@ final class AskGate
             // An open per-line target — below the quoted price and not yet
             // answered, see StructuredAsk::isOpen() — is not a line picked at
             // random: it names the line AND the price, so the ambiguity this
-            // gate exists for cannot be present. Quote 1017 asked "what do you think about this
+            // gate exists for cannot be present. One buyer asked "what do you think about this
             // discount?" over three lines that each carried a requested price,
             // and the follow-up "the one I've requested" hit the marker and
             // escalated a 2.7% ask. The appliers read `requestedUnitPrice`

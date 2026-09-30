@@ -7,7 +7,7 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 use PHPUnit\Framework\TestCase;
 
 /**
- * sw-ag.dev quotes 1097 and 1099: the buyer entered a requested price in the
+ * Two buyers entered a requested price in the
  * storefront (600.00 and 590.00 against 654.53, both inside the 15% cap) and
  * wrote no comment. The negotiate prompt listed the lines without that price,
  * so the model was shown no ask at all, proposed no terms, and the buyer was

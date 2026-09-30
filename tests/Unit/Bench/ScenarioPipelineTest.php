@@ -122,7 +122,7 @@ final class ScenarioPipelineTest extends TestCase
     /**
      * `gross-figure-in-comment`: the buyer types a GROSS per-unit figure on a
      * taxed quote. `BuyerPriceSpace::toNet()` must convert it before anything
-     * downstream treats it as net -- live quote 1037's bug stored 885.65 for a
+     * downstream treats it as net -- the bug stored 885.65 for a
      * 744.24 ask. `AskMirror` mirrors the merger's ADOPTED (already net)
      * target back onto the line before the gate even runs, so that mirrored
      * write is where this test catches a regression: broken conversion would
@@ -221,8 +221,8 @@ final class ScenarioPipelineTest extends TestCase
     }
 
     /**
-     * `multi-round-anchoring`: reproduces `BaselineAnchoredAskTest`'s live
-     * quote 1101 regression at what the scenario models as its fifth round --
+     * `multi-round-anchoring`: reproduces `BaselineAnchoredAskTest`'s
+     * regression at what the scenario models as its fifth round --
      * a stored baseline of 80.00/unit, a current (already reduced) price of
      * 72.00, and a new ask of 71.20. Measured against the CURRENT price that
      * is a 1.11% ask; measured against the ORIGINAL baseline -- the one the
@@ -284,7 +284,7 @@ final class ScenarioPipelineTest extends TestCase
     }
 
     /**
-     * `volume-ask`: the regression sw-ag.dev quote 1053 shipped. "Can we get
+     * `volume-ask`: a regression that shipped. "Can we get
      * some better price, as we take 10?" is a price ask with no number in it,
      * which `price.bestPriceRequested` is exactly for -- the merchant's own
      * cap answers it. It used to ALSO set `negotiation.bundle.requested`, and

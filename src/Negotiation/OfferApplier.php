@@ -148,7 +148,7 @@ final readonly class OfferApplier
         // design -- #49 needs that anchor so a per-round discount cannot
         // compound past maxDiscountPercent. They say nothing about the
         // quote's CURRENT total, and an earlier round or a human can have
-        // moved that below the baseline already. Quote 1039: baseline
+        // moved that below the baseline already. For example: baseline
         // 2114.56, current 1818.20, "5% off" prices the offer at 2008.83 --
         // a legal discount against the baseline and a 190.63 INCREASE against
         // what the buyer's quote showed a moment ago. That must never be

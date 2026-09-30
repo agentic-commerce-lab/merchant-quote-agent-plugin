@@ -31,7 +31,7 @@ final class BuyerPriceSpaceTest extends TestCase
 
     public function testTheLineTableSpeaksTheBuyersOwnTaxSpace(): void
     {
-        // sw-ag.dev quote 1037: the buyer reads 823.86 on their quote and the
+        // The buyer reads 823.86 on their quote and the
         // model was shown 692.32, the net behind it. Every number the buyer
         // types is in the space they were shown, so that is the space the
         // table has to be in.
@@ -53,7 +53,7 @@ final class BuyerPriceSpaceTest extends TestCase
     {
         // The other half of the same seam: what the model reads in the buyer's
         // space must reach the policy layer in net, or a counter is filed one
-        // tax factor above what was asked for — quote 1037 stored 885.65 for a
+        // tax factor above what was asked for — one quote stored 885.65 for a
         // 744.24 ask, and the agent then "granted" 0.21% on a 14% ask.
         [$client] = ScriptedClient::spy([
             '{"structural":{"lineChanges":[{"lineItemId":"line-1","targetUnitPrice":90.0}]}}',

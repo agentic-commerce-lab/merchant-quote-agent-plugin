@@ -42,7 +42,7 @@ final readonly class OfferProposer
         NegotiationContext $context,
         ?float $askedDiscountPercent = null,
     ): ProposedAnswer {
-        // Quote 1101: one anchor for the brief, the mirror and the checks —
+        // One anchor for the brief, the mirror and the checks —
         // the original prices, carrying the live asks. Round one has no
         // baseline yet, and there the live snapshot IS the original.
         $live = $snapshot;
@@ -196,7 +196,7 @@ final readonly class OfferProposer
         // does not: on a gross quote the figure in their sentence carries the
         // tax. Naming their target in the prompt's own space is what stops the
         // model reading their number against the net total and pricing to it —
-        // sw-ag.dev quote 1055 asked for 3000 gross and was offered 3209.73,
+        // a buyer who asked for 3000 gross and was offered 3209.73,
         // the model's own message claiming it had met a "3,000 EUR" budget.
         // Stated as an ask, not an instruction: the authority above still
         // decides how much of it may be met.

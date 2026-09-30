@@ -28,7 +28,7 @@ final class CommercialAvailability
      * a rename on SwagCommercial's side has to be a one-line fix here, not a
      * hunt. Class-name literals, not `::class`: these need not be loadable.
      *
-     * GatewayWiringTest resolves all five against the live shop, which is what
+     * GatewayWiringTest resolves all five against a real shop, which is what
      * catches a rename or a typo — static analysis cannot see these.
      */
     public const QUOTE_MANIPULATION = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\Admin\\QuoteManipulation';
@@ -44,7 +44,7 @@ final class CommercialAvailability
     /**
      * The nine commercial services the buyer-side gateway injects, same
      * convention as the four above: GatewayWiringTest resolves all of them
-     * against the live shop, so a SwagCommercial rename is a one-line fix
+     * against a real shop, so a SwagCommercial rename is a one-line fix
      * here, not a hunt.
      */
     public const QUOTE_REQUEST_ROUTE = 'Shopware\\Commercial\\B2B\\QuoteManagement\\Domain\\CartToQuote\\QuoteRequestRoute';
@@ -71,7 +71,7 @@ final class CommercialAvailability
      * The bundle's name in `kernel.bundles`. SwagCommercial registers each
      * feature as a bundle of its own; this is the one that owns the quote
      * entities — so `quote.repository` — and every service the bridge
-     * injects. Verified on the 7.13 test shop and the 6.7.12 b2bseller shop.
+     * injects. Verified on SwagCommercial 7.13 and 6.7.12.
      */
     private const QUOTE_BUNDLE = 'QuoteManagement';
 

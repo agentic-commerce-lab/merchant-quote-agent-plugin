@@ -7,7 +7,7 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 /**
  * #174: `ReplyTemplate::reduction()` used to clamp a negative movement to
  * `0.0`, which rendered a price INCREASE as a cheerful "0% off" -- the exact
- * shape that reached two buyers as a discount (quotes 1039, 1048).
+ * shape that reached two buyers as a discount.
  *
  * `OfferApplier`'s never-raise check DETECTS -- it cannot prevent -- a write
  * that lands above the quote's pre-write total (there is no rollback; see

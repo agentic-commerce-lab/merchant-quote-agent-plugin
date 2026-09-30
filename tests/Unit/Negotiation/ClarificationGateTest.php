@@ -40,7 +40,7 @@ final class ClarificationGateTest extends TestCase
 
     public function testAnUnmetStructuredTargetAnswersTheAskInsteadOfClarifying(): void
     {
-        // Quote 1017: the buyer set a per-line requested price and wrote "I
+        // The buyer set a per-line requested price and wrote "I
         // take 10 of each, so what do you think about this discount?". The
         // model was shown no requested column, so it asked which discount was
         // meant; the buyer answered "the one I've requested" and the marker

@@ -113,8 +113,8 @@ final class CustomerBriefTest extends TestCase
     public function testAGenuineZeroGrantStillRendersUnlikeAnUnknownOne(): void
     {
         // null means no recorded pass reduction; 0.0 means the pass recorded
-        // no reduction. Neither proves delivery. The live test shop's
-        // merchant_quote_agent_decision table has both: a `!==null` check is
+        // no reduction. Neither proves delivery. The
+        // merchant_quote_agent_decision table holds both: a `!==null` check is
         // required, a truthy check would silently drop this branch since 0.0 is
         // falsy in PHP.
         $summary = new CustomerSummary(quotes: new QuoteStats(seen: 2, lastGrantedDiscountPercent: 0.0));

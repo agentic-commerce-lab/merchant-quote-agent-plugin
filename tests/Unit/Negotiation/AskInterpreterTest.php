@@ -65,7 +65,7 @@ final class AskInterpreterTest extends TestCase
 
     public function testTheUserPromptCarriesTheStructuredRequestedPrice(): void
     {
-        // Quote 1017: the buyer entered a per-line "Requested price" and then
+        // The buyer entered a per-line "Requested price" and then
         // wrote "I take 10 of each, so what do you think about this discount?".
         // The prompt never carried the requested column, so the model had no
         // number to extract, asked to clarify, and the follow-up escalated —

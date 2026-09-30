@@ -59,7 +59,7 @@ final class QuoteExtractPromptTest extends TestCase
 
     public function testABareNumberAmbiguousBetweenTotalAndUnitPriceIsStillClarificationWorthy(): void
     {
-        // Quote 1043: "60" on a 50-unit single-line quote is genuinely
+        // "60" on a 50-unit single-line quote is genuinely
         // ambiguous between the total and a per-unit price, and #167 keeps
         // that a legitimate clarificationQuestions case rather than routing
         // it to price.targetTotal by default.

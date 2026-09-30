@@ -9,7 +9,7 @@ namespace MerchantQuoteAgentPlugin\Policy\Data;
  *
  * A volume ask ("better price if we take 10?") deliberately does NOT live
  * here. It used to, as `BundleAsk::$requested`, and that put a pure price ask
- * on the escalating side of AskGate: quote 1053 asked "Can we get some better
+ * on the escalating side of AskGate: a buyer asked "Can we get some better
  * price, as we take 10?", the extraction set `bestPriceRequested` AND the
  * bundle flag, and the flag escalated a round the pricing policy could answer
  * on its own. Volume/bulk/tiered asks are `price.bestPriceRequested` now, and

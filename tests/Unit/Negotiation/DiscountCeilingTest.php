@@ -9,9 +9,9 @@ use PHPUnit\Framework\TestCase;
 /**
  * The agent may never grant more discount than the buyer asked for.
  *
- * Quotes 1017 and 1018 on the test shop both gave away margin nobody
- * requested: 1017 asked 2.70% and got 5%, 1018 asked 3.41% on 15 units and got
- * 5%. Both were inside maxDiscountPercent, so every offer check passed. The
+ * Two quotes gave away margin nobody requested: one asked 2.70% and got 5%,
+ * the other asked 3.41% on 15 units and got 5%. Both were inside
+ * maxDiscountPercent, so every offer check passed. The
  * model had been handed the published volume tier as guidance and anchored on
  * it — it said so itself: "In line with our volume tier for purchasing 10 or
  * more units per item, we are pleased to offer a 5.0% discount".

@@ -157,7 +157,7 @@ final class StructuredAskGateTest extends TestCase
 
     public function testAStorefrontAskFarBeyondTheCounterCeilingEscalatesBeforeAnyModelCall(): void
     {
-        // #223, sw-ag.dev quote 1206: 0.84 net requested against 727.23, no
+        // #223: 0.84 net requested against 727.23, no
         // comment, was granted 15% and ordered. Here: 1.00 against 100.00 is
         // a 99% ask; NegotiationFixture's settings cap at 10% and counter up
         // to 20%, so the band must escalate as discount_limit_exceeded.

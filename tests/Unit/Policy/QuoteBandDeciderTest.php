@@ -84,7 +84,7 @@ final class QuoteBandDeciderTest extends TestCase
     }
 
     /**
-     * 10 x 727.23 net, 7272.27 for the line (sw-ag.dev's 865.40 gross unit),
+     * 10 x 727.23 net, 7272.27 for the line (an 865.40 gross unit),
      * asking $targetNet: every figure is cent-rounded after the tax comes off.
      */
     private static function roundedQuoteAsking(float $targetNet): QuoteSnapshot
@@ -127,7 +127,7 @@ final class QuoteBandDeciderTest extends TestCase
 
     public function testAnAskAtExactlyTheCounterCeilingCounters(): void
     {
-        // sw-ag.dev quote 1036: 25% off 8654.00 gross is 6490.50, 5454.20 net,
+        // 25% off 8654.00 gross is 6490.50, 5454.20 net,
         // which reads 25.00003% and used to escalate.
         $limits = new QuoteLimits(maxDiscountPercent: 15.0, counterOfferMaxPercent: 25.0);
 

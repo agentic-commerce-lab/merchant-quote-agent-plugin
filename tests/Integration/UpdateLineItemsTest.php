@@ -195,9 +195,9 @@ final class UpdateLineItemsTest extends IntegrationTestCase
         // Said out loud rather than passed quietly. Everything above holds on
         // a tax-free line, but the net<->tax-space conversion is an IDENTITY
         // there, so a green run on such a shop has not exercised it — which is
-        // the one thing this test exists to add over the unit fixtures. Every
-        // product line on `agenticquote` is 0% (11/11 on 2026-09-09), so this
-        // is the normal outcome there, not an edge case.
+        // the one thing this test exists to add over the unit fixtures. On some
+        // hosted dev shops every product line is 0%, so this is the normal
+        // outcome there, not an edge case.
         if ($rate === 0.0) {
             self::markTestIncomplete(
                 'The mirror round trip and the marker are verified, but this quote line is '

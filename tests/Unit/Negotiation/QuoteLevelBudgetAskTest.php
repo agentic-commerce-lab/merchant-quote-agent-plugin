@@ -42,17 +42,17 @@ final class QuoteLevelBudgetAskTest extends TestCase
     /** @return iterable<string, array{0: string, 1: float, 2: float}> */
     public static function realBudgetAsks(): iterable
     {
-        yield 'quote 1040: a 2,500 budget for the whole quote' => [
+        yield 'a 2,500 budget for the whole quote' => [
             'We have a budget of 2,500 for the whole quote.',
             2153.43,
             2500.0,
         ];
-        yield 'quote 1042: 3,500 across the items' => [
+        yield '3,500 across the items' => [
             'We have 3,500 to spend across the items.',
             3382.18,
             3500.0,
         ];
-        yield 'quote 1046: a 9,000 EUR budget' => [
+        yield 'a 9,000 EUR budget' => [
             'Our budget is 9,000 EUR.',
             8314.65,
             9000.0,
@@ -87,7 +87,7 @@ final class QuoteLevelBudgetAskTest extends TestCase
 
     public function testABareNumberAmbiguousBetweenTotalAndUnitPriceLegitimatelyStillAsks(): void
     {
-        // Quote 1043: "60" on a 50-unit line (total 55.79) is genuinely
+        // "60" on a 50-unit line (total 55.79) is genuinely
         // ambiguous between the whole-quote total and a per-unit price --
         // unlike the three budget asks above, #167 keeps this a legitimate
         // clarificationQuestions case.

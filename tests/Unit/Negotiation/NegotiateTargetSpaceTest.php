@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
  * sentence, which still holds their GROSS number. The model then read "3000"
  * against a net total and priced to it.
  *
- * sw-ag.dev quote 1055: a 7%-tax quote, buyer "max cost should be 3000k".
+ * A 7%-tax quote, buyer "max cost should be 3000k".
  * Extraction filed the correct 2803.74 net target; the model answered 4.35%,
  * landing on 2999.75 net — 3209.73 gross, 209.73 ABOVE the ask — while its
  * own message claimed it had met a "target budget of 3,000 EUR". The band had
@@ -54,7 +54,7 @@ final class NegotiateTargetSpaceTest extends TestCase
 
     public function testAPerLineAskTypedInACommentReachesTheLineTableInNet(): void
     {
-        // #222, sw-ag.dev quote 1202: "770.21 a unit" on a gross quote was
+        // #222: "770.21 a unit" on a gross quote was
         // filed as 647.24 net, but the negotiate prompt showed only the raw
         // comment beside NET unit prices, and the model escalated because
         // "770.21 is higher than 727.23". The gross fixture's net ratio is

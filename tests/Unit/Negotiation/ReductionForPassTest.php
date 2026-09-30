@@ -11,8 +11,8 @@ use PHPUnit\Framework\TestCase;
  * Which of the three things a pass can report, decided in one place.
  *
  * A pass that wrote nothing never reaches this class: `OfferRound` escalates
- * it first (no_further_concession, quote 1045's shape). `OfferRoundTest` pins
- * that and quote 1039's never-raise escalation end to end. This file is the
+ * it first (no_further_concession). `OfferRoundTest` pins
+ * that and the never-raise escalation end to end. This file is the
  * unit's own table, and it exists for the case those shapes do not reach: a
  * write that moved the total and still has nothing to announce.
  */

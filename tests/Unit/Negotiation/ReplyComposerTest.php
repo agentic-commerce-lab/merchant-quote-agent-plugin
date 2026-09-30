@@ -370,7 +370,7 @@ final class ReplyComposerTest extends TestCase
     }
 
     /**
-     * Live quote 1054: the buyer wrote "Can we get a discount, my max budget
+     * The buyer wrote "Can we get a discount, my max budget
      * is 9k" and was answered "We have reduced the quote by 15% to 9885.58
      * EUR. This offer is valid until 2026-10-07." — factually right, and it
      * reads like a form letter, because the reply model was handed the

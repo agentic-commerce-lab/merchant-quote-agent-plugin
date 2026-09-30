@@ -39,9 +39,9 @@ final class NegotiateLineBlock
                 // already applied the precedence: it only adopts a comment
                 // target that IS the priced ask (a renegotiation round, or a
                 // line with no storefront ask). Without the storefront field a
-                // structured-only ask reached the model as no ask at all
-                // (sw-ag.dev quotes 1097/1099); without the comment target a
-                // comment's gross per-unit figure did (quote 1202, #222).
+                // structured-only ask reached the model as no ask at all;
+                // without the comment target a comment's gross per-unit figure
+                // did (#222).
                 self::ask($lineAsksNet[$l->lineItemId()] ?? $l->requestedUnitPrice),
             ),
             $lines,

@@ -227,7 +227,7 @@ final class DecisionRecorder
             $this->draft->escalationReason = $answer->escalation->value;
         }
 
-        // WHY it was refused, not just that it was. Quote 1019 escalated with
+        // WHY it was refused, not just that it was. A quote once escalated with
         // proposal_rejected and a NULL violations column, so the pass could
         // not be explained afterwards: the reason string reaches
         // ProposedAnswer::escalate() and stopped here, and its log twin is an

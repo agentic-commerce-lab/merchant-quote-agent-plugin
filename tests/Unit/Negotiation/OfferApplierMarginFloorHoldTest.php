@@ -16,7 +16,7 @@ use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\FakeQuoteGateway;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Eval margin-floor-holds on sw-ag.dev (2026-09-29): round one's 8% already
+ * Eval margin-floor-holds: round one's 8% already
  * sits between the floor and the next cent, so re-pricing the line at the
  * floor raised the quote by a cent instead of holding it.
  */

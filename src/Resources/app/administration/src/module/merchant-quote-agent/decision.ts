@@ -358,7 +358,7 @@ export function formatCurrency(value: number | null, currencyIso = 'EUR'): strin
  *
  * Not `discountPercentGranted`: that is the reduction THIS pass made, and a
  * pass that holds the previous round's offer records 0 while the quote is
- * genuinely reduced. Live quote 1012 showed "0.0%" for rounds two and three
+ * genuinely reduced. The page once showed "0.0%" for rounds two and three
  * beside an already-reduced total and a reply saying 15%.
  */
 export function quoteDiscountPercent(baselineNet: number | null, totalNetAfter: number | null): number | null {
@@ -620,7 +620,7 @@ type PassNote = { key: string; text: string; variant: string; detail: string | n
  * That last one is the reason this exists. A pass can grant a discount, post
  * the reply, and fail to reach `replied` — see
  * DecisionRecorder::recordReplyTransitionFailed() — which sets `violations`
- * and NO escalation reason. Live quote #1021 read as a green "Offer sent"
+ * and NO escalation reason. A quote once read as a green "Offer sent"
  * with the buyer holding a discount they could not accept, and the only trace
  * sat in the technical fold nobody opens.
  *

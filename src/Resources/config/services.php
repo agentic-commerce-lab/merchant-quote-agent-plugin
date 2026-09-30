@@ -720,7 +720,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // the classes provably exist, so a null here would mean SwagCommercial
     // moved a service id; that surfaces as a TypeError on the adapter's
     // non-nullable `object` parameter, a legible failure confined to the
-    // bridge. GatewayWiringTest resolves all five against the live shop.
+    // bridge. GatewayWiringTest resolves all five against a real shop.
     $services->set(SwagCommercialProductAdder::class)->args([service(CommercialAvailability::QUOTE_MANIPULATION)->ignoreOnInvalid()]);
     $services->set(SwagCommercialCommentWriter::class)->args([service(CommercialAvailability::QUOTE_COMMENTER)->ignoreOnInvalid()]);
     $services->set(QuoteRecalculator::class)->args([

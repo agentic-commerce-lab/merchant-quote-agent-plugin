@@ -421,7 +421,7 @@ Shopware.Component.register('merchant-quote-agent-detail', {
                 // The quote's discount, not this pass's. A pass that holds the
                 // previous round's offer records a 0 reduction of its own, and
                 // showing that here read as "no discount" next to a reduced
-                // total and a reply quoting 15% — live quote 1012.
+                // total and a reply quoting 15%.
                 granted: answered ? formatPercent(quoteDiscountPercent(baselineNet, answeredNetAfter(round))) : null,
                 totals: answered ? roundChange(this, round) : null,
                 // What the pass actually did to the quote, and what a person

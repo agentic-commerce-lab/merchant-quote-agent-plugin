@@ -13,8 +13,8 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity;
  * One quote line's prices in NET space.
  *
  * Shopware stores a line's `unitPrice`, `totalPrice` and `requestedPrice` in
- * the quote's own tax space, and that space is `gross` on all 36 quotes of the
- * live shop: summed `totalPrice` equals `amount_total`, never `amount_net`. The
+ * the quote's own tax space, and that space is typically `gross`: summed
+ * `totalPrice` equals `amount_total`, never `amount_net`. The
  * bridge's read model is net throughout — `QuoteTotals::totalNet` comes from
  * `amountNet` — so a gross quote's lines get their tax taken off here.
  *

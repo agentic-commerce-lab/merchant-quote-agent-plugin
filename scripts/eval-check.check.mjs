@@ -106,7 +106,7 @@ assert.equal(status(h9Rounding(rounded('quote_total', 5, 95.8, 115))), 'pass');
 assert.equal(status(h9Rounding(rounded('quote_total', 5, 95.8, 113.05))), 'fail');
 assert.equal(status(h9Rounding(rounded('quote_total', 5, 85, 101.15, { buyerAsk: 'Can you get to 15.0% off?' }))), 'pass'); // the buyer's own figure is left unrounded (QuoteTotalRounding)
 assert.equal(status(h9Rounding([row()])), 'n/a');
-// The writes DiscountRounding deliberately leaves unrounded (a 0.5 step, as sw-ag.dev runs):
+// The writes DiscountRounding deliberately leaves unrounded (a 0.5 step, as a shop may run):
 assert.equal(status(h9Rounding(rounded('discount_percent', 0.5, 91.2, 108.53, { buyerAsk: 'Can you get to 8.8% off?' }))), 'pass'); // the buyer's own figure
 assert.equal(status(h9Rounding(rounded('discount_percent', 0.5, 91.2, 108.53, { buyerAsk: 'Can you get to 8,8 % off?' }))), 'pass'); // a decimal comma
 assert.equal(status(h9Rounding(rounded('discount_percent', 0.5, 91.2, 108.53))), 'fail'); // asked 5%, wrote 8.8%: not on the step, not theirs
@@ -116,7 +116,7 @@ const held = [
     row({ round: 2, policy: policy({ roundingMode: 'discount_percent', roundingStep: 0.5 }), totalNetBefore: 87.8, totalNetAfter: 87.7, linesBefore: quoteWide(87.8), linesAfter: quoteWide(87.7), buyerAsk: 'A little more?' }),
 ];
 assert.equal(status(h9Rounding(held)), 'pass');
-// A buyer's figure given as a unit price, as sw-ag.dev's exactly-at-the-ceiling run showed: 735.59 gross is 15% off
+// A buyer's figure given as a unit price, as an exactly-at-the-ceiling run showed: 735.59 gross is 15% off
 // 865.40 gross; the agent wrote 14.99% (read back as 14.9898% through the cent), which PHP left unrounded.
 const ceilingLine = (unitPriceNet) => line({ quantity: 1, unitPriceNet, totalNet: unitPriceNet, netRatio: 0.8403362606886989 });
 const ceiling = (ask) => [row({ policy: policy({ roundingMode: 'discount_percent', roundingStep: 0.5 }), totalNetBefore: 727.23, totalNetAfter: 618.22, totalGrossBefore: 865.4, totalGrossAfter: 735.68, buyerAsk: ask, linesBefore: [ceilingLine(727.23)], linesAfter: [ceilingLine(727.23), line({ lineItemId: 'd', productId: null, quantity: 1, unitPriceNet: -109.01, totalNet: -109.01 })] })];
