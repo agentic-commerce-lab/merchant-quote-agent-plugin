@@ -1,68 +1,53 @@
-# Merchant Quote Agent Plugin
+# Merchant Quote Agent
 
-A Shopware 6.7 plugin that negotiates B2B quotes on the merchant's behalf,
-within limits the merchant sets, and hands a human anything outside them.
+A Shopware 6.7 extension that answers your B2B customers' price requests on
+quotes for you. It works only inside the limits you set, and it hands every
+other request to a person on your team.
 
-It sits on top of SwagCommercial's B2B QuoteManagement. When a buyer asks for a
-discount, the plugin reads the ask, checks it against the merchant's configured
-bands, has a model choose the numbers inside that band, writes the offer,
-verifies what actually landed in the database, and replies. Every failure
-escalates; nothing falls back to negotiating without a policy check.
+- **It never goes past your cap.** You set the largest discount it may give.
+  Ordinary code checks every offer against your limits before it is saved and
+  again after. An offer above your limits is thrown away, and a person takes
+  over the quote.
+- **Anything that isn't about price goes to a person.** That includes shipping,
+  payment terms and changes to the products on the quote. The agent tells the
+  customer a colleague will follow up and puts the quote in front of you. If a
+  request is unclear, it first asks the customer one short question.
+- **Every decision is logged.** A dashboard shows what it offered, what it
+  escalated and why.
+- **It starts switched off.** A fresh install answers nothing until you turn it
+  on and set a discount limit.
 
-**Agentic Commerce is optional.** Install it and buyer agents can request and
-negotiate quotes themselves over UCP. Leave it out and the agent still services
-every quote a buyer creates by hand in the storefront — same policy, same
-replies, same escalations, same decision log. What is not registered without it
-is listed under
-[Without Agentic Commerce](docs/end-to-end.md#11-without-agentic-commerce).
+## What you need
 
-**The shopping-assistant-starter-kit is optional the same way.** Install it and
-a shopper chatting with the storefront assistant can ask it to request a quote
-on their cart and check what happened to one they already have — the same
-servicing loop answers either way, unaware whether the ask came from a form or
-a chat message. Reading a quote's status is always on; requesting one waits on
-its own toggle, `assistantQuoteRequests`, off by default, because it acts in
-the buyer's name rather than the buyer's own click. Leave the starter kit out
-and neither tool exists to be gated. See
-[The shopping assistant](docs/end-to-end.md#12-the-shopping-assistant).
-
-**Building or operating it? [`docs/end-to-end.md`](docs/end-to-end.md)** — the
-full process with a TL;DR at the top: triggers, the pass, the model calls,
-escalation, configuration, the dashboard, the A2CN evidence trail, and running
-it in production.
-
-**Running the shop? [`docs/for-merchants.md`](docs/for-merchants.md)** — the same
-story without the code: what to set up, how it decides, what always goes to a
-person, what it costs, and what reaches your AI provider.
-
-## Requirements
-
-- Shopware core **6.7.1** or newer
-- **SwagCommercial 6.7.1.2** or newer, with B2B quote management licensed
-  (`QUOTE_MANAGEMENT-6302947`) — its version numbers resemble core's but are
-  not the same series
-- A `messenger:consume` worker — nothing is serviced without one
-- An LLM API key, base URL and model name (the merchant's own)
-- **SwagAgenticCommerce** only for the agent-facing surface: the `/ucp/quotes`
-  endpoints, identity linking, the Agent access page and the A2CN evidence
-  layer. Everything else runs without it.
-
-Neither plugin is a Composer dependency; both are detected at runtime, so this
-one installs and runs on a shop that has neither. Both probes read
-`kernel.bundles` — SwagCommercial for `QuoteManagement` (the bundle that owns
-the quote entities; SwagCommercial registers each feature as its own bundle),
-Agentic Commerce for `UcpSdkBundle` — because a class stays loadable after a
-`composer require`d plugin is deactivated, a registered bundle does not. The
-SwagCommercial gate also keeps a class check on the side, against the
-`@internal` classes this bridge is written to. See
-[ADR 0001](docs/adr/0001-runtime-plugin-dependencies.md) and its 2026-09-10
-amendment.
+| | |
+| --- | --- |
+| **Shopware** | 6.7.1 or newer, on PHP 8.3 or newer |
+| **B2B quotes** | SwagCommercial 6.7.1.2 or newer, with quote management licensed (`QUOTE_MANAGEMENT-6302947`). The agent works on the quotes this feature creates. |
+| **An AI provider** | Your own API key, base URL and model name. OpenAI and any OpenAI-compatible endpoint work (Azure, your own gateway, a model you host). You pay the provider directly. |
+| **A background worker** | `bin/console messenger:consume` must be running. Without it the agent receives requests and never answers them. A silent agent is most often missing this. |
+| *Optional:* **Agentic Commerce** | Only if your customers' own AI assistants should request and negotiate quotes directly. Everything else works without it. |
+| *Optional:* **Shopping assistant starter kit** | Lets shoppers ask the storefront chat assistant about their quotes. |
 
 ## Install
 
-CI packages an installable zip on every merge to main (*Plugin Zip* workflow).
-It carries the compiled administration bundle but no `vendor/`. The shop needs
-Composer >= 2.10.0.
+1. **Download the plugin zip.** Open the repository's *Actions* tab, pick the
+   latest successful **Plugin Zip** run on `main`, and download the
+   `MerchantQuoteAgentPlugin` artifact. You need to be signed in to GitHub, and
+   each download stays available for 30 days.
+2. **Upload it.** In the Administration go to **Extensions → My extensions →
+   Upload extension** and choose the zip.
+3. **Install and activate** *Merchant Quote Agent* from the same list.
+
+The upload fetches the plugin's libraries with Composer inside the web request.
+For that to work, the shop's `composer.json`, `composer.lock` and `vendor/`
+must be writable by the web server. PHP's `memory_limit` and
+`max_execution_time` must also allow a dependency install. If your host doesn't
+allow that, have your developer install from the command line instead.
+
+<details>
+<summary>Installing from the command line (for your developer)</summary>
+
+Needs Composer 2.10.0 or newer.
 
 ```bash
 unzip MerchantQuoteAgentPlugin.zip -d /path/to/shop/custom/plugins/
@@ -74,199 +59,58 @@ bin/console plugin:install --activate MerchantQuoteAgentPlugin
 bin/console cache:clear
 ```
 
-Both the `composer require` and the `rm` matter, and skipping either fails in a
-way that does not name this plugin.
-[Installing into a shop](docs/end-to-end.md#9-installing-into-a-shop) explains
-why, and what installing from the administration does differently.
+Don't skip the `composer require` or the `rm`. Either one fails later with an
+error that doesn't mention this plugin, and the missing `rm` stops the whole
+shop from booting.
+[Installing into a shop](docs/end-to-end.md#9-installing-into-a-shop)
+explains both.
 
-**The agent ships switched off.** `enabled` is false and `maxDiscountPercent`
-is `0`, so a fresh install answers nothing and an enabled channel with no bands
-escalates everything. Configure it under **Settings → Extensions → Merchant
-Quote Agent**, per sales channel — see
-[Configuration](docs/end-to-end.md#6-configuration).
+</details>
 
-## Development
+## Set it up
 
-### Test shop
+Everything is under **Settings → Extensions → Merchant Quote Agent**. Every
+setting can differ per sales channel. A good start is a cautious policy
+everywhere, turned on for one sales channel first.
 
-The integration suite (`tests/Integration`) runs against a real Shopware with
-SwagCommercial. This repo defines that shop, and every worktree shares the one
-container.
+1. **Model settings:** enter your **LLM API key**, the **LLM base URL** (leave
+   the default for OpenAI) and the **Model name**. The model name has no
+   default: you choose the cost and quality. If the key or the model is
+   missing, every quote goes to a person.
+2. **Negotiation policies:** set the **Maximum discount (%)**. It starts at
+   `0`, which sends every price request to a person. Start low. Optional
+   limits:
+   - **Counter-offer ceiling (%):** asks above your maximum but within this
+     ceiling get a counter-offer at your maximum instead of going to a person.
+   - **Minimum margin on purchase price (%):** the agent never offers less
+     than a product's purchase price plus this markup.
+   - **Maximum quote value for negotiation (net):** larger quotes always go to
+     a person. It's set per currency.
+   - **Round the agent's offers:** makes the offers read like round numbers.
+   - **Default offer validity (days):** how long an offer stays valid.
+3. **Negotiation strategy** (optional): choose a tone. The built-in strategies
+   are *Margin defender*, *Fast close* and *Relationship builder*. You can
+   also duplicate one and write your own. A strategy changes how the agent
+   words and paces its offers. It never changes your limits.
+4. **Agent activation:** tick **Enable the quote agent**. You can also turn
+   on **Draft Mode**, which holds every reply until you approve it. That's a
+   safe way to watch the agent before you let it answer customers directly.
 
-```bash
-cp docker/.env.example ~/.cache/merchant-quote-shop/.env   # fill licence + admin password
-scripts/shop-setup.sh                                     # first run: ~10 minutes
-composer run test:integration                             # from any worktree
-```
+What always goes to a person, what the dashboard shows and what the AI
+provider sees are all in the merchant guide below.
 
-`shop-setup.sh` is idempotent — rerun it after any failure. It downloads
-SwagCommercial 7.13.1 and Agentic Commerce 1.3.0 from their GitHub releases
-(`gh auth login` first; SwagCommercial's repo is private). Without access, put
-the two zips into `~/.cache/merchant-quote-shop/plugins/` by hand and rerun —
-which is the only route while Agentic Commerce 1.3.0 is unreleased. Anything
-older than 1.3.0 fails the container build against this plugin's SDK floor; see
-docs/end-to-end.md §9.
-The database is seeded from a dump of the previous shop; ask a colleague for
-`~/.cache/merchant-quote-shop/seed/shopware.sql.gz` if it is gone.
+## Learn more
 
-| What | Where |
-|---|---|
-| Shop / admin | http://localhost:8095 (`SHOP_URL`, `SHOP_PORT`) — admin user from `.env` |
-| Caught mail | http://localhost:8096 (`SHOP_MAIL_PORT`) — the flows mail on `in_review` and `replied` |
-| Container | `merchant-quote-shop` (`SHOP_CONTAINER` to target another) |
-| State | `~/.cache/merchant-quote-shop/` (`MQ_SHOP_HOME`): `.env`, `plugins/`, `seed/` — never committed |
-| Shipping probe | `scripts/shop-check-shipping.sh` |
+| Guide | For |
+| --- | --- |
+| [**Merchant guide**](docs/for-merchants.md) | Whoever runs the shop. Setup in detail, how it decides, what always goes to a person, the dashboard, costs and data. No code. |
+| [Costs and data](docs/for-merchants.md#costs-and-data) | What reaches your AI provider, and what the anonymized export sends. Read it before running `merchant-quote-agent:export`. |
+| [End to end](docs/end-to-end.md) | Developers and operators. The full process, configuration reference and running it in production. |
+| [Without Agentic Commerce](docs/end-to-end.md#11-without-agentic-commerce) | What changes when the optional extension is not installed. |
+| [The shopping assistant](docs/end-to-end.md#12-the-shopping-assistant) | The optional storefront chat integration. |
+| [Development](docs/development.md) | Working on the plugin: test shop, checks, evals. |
+| [Architecture decisions](docs/adr/) | Why it is built the way it is. |
 
-**Mail transport (#170).** This docker shop already has one: `MAILER_DSN`
-points at the `mailcatcher` container, which is what lets the `in_review` and
-`replied` flows show up at the "Caught mail" URL above. A shop built any other
-way — a bare `bin/console system:install`, a manual dev VM, a hand-rolled test
-shop — defaults to no transport at all (`mailer.dsn: 'null://null'` unless
-something sets it), and mail sent there vanishes silently: no error, no
-bounce, nothing in a log unless the sender happens to catch and report it.
-`ShopwareEscalationNotifier`'s Administration notification does not depend on
-mail and always works; the escalation flow this plugin ships
-(`Migration1789500001SeedEscalationMailAndFlow`, disabled by default — enable
-it in Flow Builder) does, so before concluding an escalation email is broken,
-confirm `MAILER_DSN`/`mailer.dsn` actually points somewhere on the shop under
-test.
+## License
 
-Every integration test runs inside a rolled-back transaction, so the seed stays
-as it was.
-
-The buyer-history tests need orders for at least two quote customers sharing a
-product. Populate the shop once after syncing:
-
-```bash
-scripts/sync-to-shop.sh
-docker exec merchant-quote-shop php8.3 /var/www/html/bin/console cache:clear --env=dev --no-debug
-docker exec -e APP_ENV=dev merchant-quote-shop php8.3 \
-  /var/www/html/custom/plugins/MerchantQuoteAgentPlugin/scripts/seed-order-history.php --per-customer=4
-```
-
-That creates quotes and orders through Commercial's real checkout flow with
-dates spread over 18 months. It prints the target database before writing,
-refuses production environments, skips existing seed slots on rerun, and
-suppresses mail and agent servicing. Existing quotes are left alone.
-
-Touched anything under `src/Resources/app/administration`? `sync-to-shop.sh`
-only pushes sources, so compile the bundle in the container:
-
-```bash
-docker exec merchant-quote-shop bash -lc 'cd /var/www/html && ./bin/build-administration.sh'
-```
-
-Skip it and the admin keeps serving the previous build. If the compiled bundle
-goes missing entirely, Shopware drops the module without a word and its routes
-render a blank administration rather than an error.
-
-### Checks
-
-```bash
-composer run test        # unit suite, no kernel
-composer run quality     # format, lint, typecheck, file size, admin checks, dupes, deps, audit
-```
-
-`composer run quality:admin` runs the administration module's assert-based
-self-checks, which stand in for a JS test runner the project deliberately does
-not have. Conventions and the per-change checks are in
-[`AGENTS.md`](AGENTS.md).
-
-Those self-checks reach only the three extracted pure modules. The components
-are covered by a second command, which needs the test shop:
-
-```bash
-composer run quality:admin:shop                      # vue-tsc + ESLint, in the shop
-composer run quality:admin:shop -- --verbose         # show the baselined findings
-composer run quality:admin:shop -- --fix             # apply the ESLint autofixes
-```
-
-It syncs this checkout into the shop and runs Shopware's own extension
-toolchain against the live installed Administration types — the only surface
-that carries the real `Repository` class, so it catches a call to a method that
-does not exist. It is not part of `composer run quality` and does not run in
-CI, because the entity schema it needs is generated from a live database.
-
-The plugin's 677 pre-existing findings are recorded in
-`.shopware-admin-baseline.json`, so the check fails only on new ones. It does
-**not** validate icon names (`icon` is typed `string`) and nothing renders a
-component, so a method that type-checks and throws at runtime still ships. A
-change that both fixes one occurrence of a baselined message and introduces a
-new, unrelated occurrence of the identical message in the same file leaves the
-recorded count unchanged and so is not reported either.
-
-Two guards are skipped unless you have the relevant clone beside this
-repository: `CoreFloorCompatibilityTest` needs `shopware/shopware` (or
-`MQ_CORE_CLONE`) to confirm nothing in `src/` uses a core API newer than the
-6.7.1 floor, and `ReleaseCapabilityMatrixTest` needs a SwagCommercial clone to
-confirm the capability matrix still matches what each release declares.
-
-## Evals
-
-`composer run eval` answers "is the negotiation logic on the shop still correct?". It plays every scenario in `tests/Bench/scenarios/` three times as an external UCP buyer against the deployed shop in `EVAL_SHOP_URL`, with no SSH involved. It reads the agent's decisions back through the Admin API, checks the money in code, lets Claude Code judge the replies, and exits 0 (all pass), 1 (a scenario failed) or 2 (inconclusive).
-
-It tests the **deployed** plugin: deploy a branch before you evaluate it.
-
-One-time setup:
-
-1. Claim an ngrok static domain and add it to the shop's *Agent access → Profile hosts*.
-2. Create an Admin API integration with read on `merchant_quote_agent_decision`, `merchant_quote_agent_trace`, `sales_channel`, `sales_channel_domain` and `plugin`, read, update, create and delete on `system_config` (a restore to `null` deletes the key), and read and update on `product`.
-3. Pick a storefront customer with `QUOTE_MANAGEMENT`.
-4. Put the five required variables in `.env.eval` at the repo root (git-ignored; `chmod 600` it), so the secret never lands on a command line or in shell history:
-
-```
-EVAL_SHOP_URL=https://<your-shop>
-EVAL_ADMIN_CLIENT_ID=...
-EVAL_ADMIN_CLIENT_SECRET=...
-EVAL_NGROK_DOMAIN=<your-domain>.ngrok-free.app
-EVAL_PRODUCT_ID=<product uuid>
-```
-
-5. Run the setup, which opens the shop's consent page for that customer:
-
-```bash
-composer run eval:setup
-```
-
-Every run:
-
-```bash
-composer run eval
-```
-
-The buyer loads `.env.eval` itself; a variable already set in your environment wins over the file.
-
-Optional variables: `EVAL_REPS` (3), `EVAL_PARALLEL` (4), `EVAL_PASS_TIMEOUT` (180 s), `EVAL_STANDDOWN_WAIT` (60 s), `EVAL_PROFILE_PORT` (8787), and `EVAL_TAX_STATUS` (`gross` or `net`, default `gross`: the price space `{unit*f}` placeholders render in; a run whose quote prices the unit differently fails that negotiation). The judge and report settings are listed in the header of `scripts/eval.sh`.
-
-Every scenario carries `tags` (`band`, `floor`, `rounding`, `multi-round`, ...). `EVAL_TAGS=floor,rounding composer run eval` runs only the scenarios carrying any listed tag; a tag no scenario carries stops the run at preflight.
-
-Four scenarios need settings the shop doesn't have by default (a margin floor, rounding, a zero cap). They change the shop's config for about a minute each, then restore it. After a hard crash, run `composer run eval:restore var/eval/<runId>`.
-
-Output goes to `var/eval/<runId>/`:
-
-- `verdict.json`: the result, with the pass rate per tag (`tags`) and a `usage` block per scenario and run-wide: the shop model's prompt and completion tokens, passes, the buyer's wait per round (to the nearest 5 s poll), the shop's own duration per pass, and the judge's cost in USD;
-- `report.md`: Claude's write-up;
-- `runs.jsonl`: every decision row;
-- `judgments/`: the judge's answers.
-
-To re-judge without new negotiations: `composer run eval -- --from=judge var/eval/<runId>`.
-
-To turn a real problem quote into a regression scenario:
-
-```bash
-composer run eval:promote -- 1101                          # quote number or id; the draft on stdout
-composer run eval:promote -- 1101 --write my-new-scenario  # tests/Bench/scenarios/my-new-scenario.json
-```
-
-It reads the quote's decision rows and traces with the same Admin API credentials and prints a draft: lines, the buyer's asks (unit prices become `{unit*f}`), counters, `maxRounds`, and policy overrides against the eval defaults. It leaves `expect` out on purpose: the loader refuses a scenario without `expect.firstOutcome`, so a draft cannot run, or pass `quality:bench`, until you decide what should have happened. What the quote did is in the description. On stderr it lists what it could not carry over: `counterOfferMaxPercent`, `minMarginPercent` and the purchase price are today's values, not the quote's (the cap comes from the decision row, rounding from its trace when rounding ran); every line becomes `EVAL_PRODUCT_ID`, and discount lines are dropped; rounds without a buyer comment and rounds after an escalation are not replayed; and the customer's history, strategy and model are not reproduced.
-
-## Documentation
-
-| Document | What it covers |
-|---|---|
-| [`docs/end-to-end.md`](docs/end-to-end.md) | **The whole process, with a TL;DR.** Start here if you build or operate it. |
-| [`docs/for-merchants.md`](docs/for-merchants.md) | **The same story for whoever runs the shop.** No code: setup, decisions, escalations, costs, data. |
-| [`docs/for-merchants.md#costs-and-data`](docs/for-merchants.md#costs-and-data) | **What the anonymized export sends, and what it never does.** Read before running `merchant-quote-agent:export`. |
-| [`docs/adr/`](docs/adr/) | Architectural decisions. |
-| [`docs/evals-design.md`](docs/evals-design.md) | What each negotiation-eval check (H1–H9, J1–J5) means. |
-| [`docs/2026-08-25-quote-agent-shopware-plugin-design.md`](docs/2026-08-25-quote-agent-shopware-plugin-design.md) | Why this is a plugin rather than a hosted app. |
+[MIT](LICENSE)
