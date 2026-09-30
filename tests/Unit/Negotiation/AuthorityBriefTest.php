@@ -58,7 +58,7 @@ final class AuthorityBriefTest extends TestCase
     public function testVolumeTiersAreNotSuggestedToTheModel(): void
     {
         // The tier used to be published here as guidance and the model anchored
-        // on it: quote 1017 answered a 2.70% ask with 5% and said so outright —
+        // on it: a 2.70% ask was answered with 5%, and it said so outright —
         // "In line with our volume tier for purchasing 10 or more units per
         // item". The tier configuration is gone entirely now; this asserts the
         // word cannot come back into the brief with it.

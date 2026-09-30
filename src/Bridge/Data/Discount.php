@@ -13,7 +13,7 @@ namespace MerchantQuoteAgentPlugin\Bridge\Data;
  * - `Percentage`: a percentage, so tax-state invariant. 5% off gross is 5% off
  *   net; nothing to convert either way.
  * - `Absolute`: an amount denominated in the QUOTE'S OWN TAX STATE, i.e. gross
- *   on a `taxStatus = gross` quote (all 36 on the live shop). Shopware makes
+ *   on a `taxStatus = gross` quote. Shopware makes
  *   that choice, not us: QuoteDiscountProcessor::calculateAbsoluteDiscount()
  *   hands the value to AbsolutePriceCalculator, which builds a
  *   QuantityPriceDefinition whose `$isCalculated` defaults to true, so

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Turns one real quote's decision records into a draft scenario (spec
- * 2026-09-28-claude-code-evals-design, addendum 2026-09-29). Two plugin bugs
+ * Turns one real quote's decision records into a draft scenario
+ * (docs/evals-design.md, addendum 2026-09-29). Two plugin bugs
  * were each found from a single live quote; this makes such a quote a
  * regression scenario.
  *
@@ -151,12 +151,12 @@ async function main(args) {
     }
     // Same credentials as the eval buyer: `.env.eval`, with the environment winning.
     if (existsSync('.env.eval')) process.loadEnvFile('.env.eval');
-    const { EVAL_ADMIN_CLIENT_ID: clientId, EVAL_ADMIN_CLIENT_SECRET: clientSecret } = process.env;
-    if (!clientId || !clientSecret) {
-        console.error('promote: EVAL_ADMIN_CLIENT_ID and EVAL_ADMIN_CLIENT_SECRET must be set');
+    const { EVAL_SHOP_URL: shopUrl, EVAL_ADMIN_CLIENT_ID: clientId, EVAL_ADMIN_CLIENT_SECRET: clientSecret } = process.env;
+    if (!shopUrl || !clientId || !clientSecret) {
+        console.error('promote: EVAL_SHOP_URL, EVAL_ADMIN_CLIENT_ID and EVAL_ADMIN_CLIENT_SECRET must be set');
         process.exit(64);
     }
-    const shop = (process.env.EVAL_SHOP_URL || 'https://sw-ag.dev').replace(/\/$/, '');
+    const shop = shopUrl.replace(/\/$/, '');
     const { scenario, notes } = await promote(adminClient({ shop, clientId, clientSecret }), ref, id);
     const json = `${JSON.stringify(scenario, null, 4)}\n`;
     if (id) {

@@ -11,7 +11,7 @@ use MerchantQuoteAgentPlugin\Policy\Data\QuoteSnapshot;
  * How much discount the buyer actually asked for, as a percentage of the
  * quoted total — the ceiling the agent may not exceed.
  *
- * Quotes 1017 and 1018 both gave away margin nobody requested: 2.70% asked
+ * Two quotes both gave away margin nobody requested: 2.70% asked
  * against 5% granted, and 3.41% asked against 5% granted. Every offer check
  * passed, because they all bound against `maxDiscountPercent` and nothing
  * compared the offer with the ask.

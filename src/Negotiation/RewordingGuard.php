@@ -14,7 +14,7 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
  * deciding whether to use it instead are two different jobs, and this one
  * carries all of the guard's branching.
  *
- * Since live quote 1054 the reply prompt also carries the buyer's own newest
+ * The reply prompt also carries the buyer's own newest
  * comment, so the model it guards is now reading untrusted text
  * (`ReplyComposer::userMessage()`). Nothing here was relaxed for it, and
  * nothing should be: a figure the buyer wrote is a figure nobody authorised,

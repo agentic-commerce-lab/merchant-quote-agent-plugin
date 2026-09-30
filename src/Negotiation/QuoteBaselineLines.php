@@ -31,7 +31,7 @@ final readonly class QuoteBaselineLines
      * this (#54); two builders was what let the verify side fall behind the
      * authorize side, so `asReferenceSnapshot()` is gone.
      *
-     * Live quote 1101: the ask was measured against the previous round's
+     * The ask was once measured against the previous round's
      * reduced price (7.10 of 7.19 = 1.25%) while the checks bound the offer
      * against the original (7.10 of 7.99 = 11.14%), so the model was capped
      * at 1.25%, obeyed, and was refused for it. The ceiling, the brief, the
@@ -125,7 +125,7 @@ final readonly class QuoteBaselineLines
      * leaves a stale baseline entry that is simply never looked up.
      *
      * A baseline row matched by id takes the CURRENT line's identity and
-     * requested price (#49 fix 4, quote 1101): the stored row is only a price
+     * requested price (#49 fix 4): the stored row is only a price
      * and a quantity — see QuoteBaseline::stamp() — so without this the
      * checks would name a raw UUID and the ceiling would see no ask at all.
      *

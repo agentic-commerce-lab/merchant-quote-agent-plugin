@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
  * A buyer's ask is measured against the ORIGINAL prices, the same anchor every
  * offer check uses — never against the last round's already-reduced ones.
  *
- * Live quote 1101: round one took 7.99 to 7.19 (10%). In round two the buyer
+ * Round one took 7.99 to 7.19 (10%). In round two the buyer
  * asked 7.10. Measured against 7.19 that is a 1.25% ask, and that is what the
  * model was told and what the checks were tightened to — but the checks bound
  * against the baseline 7.99, where 7.10 is 11.14% off. The model did exactly

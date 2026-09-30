@@ -45,7 +45,7 @@ final readonly class OfferRound
     ): NegotiationPass {
         // The ask itself rather than only its prompt hash: the negotiate
         // prompt needs the total the buyer named, in the net space it prices
-        // in. sw-ag.dev quote 1055 is why — see NegotiationContext.
+        // in. See NegotiationContext for why.
         $extractHash = $ask?->promptHash;
         $context = self::context($snapshot, $ask);
         if ($context->customerId === '') {
@@ -116,7 +116,7 @@ final readonly class OfferRound
         //
         // Measured from the BASELINE, not from this round's opening total. Per
         // round the percentages compound and the conversation stops adding up:
-        // live quote 1019 was told "2%" and then "3%" while actually receiving
+        // one buyer was told "2%" and then "3%" while actually receiving
         // 4.94%, so when the buyer asked for "5% at least" they were already
         // 3.81 EUR away from it and nobody could tell. The baseline is the
         // quote as the buyer first saw it, which is the only total they can
@@ -131,9 +131,8 @@ final readonly class OfferRound
         // For a pass that DID write, OfferApplier's never-raise check has
         // already stopped any write above $applied->beforeNet from being
         // accepted as verified, so the baseline figure below can no longer
-        // describe an increase as a discount the way it did for quotes 1039
-        // and 1048 -- and on the rare case it still disagrees (a stale
-        // pass-start baseline race; see ReductionForPass), PostWriteOutcome
+        // describe an increase as a discount the way it once did -- and on
+        // the rare case it still disagrees (a stale pass-start baseline race; see ReductionForPass), PostWriteOutcome
         // turns it into an escalation instead of letting the exception reach
         // here.
         //

@@ -4,16 +4,15 @@ Date: 2026-09-28
 
 ## Status
 
-Approved in brainstorming 2026-09-28. Stage 1 was redesigned the same day, from an in-shop PHPUnit driver to an external UCP buyer, at the user's direction: "our tests should run via UCP". Planned in `docs/superpowers/plans/2026-09-28-claude-code-evals.md`.
+Implemented. Stage 1 is an external UCP buyer rather than an in-shop PHPUnit driver, so the tests exercise the same API a real buyer agent uses.
 
 ## Context
 
 The user: "We need an EVALs pipeline, to check if the logic is still correct!
 The pipeline should be powered by Claude Code."
 
-The repo already has a negotiation bench (spec
-`2026-09-17-negotiation-bench-design.md`, Track A): `BenchRunTest` runs
-`scenario × strategy × model` against the live sw-ag.dev shop with a synthetic
+The repo already has a negotiation bench: `BenchRunTest` runs
+`scenario × strategy × model` against a live shop with a synthetic
 buyer and writes one JSONL row per decision-record pass. `bench-score.mjs`
 folds that JSONL through the admin's own `measures.ts`.
 
@@ -48,7 +47,7 @@ Recorded verbatim because each closed a fork.
   Claude-as-buyer over the real UCP flow was considered and cut: slower, more
   expensive, and a buyer is not a judge.
 - **On demand, from a laptop, over UCP.** One command, using the developer's
-  own Claude Code login. Stage 1 is an external buyer against sw-ag.dev over
+  own Claude Code login. Stage 1 is an external buyer against the deployed shop over
   public HTTPS plus the Admin API, with no SSH. It evaluates the deployed
   plugin. Nightly and per-PR runs are follow-ups that wrap the same command.
 - **Settings scenarios write the shop's config, then restore it.** 4 of 21
@@ -81,7 +80,7 @@ Recorded verbatim because each closed a fork.
 composer run eval            (scripts/eval.sh — on demand, no SSH)
  │
  ├─ 0. Preflight  env, Admin + buyer tokens, tunnel, product, shop policy 15/25, judge canary
- ├─ 1. UCP bench  node scripts/eval/buyer.mjs run: 21 scenarios × 3 reps against sw-ag.dev
+ ├─ 1. UCP bench  node scripts/eval/buyer.mjs run: 21 scenarios × 3 reps against the shop
  │                phase A shop defaults (parallel), phase B settings scenarios (write → run → restore)
  │                → var/eval/<runId>/runs.jsonl
  ├─ 2. Check      node scripts/eval-check.mjs check   → checks.json     (no LLM)
@@ -116,7 +115,7 @@ of `quality`: they cost money and need the shop.
 
 ## Stage 1 — the UCP buyer
 
-Stage 1 is an external buyer agent, `scripts/eval/buyer.mjs`, that negotiates with sw-ag.dev over its public UCP API and reads what the agent decided back through the Admin API. It needs no SSH and puts no code on the shop. It therefore evaluates **the plugin version deployed on the shop**, using the shop's own configured model and strategy. To evaluate a branch, deploy it there first; `run.json` records the deployed plugin version it saw.
+Stage 1 is an external buyer agent, `scripts/eval/buyer.mjs`, that negotiates with the shop (`EVAL_SHOP_URL`) over its public UCP API and reads what the agent decided back through the Admin API. It needs no SSH and puts no code on the shop. It therefore evaluates **the plugin version deployed on the shop**, using the shop's own configured model and strategy. To evaluate a branch, deploy it there first; `run.json` records the deployed plugin version it saw.
 
 Decided 2026-09-28, replacing the in-process `EvalRunTest` design this spec first described. That design exercised the negotiation logic of an unmerged branch. This one exercises the path a real buyer takes: UCP, the servicing trigger, the Messenger worker, the lock, and reply delivery.
 
@@ -138,7 +137,7 @@ The Python tool `scripts/ucp-quote-agent.py` stays as it is: it is the interacti
 
 Setup needs these, all supplied by the user:
 - an **ngrok static domain** in `EVAL_NGROK_DOMAIN`;
-- that host on sw-ag.dev's *Agent access → Profile hosts* allowlist, for the storefront sales channel;
+- that host on the shop's *Agent access → Profile hosts* allowlist, for the storefront sales channel;
 - a storefront customer with `customer_specific_features {"QUOTE_MANAGEMENT": true}`;
 - an Admin API integration with a role granting:
   - read on `merchant_quote_agent_decision` and `merchant_quote_agent_trace`;
@@ -168,7 +167,7 @@ What setup does:
 - the effective shop config for the storefront sales channel is:
   - `enabled` on, `draftMode` off, `notifyBuyerOnEscalation` on;
   - `maxDiscountPercent` 15 and `counterOfferMaxPercent` 25, because every expectation in the scenario set assumes those values;
-  - a shop-wide `minMarginPercent` or rounding is allowed and reported (decided 2026-09-29 against sw-ag.dev, which runs a 10% floor and a 0.5-point `discount_percent` step): H3 checks the floor against the eval product's own purchase price, and H9 checks the rounding with `DiscountRounding`'s skips;
+  - a shop-wide `minMarginPercent` or rounding is allowed and reported (for example a 10% floor and a 0.5-point `discount_percent` step): H3 checks the floor against the eval product's own purchase price, and H9 checks the rounding with `DiscountRounding`'s skips;
 - every scenario file validates;
 - the judge canary passes.
 
@@ -181,7 +180,7 @@ What setup does:
 4. Run the scenario's 3 reps in parallel.
 5. Restore from `restore.json`. This happens on a normal finish, on an error, and on SIGINT or SIGTERM. After a hard crash, `composer run eval:restore var/eval/<runId>` replays the file.
 
-Other buyers on sw-ag.dev see the overrides for as long as each phase-B scenario runs, about a minute each. This was accepted by the user.
+Other buyers on the shop see the overrides for as long as each phase-B scenario runs, about a minute each, so point evals at a shop without real buyers.
 
 **One negotiation:**
 
@@ -507,13 +506,13 @@ fails, `eval.sh` still prints the verdict table itself, from `verdict.json`.
   `expect.firstOutcome`, and asserts that no shipped file still carries
   `expectedBand`.
 - **The judge prompt** is tested by the canary, on every run.
-- **First real run** against sw-ag.dev, once implementation is complete. Its
+- **First real run** against the shop, once implementation is complete. Its
   `report.md` is attached to the PR. Any failing scenario is triaged with the
   user before merge.
 
 ## Cost and time
 
-Measured on the first live run (`eval-20260929-075002-113a05`, 2026-09-29, sw-ag.dev, plugin 1.0.113, `google/gemini-3.7-flash`, 1 rep):
+Measured on the first live run (plugin 1.0.113, `google/gemini-3.7-flash`, 1 rep):
 
 - **Wall-clock:** 14 min for 21 negotiations (42 passes), including the canary, the judging and the report. A pass took about 10–20 s on the live worker. Expect about 35–40 min at 3 reps.
 - **Agent tokens (the shop's key):** 175,516 prompt + 71,455 completion across the 42 passes.

@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * A refused proposal has to say WHY in the audit row.
  *
- * Live quote 1019 escalated with `authorized: 0` and
+ * A quote escalated with `authorized: 0` and
  * `escalation_reason: proposal_rejected`, and `violations` was NULL — while an
  * APPROVED round recorded `[]`. The reason string reaches
  * ProposedAnswer::escalate() and was then dropped, and the matching log line

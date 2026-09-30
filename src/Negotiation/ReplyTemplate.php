@@ -103,7 +103,7 @@ final class ReplyTemplate
      * The answer to a comment that held no ask: the quote as it stands, and
      * the two things the buyer can do with it. Without a reply the quote never
      * leaves `change_requested`, and over UCP a buyer can neither accept nor
-     * counter from there (live quote 1056).
+     * counter from there.
      *
      * The validity sentence is dropped rather than invented when the quote has
      * no expiry: this restates the quote, it does not add a term to it.

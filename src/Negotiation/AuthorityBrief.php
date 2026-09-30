@@ -18,7 +18,7 @@ use MerchantQuoteAgentPlugin\Policy\MoneyMath;
  * model to offer and nothing for the brief to permit.
  *
  * It also used to publish the volume tiers, which the model read as a floor to
- * volunteer rather than a rate to honour when asked -- quote 1017 answered a
+ * volunteer rather than a rate to honour when asked -- one round answered a
  * 2.70% ask with 5% and cited the tier while doing it. A published tier is a
  * mandate claim, not negotiating authority, so it is stated in the signed
  * mandate and not here.

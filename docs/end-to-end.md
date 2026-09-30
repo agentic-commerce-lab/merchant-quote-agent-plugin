@@ -2,9 +2,8 @@
 
 How a B2B quote gets negotiated by this plugin, from the moment a buyer asks
 for one to the moment a merchant reads the result on the dashboard. This is the
-operator's and integrator's reference; the design record lives in
-`docs/superpowers/specs/`, and the one architectural decision that shapes
-everything else is [ADR 0001](adr/0001-runtime-plugin-dependencies.md).
+operator's and integrator's reference; the one architectural decision that
+shapes everything else is [ADR 0001](adr/0001-runtime-plugin-dependencies.md).
 
 Writing for the person who runs the shop rather than the code? Send them to
 [`for-merchants.md`](for-merchants.md), which covers the same ground with no

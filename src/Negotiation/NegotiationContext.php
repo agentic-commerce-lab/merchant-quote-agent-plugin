@@ -32,7 +32,7 @@ final readonly class NegotiationContext
          * layer adopts them (CommentTargetMerger::adopted()), net. #222: the
          * prompt's "buyer asks per unit net" column read only the storefront
          * field, so a price typed in the comment reached the model solely as
-         * the buyer's gross sentence (sw-ag.dev quote 1202).
+         * the buyer's gross sentence.
          *
          * @var array<string, float> line item id => target unit price, net
          */

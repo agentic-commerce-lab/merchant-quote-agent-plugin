@@ -551,9 +551,8 @@ final class CellSettings
     }
 
     /**
-     * The bands hoelshare's own `system_config` carries (see the design
-     * spec's "The two tracks use different shops"): generous enough that
-     * scenarios exercise them instead of bouncing off a ceiling.
+     * The bands the bench shop's `system_config` carries: generous enough
+     * that scenarios exercise them instead of bouncing off a ceiling.
      * `QuoteAgentSettings` is built directly here rather than read from
      * config -- writing to `system_config` per cell would race any other
      * session on the shop -- so this mirrors that shop's config by hand

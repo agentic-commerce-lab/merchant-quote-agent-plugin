@@ -39,7 +39,6 @@ import webbrowser
 
 UCP_VERSION = "2026-08-25"
 KID = "quote-test-agent"
-DEFAULT_SHOP = "https://agenticquote-shoelscher.eu-core-1.shopdev.de"
 QUOTE_CAPABILITY = "com.shopware.quote"
 SHOPPING_SERVICE = "dev.ucp.shopping"
 IDENTITY_CAPABILITY = "identity_linking"
@@ -812,7 +811,7 @@ if __name__ == "__main__":
 
     try:
         run(
-            (args.shop or ask("Shop address", DEFAULT_SHOP)).rstrip("/"),
+            (args.shop or ask("Shop address") or sys.exit("[fatal] no shop address given")).rstrip("/"),
             product_query=args.product,
             quantity_opt=args.quantity,
             asking_price_opt=args.asking_price,

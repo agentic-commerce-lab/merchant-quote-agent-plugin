@@ -30,7 +30,7 @@ final readonly class CommercialQuoteSnapshotMapper
      * same soft-dependency seam SwagCommercialProductAdder suppresses at one
      * call, scaled up because one snapshot touches many fields. There is no
      * SwagCommercial type to narrow to; BuyerQuoteFlowTest proves the mapping
-     * is correct against the live shop.
+     * is correct against a real shop.
      */
     public function toSnapshot(object $quote): QuoteSnapshot
     {
@@ -54,7 +54,7 @@ final readonly class CommercialQuoteSnapshotMapper
      * @mago-expect analysis:less-specific-nested-return-statement
      * `$quote->getLineItems()` and every field on each item are untyped
      * SwagCommercial values — no type to narrow to; BuyerQuoteFlowTest proves
-     * the shape against the live shop.
+     * the shape against a real shop.
      *
      * @return list<array{id: string, product_id: string|null, label: string, quantity: int, unit_price: float, total_price: float, requested_unit_price: float|null}>
      */
@@ -87,7 +87,7 @@ final readonly class CommercialQuoteSnapshotMapper
      * @mago-expect analysis:less-specific-nested-return-statement
      * `$quote->getComments()` and every field on each comment are untyped
      * SwagCommercial values — no type to narrow to; BuyerQuoteFlowTest proves
-     * the shape against the live shop.
+     * the shape against a real shop.
      *
      * @return list<array{comment: string, author: string, created_at: string|null}>
      */

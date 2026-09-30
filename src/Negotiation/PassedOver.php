@@ -15,7 +15,7 @@ use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
  * model mis-read as empty) is acknowledged. Silence there dead-ended the
  * buyer: the comment had moved the quote to `change_requested`, only a reply
  * moves it back to `replied`, and over UCP a buyer can neither accept nor
- * counter until it does (live quote 1056). It is still not an escalation --
+ * counter until it does. It is still not an escalation --
  * #167 exists so that "thanks" never reaches a human.
  *
  * Silent `NothingToDo` is left for one case: no comment was read at all (a

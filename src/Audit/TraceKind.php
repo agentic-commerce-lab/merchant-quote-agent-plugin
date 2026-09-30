@@ -15,8 +15,6 @@ namespace MerchantQuoteAgentPlugin\Audit;
  * same rule AnonymizedDecision applies to decision columns, enforced at write
  * time instead of at export time. Everything that can carry the buyer's
  * words, a model's words or account data goes into `content` instead.
- *
- * See docs/superpowers/specs/2026-09-23-run-trace-capture-design.md §2.
  */
 enum TraceKind: string
 {

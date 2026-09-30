@@ -184,7 +184,7 @@ final class OfferApplierTest extends TestCase
     }
 
     /**
-     * Issue #174, quote 1039's exact shape. The current total (1818.20) is
+     * Issue #174's exact shape. The current total (1818.20) is
      * already below the stored baseline (2114.56) — an earlier round or a
      * human moved it there. The model prices "5% off" from the BASELINE,
      * landing on 2008.83 — legal against the baseline's 10% cap and a 190.63
@@ -194,7 +194,7 @@ final class OfferApplierTest extends TestCase
      * being accepted as a discount, because the existing baseline-relative
      * check has nothing to say about it.
      */
-    public function testAWriteThatRaisesAboveTheCurrentTotalFailsVerificationQuote1039(): void
+    public function testAWriteThatRaisesAboveTheCurrentTotalFailsVerification(): void
     {
         $before = NegotiationFixture::withCustomFields(
             NegotiationFixture::snapshot(totalNet: 1818.20),
@@ -215,8 +215,8 @@ final class OfferApplierTest extends TestCase
         self::assertSame(1818.20, $applied->beforeNet);
     }
 
-    /** Issue #174, quote 1048's exact shape: same defect, a smaller and easier-to-miss gap. */
-    public function testAWriteThatRaisesAboveTheCurrentTotalFailsVerificationQuote1048(): void
+    /** Issue #174, a second shape: same defect, a smaller and easier-to-miss gap. */
+    public function testAWriteThatRaisesAboveTheCurrentTotalFailsVerificationEvenByASmallGap(): void
     {
         $before = NegotiationFixture::withCustomFields(
             NegotiationFixture::snapshot(totalNet: 8065.58),

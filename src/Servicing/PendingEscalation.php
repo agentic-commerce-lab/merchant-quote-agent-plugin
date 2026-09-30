@@ -33,7 +33,7 @@ final class PendingEscalation
      * Read alone, the marker would
      * keep a quote a human already answered silent for good, and the buyer's
      * "ok, thanks" would park it in `change_requested`, where over UCP they
-     * can neither accept nor counter (quote 1056).
+     * can neither accept nor counter.
      *
      * Only a transition into `replied` counts. A merchant who moved the quote
      * anywhere else is still working on it, possibly with half-edited

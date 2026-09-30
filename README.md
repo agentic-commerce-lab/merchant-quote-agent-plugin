@@ -203,7 +203,7 @@ confirm the capability matrix still matches what each release declares.
 
 ## Evals
 
-`composer run eval` answers "is the negotiation logic on the shop still correct?". It plays every scenario in `tests/Bench/scenarios/` three times as an external UCP buyer against the deployed shop (default `https://sw-ag.dev`), with no SSH involved. It reads the agent's decisions back through the Admin API, checks the money in code, lets Claude Code judge the replies, and exits 0 (all pass), 1 (a scenario failed) or 2 (inconclusive).
+`composer run eval` answers "is the negotiation logic on the shop still correct?". It plays every scenario in `tests/Bench/scenarios/` three times as an external UCP buyer against the deployed shop in `EVAL_SHOP_URL`, with no SSH involved. It reads the agent's decisions back through the Admin API, checks the money in code, lets Claude Code judge the replies, and exits 0 (all pass), 1 (a scenario failed) or 2 (inconclusive).
 
 It tests the **deployed** plugin: deploy a branch before you evaluate it.
 
@@ -212,9 +212,10 @@ One-time setup:
 1. Claim an ngrok static domain and add it to the shop's *Agent access → Profile hosts*.
 2. Create an Admin API integration with read on `merchant_quote_agent_decision`, `merchant_quote_agent_trace`, `sales_channel`, `sales_channel_domain` and `plugin`, read, update, create and delete on `system_config` (a restore to `null` deletes the key), and read and update on `product`.
 3. Pick a storefront customer with `QUOTE_MANAGEMENT`.
-4. Put the four required variables in `.env.eval` at the repo root (git-ignored; `chmod 600` it), so the secret never lands on a command line or in shell history:
+4. Put the five required variables in `.env.eval` at the repo root (git-ignored; `chmod 600` it), so the secret never lands on a command line or in shell history:
 
 ```
+EVAL_SHOP_URL=https://<your-shop>
 EVAL_ADMIN_CLIENT_ID=...
 EVAL_ADMIN_CLIENT_SECRET=...
 EVAL_NGROK_DOMAIN=<your-domain>.ngrok-free.app
@@ -235,7 +236,7 @@ composer run eval
 
 The buyer loads `.env.eval` itself; a variable already set in your environment wins over the file.
 
-Optional variables: `EVAL_SHOP_URL` (default `https://sw-ag.dev`), `EVAL_REPS` (3), `EVAL_PARALLEL` (4), `EVAL_PASS_TIMEOUT` (180 s), `EVAL_STANDDOWN_WAIT` (60 s), `EVAL_PROFILE_PORT` (8787), and `EVAL_TAX_STATUS` (`gross` or `net`, default `gross`: the price space `{unit*f}` placeholders render in; a run whose quote prices the unit differently fails that negotiation). The judge and report settings are listed in the header of `scripts/eval.sh`.
+Optional variables: `EVAL_REPS` (3), `EVAL_PARALLEL` (4), `EVAL_PASS_TIMEOUT` (180 s), `EVAL_STANDDOWN_WAIT` (60 s), `EVAL_PROFILE_PORT` (8787), and `EVAL_TAX_STATUS` (`gross` or `net`, default `gross`: the price space `{unit*f}` placeholders render in; a run whose quote prices the unit differently fails that negotiation). The judge and report settings are listed in the header of `scripts/eval.sh`.
 
 Every scenario carries `tags` (`band`, `floor`, `rounding`, `multi-round`, ...). `EVAL_TAGS=floor,rounding composer run eval` runs only the scenarios carrying any listed tag; a tag no scenario carries stops the run at preflight.
 
@@ -267,6 +268,5 @@ It reads the quote's decision rows and traces with the same Admin API credential
 | [`docs/for-merchants.md`](docs/for-merchants.md) | **The same story for whoever runs the shop.** No code: setup, decisions, escalations, costs, data. |
 | [`docs/for-merchants.md#costs-and-data`](docs/for-merchants.md#costs-and-data) | **What the anonymized export sends, and what it never does.** Read before running `merchant-quote-agent:export`. |
 | [`docs/adr/`](docs/adr/) | Architectural decisions. |
+| [`docs/evals-design.md`](docs/evals-design.md) | What each negotiation-eval check (H1–H9, J1–J5) means. |
 | [`docs/2026-08-25-quote-agent-shopware-plugin-design.md`](docs/2026-08-25-quote-agent-shopware-plugin-design.md) | Why this is a plugin rather than a hosted app. |
-| [`docs/superpowers/specs/`](docs/superpowers/specs/) | Per-feature design records, one per issue. |
-| [`docs/superpowers/plans/`](docs/superpowers/plans/) | The implementation plans those specs produced. |

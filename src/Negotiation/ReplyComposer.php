@@ -104,7 +104,7 @@ final readonly class ReplyComposer
      * The buyer's own ask above the template, or the template alone when
      * there is none.
      *
-     * Live quote 1054 is why the ask is here at all: the buyer wrote "Can we
+     * This is why the ask is here at all: a buyer wrote "Can we
      * get a discount, my max budget is 9k" and read back "We have reduced the
      * quote by 15% to 9885.58 EUR." — correct, and a form letter, because the
      * template was the whole of what the reply model had ever seen. It could
@@ -159,7 +159,7 @@ final readonly class ReplyComposer
     ): array {
         $access = $settings->llm;
 
-        // The GROSS total, never the net one. Live quote 1020 told a buyer who
+        // The GROSS total, never the net one. A reply once told a buyer who
         // owed 8226.60 that their new total was 6913.11, because this reached
         // for totalNet -- 19% understated, and invisible on the 0%-tax quote
         // next to it where the two figures are equal.
@@ -260,7 +260,7 @@ final readonly class ReplyComposer
      * on the reasoning that "the comment is already with the buyer, so a
      * state we cannot move is worth a log line and nothing more" — but
      * reaching `replied` is what makes the offer ACCEPTABLE, and that
-     * reasoning is exactly how live quote #1021 was stranded: 10% granted,
+     * reasoning is exactly how a quote was once stranded: 10% granted,
      * reply sent, state stuck at `reopen`, no accept path, nothing said out
      * loud. A buyer told they got a discount who then cannot order is worse
      * than an escalation. So a failed transition now logs at error level and

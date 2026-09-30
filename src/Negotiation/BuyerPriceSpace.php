@@ -15,8 +15,8 @@ use MerchantQuoteAgentPlugin\Policy\MoneyMath;
  * The tax space the BUYER writes in, and the way back to the net one.
  *
  * A quote's stored prices — and so the storefront page and the UCP payload the
- * buyer reads — are in the quote's own tax space, `gross` on every quote of the
- * live shop. Everything behind the bridge is net instead: QuoteLineNet takes
+ * buyer reads — are in the quote's own tax space, typically `gross`.
+ * Everything behind the bridge is net instead: QuoteLineNet takes
  * the tax off on the way in, the policy layer's targets are net by definition,
  * and QuoteLineItemWriter divides by the same ratio to put an ask back.
  *
@@ -30,7 +30,7 @@ use MerchantQuoteAgentPlugin\Policy\MoneyMath;
  * a net ask: `quote_line_item.requested_price` read back 885.65, one tax factor
  * ABOVE what they asked for, and the band decider then measured an ask above
  * the standing offer, clamped the requested discount to zero and granted 0.21%
- * on a quote where 14% had been asked for. Found live on sw-ag.dev quote 1037.
+ * on a quote where 14% had been asked for.
  */
 final class BuyerPriceSpace
 {

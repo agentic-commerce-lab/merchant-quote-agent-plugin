@@ -151,7 +151,7 @@ class MerchantQuoteAgentPlugin extends Plugin
      * ServiceNotFoundException, PluginLifecycleService::installPlugin() would
      * rethrow, and because that lands before runMigrations() the evidence
      * tables would never be created either. The container is rebuilt before
-     * activate() runs — which is why the live shop works — and a plugin that
+     * activate() runs — which is why a running shop works — and a plugin that
      * is installed but never activated needs no signing key.
      *
      * A `plugin:update` does not come through here — see update() below.

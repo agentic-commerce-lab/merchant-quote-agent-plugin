@@ -97,7 +97,7 @@ final class CommentTargetMerger
      * only rescaledBuyerTarget() rolls line asks up into the quote-level
      * target the band decider reads, and it ran only for a comment's line
      * targets. With no comment the band measured the ask as 0% and granted a
-     * 99.9% request (sw-ag.dev quote 1206). The retired TS snapshot builder
+     * 99.9% request. The retired TS snapshot builder
      * supplied this field; the port lost it.
      *
      * Never overrides a target something else already set, and only when a

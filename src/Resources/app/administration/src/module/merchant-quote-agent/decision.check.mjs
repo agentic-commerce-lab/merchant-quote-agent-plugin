@@ -630,7 +630,7 @@ for (const field of ['quotesSeen', 'quotesConverted', 'quotesLost', 'offersMade'
     assert.ok(historySummary(vm, { ...history, [field]: -2 }).includes(`${field}: unknown`));
 }
 
-// Quote 1012 on the parity shop: round one granted 15%, rounds two and three
+// Round one granted 15%, rounds two and three
 // held that same offer. The per-pass reduction is 0 for those, which is what
 // the page used to show under a label reading like the quote's discount —
 // beside an already-reduced total and a reply quoting 15%. The quote-level

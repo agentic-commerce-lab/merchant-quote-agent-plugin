@@ -56,7 +56,7 @@ final readonly class QuoteLineSnapshot
     }
 
     /**
-     * This stored baseline row as the original of `$live` (#49, quote 1101):
+     * This stored baseline row as the original of `$live` (#49):
      * the row is only a price and a quantity, so the identity the buyer sees
      * and the price they are asking for both come from the live line.
      */

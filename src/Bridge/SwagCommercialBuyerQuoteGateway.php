@@ -143,7 +143,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         /**
          * The route returns an untyped SwagCommercial entity — no type to
          * narrow to; BuyerQuoteFlowTest proves the call is correct against
-         * the live shop.
+         * a real shop.
          *
          * @mago-expect analysis:mixed-method-access
          */
@@ -196,7 +196,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         /**
          * The route returns an untyped SwagCommercial collection — no type
          * to narrow to; BuyerQuoteFlowTest proves the listing is correct
-         * against the live shop.
+         * against a real shop.
          *
          * @mago-expect analysis:mixed-method-access
          */
@@ -260,7 +260,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
         /**
          * The route returns an untyped SwagCommercial order — no type to
          * narrow to; BuyerQuoteFlowTest proves the order is correct against
-         * the live shop.
+         * a real shop.
          *
          * @mago-expect analysis:mixed-method-access
          */
@@ -363,7 +363,7 @@ final class SwagCommercialBuyerQuoteGateway implements BuyerQuoteGatewayInterfac
             /**
              * The route returns an untyped SwagCommercial entity — no type
              * to narrow to; BuyerQuoteFlowTest proves the load is correct
-             * against the live shop.
+             * against a real shop.
              *
              * @mago-expect analysis:mixed-method-access
              */

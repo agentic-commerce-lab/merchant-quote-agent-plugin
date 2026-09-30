@@ -42,15 +42,15 @@ $_ENV['KERNEL_CLASS'] = \Shopware\Core\Kernel::class;
 // pulling it in is a hazard rather than a help.
 //
 // `.env.local` WINS over `.env`, which is Symfony's own precedence and is
-// load-bearing rather than tidiness. The shopdev hosts keep a template
+// load-bearing rather than tidiness. Some hosted dev shops keep a template
 // DATABASE_URL in `.env` and the real credentials in `.env.local`, and the two
 // point at different databases. Reading `.env` alone there hands
 // TestBootstrapper a URL whose database has no `plugin` table, and
 // `bootstrap()` reacts to that by running SystemInstallCommand — i.e. it
-// INSTALLS SHOPWARE over whatever the template happens to name. On
-// `agenticquote` that only stopped because the template's `root@localhost` was
-// denied; a template with working credentials would have taken the database
-// with it. See the guard below.
+// INSTALLS SHOPWARE over whatever the template happens to name. One such
+// shop only stopped because the template's `root@localhost` was denied; a
+// template with working credentials would have taken the database with it.
+// See the guard below.
 $envFiles = [$shopRoot . '/.env', $shopRoot . '/.env.local'];
 $databaseUrl = null;
 

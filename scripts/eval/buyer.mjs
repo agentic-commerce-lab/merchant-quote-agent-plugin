@@ -41,7 +41,7 @@ async function beforeShopWrites(work) {
     }
 }
 
-const shopUrl = () => env('EVAL_SHOP_URL', 'https://sw-ag.dev').replace(/\/$/, '');
+const shopUrl = () => env('EVAL_SHOP_URL').replace(/\/$/, '');
 const adminFromEnv = () => adminClient({ shop: shopUrl(), clientId: env('EVAL_ADMIN_CLIENT_ID'), clientSecret: env('EVAL_ADMIN_CLIENT_SECRET') });
 
 function context() {

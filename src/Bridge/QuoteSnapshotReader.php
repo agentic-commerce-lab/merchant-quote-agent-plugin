@@ -22,7 +22,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
  * model. No SwagCommercial class is named: `quote.repository` is resolved by
  * string id, and fields are read via Entity::get().
  *
- * Field names verified against a live shop (36 quotes) during Task 4: all as
+ * Field names verified against a live shop during Task 4: all as
  * SwagCommercial's QuoteDefinition declares them, no corrections needed.
  *
  * @mago-expect lint:cyclomatic-complexity

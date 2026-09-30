@@ -86,7 +86,7 @@ final class FetchSnapshotTest extends IntegrationTestCase
     /**
      * The buyer-facing total, against real data.
      *
-     * Quote 1020 on the test shop was told "your new total is 6913.11 EUR"
+     * A buyer was once told "your new total is 6913.11 EUR"
      * when the buyer owed 8226.60 — the reply had reached for `amountNet`.
      * Nothing caught it because the quote next to it was 0%-tax, where the two
      * figures are identical. This pins that the gross total is read at all and

@@ -58,8 +58,7 @@ final class CustomerScopeTest extends TestCase
     public function testTheContextIsAlwaysTheLiveVersion(): void
     {
         // The quote table and the order table are both versioned. Counting rows
-        // instead of live rows doubles a buyer's apparent history: the dev shop
-        // has ~75 quote rows behind ~37 live quotes.
+        // instead of live rows roughly doubles a buyer's apparent history.
         self::assertSame(Defaults::LIVE_VERSION, self::scope()->context()->getVersionId());
     }
 
