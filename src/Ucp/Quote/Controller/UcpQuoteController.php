@@ -10,6 +10,7 @@ use MerchantQuoteAgentPlugin\Identity\AuthenticatedCustomerAttribute;
 use MerchantQuoteAgentPlugin\Identity\UcpRequestContext;
 use MerchantQuoteAgentPlugin\Protocol\Ingress\A2cnSessionStamp;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteOAuthScopeProvider;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
@@ -122,7 +123,16 @@ final class UcpQuoteController
     public function acceptQuote(string $id, Request $request): JsonResponse
     {
         $context = UcpRequestContext::of($request);
-        $snapshot = $this->quoteCapability->acceptQuote($this->customerContext($request, $context), $id);
+        // Accepting places the order, so the token must also be allowed to manage orders.
+        $customerContext = $this->customerContext(
+            $request,
+            $context,
+            [
+                QuoteOAuthScopeProvider::MANAGE_QUOTES,
+                QuoteOAuthScopeProvider::MANAGE_ORDERS,
+            ],
+        );
+        $snapshot = $this->quoteCapability->acceptQuote($customerContext, $id);
 
         return $this->responseFactory->success($snapshot->toArray(), Response::HTTP_OK, [], $context, 'quote.accept');
     }
@@ -143,14 +153,20 @@ final class UcpQuoteController
         return $this->responseFactory->success($snapshot->toArray(), Response::HTTP_OK, [], $context, 'quote.decline');
     }
 
-    private function customerContext(Request $request, RequestContext $context): SalesChannelContext
-    {
+    /**
+     * @param list<string> $requiredScopes
+     */
+    private function customerContext(
+        Request $request,
+        RequestContext $context,
+        array $requiredScopes = [QuoteOAuthScopeProvider::MANAGE_QUOTES],
+    ): SalesChannelContext {
         $credential = AgentCustomerCredential::fromAuthorizationHeader((string) $request->headers->get(
             'Authorization',
             '',
         ));
 
-        $salesChannelContext = $this->authenticator->authenticate($credential, $context);
+        $salesChannelContext = $this->authenticator->authenticate($credential, $context, $requiredScopes);
         $customerId = $salesChannelContext->getCustomer()?->getId();
         if ($customerId !== null) {
             AuthenticatedCustomerAttribute::remember($request, $customerId);

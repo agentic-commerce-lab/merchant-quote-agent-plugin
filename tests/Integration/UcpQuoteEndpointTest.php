@@ -12,8 +12,6 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelLifecycleManager;
 use Symfony\Component\HttpFoundation\Request;
-use Ucp\Sdk\Model\Profile\PlatformProfile;
-use Ucp\Sdk\Service\AgentProfileFetcherInterface;
 
 /**
  * The endpoints over the real kernel, so the SDK's listeners run: that is the
@@ -35,8 +33,6 @@ use Ucp\Sdk\Service\AgentProfileFetcherInterface;
  */
 final class UcpQuoteEndpointTest extends IntegrationTestCase
 {
-    private const AC_OAUTH_STORE = 'Swag\\AgenticCommerce\\Ucp\\Identity\\DoctrineDbalUcpOAuthStore';
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -47,22 +43,13 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
             self::markTestSkipped('SwagCommercial quote management is not licensed in this shop.');
         }
 
-        // Duck-typed rather than importing Swag\AgenticCommerce\Ucp\Test\StaticAgentProfileFetcher:
-        // that class belongs to a sibling plugin, not a package this one depends on.
-        $fetcher = static::getContainer()->get(AgentProfileFetcherInterface::class);
-        self::assertTrue(method_exists($fetcher, 'setProfile'), 'expected the test-env agent-profile double');
-        $fetcher->setProfile(new PlatformProfile(
-            version: '2026-04-08',
-            services: [],
-            capabilities: [],
-            paymentHandlers: [],
-        ));
+        UcpAgentRequestFixture::stubAgentProfile(static::getContainer());
     }
 
     public function testTheSdkRejectsARequestWithoutAUcpAgentHeader(): void
     {
-        $response = $this->send('GET', '/ucp/quotes', headers: [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->issueToken(),
+        $response = UcpAgentRequestFixture::send(static::getContainer(), 'GET', '/ucp/quotes', headers: [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . UcpAgentRequestFixture::issueToken(static::getContainer()),
         ]);
 
         // 422, not 400: the SDK's own UcpErrorDescriptor::fromThrowable() maps
@@ -78,9 +65,9 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
         $customerId = BuyerQuoteFixture::anyQuoteCapableCustomerId(static::getContainer());
         $foreignQuoteId = BuyerQuoteFixture::anyQuoteIdNotOwnedBy(static::getContainer(), $customerId);
 
-        $response = $this->send('GET', '/ucp/quotes', headers: [
-            'HTTP_UCP_AGENT' => $this->agentHeader(),
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->issueToken($customerId),
+        $response = UcpAgentRequestFixture::send(static::getContainer(), 'GET', '/ucp/quotes', headers: [
+            'HTTP_UCP_AGENT' => UcpAgentRequestFixture::agentHeader(static::getContainer()),
+            'HTTP_AUTHORIZATION' => 'Bearer ' . UcpAgentRequestFixture::issueToken(static::getContainer(), $customerId),
         ]);
 
         self::assertSame(200, $response->getStatusCode());
@@ -100,8 +87,8 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
 
     public function testAnUnknownTokenIsRejectedWithA401(): void
     {
-        $response = $this->send('GET', '/ucp/quotes', headers: [
-            'HTTP_UCP_AGENT' => $this->agentHeader(),
+        $response = UcpAgentRequestFixture::send(static::getContainer(), 'GET', '/ucp/quotes', headers: [
+            'HTTP_UCP_AGENT' => UcpAgentRequestFixture::agentHeader(static::getContainer()),
             'HTTP_AUTHORIZATION' => 'Bearer ucp_at_not_a_real_token',
         ]);
 
@@ -116,12 +103,12 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
     public function testOurReaderFindsATokenAgenticCommerceItselfIssued(): void
     {
         $customerId = BuyerQuoteFixture::anyQuoteCapableCustomerId(static::getContainer());
-        $token = $this->issueToken($customerId);
+        $token = UcpAgentRequestFixture::issueToken(static::getContainer(), $customerId);
 
         $reader = static::getContainer()->get(AccessTokenSubjectReaderInterface::class);
         self::assertInstanceOf(AccessTokenSubjectReaderInterface::class, $reader);
 
-        $info = $reader->find($token, $this->salesChannelId());
+        $info = $reader->find($token, BuyerQuoteFixture::storefrontSalesChannelId(static::getContainer()));
 
         self::assertNotNull($info, 'the access-token schema or hash changed in Agentic Commerce');
         self::assertSame($customerId, $info->subject);
@@ -134,8 +121,9 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
             BuyerQuoteFixture::storefrontBaseUri(static::getContainer()) . '/ucp/quotes',
             'POST',
             server: [
-                'HTTP_UCP_AGENT' => $this->agentHeader(),
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->issueToken($customerId),
+                'HTTP_UCP_AGENT' => UcpAgentRequestFixture::agentHeader(static::getContainer()),
+                'HTTP_AUTHORIZATION' =>
+                    'Bearer ' . UcpAgentRequestFixture::issueToken(static::getContainer(), $customerId),
                 'HTTP_IDEMPOTENCY_KEY' => 'idem-' . bin2hex(random_bytes(8)),
                 'CONTENT_TYPE' => 'application/json',
             ],
@@ -157,52 +145,5 @@ final class UcpQuoteEndpointTest extends IntegrationTestCase
             '{"line_items":[{"product_id":"","quantity":1}],"comment":"private"}',
             $trace->content['requestBody'] ?? null,
         );
-    }
-
-    private function issueToken(?string $customerId = null): string
-    {
-        $store = static::getContainer()->get(self::AC_OAUTH_STORE);
-        self::assertIsObject($store);
-        self::assertTrue(method_exists($store, 'issueTokenSet'), 'Agentic Commerce OAuth store lost issueTokenSet()');
-
-        $set = $store->issueTokenSet(
-            $this->salesChannelId(),
-            'integration-test-client',
-            $customerId ?? BuyerQuoteFixture::anyQuoteCapableCustomerId(static::getContainer()),
-            'dev.ucp.shopping.cart:manage',
-        );
-
-        self::assertIsObject($set);
-        self::assertIsString($set->accessToken);
-
-        return $set->accessToken;
-    }
-
-    private function salesChannelId(): string
-    {
-        return BuyerQuoteFixture::storefrontSalesChannelId(static::getContainer());
-    }
-
-    /**
-     * A well-formed UCP-Agent header: DefaultHttpRequestContextFactory::extractProfileUri()
-     * only accepts `profile="<uri>"`, and the host it names must pass
-     * assertSafeProfileUri()'s allowlist check before the (stubbed) fetch
-     * ever runs. The storefront's own domain is the one host this suite
-     * knows is allowed.
-     */
-    private function agentHeader(): string
-    {
-        return 'profile="' . BuyerQuoteFixture::storefrontBaseUri(static::getContainer()) . '/.well-known/ucp"';
-    }
-
-    /**
-     * @param array<string, string> $headers server-style header names (HTTP_*)
-     */
-    private function send(string $method, string $path, array $headers = []): \Symfony\Component\HttpFoundation\Response
-    {
-        $baseUri = BuyerQuoteFixture::storefrontBaseUri(static::getContainer());
-        $request = Request::create($baseUri . $path, $method, server: $headers);
-
-        return KernelLifecycleManager::getKernel()->handle($request);
     }
 }

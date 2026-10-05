@@ -310,7 +310,7 @@ final class A2cnInboundActTest extends IntegrationTestCase
             BuyerQuoteFixture::storefrontSalesChannelId(static::getContainer()),
             'integration-test-client',
             $customerId ?? BuyerQuoteFixture::anyQuoteCapableCustomerId(static::getContainer()),
-            'dev.ucp.shopping.cart:manage',
+            UcpAgentRequestFixture::ALL_SCOPES,
         );
 
         self::assertIsObject($set);

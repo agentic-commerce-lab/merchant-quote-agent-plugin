@@ -135,9 +135,12 @@ feature flag, which SwagCommercial reads as a JSON **map** in
 `customer_specific_features` — `{"QUOTE_MANAGEMENT": true}`. An array there is
 silently ignored, and a customer without the flag gets a 422 naming it.
 
-Scope is read but not enforced: Agentic Commerce cannot yet issue
-`com.shopware.quote:manage`, so any valid token for the customer is accepted and
-authorization is by quote ownership.
+Scopes are enforced only with Agentic Commerce 1.4.0+, which lets this plugin
+register `com.shopware.quote:manage` (`QuoteOAuthScopeProvider`). There every
+quote route requires that scope, accept also requires
+`dev.ucp.shopping.order:manage`, and a token missing either gets a 403. Older
+releases cannot issue the quote scope, so there any valid token for the
+customer is accepted. Authorization is by quote ownership on both.
 
 ### Getting the buyer a token
 

@@ -3,7 +3,7 @@
   "info": {
     "title": "com.shopware.quote",
     "version": "2026-04-08",
-    "description": "Buyer-facing B2B Request-for-Quote capability for Shopware shops. Protocol-neutral: any UCP buyer agent can use it.\n\n## Authentication and authorization\n\nQuote operations act on behalf of a customer. Obtain an OAuth 2.0 access token through the shop's `dev.ucp.common.identity_linking` capability with the `com.shopware.quote:manage` scope, then send it as `Authorization: Bearer <token>`. The access token subject is the trust boundary: the customer's consent decides whose quotes are touched, and nothing in the request body can select a customer. An unscoped Shopware context token is not accepted. Requests also carry the standard `UCP-Agent` header and a request signature when the shop's signature policy requires it.\n\nThe `com.shopware.quote:manage` scope is requested when obtaining the token, but this shop does not yet enforce it: no token can carry it until the identity-linking capability supports issuing it. Authorization today is by quote ownership instead — the token's subject identifies the customer, and every operation is scoped to that customer's own quotes; a request whose token carries no linked customer fails with a validation error rather than succeeding unscoped.\n\nThe capability is advertised in discovery whenever the shop has a UCP surface and the `dev.ucp.common.identity_linking` capability is enabled for the sales channel; a shop that restricts its capabilities and omits identity linking publishes no quote descriptor at all, because a capability nobody can obtain a token for is a dead end. Being advertised is not being routable: discovery does not probe the commercial backend, so a shop without a licensed Quote Management installation advertises the capability and fails every request as unsupported. Treat a 501 as the real availability answer. The customer must additionally have the Quote Management feature enabled (`customer_specific_features`). Unknown and foreign quote ids both return not found, without confirming existence.\n\n## State machine\n\n`open` and `in_review` are the merchant's turn. `replied` is the buyer's turn: accept, counter, or decline. `change_requested` returns the turn to the merchant. Accepted, declined, expired, withdrawn, and cancelled quotes are terminal for the buyer; a merchant may reopen or extend a quote as documented in `x-state-machine`.\n\n## Expiration\n\nOffers carry `expiration_date` (ISO 8601, always present in responses, and possibly null before the merchant replies). Agents must read it and act before it.\n\n## Price semantics\n\nAll amounts are in the quote's `currency`. `totals.tax_status` states whether `totals.gross` or `totals.net` is authoritative. Line item prices and requested prices are **per unit**.\n\nNot every shop can record a per-line ask: the field and the route behind `requested_unit_price` are absent on released commercial builds. Where they are, sending `line_items` with a `requested_unit_price` fails with a validation error naming the limitation, and `requested_unit_price` is always null on reads. Since a counter line item requires a `requested_unit_price`, on those shops a counter-offer must be sent as `comment` alone, with no `line_items` — the merchant reads the ask from the comment. Probe once with the counter you intended and fall back to a comment on the 422; nothing in discovery reports this.\n\n## Idempotency\n\nEvery mutating request accepts `Idempotency-Key`. Shops configured to require it reject a mutating request without one. A repeated key with the same request fingerprint replays the stored response with `Idempotency-Replay: 1`; a key reused for a different request, or for a response too large to have been stored, is a 409.\n\n## Async negotiation\n\nThe merchant responds out-of-band. Agents poll `GET /ucp/quotes/{id}` for state changes; the recommended interval is 300 seconds. Webhooks are not part of this capability version.",
+    "description": "Buyer-facing B2B Request-for-Quote capability for Shopware shops. Protocol-neutral: any UCP buyer agent can use it.\n\n## Authentication and authorization\n\nQuote operations act on behalf of a customer. Obtain an OAuth 2.0 access token through the shop's `dev.ucp.common.identity_linking` capability, then send it as `Authorization: Bearer <token>`. The access token subject is the trust boundary: the customer's consent decides whose quotes are touched, and nothing in the request body can select a customer. An unscoped Shopware context token is not accepted. Requests also carry the standard `UCP-Agent` header and a request signature when the shop's signature policy requires it.\n\nWhen `/.well-known/oauth-authorization-server` lists `com.shopware.quote:manage` in `scopes_supported`, the shop enforces scopes: every quote operation requires `com.shopware.quote:manage`, and `acceptQuote` additionally requires `dev.ucp.shopping.order:manage`, because accepting places an order. Request both when linking the account. A token missing a required scope gets a 403 naming the missing scopes; link the account again, requesting them. A shop that does not list the quote scope cannot issue it, so it does not check scopes. Authorization is also by quote ownership, on every shop: the token's subject identifies the customer, and every operation is scoped to that customer's own quotes. A request whose token carries no linked customer fails with a validation error rather than succeeding unscoped.\n\nThe capability is advertised in discovery whenever the shop has a UCP surface and the `dev.ucp.common.identity_linking` capability is enabled for the sales channel; a shop that restricts its capabilities and omits identity linking publishes no quote descriptor at all, because a capability nobody can obtain a token for is a dead end. Being advertised is not being routable: discovery does not probe the commercial backend, so a shop without a licensed Quote Management installation advertises the capability and fails every request as unsupported. Treat a 501 as the real availability answer. The customer must additionally have the Quote Management feature enabled (`customer_specific_features`). Unknown and foreign quote ids both return not found, without confirming existence.\n\n## State machine\n\n`open` and `in_review` are the merchant's turn. `replied` is the buyer's turn: accept, counter, or decline. `change_requested` returns the turn to the merchant. Accepted, declined, expired, withdrawn, and cancelled quotes are terminal for the buyer; a merchant may reopen or extend a quote as documented in `x-state-machine`.\n\n## Expiration\n\nOffers carry `expiration_date` (ISO 8601, always present in responses, and possibly null before the merchant replies). Agents must read it and act before it.\n\n## Price semantics\n\nAll amounts are in the quote's `currency`. `totals.tax_status` states whether `totals.gross` or `totals.net` is authoritative. Line item prices and requested prices are **per unit**.\n\nNot every shop can record a per-line ask: the field and the route behind `requested_unit_price` are absent on released commercial builds. Where they are, sending `line_items` with a `requested_unit_price` fails with a validation error naming the limitation, and `requested_unit_price` is always null on reads. Since a counter line item requires a `requested_unit_price`, on those shops a counter-offer must be sent as `comment` alone, with no `line_items` — the merchant reads the ask from the comment. Probe once with the counter you intended and fall back to a comment on the 422; nothing in discovery reports this.\n\n## Idempotency\n\nEvery mutating request accepts `Idempotency-Key`. Shops configured to require it reject a mutating request without one. A repeated key with the same request fingerprint replays the stored response with `Idempotency-Replay: 1`; a key reused for a different request, or for a response too large to have been stored, is a 409.\n\n## Async negotiation\n\nThe merchant responds out-of-band. Agents poll `GET /ucp/quotes/{id}` for state changes; the recommended interval is 300 seconds. Webhooks are not part of this capability version.",
     "x-capability": "com.shopware.quote"
   },
   "x-polling-interval-seconds": 300,
@@ -185,6 +185,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/InsufficientScope"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
           },
@@ -237,6 +240,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/InsufficientScope"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
           },
@@ -268,6 +274,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/InsufficientScope"
           },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
@@ -316,6 +325,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/InsufficientScope"
           },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
@@ -379,6 +391,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/InsufficientScope"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
           },
@@ -430,6 +445,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/InsufficientScope"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
           },
@@ -452,7 +470,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "OAuth 2.0",
-        "description": "Identity-linking access token. Obtain it through the account-linking flow in the prose spec: a signed POST /ucp/quote-agent/authorization-requests, the customer's consent on the returned authorization_url, then the code exchange at the token_endpoint. Calling the authorization_endpoint directly from an agent fails with identity_required. Its subject identifies the customer, which is what this shop authorizes on; request only scopes listed in scopes_supported. com.shopware.quote:manage is the intended scope once it is listed there."
+        "description": "Identity-linking access token. Obtain it through the account-linking flow in the prose spec: a signed POST /ucp/quote-agent/authorization-requests, the customer's consent on the returned authorization_url, then the code exchange at the token_endpoint. Calling the authorization_endpoint directly from an agent fails with identity_required. Its subject identifies the customer, which is what this shop authorizes on; request only scopes listed in scopes_supported. Where com.shopware.quote:manage is listed, request it together with dev.ucp.shopping.order:manage: the quote operations require the first, and accepting requires both."
       },
       "ucpAgent": {
         "type": "apiKey",
@@ -525,6 +543,16 @@
       },
       "Conflict": {
         "description": "Idempotency key reused for a different request, or for a response that is no longer replayable (code `idempotency_conflict`)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InsufficientScope": {
+        "description": "insufficient_scope: the access token is valid but lacks a scope this operation requires. Only on shops that list com.shopware.quote:manage in scopes_supported. Link the account again, requesting the scopes the message names.",
         "content": {
           "application/json": {
             "schema": {

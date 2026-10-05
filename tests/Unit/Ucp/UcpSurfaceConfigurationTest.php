@@ -8,6 +8,7 @@ use MerchantQuoteAgentPlugin\Audit\DecisionRecorder;
 use MerchantQuoteAgentPlugin\Config\QuoteAgentSettingsReader;
 use MerchantQuoteAgentPlugin\Identity\AcOAuthAccessTokenReader;
 use MerchantQuoteAgentPlugin\Identity\AgentAdmittingRuntimeConfigurationResolver;
+use MerchantQuoteAgentPlugin\Identity\AgentCustomerAuthenticator;
 use MerchantQuoteAgentPlugin\Identity\Controller\AgentConsentController;
 use MerchantQuoteAgentPlugin\MerchantQuoteAgentPlugin;
 use MerchantQuoteAgentPlugin\Protocol\Crypto\ProtocolHash;
@@ -16,6 +17,7 @@ use MerchantQuoteAgentPlugin\Protocol\Identity\A2cnKeyStore;
 use MerchantQuoteAgentPlugin\Ucp\Profile\A2cnMandateProfileContributor;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteContractController;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteOAuthScopeProvider;
 use MerchantQuoteAgentPlugin\Ucp\UcpAvailability;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -86,6 +88,21 @@ final class UcpSurfaceConfigurationTest extends TestCase
         self::assertTrue($container->hasDefinition(A2cnKeyStore::class));
         self::assertTrue($container->hasDefinition(ProtocolHash::class));
         self::assertTrue($container->hasDefinition(A2cnDiscoveryController::class));
+    }
+
+    /**
+     * The unit suite has no Agentic Commerce on the classpath, which is what a
+     * release before 1.4.0 looks like to services.php: no scope registry to
+     * register with, so the quote scope is neither registered nor enforced.
+     * The 1.4.0+ side runs on the test shop, in UcpQuoteEndpointTest.
+     */
+    public function testWithoutAScopeRegistryTheQuoteScopeIsNeitherRegisteredNorEnforced(): void
+    {
+        $container = self::build(['UcpSdkBundle' => 'Ucp\\Sdk\\Symfony\\UcpSdkBundle']);
+
+        self::assertFalse(class_exists(QuoteOAuthScopeProvider::REGISTRY_CLASS));
+        self::assertFalse($container->hasDefinition(QuoteOAuthScopeProvider::class));
+        self::assertFalse($container->getDefinition(AgentCustomerAuthenticator::class)->getArgument('$enforceScopes'));
     }
 
     /**

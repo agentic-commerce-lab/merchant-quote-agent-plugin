@@ -403,12 +403,12 @@ def discover_oauth(shop: str) -> dict:
     print(f"[oauth] authorize: {meta.get('authorization_endpoint')}")
     print(f"[oauth] token:     {meta.get('token_endpoint')}")
     print(f"[oauth] scopes:    {', '.join(meta.get('scopes_supported', [])) or '(none)'}")
-    print(
-        "[oauth] note: no quote scope is offered — Agentic Commerce intersects requested\n"
-        "        scopes against its own catalogue, which does not know the vendor\n"
-        "        capability. Quote authorization rides on the token's subject (ownership),\n"
-        "        not on a scope. Requesting the advertised scopes verbatim."
-    )
+    if "com.shopware.quote:manage" not in meta.get("scopes_supported", []):
+        print(
+            "[oauth] note: no quote scope is offered (Agentic Commerce before 1.4.0).\n"
+            "        Quote authorization rides on the token's subject (ownership) there.\n"
+            "        Requesting the advertised scopes verbatim."
+        )
     return meta
 
 

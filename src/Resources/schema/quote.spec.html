@@ -98,7 +98,7 @@
 <pre>{
   "client_id":             "https://agent.example/.well-known/ucp",
   "redirect_uri":          "https://agent.example/callback",
-  "scope":                 "dev.ucp.shopping.order:manage",
+  "scope":                 "com.shopware.quote:manage dev.ucp.shopping.order:manage",
   "state":                 "&lt;opaque, checked on return&gt;",
   "code_challenge":        "&lt;43-character base64url S256 challenge&gt;",
   "code_challenge_method": "S256"
@@ -144,11 +144,16 @@
         Request only scopes listed in <code>scopes_supported</code> in
         <code>/.well-known/oauth-authorization-server</code>. A scope that is not listed is
         refused when the customer consents, and the customer only sees that the link expired.
-        <code>com.shopware.quote:manage</code> is the intended scope for this capability.
-        Request it once the shop lists it. Until then, request the listed scopes, for example
-        <code>dev.ucp.shopping.order:manage</code>. Authorization does not depend on the scope:
-        the token's subject identifies the customer, and every operation is scoped to that
-        customer's own quotes.
+        Where <code>com.shopware.quote:manage</code> is listed, the shop enforces scopes. Every
+        quote operation requires <code>com.shopware.quote:manage</code>. Accepting a quote
+        places an order, so it also requires <code>dev.ucp.shopping.order:manage</code>.
+        Request both, as in the example above. A token missing a required scope gets a 403
+        naming the missing scopes; link the account again, requesting them. A shop that does
+        not list <code>com.shopware.quote:manage</code> cannot issue it and does not check
+        scopes; there, request the listed scopes, for example
+        <code>dev.ucp.shopping.order:manage</code>. On every shop the token's subject also
+        identifies the customer, and every operation is scoped to that customer's own
+        quotes.
     </p>
 
     <h3>Signing GET requests</h3>
@@ -248,6 +253,7 @@
         <tr><th>Situation</th><th>Result</th><th>Status</th></tr>
         <tr><td>Capability disabled, not licensed, or the commercial Quote Management backend is unavailable</td><td>unsupported capability — note the descriptor may still be in discovery</td><td>501</td></tr>
         <tr><td>Access token missing, invalid, expired, or revoked</td><td>invalid token</td><td>401</td></tr>
+        <tr><td>Access token lacks <code>com.shopware.quote:manage</code>, or <code>dev.ucp.shopping.order:manage</code> on accept, on a shop that lists the quote scope</td><td><code>insufficient_scope</code>, naming the missing scopes; link the account again</td><td>403</td></tr>
         <tr><td>Authorization request whose signature did not verify, or whose <code>client_id</code> is not the signed profile URI</td><td>error naming <code>UCP-Agent</code></td><td>401</td></tr>
         <tr><td><code>authorization_endpoint</code> called by an agent without a signed-in storefront customer</td><td><code>identity_required</code>; use the account-linking flow</td><td>400</td></tr>
         <tr><td>Credential resolves to no customer</td><td>validation error naming the header</td><td>422</td></tr>
@@ -263,11 +269,6 @@
         <code>{"ucp": {"version", "status": "error"}, "messages": [{"code", "content", …}]}</code>.
         The status lives in <code>ucp</code>; there is no top-level <code>status</code> field.
         Successful responses carry the same <code>ucp</code> envelope alongside the quote.
-    </p>
-    <p class="note">
-        <code>com.shopware.quote:manage</code> is not in this table: the quote routes do not
-        check scopes (see Authorization above), so a missing scope never causes a failure on its
-        own.
     </p>
 
     <h2>Versioning</h2>
