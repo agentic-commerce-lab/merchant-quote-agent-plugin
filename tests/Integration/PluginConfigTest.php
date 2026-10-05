@@ -9,9 +9,14 @@ use Shopware\Core\Framework\Adapter\Cache\CacheInvalidator;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\Validation\DataValidator;
+use Shopware\Core\Framework\Validation\Exception\ConstraintViolationException;
 use Shopware\Core\System\SystemConfig\CachedSystemConfigLoader;
+use Shopware\Core\System\SystemConfig\Service\ConfigurationService;
 use Shopware\Core\System\SystemConfig\Store\MemoizedSystemConfigStore;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
+use Shopware\Core\System\SystemConfig\Validation\SystemConfigValidator;
+use Symfony\Component\Validator\ConstraintViolationInterface;
 
 /**
  * @mago-expect lint:too-many-methods
@@ -101,6 +106,121 @@ final class PluginConfigTest extends IntegrationTestCase
 
         self::assertSame(5.0, $config->get($key));
         self::assertSame(25.0, $config->get($key, $salesChannelId));
+    }
+
+    /**
+     * @mago-expect lint:no-literal-password
+     *
+     * QA-07 (2026-10-01): a channel override of 0 must read as 0 rather than
+     * fall back to the global cap because 0 is falsy. It does; the report
+     * reproduced only through the admin number field, which commits a typed
+     * value on blur and so can save nothing. This pins the read path end to
+     * end, through the reader and the factory's validation, so a "fix" there
+     * cannot quietly regress it.
+     *
+     * Every key the reader validates is named in both scopes rather than left
+     * to the shop's stored values: a configured test shop otherwise decides
+     * what this reads (an override on the channel wins over anything set
+     * globally). Null on the channel deletes its override. The transaction
+     * rollback and clearConfigCaches() restore both scopes afterwards.
+     * `sk-probe` is a fixture credential, as above.
+     */
+    public function testAChannelOverrideOfZeroBeatsTheGlobalCap(): void
+    {
+        $config = self::systemConfig();
+        $salesChannelId = self::anySalesChannelId();
+
+        foreach ([
+            'enabled' => true,
+            'llmApiKey' => 'sk-probe',
+            'llmBaseUrl' => 'https://api.openai.com/v1',
+            'llmModel' => 'gpt-4o-mini',
+            'negotiationStrategyId' => null,
+            'counterOfferMaxPercent' => null,
+            'minMarginPercent' => null,
+            'roundingMode' => 'off',
+            'roundingStep' => null,
+            'maxQuoteValueNet' => null,
+            'validityDays' => 14,
+            'draftMode' => false,
+        ] as $key => $value) {
+            $config->set(QuoteAgentSettingsReader::DOMAIN . $key, $value);
+            $config->set(QuoteAgentSettingsReader::DOMAIN . $key, null, $salesChannelId);
+        }
+
+        $config->set(QuoteAgentSettingsReader::DOMAIN . 'maxDiscountPercent', 15.0);
+        $config->set(QuoteAgentSettingsReader::DOMAIN . 'maxDiscountPercent', 0.0, $salesChannelId);
+
+        $reader = static::getContainer()->get(QuoteAgentSettingsReader::class);
+        self::assertInstanceOf(QuoteAgentSettingsReader::class, $reader);
+
+        self::assertSame(0.0, $reader->forSalesChannel($salesChannelId)?->policy->price->maxDiscountPercent);
+        self::assertSame(15.0, $reader->forSalesChannel(null)?->policy->price->maxDiscountPercent);
+    }
+
+    /**
+     * QA-07 hardening: the admin saves through the batch endpoint, which runs
+     * core's SystemConfigValidator over config.xml's <min>/<max>. A percentage
+     * outside its range is refused at save time instead of being stored and
+     * then failing QuoteLimits on every pass, which takes the channel out of
+     * service. Blank still saves: a cleared counter field means no band.
+     *
+     * Built rather than fetched: core inlines SystemConfigValidator into its
+     * controller, so the test container has no entry for it.
+     */
+    public function testTheAdminSaveRefusesPercentagesOutsideTheirRange(): void
+    {
+        $container = static::getContainer();
+        $configuration = $container->get(ConfigurationService::class);
+        self::assertInstanceOf(ConfigurationService::class, $configuration);
+        $dataValidator = $container->get(DataValidator::class);
+        self::assertInstanceOf(DataValidator::class, $dataValidator);
+
+        $validator = new SystemConfigValidator($configuration, $dataValidator);
+        $context = Context::createDefaultContext();
+        $domain = QuoteAgentSettingsReader::DOMAIN;
+
+        // The edges and a blank are accepted; this throws if they are not.
+        $validator->validate(
+            [
+                'null' => [
+                    $domain . 'maxDiscountPercent' => 0.0,
+                    $domain . 'counterOfferMaxPercent' => 100.0,
+                    // A markup may exceed 100% (QuoteLimits::$minMarginPercent).
+                    $domain . 'minMarginPercent' => 250.0,
+                ],
+                self::anySalesChannelId() => [$domain . 'counterOfferMaxPercent' => null],
+            ],
+            $context,
+        );
+
+        $refused = [];
+
+        try {
+            $validator->validate([
+                'null' => [
+                    $domain . 'maxDiscountPercent' => -1.0,
+                    $domain . 'counterOfferMaxPercent' => 101.0,
+                    $domain . 'minMarginPercent' => -0.5,
+                ],
+            ], $context);
+        } catch (ConstraintViolationException $e) {
+            $refused = array_map(
+                static fn(ConstraintViolationInterface $violation): string => $violation->getPropertyPath(),
+                iterator_to_array($e->getViolations()),
+            );
+        }
+
+        sort($refused);
+
+        self::assertSame(
+            [
+                '/null/' . $domain . 'counterOfferMaxPercent',
+                '/null/' . $domain . 'maxDiscountPercent',
+                '/null/' . $domain . 'minMarginPercent',
+            ],
+            $refused,
+        );
     }
 
     public function testTheReaderResolvesFromTheContainerAndHonoursTheKillSwitch(): void
