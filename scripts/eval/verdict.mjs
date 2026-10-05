@@ -123,7 +123,7 @@ export function canaryMismatches(judgment, labels) {
     return out;
 }
 
-const missing = (reason) => ({ H1: na(reason), H2: na(reason), H3: na(reason), H4: na(reason), H5: na(reason), H6: na(reason), H7: fail(reason), H9: na(reason), H10: na(reason) });
+const missing = (reason) => ({ H1: na(reason), H2: na(reason), H3: na(reason), H4: na(reason), H5: na(reason), H6: na(reason), H7: fail(reason), H9: na(reason), H10: na(reason), H11: na(reason) });
 
 function aggregateHard(statuses) {
     if (statuses.some((s) => s.status === 'fail')) return 'fail';
@@ -229,7 +229,7 @@ export function verdict({ scenarios, reps, rows, judgments, judgeCosts = new Map
 }
 
 export function formatTable(result) {
-    const columns = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10', 'J1', 'J2', 'J3', 'J4'];
+    const columns = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10', 'H11', 'J1', 'J2', 'J3', 'J4'];
     const cell = (check) => (!check ? '' : check.result === 'n/a' ? 'n/a' : check.result === 'err' ? 'err' : `${check.passes}/${check.of}`);
     const width = Math.max(...result.scenarios.map((s) => s.id.length), 8);
     const lines = [`${'scenario'.padEnd(width)}  ${columns.map((c) => c.padStart(4)).join(' ')}   J5`];

@@ -18,6 +18,7 @@ import {
     h6Order,
     h9Rounding,
     h10NoSilentWrite,
+    h11LiveQuote,
 } from './eval/checks.mjs';
 import { canaryMismatches, figureCandidates, formatTable, h8StatedFigures, judgeCostUsd, tagPassRates, transcript, unwrapJudgeResult, verdict } from './eval/verdict.mjs';
 
@@ -29,6 +30,7 @@ const row = (over = {}) => ({
     replyToBuyer: 'We can do 5% off.', buyerAsk: 'Could you do 5% off?',
     linesBefore: [line()], linesAfter: [line({ unitPriceNet: 9.5, totalNet: 95 })],
     policy: policy(), purchasePricesNet: {}, terminal: null, orderId: null, orderFailure: null,
+    finalQuote: { currency: 'EUR', totals: { net: 95, gross: 113.05 } },
     ...over,
 });
 const scenario = (over = {}) => ({ id: 's', tags: ['band'], openingAsk: 'Could you do 5% off?', expect: { firstOutcome: ['offered'], maxEscalations: 1, order: false, judge: [] }, ...over });
@@ -150,6 +152,20 @@ assert.equal(status(h10NoSilentWrite(duplicateTrigger.slice(1))), 'n/a');
 assert.equal(status(h10NoSilentWrite([row({ outcome: 'escalated', totalNetAfter: 100, totalGrossAfter: 119, replyToBuyer: null })])), 'n/a');
 assert.equal(checkNegotiation(scenario(), groupNegotiations(grossFigure)[0]).H10.status, 'fail', 'wired into checkNegotiation');
 
+// H11 -- the last written totals are the live quote's. Same stored rows; no run before H11 read the quote back.
+const live = (net, gross) => ({ finalQuote: { currency: 'EUR', totals: { net, gross } } });
+const withLive = (rows, net, gross) => rows.map((r) => ({ ...r, ...live(net, gross) }));
+assert.equal(status(h11LiveQuote(withLive(grossFigure, 6545.13, 7788.7))), 'pass');
+assert.match(h11LiveQuote(withLive(grossFigure, 6800, 8092)).reason, /round 2 wrote net 6545\.13, but the live quote carries 6800/);
+assert.match(h11LiveQuote(withLive(grossFigure, 6545.13, 8092)).reason, /round 2 wrote gross 7788\.7, but the live quote carries 8092/);
+// a later nothing_to_do wrote nothing: the comparison is against the last pass that did
+assert.equal(status(h11LiveQuote(withLive(duplicateTrigger, 3363.42, 4002.47))), 'pass');
+assert.equal(status(h11LiveQuote(withLive(duplicateTrigger.slice(1), 3363.42, 4002.47))), 'n/a');
+// written but never read back (a failed final GET, or a run from before H11): cannot tell, so fail
+assert.match(h11LiveQuote(grossFigure.map((r) => ({ ...r, finalQuote: null }))).reason, /was not read after the last round/);
+assert.equal(status(h11LiveQuote(withLive(grossFigure, null, 7788.7))), 'fail', 'a null live total never matches a written one');
+assert.equal(checkNegotiation(scenario(), groupNegotiations(withLive(grossFigure, 6800, 8092))[0]).H11.status, 'fail', 'wired into checkNegotiation');
+
 // grouping sorts rounds and keys by rep
 const grouped = groupNegotiations([row({ round: 2 }), row({ round: 1 }), row({ rep: 2 })]);
 assert.equal(grouped.length, 2);
@@ -208,7 +224,7 @@ assert.equal(allPass.scenarios[0].checks.H2.passes, 3);
 const oneHardFail = run([row({ rep: 1 }), row({ rep: 2, totalNetAfter: 80 }), row({ rep: 3 })], [[`s#1`, rubric([])], [`s#2`, rubric([])], [`s#3`, rubric([])]]);
 assert.equal(oneHardFail.exitCode, 1);
 assert.equal(oneHardFail.scenarios[0].checks.H2.result, 'fail');
-assert.match(formatTable(allPass).split('\n')[0], /H9  H10   J1/, 'H10 has its own column');
+assert.match(formatTable(allPass).split('\n')[0], /H9  H10  H11   J1/, 'H10 and H11 have their own columns');
 
 const twoOfThree = run(reps3, [[`s#1`, rubric([])], [`s#2`, rubric(['pass', 'fail'])], [`s#3`, rubric([])]]);
 assert.equal(twoOfThree.scenarios[0].checks.J2.result, 'pass');

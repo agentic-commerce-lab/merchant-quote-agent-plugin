@@ -188,7 +188,7 @@ function fakeShop(passes, { refuseCounterUnlessReplied = true, counterStatus = n
         if (next.totalNetAfter != null) net = next.totalNetAfter;
         state = next.outcome === 'offered' || next.outcome === 'countered' || next.outcome === 'acknowledged' ? 'replied' : 'open';
     };
-    const quote = () => ({ id: 'q1', state, totals: { net, gross: net * 1.19, tax_status: 'gross' }, line_items: [{ unit_price: quotedUnitPrice }] });
+    const quote = () => ({ id: 'q1', state, currency: 'EUR', totals: { net, gross: net * 1.19, tax_status: 'gross' }, line_items: [{ unit_price: quotedUnitPrice }] });
     const ucp = {
         async request(method, path, { json } = {}) {
             posted.push({ method, path, json });
@@ -293,6 +293,32 @@ assert.equal(brokenGet.length, 1);
 assert.equal(brokenGet[0].cellFailure, true);
 assert.match(brokenGet[0].failureMessage, /HTTP 503/);
 assert.ok(brokenGet[0].failureMessage.length < 400, 'the body is truncated');
+
+// H11's input: after the last round, wait out a late pass, read the live quote, and only then decline
+const finalLog = [];
+const finalShop = fakeShop([{ outcome: 'offered', totalNetAfter: 980 }, { outcome: 'offered', totalNetAfter: 970 }]);
+const finalRows = await negotiate({
+    ...policyArgs(),
+    ucp: { request: async (method, path, options) => { finalLog.push(`${method} ${path}`); return finalShop.ucp.request(method, path, options); } },
+    admin: finalShop.admin,
+    scenario: validateScenario(base({ maxRounds: 2 })),
+    sleep: async (seconds) => { finalLog.push(`sleep ${seconds}`); },
+});
+assert.deepEqual(finalLog.slice(-3), ['sleep 0.1', 'GET /ucp/quotes/q1', 'POST /ucp/quotes/q1/decline']);
+assert.deepEqual(finalRows.map((r) => r.finalQuote), [1, 2].map(() => ({ currency: 'EUR', totals: { gross: 970 * 1.19, net: 970 } })), 'on every row');
+// a failed final read keeps the rows: H11 reports it, H7 does not
+let finalGets = 0;
+const lostShop = fakeShop([{ outcome: 'offered', totalNetAfter: 980 }]);
+const lost = await negotiate({
+    ...policyArgs(),
+    ucp: { request: async (method, path, options) => (method === 'GET' && ++finalGets === 2 ? { status: 503, body: {} } : lostShop.ucp.request(method, path, options)) },
+    admin: lostShop.admin,
+    scenario: validateScenario(base({ maxRounds: 1 })),
+});
+assert.equal(lost.length, 1);
+assert.equal(lost[0].cellFailure, undefined);
+assert.equal(lost[0].finalQuote, null);
+assert.equal(buildRows({ decisions: [{ id: 'd1' }], traces: [] })[0].finalQuote, null, 'no final read given: null');
 
 // a pass that never comes is a failure row, not a hang
 const timedOut = await run(base(), fakeShop([]));

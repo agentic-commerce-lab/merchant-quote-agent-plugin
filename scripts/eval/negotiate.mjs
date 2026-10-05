@@ -21,6 +21,17 @@ async function decline(ucp, quoteId) {
     return response && response.status >= 200 && response.status < 300 ? 'declined' : 'left_open';
 }
 
+/**
+ * The quote as the buyer finds it once the agent is done, for H11; null when
+ * the read fails, which H11 reports rather than losing the negotiation's rows.
+ */
+async function readFinalQuote(ucp, quoteId) {
+    const response = await ucp.request('GET', `/ucp/quotes/${quoteId}`).catch(() => null);
+    if (response?.status !== 200) return null;
+    const { currency = null, totals = {} } = response.body;
+    return { currency, totals: { gross: totals.gross ?? null, net: totals.net ?? null } };
+}
+
 const defaultSleep = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000));
 
 async function waitForDecision(admin, quoteId, seen, { timeoutSeconds, pollSeconds, sleep }) {
@@ -107,10 +118,14 @@ export async function negotiate({ ucp, admin, scenario, rep, runId, policy, purc
             if (!decisions) throw new PassTimeout(`no decision for round ${round + 1} within ${timeouts.pass} s`);
         }
 
+        // A late pass (a duplicate trigger) may still write: give it the stand-down
+        // window, then read the quote before the decline moves it on.
+        await sleep(timeouts.standDown);
+        const finalQuote = await readFinalQuote(ucp, quoteId);
         const cleanup = terminal === 'accept' ? 'accepted' : await decline(ucp, quoteId);
         const all = await admin.decisions(quoteId);
         const traces = all.length > 0 ? await admin.traces(all.map((d) => d.id)) : [];
-        return buildRows({ runId, scenarioId: scenario.id, rep, decisions: all, traces, policy, purchasePricesNet, terminal, ...order, followUpRefused, latencies })
+        return buildRows({ runId, scenarioId: scenario.id, rep, decisions: all, traces, policy, purchasePricesNet, terminal, ...order, followUpRefused, latencies, finalQuote })
             .map((row) => ({ ...row, cleanup }));
     } catch (error) {
         const cleanup = quoteId ? await decline(ucp, quoteId) : null; // null: no quote was ever created

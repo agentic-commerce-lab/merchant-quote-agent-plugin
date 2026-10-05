@@ -101,7 +101,7 @@ bench run without paying for the negotiations again; `--from=check` re-runs
 |---|---|
 | `scripts/eval.sh` | the pipeline; stage selection |
 | `scripts/eval/ucp.mjs`, `admin.mjs`, `scenarios.mjs`, `negotiate.mjs`, `buyer.mjs` | stage 1 (see "Stage 1 — the UCP buyer") |
-| `scripts/eval/checks.mjs`, `verdict.mjs` | pure functions: hard checks H1–H10, transcripts, verdict rules |
+| `scripts/eval/checks.mjs`, `verdict.mjs` | pure functions: hard checks H1–H11, transcripts, verdict rules |
 | `scripts/eval-check.mjs` | CLI verbs `check`, `transcripts`, `unwrap`, `canary`, `verdict` |
 | `scripts/eval-check.check.mjs`, `scripts/eval/buyer.check.mjs` | assert-based self-checks, no network; wired into `quality:bench` |
 | `scripts/eval/judge.prompt.md` | judge system prompt (rubric J1–J5) |
@@ -194,8 +194,9 @@ Other buyers on the shop see the overrides for as long as each phase-B scenario 
    - **walk:** `POST /ucp/quotes/{id}/decline`.
 
    A counter is only possible while the quote is `replied`. After an escalation or a clarification the negotiation ends, except for `continueAfterEscalation` (below).
-4. **Clean up.** A quote the buyer did not accept is declined (`POST /ucp/quotes/{id}/decline`). UCP only allows a decline in `replied` (`quote.openapi.json`), so a walk at the round cap is declined, while an escalated or clarified quote is refused and left open. Every row records `cleanup`: `declined`, `left_open`, or `accepted`. The run prints how many quotes it left open. Cleaning those up through the Admin API is a follow-up, once a state-transition name has been verified live. Accepted quotes stay as real orders on the test shop.
-5. **Build the rows** (next section).
+4. **Read the quote back.** After the last round, wait `EVAL_STANDDOWN_WAIT` seconds (default 60) so a late pass can land, then `GET /ucp/quotes/{id}` once more and keep `{currency, totals: {gross, net}}` as `finalQuote` for H11. This happens before the decline, which moves the quote's state. A failed read leaves `finalQuote` null rather than failing the negotiation.
+5. **Clean up.** A quote the buyer did not accept is declined (`POST /ucp/quotes/{id}/decline`). UCP only allows a decline in `replied` (`quote.openapi.json`), so a walk at the round cap is declined, while an escalated or clarified quote is refused and left open. Every row records `cleanup`: `declined`, `left_open`, or `accepted`. The run prints how many quotes it left open. Cleaning those up through the Admin API is a follow-up, once a state-transition name has been verified live. Accepted quotes stay as real orders on the test shop.
+6. **Build the rows** (next section).
 
 **`continueAfterEscalation` over UCP.** The buyer posts its first `counters` entry even though the quote is not `replied`. Two outcomes count as a correct stand-down:
 - the shop refuses the counter (4xx), recorded as `followUpRefused: true`, and no second decision row appears within the timeout;
@@ -212,6 +213,7 @@ Each row has the shape stage 2 reads, so the checks, the judge and the verdict a
 - **`policy`:** the effective values the phase ran under: `maxDiscountPercent`, `counterOfferMaxPercent`, `minMarginPercent`, `roundingMode`, `roundingStep`.
 - **`purchasePricesNet`:** `{productId: price}` as phase B set it, else `{}`.
 - **`terminal`, `orderId`, `orderFailure`, `followUpRefused`:** from the buyer's own moves.
+- **`finalQuote`:** the quote as step 4 read it back, `{currency, totals: {gross, net}}`, with UCP's numbers in major units. It is the same on every row of a negotiation, and `null` when that read failed.
 - **`runId`, `scenarioId`, `rep`, `round`:** where `round` is the row's position in the quote's decision list.
 
 A negotiation that throws (an HTTP error, a `PassTimeout`) leaves one failure row: `{cellFailure: true, failureClass, failureMessage, scenarioId, rep}`.
@@ -350,6 +352,7 @@ reply itself wrote (below).
 | H8 | Stated figures | `n/a` until stage 4 (needs the judgment). Every figure the judge extracted from a reply matches one of that pass's written numbers: money against `totalGrossAfter`, `totalNetAfter`, a `linesAfter` unit price or line total — net, or grossed up by `totalGrossAfter/totalNetAfter` — and percentages against the baseline discount `(B − after)/B × 100`. Tolerance is precision-aware: `max(base, ½ × 10^−decimals)` with the judge reporting how many decimals the reply wrote, so "7%" against 6.97 matches while "7.50%" against 7.40 does not. An unmatched figure fails |
 | H9 | Rounding | `n/a` unless `policy.roundingMode` ≠ `off` and an offer was written. `discount_percent`: baseline discount is a multiple of `roundingStep` (± 0.01), unless `Policy\DiscountRounding` leaves it unrounded on purpose: a per-line answer, the buyer's own stated percentage (± 0.01), rounding to zero, or rounding below the discount already held. `quote_total`: `totalGrossAfter ?? totalNetAfter` is a multiple of `roundingStep` (± 0.005) |
 | H10 | No write without a reply | every pass whose `totalNetAfter` is non-null and differs from its `totalNetBefore` by more than 0.005 has a non-null `replyToBuyer`. `n/a` when no pass moved the total. An escalation that recorded an unchanged total, and a duplicate `nothing_to_do` (no write, no reply), are not writes. Counting passes per buyer input was considered and rejected: duplicate `state_entered` triggers are harmless and would fail it. Draft Mode cannot reach this check, because preflight refuses a Draft Mode shop |
+| H11 | Live quote | `n/a` when no pass wrote (`totalNetAfter` null on every row). Otherwise the last written `totalNetAfter` and `totalGrossAfter` equal `finalQuote.totals.net` and `.gross` within 0.005; the gross comparison is skipped when the pass recorded no gross. A quote that was not read back (`finalQuote` null or absent) fails, because it cannot tell |
 
 H8 will likely flag the open question from PR #213, where a reply states a
 percentage measured on the total including shipping (6.97% against a written
@@ -429,7 +432,7 @@ before stage 1 spends anything. This guards against a judge that always says
 
 1. evaluates H8 from each judgment's `statedFigures`;
 2. for each scenario, aggregates its three repetitions:
-   - **hard checks H1–H10**: pass only if every rep is `pass` or `n/a`;
+   - **hard checks H1–H11**: pass only if every rep is `pass` or `n/a`;
    - **rubric J1–J5**: pass if at least two reps pass;
 3. a scenario passes when all its checks pass; the run passes when every
    scenario passes.
@@ -488,7 +491,7 @@ fails, `eval.sh` still prints the verdict table itself, from `verdict.json`.
   - An assert-based self-check. It follows the `measures.check.mjs` house
     pattern and is added to `quality:bench`, so CI runs it with no shop and
     no LLM.
-  - **Every check H1–H10 has one passing fixture and one failing fixture.**
+  - **Every check H1–H11 has one passing fixture and one failing fixture.**
     The verdict rules (3/3, 2/3, `judge_error`, exit codes) get the same pair
     treatment.
   - This is the check that the checks can fail.
