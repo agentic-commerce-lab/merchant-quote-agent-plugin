@@ -101,7 +101,7 @@ bench run without paying for the negotiations again; `--from=check` re-runs
 |---|---|
 | `scripts/eval.sh` | the pipeline; stage selection |
 | `scripts/eval/ucp.mjs`, `admin.mjs`, `scenarios.mjs`, `negotiate.mjs`, `buyer.mjs` | stage 1 (see "Stage 1 — the UCP buyer") |
-| `scripts/eval/checks.mjs`, `verdict.mjs` | pure functions: hard checks H1–H9, transcripts, verdict rules |
+| `scripts/eval/checks.mjs`, `verdict.mjs` | pure functions: hard checks H1–H10, transcripts, verdict rules |
 | `scripts/eval-check.mjs` | CLI verbs `check`, `transcripts`, `unwrap`, `canary`, `verdict` |
 | `scripts/eval-check.check.mjs`, `scripts/eval/buyer.check.mjs` | assert-based self-checks, no network; wired into `quality:bench` |
 | `scripts/eval/judge.prompt.md` | judge system prompt (rubric J1–J5) |
@@ -349,6 +349,7 @@ reply itself wrote (below).
 | H7 | No cell failure | no `cellFailure` row (HTTP error, `PassTimeout`) and at least one JSONL line for this negotiation |
 | H8 | Stated figures | `n/a` until stage 4 (needs the judgment). Every figure the judge extracted from a reply matches one of that pass's written numbers: money against `totalGrossAfter`, `totalNetAfter`, a `linesAfter` unit price or line total — net, or grossed up by `totalGrossAfter/totalNetAfter` — and percentages against the baseline discount `(B − after)/B × 100`. Tolerance is precision-aware: `max(base, ½ × 10^−decimals)` with the judge reporting how many decimals the reply wrote, so "7%" against 6.97 matches while "7.50%" against 7.40 does not. An unmatched figure fails |
 | H9 | Rounding | `n/a` unless `policy.roundingMode` ≠ `off` and an offer was written. `discount_percent`: baseline discount is a multiple of `roundingStep` (± 0.01), unless `Policy\DiscountRounding` leaves it unrounded on purpose: a per-line answer, the buyer's own stated percentage (± 0.01), rounding to zero, or rounding below the discount already held. `quote_total`: `totalGrossAfter ?? totalNetAfter` is a multiple of `roundingStep` (± 0.005) |
+| H10 | No write without a reply | every pass whose `totalNetAfter` is non-null and differs from its `totalNetBefore` by more than 0.005 has a non-null `replyToBuyer`. `n/a` when no pass moved the total. An escalation that recorded an unchanged total, and a duplicate `nothing_to_do` (no write, no reply), are not writes. Counting passes per buyer input was considered and rejected: duplicate `state_entered` triggers are harmless and would fail it. Draft Mode cannot reach this check, because preflight refuses a Draft Mode shop |
 
 H8 will likely flag the open question from PR #213, where a reply states a
 percentage measured on the total including shipping (6.97% against a written
@@ -428,7 +429,7 @@ before stage 1 spends anything. This guards against a judge that always says
 
 1. evaluates H8 from each judgment's `statedFigures`;
 2. for each scenario, aggregates its three repetitions:
-   - **hard checks H1–H9**: pass only if every rep is `pass` or `n/a`;
+   - **hard checks H1–H10**: pass only if every rep is `pass` or `n/a`;
    - **rubric J1–J5**: pass if at least two reps pass;
 3. a scenario passes when all its checks pass; the run passes when every
    scenario passes.
@@ -487,7 +488,7 @@ fails, `eval.sh` still prints the verdict table itself, from `verdict.json`.
   - An assert-based self-check. It follows the `measures.check.mjs` house
     pattern and is added to `quality:bench`, so CI runs it with no shop and
     no LLM.
-  - **Every check H1–H9 has one passing fixture and one failing fixture.**
+  - **Every check H1–H10 has one passing fixture and one failing fixture.**
     The verdict rules (3/3, 2/3, `judge_error`, exit codes) get the same pair
     treatment.
   - This is the check that the checks can fail.

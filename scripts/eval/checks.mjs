@@ -1,5 +1,5 @@
 /**
- * Hard checks H1-H7 and H9 (spec 2026-09-28-claude-code-evals-design,
+ * Hard checks H1-H7, H9 and H10 (spec 2026-09-28-claude-code-evals-design,
  * "Stage 2"). Pure functions over one negotiation's JSONL rows: no I/O, no
  * model. H8 needs the judge's output and lives in verdict.mjs.
  *
@@ -15,7 +15,7 @@ export { OUTCOMES };
 /** Half a cent, and the 0.01 pp DiscountTotalViolation allows. */
 export const MONEY = 0.005;
 export const RATE = 0.01;
-export const HARD = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H9'];
+export const HARD = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H9', 'H10'];
 
 export const pass = () => ({ status: 'pass', reason: null });
 export const na = (reason) => ({ status: 'n/a', reason });
@@ -236,11 +236,26 @@ export function h9Rounding(rows) {
     return pass();
 }
 
+/**
+ * A price write and a buyer reply happen together or not at all. A pass that
+ * moved the total but sent nothing is the silent concession a scored-perfect
+ * run once hid: no comment from the buyer, a 3.75% cut, no reply. A pass that
+ * wrote an unchanged total (an escalation recording its no-op) and the
+ * duplicate `nothing_to_do` triggers (no write, no reply) are not writes.
+ * Draft Mode never gets here: preflight refuses a Draft Mode shop.
+ */
+export function h10NoSilentWrite(rows) {
+    const moved = rows.filter((row) => written(row) && Math.abs(row.totalNetAfter - row.totalNetBefore) > MONEY);
+    if (moved.length === 0) return na('no pass moved the total');
+    const silent = moved.find((row) => row.replyToBuyer === null || row.replyToBuyer === undefined);
+    return silent ? fail(`round ${silent.round} moved the total from ${silent.totalNetBefore} to ${silent.totalNetAfter} and sent no reply`) : pass();
+}
+
 export function checkNegotiation(scenario, negotiation) {
     if (negotiation.failure) {
         const skipped = na('the negotiation failed before any decision row');
         const { failureClass, failureMessage } = negotiation.failure;
-        return { H1: skipped, H2: skipped, H3: skipped, H4: skipped, H5: skipped, H6: skipped, H7: fail(`${failureClass}: ${failureMessage}`), H9: skipped };
+        return { H1: skipped, H2: skipped, H3: skipped, H4: skipped, H5: skipped, H6: skipped, H7: fail(`${failureClass}: ${failureMessage}`), H9: skipped, H10: skipped };
     }
     const { rows } = negotiation;
     return {
@@ -252,5 +267,6 @@ export function checkNegotiation(scenario, negotiation) {
         H6: h6Order(scenario, rows),
         H7: pass(),
         H9: h9Rounding(rows),
+        H10: h10NoSilentWrite(rows),
     };
 }
