@@ -66,7 +66,37 @@ final class AskMirrorTest extends TestCase
 
         $this->serviceWith($harness, '50 per unit or we walk');
 
-        self::assertContains([MirroredAsks::KEY => ['line-1' => 50.0]], $harness->gateway->customFieldWrites);
+        self::assertContains(
+            [MirroredAsks::KEY => ['line-1' => ['net' => 50.0, 'stored' => 50.0]]],
+            $harness->gateway->customFieldWrites,
+        );
+    }
+
+    /**
+     * QA-08: the marker records what the line write STORES, in the quote's own
+     * tax space, so recognising the mirror later needs no ratio the agent's
+     * own reprice may have moved. 75.00 gross a unit is 60.00 net at the
+     * fixture's 0.8, and it is stored back as 75.00.
+     */
+    public function testTheMarkerRecordsTheValueTheLineWriteStores(): void
+    {
+        $harness = PipelineHarness::with([
+            '{"structural":{"lineChanges":[{"lineItemId":"line-1","targetUnitPrice":75}]}}',
+        ]);
+
+        $harness->pipeline->service(
+            NegotiationFixture::grossSnapshot(comments: [
+                NegotiationFixture::buyerComment('75 a unit?', '2026-08-28 09:00:00'),
+            ]),
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertContains(
+            [MirroredAsks::KEY => ['line-1' => ['net' => 60.0, 'stored' => 75.0]]],
+            $harness->gateway->customFieldWrites,
+        );
     }
 
     /**
@@ -94,7 +124,7 @@ final class AskMirrorTest extends TestCase
         );
 
         self::assertContains(
-            [MirroredAsks::KEY => ['line-9' => 12.0, 'line-1' => 50.0]],
+            [MirroredAsks::KEY => ['line-9' => 12.0, 'line-1' => ['net' => 50.0, 'stored' => 50.0]]],
             $harness->gateway->customFieldWrites,
         );
     }
@@ -116,7 +146,10 @@ final class AskMirrorTest extends TestCase
         $this->serviceWith($harness, '5% please');
 
         self::assertSame([95.0], self::mirroredPrices($harness));
-        self::assertContains([MirroredAsks::KEY => ['line-1' => 95.0]], $harness->gateway->customFieldWrites);
+        self::assertContains(
+            [MirroredAsks::KEY => ['line-1' => ['net' => 95.0, 'stored' => 95.0]]],
+            $harness->gateway->customFieldWrites,
+        );
         self::assertSame([PipelineHarness::rewordedReply()], $harness->gateway->comments);
     }
 
@@ -139,7 +172,10 @@ final class AskMirrorTest extends TestCase
         $this->serviceWith($harness, 'can you do 900 total?');
 
         self::assertSame([90.0], self::mirroredPrices($harness));
-        self::assertContains([MirroredAsks::KEY => ['line-1' => 90.0]], $harness->gateway->customFieldWrites);
+        self::assertContains(
+            [MirroredAsks::KEY => ['line-1' => ['net' => 90.0, 'stored' => 90.0]]],
+            $harness->gateway->customFieldWrites,
+        );
     }
 
     /** "your best price" names no number at all, so there is nothing yet to mirror. */

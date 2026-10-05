@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Servicing;
 
+use MerchantQuoteAgentPlugin\Bridge\MirroredAsk;
 use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use MerchantQuoteAgentPlugin\Servicing\ServicingFingerprint;
 use PHPUnit\Framework\TestCase;
@@ -27,7 +28,7 @@ final class ReviewFingerprintTest extends TestCase
     {
         $serviced = QuoteSnapshotFixture::snapshot(lines: [QuoteSnapshotFixture::line(9.0)]);
         $mirrored = QuoteSnapshotFixture::snapshot(
-            customFields: MirroredAsks::stamp([], ['line-1' => 9.0]),
+            customFields: MirroredAsks::stamp([], ['line-1' => MirroredAsk::written(9.0, 1.0)]),
             lines: [QuoteSnapshotFixture::line(null)],
         );
 
@@ -41,7 +42,7 @@ final class ReviewFingerprintTest extends TestCase
     {
         $serviced = QuoteSnapshotFixture::snapshot(lines: [QuoteSnapshotFixture::line(8.0)]);
         $mirrored = QuoteSnapshotFixture::snapshot(
-            customFields: MirroredAsks::stamp([], ['line-1' => 7.0]),
+            customFields: MirroredAsks::stamp([], ['line-1' => MirroredAsk::written(7.0, 1.0)]),
             lines: [QuoteSnapshotFixture::line(null)],
         );
 

@@ -9,6 +9,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
+use MerchantQuoteAgentPlugin\Bridge\MirroredAsk;
 use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use Shopware\Core\Checkout\Cart\Price\Struct\CalculatedPrice;
 use Shopware\Core\Checkout\Cart\Price\Struct\CartPrice;
@@ -157,7 +158,12 @@ final class UpdateLineItemsTest extends IntegrationTestCase
         $lineItemId = $line->identity->lineItemId;
         $ask = round($line->unitPriceNet * 0.8, precision: 2);
 
-        $gateway->updateQuote($quoteId, new QuoteUpdate(customFields: MirroredAsks::stamp([], [$lineItemId => $ask])));
+        $gateway->updateQuote(
+            $quoteId,
+            new QuoteUpdate(customFields: MirroredAsks::stamp([], [
+                $lineItemId => MirroredAsk::written($ask, $line->netRatio),
+            ])),
+        );
         $gateway->updateLineItems($quoteId, [
             new QuoteLineItemChange(lineItemId: $lineItemId, requestedUnitPriceNet: $ask),
         ]);

@@ -4,17 +4,26 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLifecycle;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
+use MerchantQuoteAgentPlugin\Bridge\QuoteLineMapper;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use PHPUnit\Framework\TestCase;
+use Shopware\Core\Checkout\Cart\Price\Struct\CalculatedPrice;
+use Shopware\Core\Checkout\Cart\Tax\Struct\CalculatedTax;
+use Shopware\Core\Checkout\Cart\Tax\Struct\CalculatedTaxCollection;
+use Shopware\Core\Checkout\Cart\Tax\Struct\TaxRuleCollection;
+use Shopware\Core\Framework\Struct\ArrayEntity;
 
 /**
  * @mago-expect lint:too-many-methods
@@ -85,7 +94,7 @@ final class NegotiationPipelineTest extends TestCase
         // (100.00 * 0.6 = 60.00) before the gate ever runs (#165).
         $writes = $harness->gateway->customFieldWrites;
         self::assertCount(2, $writes);
-        self::assertSame([MirroredAsks::KEY => ['line-1' => 60.0]], $writes[0]);
+        self::assertSame([MirroredAsks::KEY => ['line-1' => ['net' => 60.0, 'stored' => 60.0]]], $writes[0]);
         self::assertSame(
             QuoteEscalationReason::DiscountLimitExceeded->value,
             $writes[1][QuoteEscalator::MARKER_KEY] ?? null,
@@ -161,6 +170,64 @@ final class NegotiationPipelineTest extends TestCase
         self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
         self::assertSame(0, $harness->spy->calls);
         self::assertSame([], $harness->gateway->calls);
+    }
+
+    /**
+     * QA-08, quote #1411, end to end through the read model. Pass 1 mirrored
+     * a 289.81 net ask (stored 318.79), repriced the line to 293.05 net /
+     * 322.36 gross and replied. A pending trigger then ran pass 2 with no new
+     * buyer input. Recomputing the mirror through the repriced ratio gave
+     * 318.80, so the mirror read as a fresh 289.80 ask: pass 2 negotiated,
+     * cut the price again, and suppressed its reply.
+     */
+    public function testAPassWithNoNewBuyerInputAfterARepriceWritesNothing(): void
+    {
+        $harness = PipelineHarness::with([]);
+        $marker = [MirroredAsks::KEY => ['line-1' => ['net' => 289.81, 'stored' => 318.79]]];
+        $lines = (new QuoteLineMapper(CommercialCapabilities::modern()))->map(new ArrayEntity([
+            'taxStatus' => 'gross',
+            'customFields' => $marker,
+            'lineItems' => [new ArrayEntity([
+                'id' => 'line-1',
+                'label' => 'Widget',
+                'referencedId' => 'prod-1',
+                'quantity' => 1,
+                'totalPrice' => 322.36,
+                'requestedPrice' => 318.79,
+                'price' => new CalculatedPrice(
+                    322.36,
+                    322.36,
+                    new CalculatedTaxCollection([new CalculatedTax(29.31, 10.0, 322.36)]),
+                    new TaxRuleCollection(),
+                ),
+            ])],
+        ]));
+        $answered = NegotiationFixture::snapshot(state: 'replied', comments: [
+            NegotiationFixture::buyerComment('Can you do 289.81 a unit?', '2026-10-01 09:00:00'),
+            NegotiationFixture::agentComment('We have reduced the quote.', '2026-10-01 09:05:00'),
+        ]);
+        $snapshot = new QuoteSnapshot(
+            identity: $answered->identity,
+            revision: $answered->revision,
+            totals: new QuoteTotals(totalNet: 293.05, totalGross: 322.36),
+            lifecycle: new QuoteLifecycle(
+                stateTechnicalName: 'replied',
+                expiresAt: $answered->lifecycle->expiresAt,
+                customFields: $marker,
+            ),
+            content: new QuoteContent(lines: $lines, comments: $answered->content->comments),
+        );
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame(0, $harness->spy->calls, 'No negotiate call: there is nothing to answer.');
+        self::assertSame([], $harness->gateway->calls, 'And nothing is written.');
     }
 
     public function testAnExtractionWithNoAskInAnyFieldAcknowledgesTheBuyer(): void

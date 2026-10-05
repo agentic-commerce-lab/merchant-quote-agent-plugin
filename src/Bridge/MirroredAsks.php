@@ -38,14 +38,20 @@ final class MirroredAsks
      * value the agent itself wrote as though the buyer had just asked for it.
      * Takes the whole custom fields so a caller cannot forget the merge.
      *
-     * @param array<array-key, mixed> $customFields
-     * @param array<string, float> $netByLineItemId
+     * An earlier legacy entry is written back as the bare number it was, not
+     * given a stored value nobody recorded (MirroredAsk::marker()).
      *
-     * @return array<string, array<string, float>>
+     * @param array<array-key, mixed> $customFields
+     * @param array<string, MirroredAsk> $asks
+     *
+     * @return array<string, array<string, float|array{net: float, stored: float}>>
      */
-    public static function stamp(array $customFields, array $netByLineItemId): array
+    public static function stamp(array $customFields, array $asks): array
     {
-        return [self::KEY => [...self::read($customFields), ...$netByLineItemId]];
+        return [self::KEY => array_map(static fn(MirroredAsk $ask): float|array => $ask->marker(), [
+                ...self::read($customFields),
+                ...$asks,
+            ])];
     }
 
     /**
@@ -55,7 +61,7 @@ final class MirroredAsks
      *
      * @param array<array-key, mixed> $customFields
      *
-     * @return array<string, float>
+     * @return array<string, MirroredAsk>
      */
     public static function read(array $customFields): array
     {
@@ -67,12 +73,12 @@ final class MirroredAsks
 
         $asks = [];
 
-        foreach ($raw as $lineItemId => $net) {
-            if (!\is_string($lineItemId) || !is_numeric($net)) {
-                continue;
-            }
+        foreach ($raw as $lineItemId => $entry) {
+            $ask = MirroredAsk::parse($entry);
 
-            $asks[$lineItemId] = (float) $net;
+            if (\is_string($lineItemId) && $ask !== null) {
+                $asks[$lineItemId] = $ask;
+            }
         }
 
         return $asks;
@@ -83,7 +89,8 @@ final class MirroredAsks
      * the quote's tax space. A net-space tolerance can hide a buyer's later
      * one-cent edit and falsely mark an unserviced ask as already answered.
      *
-     * @param array<string, float> $mirrored as returned by read()
+     * @param array<string, MirroredAsk> $mirrored as returned by read()
+     * @param float $netRatio the line's current ratio; read only for a legacy entry (MirroredAsk::holds())
      */
     public static function holds(
         array $mirrored,
@@ -91,18 +98,6 @@ final class MirroredAsks
         ?float $storedRequestedPrice,
         float $netRatio,
     ): bool {
-        $net = $mirrored[$lineItemId] ?? null;
-
-        return (
-            $net !== null
-            && $storedRequestedPrice !== null
-            && $netRatio !== 0.0
-            && number_format($storedRequestedPrice, 2, '.', '') === number_format(
-                round($net / $netRatio, precision: 2),
-                2,
-                '.',
-                '',
-            )
-        );
+        return ($mirrored[$lineItemId] ?? null)?->holds($storedRequestedPrice, $netRatio) ?? false;
     }
 }

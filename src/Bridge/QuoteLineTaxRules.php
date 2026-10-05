@@ -136,7 +136,9 @@ final readonly class QuoteLineTaxRules
             return [];
         }
 
-        return $net === null || $netRatio === null ? [] : ['requestedPrice' => round($net / $netRatio, precision: 2)];
+        return (
+            $net === null || $netRatio === null ? [] : ['requestedPrice' => MirroredAsk::storedValue($net, $netRatio)]
+        );
     }
 
     /** @return list<array{taxRate: float, percentage: float}> */

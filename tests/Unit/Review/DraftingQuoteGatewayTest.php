@@ -11,6 +11,7 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteRevision;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
+use MerchantQuoteAgentPlugin\Bridge\MirroredAsk;
 use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use MerchantQuoteAgentPlugin\Bridge\QuoteRevisionMismatch;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
@@ -110,7 +111,7 @@ final class DraftingQuoteGatewayTest extends TestCase
     {
         $serviced = QuoteSnapshotFixture::snapshot(lines: [QuoteSnapshotFixture::line(8.0)]);
         $liveSnapshot = QuoteSnapshotFixture::snapshot(
-            customFields: MirroredAsks::stamp([], ['line-1' => 7.0]),
+            customFields: MirroredAsks::stamp([], ['line-1' => MirroredAsk::written(7.0, 1.0)]),
             lines: [QuoteSnapshotFixture::line(null)],
         );
         $live = new FakeQuoteGateway([$liveSnapshot]);

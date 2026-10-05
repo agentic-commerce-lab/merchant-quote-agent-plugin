@@ -56,7 +56,7 @@ final readonly class QuoteLineMapper
         return $lines;
     }
 
-    /** @param array<string, float> $mirrored */
+    /** @param array<string, MirroredAsk> $mirrored */
     private function line(Entity $lineItem, QuoteLineNet $net, array $mirrored): QuoteLineSnapshot
     {
         $lineItemId = (string) $lineItem->get('id');

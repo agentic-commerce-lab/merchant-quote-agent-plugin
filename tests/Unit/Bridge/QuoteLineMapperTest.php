@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Bridge;
 
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
+use MerchantQuoteAgentPlugin\Bridge\MirroredAsk;
 use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use MerchantQuoteAgentPlugin\Bridge\QuoteLineMapper;
 use MerchantQuoteAgentPlugin\Tests\Unit\Bridge\Fixtures\LegacyLineItemEntity;
@@ -42,11 +43,34 @@ final class QuoteLineMapperTest extends TestCase
         $lines = (new QuoteLineMapper(
             CommercialCapabilities::modern(),
         ))->map(self::quote(requestedPriceGross: 95.20, customFields: MirroredAsks::stamp([], [
-            'line-1' => 80.0,
+            'line-1' => MirroredAsk::written(80.0, 100 / 119),
         ])));
 
         self::assertNull($lines[0]->requestedUnitPrice);
         self::assertSame(119.0, $lines[0]->totalInQuotePriceSpace);
+
+        // QA-08, quote #1411: 318.79 was stored for a 289.81 net ask while the
+        // line stood at 305.06 / 335.57, and the offer then repriced it to
+        // 293.05 / 322.36. Through the NEW ratio the stored 318.79 reads as a
+        // 289.80 net ask, which the guards took for the buyer's own and
+        // negotiated again: a price written, the reply suppressed.
+        $repriced = (new QuoteLineMapper(CommercialCapabilities::modern()))->map(self::quote(
+            requestedPriceGross: 318.79,
+            customFields: [MirroredAsks::KEY => ['line-1' => ['net' => 289.81, 'stored' => 318.79]]],
+            totalGross: 322.36,
+            tax: 29.31,
+        ));
+
+        self::assertSame(293.05, $repriced[0]->totalNet, 'The fixture must be the repriced line.');
+        self::assertNull($repriced[0]->requestedUnitPrice);
+
+        // A marker written before QA-08 carries the net ask alone and still
+        // hides a line nobody repriced.
+        $legacy = (new QuoteLineMapper(
+            CommercialCapabilities::modern(),
+        ))->map(self::quote(requestedPriceGross: 95.20, customFields: [MirroredAsks::KEY => ['line-1' => 80.0]]));
+
+        self::assertNull($legacy[0]->requestedUnitPrice);
     }
 
     public function testARequestedPriceTheBUYERPlacedIsReadAsAlways(): void
@@ -64,13 +88,15 @@ final class QuoteLineMapperTest extends TestCase
         $lines = (new QuoteLineMapper(
             CommercialCapabilities::modern(),
         ))->map(self::quote(requestedPriceGross: 90.00, customFields: MirroredAsks::stamp([], [
-            'line-1' => 80.0,
+            'line-1' => MirroredAsk::written(80.0, 100 / 119),
         ])));
 
         self::assertSame(75.63, $lines[0]->requestedUnitPrice);
         $oneCentEdit = (new QuoteLineMapper(
             CommercialCapabilities::modern(),
-        ))->map(self::quote(requestedPriceGross: 17.84, customFields: MirroredAsks::stamp([], ['line-1' => 15.0])));
+        ))->map(self::quote(requestedPriceGross: 17.84, customFields: MirroredAsks::stamp([], [
+            'line-1' => MirroredAsk::written(15.0, 100 / 119),
+        ])));
 
         self::assertSame(14.99, $oneCentEdit[0]->requestedUnitPrice);
     }
@@ -80,7 +106,7 @@ final class QuoteLineMapperTest extends TestCase
         $lines = (new QuoteLineMapper(
             CommercialCapabilities::modern(),
         ))->map(self::quote(requestedPriceGross: 95.20, customFields: MirroredAsks::stamp([], [
-            'line-2' => 80.0,
+            'line-2' => MirroredAsk::written(80.0, 100 / 119),
         ])));
 
         self::assertSame(80.0, $lines[0]->requestedUnitPrice);
@@ -136,10 +162,18 @@ final class QuoteLineMapperTest extends TestCase
         self::assertSame('2026-09-16 09:00:00', $lines[0]->updatedAt?->format('Y-m-d H:i:s'));
     }
 
-    /** @param array<string, mixed> $customFields */
-    private static function quote(float $requestedPriceGross, array $customFields): ArrayEntity
-    {
-        $taxes = new CalculatedTaxCollection([new CalculatedTax(19.0, 19.0, 119.0)]);
+    /**
+     * One gross line; 119.00 at 19% unless a test reprices it.
+     *
+     * @param array<string, mixed> $customFields
+     */
+    private static function quote(
+        float $requestedPriceGross,
+        array $customFields,
+        float $totalGross = 119.0,
+        float $tax = 19.0,
+    ): ArrayEntity {
+        $taxes = new CalculatedTaxCollection([new CalculatedTax($tax, 19.0, $totalGross)]);
 
         return new ArrayEntity([
             'taxStatus' => 'gross',
@@ -150,9 +184,9 @@ final class QuoteLineMapperTest extends TestCase
                     'label' => 'Widget',
                     'referencedId' => 'product-1',
                     'quantity' => 1,
-                    'totalPrice' => 119.0,
+                    'totalPrice' => $totalGross,
                     'requestedPrice' => $requestedPriceGross,
-                    'price' => new CalculatedPrice(119.0, 119.0, $taxes, new TaxRuleCollection()),
+                    'price' => new CalculatedPrice($totalGross, $totalGross, $taxes, new TaxRuleCollection()),
                 ]),
             ],
         ]);
