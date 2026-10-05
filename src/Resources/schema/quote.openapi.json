@@ -452,7 +452,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "OAuth 2.0",
-        "description": "Identity-linking access token. Its subject identifies the customer, which is what this shop authorizes on today; the com.shopware.quote:manage scope is requested but not yet enforced."
+        "description": "Identity-linking access token. Obtain it through the account-linking flow in the prose spec: a signed POST /ucp/quote-agent/authorization-requests, the customer's consent on the returned authorization_url, then the code exchange at the token_endpoint. Calling the authorization_endpoint directly from an agent fails with identity_required. Its subject identifies the customer, which is what this shop authorizes on; request only scopes listed in scopes_supported. com.shopware.quote:manage is the intended scope once it is listed there."
       },
       "ucpAgent": {
         "type": "apiKey",
