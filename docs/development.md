@@ -124,6 +124,8 @@ confirm the capability matrix still matches what each release declares.
 
 It tests the **deployed** plugin: deploy a branch before you evaluate it.
 
+Beyond each scenario's own expectations, two hard checks hold on every negotiation. **H10** fails a pass that moved the quote's total without a reply to the buyer. **H11** fails a negotiation whose last written totals differ from the quote the buyer finds afterwards; for that, the buyer reads the quote back once more after the last round, after waiting `EVAL_STANDDOWN_WAIT`.
+
 One-time setup:
 
 1. Claim an ngrok static domain and add it to the shop's *Agent access → Profile hosts*.
@@ -153,11 +155,11 @@ composer run eval
 
 The buyer loads `.env.eval` itself; a variable already set in your environment wins over the file.
 
-Optional variables: `EVAL_REPS` (3), `EVAL_PARALLEL` (4), `EVAL_PASS_TIMEOUT` (180 s), `EVAL_STANDDOWN_WAIT` (60 s), `EVAL_PROFILE_PORT` (8787), and `EVAL_TAX_STATUS` (`gross` or `net`, default `gross`: the price space `{unit*f}` placeholders render in; a run whose quote prices the unit differently fails that negotiation). The judge and report settings are listed in the header of `scripts/eval.sh`.
+Optional variables: `EVAL_REPS` (3), `EVAL_PARALLEL` (4), `EVAL_PASS_TIMEOUT` (180 s), `EVAL_STANDDOWN_WAIT` (60 s; waited after every negotiation's last round, before the H11 read), `EVAL_PROFILE_PORT` (8787), and `EVAL_TAX_STATUS` (`gross` or `net`, default `gross`: the price space `{unit*f}` placeholders render in; a run whose quote prices the unit differently fails that negotiation). The judge and report settings are listed in the header of `scripts/eval.sh`.
 
 Every scenario carries `tags` (`band`, `floor`, `rounding`, `multi-round`, ...). `EVAL_TAGS=floor,rounding composer run eval` runs only the scenarios carrying any listed tag; a tag no scenario carries stops the run at preflight.
 
-Four scenarios need settings the shop doesn't have by default (a margin floor, rounding, a zero cap). They change the shop's config for about a minute each, then restore it. After a hard crash, run `composer run eval:restore var/eval/<runId>`.
+Five scenarios need settings the shop doesn't have by default (a margin floor, rounding, a zero cap, and the same zero cap as a sales-channel override). They change the shop's config for about a minute each, then restore it. After a hard crash, run `composer run eval:restore var/eval/<runId>`.
 
 Output goes to `var/eval/<runId>/`:
 
@@ -180,6 +182,6 @@ It reads the quote's decision rows and traces with the same Admin API credential
 
 ## Design records
 
-- [`evals-design.md`](evals-design.md): what each negotiation-eval check (H1–H9, J1–J5) means.
+- [`evals-design.md`](evals-design.md): what each negotiation-eval check (H1–H11, J1–J5) means.
 - [`2026-08-25-quote-agent-shopware-plugin-design.md`](2026-08-25-quote-agent-shopware-plugin-design.md): why this is a plugin rather than a hosted app.
 - [`adr/`](adr/): architectural decisions.

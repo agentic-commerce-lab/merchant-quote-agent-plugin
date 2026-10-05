@@ -1,0 +1,11 @@
+{
+    "id": "mirror-drift",
+    "description": "A unit-price ask is mirrored into the line's requested price. Once the agent reprices the line, cent rounding must not turn that mirror into a fresh buyer ask: no pass may write a price without a reply (H10), and the last write must be what the live quote carries (H11). Whether the ratio drifts depends on the price, so MirroredAsksTest is the deterministic guard; this is the end-to-end net.",
+    "tags": ["multi-round", "mirror"],
+    "lines": [{"productRef": "any-purchasable", "quantity": 1}],
+    "openingAsk": "Can you do {unit*0.95} a unit?",
+    "persona": "scripted:persistent",
+    "maxRounds": 2,
+    "counters": ["Another 5% please: {unit*0.9025} a unit."],
+    "expect": {"firstOutcome": ["offered", "countered"]}
+}

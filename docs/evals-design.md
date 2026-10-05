@@ -50,8 +50,8 @@ Recorded verbatim because each closed a fork.
   own Claude Code login. Stage 1 is an external buyer against the deployed shop over
   public HTTPS plus the Admin API, with no SSH. It evaluates the deployed
   plugin. Nightly and per-PR runs are follow-ups that wrap the same command.
-- **Settings scenarios write the shop's config, then restore it.** 4 of 21
-  scenarios need a margin floor, a rounding mode or a zero cap. They run one
+- **Settings scenarios write the shop's config, then restore it.** 5 of 24
+  scenarios need a margin floor, a rounding mode or a zero cap (one of them on the sales channel). They run one
   at a time, and their overrides are restored from a file written before the
   change. Other buyers on the shop see the override while it lasts.
 - **The buyer is Node, ported from `ucp-quote-agent.py`**, so the whole eval is
@@ -80,7 +80,7 @@ Recorded verbatim because each closed a fork.
 composer run eval            (scripts/eval.sh — on demand, no SSH)
  │
  ├─ 0. Preflight  env, Admin + buyer tokens, tunnel, product, shop policy 15/25, judge canary
- ├─ 1. UCP bench  node scripts/eval/buyer.mjs run: 21 scenarios × 3 reps against the shop
+ ├─ 1. UCP bench  node scripts/eval/buyer.mjs run: 24 scenarios × 3 reps against the shop
  │                phase A shop defaults (parallel), phase B settings scenarios (write → run → restore)
  │                → var/eval/<runId>/runs.jsonl
  ├─ 2. Check      node scripts/eval-check.mjs check   → checks.json     (no LLM)
@@ -171,9 +171,9 @@ What setup does:
 - every scenario file validates;
 - the judge canary passes.
 
-**Phase A: shop-default scenarios.** The 17 scenarios without a `policy` block, × 3 reps, run with `EVAL_PARALLEL` (default 4) negotiations at a time. The shop's lock is per quote, so separate quotes never block each other.
+**Phase A: shop-default scenarios.** The 19 scenarios without a `policy` block, × 3 reps, run with `EVAL_PARALLEL` (default 4) negotiations at a time. The shop's lock is per quote, so separate quotes never block each other.
 
-**Phase B: settings scenarios.** For each of the 4 scenarios with a `policy` block, one at a time:
+**Phase B: settings scenarios.** For each of the 5 scenarios with a `policy` block, one at a time:
 1. Read the current values of the keys it names, and the product's `purchasePrices`. Write them to `var/eval/<runId>/restore.json` **before any change**.
 2. Write the overrides and read them back. The effective value is written at the level it is read from: sales-channel-specific if the channel already overrides the key, otherwise global. Every read goes through `get(key, salesChannelId)`. A scenario with `policyScope: "channel"` writes every key on the sales channel instead, and its restore deletes a key the channel did not have.
 3. With a `purchasePriceRatio`, set the product's purchase price to `ratio × its net price`.
@@ -266,7 +266,7 @@ parse: the floor is capped at today's price (`MarginFloors.php:37-40`), so
 such a scenario would test nothing. `continueAfterEscalation` without a
 `counters` list also fails parse — the extra pass needs a comment to answer.
 
-### The 21 scenarios
+### The 24 scenarios
 
 Existing ten, expectations translated from `expectedBand` by reading their code
 paths (the plan re-verifies each):
@@ -301,6 +301,14 @@ New eleven. All run under the shop's own policy (15 / 25, asserted by preflight)
 | C3 | `quantity-change` | "Make it 20 instead of 10 — what's the price?" | `escalated` | same; judge: reply does not quote a new price |
 
 Numbering keeps A4 empty so the dropped shipping scenario can take it back.
+
+Three more, added 2026-10-05:
+
+| Scenario | Setup | `firstOutcome` | Proves |
+|---|---|---|---|
+| `mirror-drift` | quantity 1; ask `{unit*0.95}` a unit, counter "Another 5%" at `{unit*0.9025}`, `maxRounds: 2` | `offered`, `countered` | H10 and H11: once the agent reprices the line, its own mirrored ask never reads as a new buyer ask, so no pass writes without a reply. The drift depends on the price, so `MirroredAsksTest` is the deterministic guard |
+| `no-comment-request` | no comment, no `requestedUnitPrice` | `acknowledged` | a comment-free fresh request is acknowledged at list price; judge line: the reply restates the total and validity and offers no discount |
+| `channel-zero-cap` | `zero-cap` plus `policyScope: "channel"` | `escalated` | a sales-channel 0 wins over the global 15; same judge line as `zero-cap` |
 
 A5 and A6 ask 20% on purpose: rounding is skipped when the offer is the
 buyer's own figure (`DiscountRounding.php:75-80`), so a counter-band ask is
@@ -362,7 +370,7 @@ it does, it surfaces the decision rather than hiding it.
 
 ## Stage 3 — the judge
 
-One `claude -p` call per negotiation (21 × 3 = 63), run with bounded
+One `claude -p` call per negotiation (24 × 3 = 72), run with bounded
 parallelism (default 4, `EVAL_JUDGE_PARALLEL`).
 
 ```
