@@ -441,14 +441,23 @@ again on the very next pass, and the agent answers as normal.
 
 The one exception is an open escalation. While
 `Servicing\PendingEscalation::awaitsAHuman()` holds — the escalation marker is
-set and no merchant has moved the quote to `replied` since it was written —
+set and no merchant has answered since it was written —
 `tookOver()` returns `true` however new the buyer's ask, so a second ask on an
-escalated quote does not run the pipeline and escalate it again. A merchant's
-send releases it. A legacy marker written before its time was recorded is
-released by any send, since it cannot be ordered against one. After an
-escalation only a merchant SEND re-enables the agent; reopening or declining
-the quote does not, and buyer chat asks made during the escalation are
-consumed (the fingerprint is stamped) and not mirrored to `requested_price`.
+escalated quote does not run the pipeline and escalate it again. Two things
+count as an answer: a merchant moving the quote to `replied`, and a merchant
+comment (`QuoteLifecycle::lastAdminCommentAt`, the newest comment with
+`createdById` and neither buyer column) while the quote sits in `replied`.
+The second exists because SwagCommercial's own send from `replied` saves the
+quote and posts the message without a transition. It is limited to `replied`
+because there the terms on the quote are the ones the buyer was sent; in any
+other state the merchant may still be editing, and the approval receipt the
+agent's next move to `replied` triggers would vouch for terms nobody sent.
+A legacy marker written before its time was recorded is released by any
+answer, since it cannot be ordered against one. After an escalation only a
+merchant's answer re-enables the agent; reopening or declining the quote does
+not, nor does a comment on a quote that is not `replied`, and buyer chat asks
+made during the escalation are consumed (the fingerprint is stamped) and not
+mirrored to `requested_price`.
 
 The outcome, `NegotiationOutcome::HandedOver`, is returned before the extract
 call and before the stranded-reply branch that follows it. It does not answer

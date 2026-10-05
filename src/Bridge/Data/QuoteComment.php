@@ -70,4 +70,14 @@ final readonly class QuoteComment
     {
         return $this->customerId !== null || $this->employeeId !== null;
     }
+
+    /**
+     * The administration's own comment: `createdById` and neither buyer
+     * column — Negotiation\SnapshotAdapter's merchant bucket, and the read-model
+     * twin of Servicing\QuoteServicingTrigger::isMerchantComment().
+     */
+    public function isMerchantAuthored(): bool
+    {
+        return $this->createdById !== null && !$this->isBuyerAuthored();
+    }
 }

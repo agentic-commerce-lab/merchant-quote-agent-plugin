@@ -184,8 +184,8 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
      * merchant's note takes the per-quote lock, writes the crash-budget
      * counter and logs a pass that did nothing.
      *
-     * Deliberately a second expression of `QuoteComment::isAuthored() &&
-     * !isBuyerAuthored()`, against the DAL write payload rather than the read
+     * Deliberately a second expression of `QuoteComment::isMerchantAuthored()`,
+     * against the DAL write payload rather than the read
      * model — the DTO cannot express "this key is absent" the way this
      * predicate must. The two must move together if SwagCommercial's
      * authorship columns ever change; nothing enforces that but the two of

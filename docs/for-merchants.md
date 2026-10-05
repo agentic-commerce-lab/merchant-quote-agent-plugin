@@ -568,7 +568,13 @@ the database at all — neither a database dump nor an admin API token with
 escalations, and the agent handles the rest. When you answer an escalated quote —
 by sending a revised offer, replying to the customer in the quote's
 conversation, or however you normally close it — the plugin notices and stops
-counting it as open.
+counting it as open. The agent stays out of an escalated quote until you send
+it. If the quote was already sent and shows *Replied*, any message you write
+in its conversation counts as that answer — even an interim note like "we are
+looking into it" — and the agent answers the customer's next message itself.
+If you want to keep the quote, do not comment on a *Replied* quote until your
+answer is ready; send it instead. While the quote is in any other state, a
+comment alone does not hand it back: send the quote.
 
 **Raising the cap.** Start with a low maximum on one sales channel, watch the
 auto-execution rate and the discount figure for a couple of weeks, then widen.

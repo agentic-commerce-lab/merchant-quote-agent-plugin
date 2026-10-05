@@ -47,6 +47,54 @@ final class QuoteCommentMapperTest extends TestCase
         self::assertNull($comments[0]->lineItemId);
     }
 
+    /**
+     * QA-05: the newest administration comment is what PendingEscalation
+     * weighs while the quote sits in `replied`. `created_by_id` is in the
+     * table on both lanes, so the legacy fixture reads it exactly as the
+     * modern one does.
+     */
+    public function testTheNewestMerchantCommentIsReadOnBothLanes(): void
+    {
+        foreach ([CommercialCapabilities::legacy(), CommercialCapabilities::modern()] as $capabilities) {
+            $comments = (new QuoteCommentMapper($capabilities))->map(self::quote([
+                self::comment($capabilities, 'user-1', null, '2026-10-01 09:00:00'),
+                self::comment($capabilities, 'user-1', null, '2026-10-01 11:00:00'),
+                // The buyer and the agent, both newer than either note: neither counts.
+                self::comment($capabilities, null, 'customer-1', '2026-10-01 12:00:00'),
+                self::comment($capabilities, null, null, '2026-10-01 13:00:00'),
+            ]));
+
+            self::assertEquals(
+                new \DateTimeImmutable('2026-10-01 11:00:00'),
+                QuoteCommentMapper::newestMerchantAt($comments),
+            );
+        }
+    }
+
+    public function testAQuoteNoMerchantCommentedOnHasNoMerchantTime(): void
+    {
+        $comments = (new QuoteCommentMapper(CommercialCapabilities::modern()))->map(self::quote([
+            self::comment(CommercialCapabilities::modern(), null, 'customer-1', '2026-10-01 12:00:00'),
+            self::comment(CommercialCapabilities::modern(), null, null, '2026-10-01 13:00:00'),
+        ]));
+
+        self::assertNull(QuoteCommentMapper::newestMerchantAt($comments));
+        self::assertNull(QuoteCommentMapper::newestMerchantAt([]));
+    }
+
+    private static function comment(
+        CommercialCapabilities $lane,
+        ?string $createdById,
+        ?string $customerId,
+        string $at,
+    ): Entity {
+        $comment = $lane->lineScopedComments
+            ? new ModernQuoteCommentEntity(createdById: $createdById, customerId: $customerId)
+            : new LegacyQuoteCommentEntity(createdById: $createdById, customerId: $customerId);
+
+        return $comment->assign(['createdAt' => new \DateTimeImmutable($at)]);
+    }
+
     /** @param list<Entity> $comments */
     private static function quote(array $comments): Entity
     {
