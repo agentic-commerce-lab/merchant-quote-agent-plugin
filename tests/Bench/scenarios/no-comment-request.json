@@ -1,10 +1,10 @@
 {
     "id": "no-comment-request",
-    "description": "A fresh request with no comment and no requested price. The agent acknowledges it at list price: the quote's total, its validity and an invitation to counter, with no discount. It used to end as a silent nothing_to_do.",
+    "description": "A fresh request with no comment and no requested price. The agent acknowledges it at list price: the quote's total, its validity date when it has one, and an invitation to counter, with no discount. It used to end as a silent nothing_to_do.",
     "tags": ["acknowledgement"],
     "lines": [{"productRef": "any-purchasable", "quantity": 10}],
     "openingAsk": "",
     "persona": "scripted:silent",
     "maxRounds": 1,
-    "expect": {"firstOutcome": ["acknowledged"], "judge": ["The reply restates the quote's total and validity and offers no discount."]}
+    "expect": {"firstOutcome": ["acknowledged"], "judge": ["The reply restates the quote's total, offers no discount, and states a validity date only if the quote has one."]}
 }

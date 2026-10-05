@@ -117,7 +117,7 @@
             </mt-button>
         </div>
 
-        <p v-if="canReview && sendNeedsPreview" class="mqa-review__hint">{{ $tc('merchant-quote-agent.review.previewBeforeSend') }}</p>
+        <p v-if="canReview && !blocked && sendNeedsPreview" class="mqa-review__hint">{{ $tc('merchant-quote-agent.review.previewBeforeSend') }}</p>
 
         <div v-if="canReview" class="mqa-review__actions">
             <mt-button variant="secondary" :disabled="isSaving || blockedBy === 'not_pending' || blockedBy === 'published'" @click="reject">

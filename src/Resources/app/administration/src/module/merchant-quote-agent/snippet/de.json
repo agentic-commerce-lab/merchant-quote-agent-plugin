@@ -347,7 +347,7 @@
             "overCap": "Über Ihrem konfigurierten Maximum von {cap}. Der Agent hätte das nicht anbieten dürfen – Sie dürfen.",
             "updatePreview": "Vorschau aktualisieren",
             "replyLabel": "Antwort an den Käufer",
-            "checkReplyAfterEdit": "Sie haben den Entwurf geändert. Prüfen Sie, ob die Antwort noch zu Preisen und Datum passt, oder aktualisieren Sie die Vorschau für einen neuen Formulierungsvorschlag.",
+            "checkReplyAfterEdit": "Sie haben den Entwurf geändert. Aktualisieren Sie die Vorschau und prüfen Sie dann, ob die Antwort noch zu Preisen und Datum passt.",
             "previewBeforeSend": "Prüfen Sie Ihre Änderungen in der Vorschau, bevor Sie senden.",
             "draftReplyLabel": "Antwortentwurf des Agenten",
             "useRedraft": "Neu formulierte Antwort übernehmen",
@@ -432,7 +432,7 @@
         },
         "note": {
             "attemptRetried": "Ein früherer Durchlauf zu diesem Angebot ist abgebrochen, bevor er fertig war (bisher {count}). Dieser Durchlauf hat neu begonnen.",
-            "nothingToDo": "Es gab nichts, worauf der Agent antworten sollte: entweder keine neue Kundennachricht, die er lesen konnte, und kein offener Preiswunsch auf einer Position, oder das Angebot liegt nach einer Eskalation bereits bei Ihrem Team. Das Angebot blieb unverändert.",
+            "nothingToDo": "Es gab nichts, worauf der Agent antworten sollte: keine neue Kundennachricht, die er lesen konnte, und kein offener Preiswunsch auf einer Position. Das Angebot blieb unverändert.",
             "handedOver": "Jemand aus Ihrem Team hatte dieses Angebot zuletzt beantwortet, neuer als die Nachricht des Kunden. Der Agent hat es deshalb nicht angefasst und meldet sich erst wieder, wenn der Kunde antwortet.",
             "acknowledged": "Es gab keine Anfrage, auf die der Agent reagieren konnte: Die Nachricht des Kunden enthielt keine, oder eine neue Angebotsanfrage kam ganz ohne Nachricht. Er hat das Angebot deshalb unverändert vorgelegt und zur Annahme freigegeben. Am Angebot hat sich nichts geändert.",
             "notAuthorized": "Der Agent hat Konditionen vorgeschlagen, die Ihre Richtlinien nicht erlauben. Es wurde nichts freigegeben, das Angebot blieb unverändert.",

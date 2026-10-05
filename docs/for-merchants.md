@@ -541,10 +541,12 @@ message at all. The agent answered each one by restating the quote and sending
 it for acceptance, so the customer is never left waiting — but if one of those
 messages was a real question, this is where you find it, and the agent's
 reading of comments is what needs adjusting, which is worth telling us about.
-`--outcome=nothing_to_do` lists the passes that stayed silent: nothing new
-since the agent's last answer, or a quote escalated to your team that nobody
-has sent an answer on yet. Once you have sent one, the customer's "thanks" is
-acknowledged like any other.
+`--outcome=nothing_to_do` lists the passes that stayed silent because nothing
+was new since the agent's last answer. A quote escalated to your team is not
+among them: while it waits for you, the agent stands down and records
+`handed_over`. Once you have sent an answer, or written one in the quote's
+conversation while it shows *Replied*, the customer's "thanks" is acknowledged
+like any other.
 
 **One oddity you will see and should not report as a bug.** The `modelHost`
 field sometimes reads `unparsable-host`. That means the AI base URL in your

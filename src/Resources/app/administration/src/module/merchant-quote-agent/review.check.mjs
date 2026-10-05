@@ -193,6 +193,6 @@ for (const numberField of numberFields) {
 // The guard has to reach the button: Send stays disabled while edits are unpreviewed.
 const sendButton = draftReview.match(/<mt-button\b[^>]*@click="send"[^>]*>/)?.[0] ?? '';
 assert.match(sendButton, /:disabled="[^"]*\bsendNeedsPreview\b/, 'Send is not disabled while edits are unpreviewed');
-assert.match(draftReview, /v-if="[^"]*\bsendNeedsPreview\b[^"]*"[^>]*>\s*\{\{ \$tc\('merchant-quote-agent\.review\.previewBeforeSend'\) \}\}/, 'the preview hint is not shown with the guard');
+assert.match(draftReview, /v-if="[^"]*!blocked\b[^"]*\bsendNeedsPreview\b[^"]*"[^>]*>\s*\{\{ \$tc\('merchant-quote-agent\.review\.previewBeforeSend'\) \}\}/, 'the preview hint is not shown with the guard, or shows on a blocked draft');
 
 console.log('review.check.mjs: all assertions passed');
