@@ -4,10 +4,10 @@
  *
  * Separate from decision.ts, which is already at the house file-length target:
  * folding these in would push it well past 600 lines. This module reads the
- * fields decision.ts's foldToQuotes() already computed (`.escalated`,
- * `.netBefore`, `.latestAnswered`, `.disposition`) rather than importing any
- * of its functions, so nothing here depends on decision.ts and nothing flows
- * back either way.
+ * fields decision.ts's foldToQuotes() already computed (`.acted`,
+ * `.escalated`, `.netBefore`, `.latestAnswered`, `.disposition`) rather than
+ * importing any of its functions, so nothing here depends on decision.ts and
+ * nothing flows back either way.
  *
  * Every measure returns `null` rather than `0` when it has nothing to measure.
  * That distinction is the whole point on this page: a merchant without
@@ -30,17 +30,23 @@ interface ValueRange {
 }
 
 /**
- * Share of quotes the agent handled without ever asking a human.
+ * Share of the quotes the agent acted on that it handled without ever asking
+ * a human.
  *
- * The denominator is every quote serviced in the period, not only the
- * concluded ones. Restricting it to concluded negotiations would drop
- * unresolved escalations out of the denominator, so a shop with ten quotes
- * stuck in the review queue would report 100% auto-execution — a worse failure
- * than counting a still-open, never-escalated quote as auto-executed.
+ * The denominator is every quote the agent acted on in the period
+ * (`.acted`: a pass offered, countered, clarified, acknowledged or escalated,
+ * or was drafted for review). A quote whose every pass was `nothing_to_do` or
+ * `handed_over` was never automated, and counting it inflated the rate with
+ * work the agent did not do (QA-03). Concluded or not makes no difference:
+ * restricting the denominator to concluded negotiations would drop unresolved
+ * escalations out of it, so a shop with ten quotes stuck in the review queue
+ * would report 100% auto-execution — a worse failure than counting a
+ * still-open, never-escalated quote as auto-executed.
  */
 export function autoExecutionRate(quotes: any[]): { rate: number | null; escalated: number; total: number } {
-    const total = quotes.length;
-    const escalated = quotes.filter((quote) => quote.escalated).length;
+    const acted = quotes.filter((quote) => quote.acted);
+    const total = acted.length;
+    const escalated = acted.filter((quote) => quote.escalated).length;
 
     return {
         rate: total > 0 ? ((total - escalated) / total) * 100 : null,

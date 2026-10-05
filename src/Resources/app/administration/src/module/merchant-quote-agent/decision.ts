@@ -45,6 +45,21 @@ export function answeredTheBuyer(outcome: string | null, reviewStatus: string | 
 }
 
 /**
+ * The outcomes where the agent did something on the quote: answered, asked,
+ * acknowledged or escalated. `nothing_to_do` (nothing new to answer) and
+ * `handed_over` (a merchant was already on it) wrote nothing, so a quote with
+ * only those passes was never automated and is not in the auto-execution
+ * denominator (QA-03). `replied` is the legacy offer value, as in
+ * ANSWERED_OUTCOMES. A drafted pass (`reviewStatus` set) counts whatever its
+ * outcome, as it does for `escalated`.
+ */
+const ACTED_OUTCOMES = ['offered', 'countered', 'replied', 'clarified', 'acknowledged', 'escalated'];
+
+function actedOn(outcome: string | null, reviewStatus: string | null): boolean {
+    return Boolean(reviewStatus) || (outcome !== null && ACTED_OUTCOMES.includes(outcome));
+}
+
+/**
  * Where a quote stands, from its most recent pass.
  *
  * These classes partition the serviced quotes — each quote is in exactly one —
@@ -163,6 +178,7 @@ export function foldToQuotes(decisions: any[]): any[] {
             // escalated in round one and was answered in round two DID need a
             // human, so the auto-execution rate must count it.
             seen.escalated = seen.escalated || decision.outcome === 'escalated' || Boolean(decision.reviewStatus);
+            seen.acted = seen.acted || actedOn(decision.outcome ?? null, decision.reviewStatus ?? null);
             // The newest escalated pass, since decisions arrive newest-first.
             // That is also the pass `disposition` asks about, because it only
             // consults `resolvedAt` when the LATEST pass escalated.
@@ -187,6 +203,7 @@ export function foldToQuotes(decisions: any[]): any[] {
             quoteNumber: decision.quoteNumber,
             latest: decision,
             latestAnswered: answeredTheBuyer(decision.outcome, decision.reviewStatus ?? null) ? decision : null,
+            acted: actedOn(decision.outcome ?? null, decision.reviewStatus ?? null),
             rounds: 1,
             netBefore,
             terminalState: decision.terminalState ?? null,

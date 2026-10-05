@@ -321,6 +321,8 @@ the first thing you see is the queue that wants a human. Pick a period — last 
 
 - **Auto-execution rate** — how much of the work it handled without you, with
   "*n* of *m* needed a human" beside it and a trend against the previous period.
+  Only quotes it actually worked on count: one where it never had anything new
+  to answer, or found you already on the quote, is not in *m*.
 - **Escalation resolution time** — how long your team takes to answer an
   escalation. Set the SLA field and it becomes "*n* of *m* within the SLA".
 - **Discount granted** — what the agent gave, next to what was given on

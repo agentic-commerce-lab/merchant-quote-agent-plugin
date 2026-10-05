@@ -24,16 +24,43 @@ const iso = (day, hour = 0) => `2026-09-${String(day).padStart(2, '0')}T${String
 
 // ---------------------------------------------------------------- auto-execution
 
-// The denominator is every quote serviced, not only concluded ones.
+// The denominator is every quote the agent acted on, not only concluded ones.
 // Restricting it to concluded negotiations would exclude unresolved
 // escalations, so a shop with ten quotes stuck in the review queue would
 // report 100% auto-execution.
 assert.deepEqual(autoExecutionRate([]), { rate: null, escalated: 0, total: 0 });
 assert.deepEqual(
-    autoExecutionRate([{ escalated: false }, { escalated: false }, { escalated: true }, { escalated: false }]),
+    autoExecutionRate([
+        { acted: true, escalated: false },
+        { acted: true, escalated: false },
+        { acted: true, escalated: true },
+        { acted: true, escalated: false },
+    ]),
     { rate: 75, escalated: 1, total: 4 },
 );
-assert.deepEqual(autoExecutionRate([{ escalated: true }]), { rate: 0, escalated: 1, total: 1 });
+assert.deepEqual(autoExecutionRate([{ acted: true, escalated: true }]), { rate: 0, escalated: 1, total: 1 });
+
+// A quote whose every pass was nothing_to_do or handed_over had nothing
+// automated, so it is not in the denominator (QA-03): counting it reported
+// the agent's silence, and a merchant already on the quote, as auto-executed.
+// One acting pass anywhere in the quote's history is enough.
+const actedOn = foldToQuotes([
+    { id: 'n1', quoteId: 'idle', outcome: 'nothing_to_do', createdAt: iso(4, 12) },
+    { id: 'h1', quoteId: 'merchant-on-it', outcome: 'handed_over', createdAt: iso(4, 11) },
+    { id: 'n2', quoteId: 'offered-earlier', outcome: 'nothing_to_do', createdAt: iso(4, 10) },
+    { id: 'o1', quoteId: 'offered-earlier', outcome: 'offered', createdAt: iso(4, 9) },
+    { id: 'e1', quoteId: 'escalated', outcome: 'escalated', createdAt: iso(4, 8) },
+    { id: 'd1', quoteId: 'drafted', outcome: 'offered', reviewStatus: 'pending', createdAt: iso(4, 7) },
+    { id: 'c1', quoteId: 'clarified', outcome: 'clarified', createdAt: iso(4, 6) },
+    { id: 'a1', quoteId: 'acknowledged', outcome: 'acknowledged', createdAt: iso(4, 5) },
+    { id: 'r1', quoteId: 'legacy', outcome: 'replied', createdAt: iso(4, 4) },
+]);
+assert.deepEqual(
+    actedOn.filter((quote) => !quote.acted).map((quote) => quote.quoteId),
+    ['idle', 'merchant-on-it'],
+);
+// Six acted on; the escalation and the draft needed a human.
+assert.deepEqual(autoExecutionRate(actedOn), { rate: (4 / 6) * 100, escalated: 2, total: 6 });
 
 // ------------------------------------------------------------------- escalations
 

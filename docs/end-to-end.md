@@ -676,11 +676,14 @@ figures, each scoped to the period in the smart bar. **A figure with nothing to
 measure reports absent (`–`, "no baseline", "n/a") rather than a confident
 zero.**
 
-- **Auto-execution rate** — the share of the period's serviced quotes the agent
-  never escalated. The denominator is every quote serviced, not only the
-  concluded ones: restricting it would drop stuck escalations out of the count
-  and make a shop with ten of them report 100%. The raw `n of m escalated` count
-  sits beside it, with a trend against the previous period.
+- **Auto-execution rate** — the share of the period's quotes the agent acted on
+  that it never escalated. A quote counts once any of its passes offered,
+  countered, clarified, acknowledged or escalated, or was drafted for review; a
+  quote whose every pass was `nothing_to_do` or `handed_over` is left out,
+  because nothing on it was automated. Concluded or not makes no difference:
+  restricting the count to concluded quotes would drop stuck escalations out of
+  it and make a shop with ten of them report 100%. The raw `n of m escalated`
+  count sits beside it, with a trend against the previous period.
 - **Escalation resolution time** — mean time from escalation to the deal desk's
   resolving transition or reply. **Only covers escalations resolved after the
   `resolved_at` migration shipped**; earlier ones report as `n still open`
