@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Strategy;
 
+use MerchantQuoteAgentPlugin\Improvement\ImprovementRun;
 use MerchantQuoteAgentPlugin\Strategy\Strategy;
 use MerchantQuoteAgentPlugin\Strategy\StrategyVersion;
 use PHPUnit\Framework\TestCase;
@@ -30,12 +31,20 @@ final class StrategyEntityTest extends TestCase
 
     public function testTheVersionDeclaresItsColumns(): void
     {
-        self::assertSame(['id', 'strategyId', 'version', 'prompt'], self::fieldNames(StrategyVersion::class));
+        self::assertSame(
+            ['id', 'strategyId', 'version', 'prompt', 'status', 'runId', 'evaluation', 'rationale', 'decidedAt'],
+            self::fieldNames(StrategyVersion::class),
+        );
     }
 
+    /**
+     * ImprovementRun carries the same 6.7.1.0-floor hazard as the strategy
+     * entities but was previously asserted only by its own class docblock --
+     * which said as much: "nothing yet asserts it". This is that assertion.
+     */
     public function testNoFieldUsesMaxLength(): void
     {
-        foreach ([Strategy::class, StrategyVersion::class] as $entity) {
+        foreach ([Strategy::class, StrategyVersion::class, ImprovementRun::class] as $entity) {
             foreach ((new \ReflectionClass($entity))->getProperties() as $property) {
                 foreach ($property->getAttributes(Field::class, \ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
                     self::assertArrayNotHasKey(

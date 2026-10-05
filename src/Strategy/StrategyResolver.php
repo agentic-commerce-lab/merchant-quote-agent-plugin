@@ -52,6 +52,12 @@ readonly class StrategyResolver
 
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('strategyId', $strategyId));
+        // The enforcement that a nightly proposal never answers a buyer. A
+        // proposed row is a real row with a real prompt in the real table;
+        // this filter is why the negotiation path structurally cannot reach
+        // it. Not a UI rule and not a convention -- this is the only code
+        // path that turns a strategy id into a prompt.
+        $criteria->addFilter(new EqualsFilter('status', VersionStatus::Active->value));
         $criteria->addSorting(new FieldSorting('version', FieldSorting::DESCENDING));
         $criteria->setLimit(1);
 

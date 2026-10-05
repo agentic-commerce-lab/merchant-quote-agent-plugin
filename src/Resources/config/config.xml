@@ -132,5 +132,42 @@
         </input-field>
     </card>
 
+    <card>
+        <title>Nightly self-improvement</title>
+        <input-field type="bool">
+            <name>improvementEnabled</name>
+            <label>Propose strategy improvements automatically</label>
+            <defaultValue>false</defaultValue>
+            <helpText>When enabled, the plugin reviews this channel's recent decisions on a schedule, drafts a new version of your negotiation strategy prompt, and shows what it would have done on the same asks. Nothing it drafts answers a buyer until you accept it.</helpText>
+        </input-field>
+        <input-field type="single-select">
+            <name>improvementCadence</name>
+            <label>How often</label>
+            <defaultValue>daily</defaultValue>
+            <options>
+                <option><id>daily</id><name>Every night</name></option>
+                <option><id>every3days</id><name>Every three days</name></option>
+                <option><id>weekly</id><name>Weekly</name></option>
+            </options>
+        </input-field>
+        <input-field type="int">
+            <name>improvementSampleSize</name>
+            <label>Decisions to replay</label>
+            <defaultValue>20</defaultValue>
+            <helpText>How many of the period's decisions each draft is tested against. Between 1 and 100.</helpText>
+        </input-field>
+        <input-field type="int">
+            <name>improvementCandidates</name>
+            <label>Drafts per run</label>
+            <defaultValue>2</defaultValue>
+            <helpText>Between 1 and 4. A run costs one model call, plus one per replayed decision per draft plus one for the comparison — at the defaults, 61 calls.</helpText>
+        </input-field>
+        <input-field type="text">
+            <name>improvementLlmModel</name>
+            <label>Model for the review (optional)</label>
+            <helpText>Leave blank to use the model configured above. The review reads a whole period at once, so a model with a larger context window can be worth naming here.</helpText>
+        </input-field>
+    </card>
+
 </config>
 
