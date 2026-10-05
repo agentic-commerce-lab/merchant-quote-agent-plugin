@@ -75,20 +75,90 @@
     <p>
         Quote operations act for a specific customer, so they need a credential that names one.
         Obtain an OAuth 2.0 access token through the shop's
-        <code>dev.ucp.common.identity_linking</code> capability with the scope
-        <code>com.shopware.quote:manage</code>, and send it as
-        <code>Authorization: Bearer &lt;token&gt;</code>.
+        <code>dev.ucp.common.identity_linking</code> capability, using the account-linking flow
+        below, and send it as <code>Authorization: Bearer &lt;token&gt;</code>.
     </p>
     <p class="note">
         The token is the trust boundary. Its subject decides whose quotes are touched. Nothing
         in the request body can name a customer, and the agent never holds customer credentials.
         Revoking the link stops the token working immediately.
     </p>
+
+    <h3>Linking an account</h3>
+    <p>
+        The customer signs in and consents on the shop's own storefront. The agent never sees a
+        password or a storefront session. The flow is the OAuth 2.0 authorization code flow with
+        PKCE, entered through a pushed authorization request:
+    </p>
+    <ol>
+        <li>
+            <strong>Register the request.</strong> Send a signed
+            <code>POST /ucp/quote-agent/authorization-requests</code> with the usual
+            <code>UCP-Agent</code> and <code>Idempotency-Key</code> headers and a JSON body:
+<pre>{
+  "client_id":             "https://agent.example/.well-known/ucp",
+  "redirect_uri":          "https://agent.example/callback",
+  "scope":                 "dev.ucp.shopping.order:manage",
+  "state":                 "&lt;opaque, checked on return&gt;",
+  "code_challenge":        "&lt;43-character base64url S256 challenge&gt;",
+  "code_challenge_method": "S256"
+}</pre>
+            <code>client_id</code> must be the profile URI in your signed
+            <code>UCP-Agent</code> header. <code>redirect_uri</code> must be https, with the same
+            scheme, host and port as <code>client_id</code>, and must not contain a fragment.
+            <code>http://localhost</code> is accepted on both sides during local development.
+        </li>
+        <li>
+            <strong>Send the human to the shop.</strong> The 201 response is
+            <code>{"request_uri", "expires_in", "authorization_url"}</code>. Open
+            <code>authorization_url</code> in the customer's browser. The shop signs the customer
+            in through its storefront login and shows its own consent page. The request is valid
+            for <code>expires_in</code> seconds (600) and is single-use.
+        </li>
+        <li>
+            <strong>Receive the result.</strong> On consent, the browser is redirected to
+            <code>redirect_uri</code> with <code>code</code>, <code>state</code> and
+            <code>iss</code>. On refusal it gets <code>error=access_denied</code> and
+            <code>state</code>. Check that <code>state</code> matches what you sent, and that
+            <code>iss</code> matches the issuer in
+            <code>/.well-known/oauth-authorization-server</code>.
+        </li>
+        <li>
+            <strong>Exchange the code.</strong> POST to the <code>token_endpoint</code> from that
+            metadata document, as <code>application/x-www-form-urlencoded</code> with
+            <code>grant_type=authorization_code</code>, <code>code</code>,
+            <code>redirect_uri</code>, <code>client_id</code> and <code>code_verifier</code>. The
+            response carries an <code>access_token</code> and a <code>refresh_token</code>. Keep
+            the refresh token: <code>grant_type=refresh_token</code> renews access without
+            sending the human through consent again.
+        </li>
+    </ol>
     <p class="note">
-        This shop does not yet enforce the <code>com.shopware.quote:manage</code> scope: request
-        it when linking identity, but no token can carry it until the identity-linking capability
-        supports issuing it. Authorization is by quote ownership instead — the token's subject
-        identifies the customer, and every operation is scoped to that customer's own quotes.
+        Do not call the <code>authorization_endpoint</code> from the metadata document directly
+        from an agent. It only issues a code when a signed-in storefront customer is attached
+        to the request. An agent-signed call has no such customer, so it always fails with
+        <code>identity_required</code>. Starting with a POST also keeps the query string out
+        of the signature (see <em>Signing GET requests</em> below).
+    </p>
+    <p class="note">
+        Request only scopes listed in <code>scopes_supported</code> in
+        <code>/.well-known/oauth-authorization-server</code>. A scope that is not listed is
+        refused when the customer consents, and the customer only sees that the link expired.
+        <code>com.shopware.quote:manage</code> is the intended scope for this capability.
+        Request it once the shop lists it. Until then, request the listed scopes, for example
+        <code>dev.ucp.shopping.order:manage</code>. Authorization does not depend on the scope:
+        the token's subject identifies the customer, and every operation is scoped to that
+        customer's own quotes.
+    </p>
+
+    <h3>Signing GET requests</h3>
+    <p>
+        When the shop requires signed requests, it rebuilds <code>@target-uri</code> with the
+        query parameters sorted alphabetically by name and RFC 3986 percent-encoding. Until
+        this is fixed, sort and encode the query that way before you sign, and send exactly that
+        URI. A request signed over a differently ordered query fails with
+        <code>signature_invalid</code>. A sorted query will still verify after the fix.
+        Requests without a query string are unaffected.
     </p>
     <p>
         Requests also carry the usual <code>UCP-Agent</code> header, and an
@@ -178,6 +248,8 @@
         <tr><th>Situation</th><th>Result</th><th>Status</th></tr>
         <tr><td>Capability disabled, not licensed, or the commercial Quote Management backend is unavailable</td><td>unsupported capability — note the descriptor may still be in discovery</td><td>501</td></tr>
         <tr><td>Access token missing, invalid, expired, or revoked</td><td>invalid token</td><td>401</td></tr>
+        <tr><td>Authorization request whose signature did not verify, or whose <code>client_id</code> is not the signed profile URI</td><td>error naming <code>UCP-Agent</code></td><td>401</td></tr>
+        <tr><td><code>authorization_endpoint</code> called by an agent without a signed-in storefront customer</td><td><code>identity_required</code>; use the account-linking flow</td><td>400</td></tr>
         <tr><td>Credential resolves to no customer</td><td>validation error naming the header</td><td>422</td></tr>
         <tr><td>Quote Management not enabled for the customer (<code>customer_specific_features</code>)</td><td>validation error naming the feature</td><td>422</td></tr>
         <tr><td>Malformed request body or line items</td><td>validation error</td><td>422</td></tr>
@@ -193,8 +265,9 @@
         Successful responses carry the same <code>ucp</code> envelope alongside the quote.
     </p>
     <p class="note">
-        <code>com.shopware.quote:manage</code> is not in this table: it is requested but not
-        enforced (see Authorization above), so a missing scope never causes a failure on its own.
+        <code>com.shopware.quote:manage</code> is not in this table: the quote routes do not
+        check scopes (see Authorization above), so a missing scope never causes a failure on its
+        own.
     </p>
 
     <h2>Versioning</h2>
