@@ -88,6 +88,68 @@ final class StructuredAskGateTest extends TestCase
         self::assertContains(QuoteTransition::Sent, $harness->gateway->transitions);
     }
 
+    /**
+     * The same round two, crashed between the offer write and the reply: the
+     * line now reads 90 against a requested 90, so the ask is met and nothing
+     * is open, and the agent's round-one reply is still the newest comment.
+     * That looked like a reply stranded before its `sent`, and the retry sent
+     * a written price with no word to the buyer. The line was written AFTER
+     * the agent last spoke, so that reply is not this price's: the buyer is
+     * answered, with the quote as it now stands.
+     */
+    public function testAnOfferWrittenAfterTheAgentLastSpokeIsAnsweredNotJustSent(): void
+    {
+        $written = NegotiationFixture::snapshot(state: 'in_review');
+        $quote = static fn(string $lineWrittenAt): QuoteSnapshot => new QuoteSnapshot(
+            identity: $written->identity,
+            revision: $written->revision,
+            totals: new QuoteTotals(totalNet: 900.0, totalGross: 900.0),
+            lifecycle: $written->lifecycle,
+            content: new QuoteContent(lines: [new QuoteLineSnapshot(
+                identity: new QuoteLineIdentity('line-1', 'Widget', 'prod-1'),
+                quantity: 10,
+                unitPriceNet: 90.0,
+                totalNet: 900.0,
+                requestedUnitPrice: 90.0,
+                updatedAt: new \DateTimeImmutable($lineWrittenAt),
+            )], comments: [
+                NegotiationFixture::buyerComment('what can you do on price?', '2026-09-24 09:00:00'),
+                NegotiationFixture::agentComment('This quote stands at 900.00 EUR.', '2026-09-24 09:05:00'),
+            ]),
+        );
+
+        // The reply landed after the write and only the `sent` died: that is
+        // the stranded reply, finished without a second word.
+        $harness = PipelineHarness::with([]);
+        $outcome = $harness->pipeline->service(
+            $quote('2026-09-24 09:04:00'),
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame([], $harness->gateway->comments);
+
+        $harness = PipelineHarness::with([]);
+        $snapshot = $quote('2026-09-24 09:10:00');
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
+        self::assertSame(
+            [ReplyTemplate::acknowledges(900.0, 'EUR', $snapshot->lifecycle->expiresAt)],
+            $harness->gateway->comments,
+            'A written price went out without a reply.',
+        );
+        self::assertSame([QuoteTransition::Sent], $harness->gateway->transitions);
+        self::assertSame(0, $harness->spy->calls, 'The answer is the template: no model call.');
+    }
+
     public function testACommentPointingAtPricesAlreadyGrantedIsAcknowledged(): void
     {
         // The one empty extraction the extract prompt asks for BY NAME: "a

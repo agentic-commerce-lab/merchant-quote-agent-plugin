@@ -26,6 +26,9 @@ use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
  * Silence left it `open`, where they can neither accept nor counter. The
  * answer is the quote at its list prices.
  *
+ * So is an offer written after the agent last spoke (UnrepliedWrite): a
+ * write and a reply happen together or not at all.
+ *
  * Silent `NothingToDo` is left for the rest of the no-comment case: a
  * duplicate trigger, or a reply stranded in `in_review`, which is finished
  * here as before. An escalation still awaiting a human never gets here:
@@ -51,7 +54,7 @@ final class PassedOver
         OfferRound $round,
     ): NegotiationPass {
         if ($ask === null) {
-            if (self::isFreshRequest($snapshot)) {
+            if (self::isFreshRequest($snapshot) || UnrepliedWrite::on($snapshot, $conversation)) {
                 $round->acknowledge($gateway, $snapshot);
 
                 return new NegotiationPass(NegotiationOutcome::Acknowledged);

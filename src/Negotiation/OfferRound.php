@@ -183,7 +183,10 @@ final readonly class OfferRound
      * not ours to finish — the guard below is what tells the two apart. A
      * crash BEFORE the comment write also leaves `in_review`, but then no
      * agent comment exists, the buyer's ask is still the newest, and the
-     * retry replays the whole round instead of arriving here at all.
+     * retry replays the whole round instead of arriving here at all. A crash
+     * after the offer write but before the reply leaves the PREVIOUS round's
+     * reply newest; PassedOver answers that one (UnrepliedWrite) before it
+     * can arrive here.
      */
     public function finishStrandedReply(
         QuoteGatewayInterface $gateway,

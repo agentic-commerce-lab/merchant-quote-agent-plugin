@@ -92,9 +92,10 @@ final readonly class ReplyComposer
      * for RewordingGuard to check and no reply prompt hash to record.
      *
      * No already-answered guard, and none is needed: PassedOver only gets here
-     * with a buyer comment newer than every agent one, or with no comment on
-     * the quote at all. A retry after this comment landed finds the agent's
-     * comment and never arrives.
+     * with a buyer comment newer than every agent one, with no comment on
+     * the quote at all, or with a line written after the agent's newest
+     * comment (UnrepliedWrite). A retry after this comment landed finds the
+     * agent's comment newest and never arrives.
      *
      * A fresh `open` quote is claimed first, as OfferApplier claims it before
      * an offer. That way a pass that dies between the comment and `sent`

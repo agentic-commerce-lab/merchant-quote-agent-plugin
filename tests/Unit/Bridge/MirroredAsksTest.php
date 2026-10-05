@@ -114,9 +114,12 @@ final class MirroredAsksTest extends TestCase
     }
 
     /**
-     * An entry written before QA-08 holds the net ask alone. It is read as it
-     * always was, and re-stamping another line must not invent a stored value
-     * nobody recorded for it.
+     * An entry written before QA-08 holds the net ask alone, so it still
+     * converts through the line's current ratio — with a cent of slack, since
+     * a reprice moves that conversion by up to a cent (the QA-08 numbers
+     * below) and a legacy entry is never written again. Two cents is a buyer's
+     * edit. Re-stamping another line must not invent a stored value nobody
+     * recorded for it.
      */
     public function testALegacyEntryIsReadAsItWasAndStaysLegacy(): void
     {
@@ -124,7 +127,13 @@ final class MirroredAsksTest extends TestCase
 
         self::assertNull($legacy['line-1']->stored ?? null);
         self::assertTrue(MirroredAsks::holds($legacy, 'line-1', 17.85, 100 / 119));
-        self::assertFalse(MirroredAsks::holds($legacy, 'line-1', 17.84, 100 / 119));
+        self::assertTrue(MirroredAsks::holds($legacy, 'line-1', 17.84, 100 / 119));
+        self::assertFalse(MirroredAsks::holds($legacy, 'line-1', 17.83, 100 / 119));
+        $repriced = MirroredAsks::read([MirroredAsks::KEY => ['line-1' => 289.81]]);
+        self::assertTrue(
+            MirroredAsks::holds($repriced, 'line-1', 318.79, 293.05 / 322.36),
+            'A legacy mirror unhid after a reprice: expected 318.80, stored 318.79.',
+        );
         self::assertSame(
             [MirroredAsks::KEY => ['line-1' => 15.0, 'line-2' => ['net' => 7.5, 'stored' => 8.93]]],
             MirroredAsks::stamp([MirroredAsks::KEY => ['line-1' => 15.0]], [

@@ -55,23 +55,33 @@ final readonly class MirroredAsk
     }
 
     /**
-     * Whether `$storedRequestedPrice` is exactly what this mirror wrote.
+     * Whether `$storedRequestedPrice` is what this mirror wrote.
      *
-     * A recorded value is compared as it is, and `$netRatio` plays no part.
-     * Only a legacy entry still converts through the line's current ratio,
-     * so a reprice can still unhide it; those retire as their quotes close.
+     * A recorded value is compared exactly, and `$netRatio` plays no part: a
+     * buyer's one-cent edit must not hide behind it. Only a legacy entry still
+     * converts through the line's current ratio, which a reprice moves by up
+     * to a cent, so it holds within one cent. A legacy entry is never written
+     * again, so the slack hides no future edit, and without it a "thanks" on
+     * a pre-QA-08 quote negotiates again. Those retire as their quotes close.
      */
     public function holds(?float $storedRequestedPrice, float $netRatio): bool
     {
+        if ($storedRequestedPrice === null) {
+            return false;
+        }
+
+        if ($this->stored !== null) {
+            return number_format($storedRequestedPrice, 2, '.', '') === number_format($this->stored, 2, '.', '');
+        }
+
         // ponytail: no zero-ratio guard. QuoteLineNet reads a zero total as
         // 1.0, so no line carries a 0.0 ratio, and the write divides by the
         // same ratio unguarded.
-        $expected = $this->stored ?? self::storedValue($this->net, $netRatio);
-
-        return (
-            $storedRequestedPrice !== null
-            && number_format($storedRequestedPrice, 2, '.', '') === number_format($expected, 2, '.', '')
+        $cents = round(
+            abs(round($storedRequestedPrice, precision: 2) - self::storedValue($this->net, $netRatio)) * 100,
         );
+
+        return $cents <= 1.0;
     }
 
     /**

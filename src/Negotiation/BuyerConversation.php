@@ -101,6 +101,12 @@ final readonly class BuyerConversation
         return self::newest($this->merchant);
     }
 
+    /** The newest agent comment, as a 'U.u' string, or null when there is none. */
+    public function agentSpokeAt(): ?string
+    {
+        return self::newest($this->agent);
+    }
+
     /** The newest buyer ask, as a 'U.u' string, or null when there is none. */
     public function buyerSpokeAt(): ?string
     {
