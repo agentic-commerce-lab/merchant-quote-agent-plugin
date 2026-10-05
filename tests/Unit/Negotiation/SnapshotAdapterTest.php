@@ -101,6 +101,7 @@ final class SnapshotAdapterTest extends TestCase
 
         self::assertTrue($conversation->hasNewBuyerAsk());
         self::assertSame('still too expensive', $conversation->newestBuyerText());
+        self::assertSame('still too expensive', $conversation->unansweredBuyerText());
     }
 
     public function testAnAgentReplyNewerThanEveryBuyerCommentIsNotANewAsk(): void
@@ -113,6 +114,10 @@ final class SnapshotAdapterTest extends TestCase
         ]));
 
         self::assertFalse($conversation->hasNewBuyerAsk());
+        // Answered already: a reply on a later storefront round must not
+        // answer it again.
+        self::assertSame('can you do better?', $conversation->newestBuyerText());
+        self::assertSame('', $conversation->unansweredBuyerText());
     }
 
     public function testAQuoteWithNoCommentsAtAllHasNoAsk(): void

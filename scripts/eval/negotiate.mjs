@@ -28,8 +28,9 @@ async function decline(ucp, quoteId) {
 async function readFinalQuote(ucp, quoteId) {
     const response = await ucp.request('GET', `/ucp/quotes/${quoteId}`).catch(() => null);
     if (response?.status !== 200) return null;
-    const { currency = null, totals = {} } = response.body;
-    return { currency, totals: { gross: totals.gross ?? null, net: totals.net ?? null } };
+    // A 200 may still carry no quote: null body or null totals read as unknown, not a crash.
+    const totals = response.body?.totals ?? {};
+    return { currency: response.body?.currency ?? null, totals: { gross: totals.gross ?? null, net: totals.net ?? null } };
 }
 
 const defaultSleep = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000));

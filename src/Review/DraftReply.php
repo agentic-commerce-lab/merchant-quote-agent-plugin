@@ -46,7 +46,7 @@ final readonly class DraftReply
         [$text] = $this->composer->reword(
             $settings,
             $after,
-            SnapshotAdapter::conversation($pending->live)->newestBuyerText(),
+            SnapshotAdapter::conversation($pending->live)->unansweredBuyerText(),
             $percent,
         );
 

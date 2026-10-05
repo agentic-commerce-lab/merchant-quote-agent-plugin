@@ -50,7 +50,8 @@ const actedOn = foldToQuotes([
     { id: 'n2', quoteId: 'offered-earlier', outcome: 'nothing_to_do', createdAt: iso(4, 10) },
     { id: 'o1', quoteId: 'offered-earlier', outcome: 'offered', createdAt: iso(4, 9) },
     { id: 'e1', quoteId: 'escalated', outcome: 'escalated', createdAt: iso(4, 8) },
-    { id: 'd1', quoteId: 'drafted', outcome: 'offered', reviewStatus: 'pending', createdAt: iso(4, 7) },
+    // No outcome of its own: only `reviewStatus` says the agent acted.
+    { id: 'd1', quoteId: 'drafted', outcome: null, reviewStatus: 'pending', createdAt: iso(4, 7) },
     { id: 'c1', quoteId: 'clarified', outcome: 'clarified', createdAt: iso(4, 6) },
     { id: 'a1', quoteId: 'acknowledged', outcome: 'acknowledged', createdAt: iso(4, 5) },
     { id: 'r1', quoteId: 'legacy', outcome: 'replied', createdAt: iso(4, 4) },

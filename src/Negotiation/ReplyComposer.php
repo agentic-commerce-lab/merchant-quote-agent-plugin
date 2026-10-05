@@ -72,11 +72,7 @@ final readonly class ReplyComposer
         ?float $reductionPercent,
         BuyerConversation $conversation,
     ): ?string {
-        // A storefront ask on a later round comes with no new comment, and the
-        // newest one is the buyer's LAST round, already answered. Showing it to
-        // the reply model would have it answer the old ask.
-        $ask = $conversation->hasNewBuyerAsk() ? $conversation->newestBuyerText() : '';
-        [$text, $hash] = $this->reword($settings, $after, $ask, $reductionPercent);
+        [$text, $hash] = $this->reword($settings, $after, $conversation->unansweredBuyerText(), $reductionPercent);
 
         $gateway->addComment($after->identity->quoteId, $text);
         $this->recorder->recordReply($text, $hash);

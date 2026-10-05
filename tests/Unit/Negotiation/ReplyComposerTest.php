@@ -188,7 +188,8 @@ final class ReplyComposerTest extends TestCase
 
         self::assertSame([$reworded], $gateway->comments);
         self::assertSame([QuoteTransition::Sent], $gateway->transitions);
-        self::assertStringNotContainsString('8% please', $spy->userPrompts[0] ?? '');
+        self::assertCount(1, $spy->userPrompts);
+        self::assertStringNotContainsString('8% please', $spy->userPrompts[0]);
     }
 
     /**

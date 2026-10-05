@@ -339,7 +339,22 @@ const lost = await negotiate({
 assert.equal(lost.length, 1);
 assert.equal(lost[0].cellFailure, undefined);
 assert.equal(lost[0].finalQuote, null);
+assert.equal(lost[0].cleanup, 'declined', 'the decline still runs after a failed read');
 assert.equal(buildRows({ decisions: [{ id: 'd1' }], traces: [] })[0].finalQuote, null, 'no final read given: null');
+// a 200 that carries no quote (null body, or null totals) is read as unknown totals, not a crashed negotiation
+for (const body of [null, { currency: null, totals: null }]) {
+    let gets = 0;
+    const emptyShop = fakeShop([{ outcome: 'offered', totalNetAfter: 980 }]);
+    const empty = await negotiate({
+        ...policyArgs(),
+        ucp: { request: async (method, path, options) => (method === 'GET' && ++gets === 2 ? { status: 200, body } : emptyShop.ucp.request(method, path, options)) },
+        admin: emptyShop.admin,
+        scenario: validateScenario(base({ maxRounds: 1 })),
+    });
+    assert.equal(empty[0].cellFailure, undefined, `a 200 with body ${JSON.stringify(body)} failed the negotiation`);
+    assert.deepEqual(empty[0].finalQuote, { currency: null, totals: { gross: null, net: null } });
+    assert.equal(empty[0].cleanup, 'declined');
+}
 
 // a pass that never comes is a failure row, not a hang
 const timedOut = await run(base(), fakeShop([]));
