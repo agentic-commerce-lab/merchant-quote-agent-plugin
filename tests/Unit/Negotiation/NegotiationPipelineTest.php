@@ -173,7 +173,7 @@ final class NegotiationPipelineTest extends TestCase
     }
 
     /**
-     * QA-08, quote #1411, end to end through the read model. Pass 1 mirrored
+     * QA-08, end to end through the read model. Pass 1 mirrored
      * a 289.81 net ask (stored 318.79), repriced the line to 293.05 net /
      * 322.36 gross and replied. A pending trigger then ran pass 2 with no new
      * buyer input. Recomputing the mirror through the repriced ratio gave

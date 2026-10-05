@@ -49,7 +49,7 @@ final class QuoteLineMapperTest extends TestCase
         self::assertNull($lines[0]->requestedUnitPrice);
         self::assertSame(119.0, $lines[0]->totalInQuotePriceSpace);
 
-        // QA-08, quote #1411: 318.79 was stored for a 289.81 net ask while the
+        // QA-08: 318.79 was stored for a 289.81 net ask while the
         // line stood at 305.06 / 335.57, and the offer then repriced it to
         // 293.05 / 322.36. Through the NEW ratio the stored 318.79 reads as a
         // 289.80 net ask, which the guards took for the buyer's own and

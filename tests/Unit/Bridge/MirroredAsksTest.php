@@ -94,7 +94,7 @@ final class MirroredAsksTest extends TestCase
     }
 
     /**
-     * QA-08, quote #1411: 289.81 net was stored as 318.79 at 305.06/335.57.
+     * QA-08: 289.81 net was stored as 318.79 at 305.06/335.57.
      * The offer then repriced the line to 293.05 net / 322.36 gross, and
      * converting 289.81 through THAT ratio gives 318.80. A cent off, so the
      * agent read its own mirror as a fresh buyer ask and cut the price again,
