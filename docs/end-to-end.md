@@ -363,10 +363,15 @@ Two escalations live here:
   state nobody intended. The escalation tells a human what the database
   actually says.
 
-A **second round of per-line negotiation** goes to a human: the reference prices
-a per-line offer is bounded against are captured fresh each pass, so a second
-per-line concession would be measured against the first one's already-reduced
-prices and compound past the cap. Quote-wide rounds are unaffected.
+**Per-line rounds continue.** A per-line offer is bounded against the quote's
+stored baseline (`QuoteBaseline`, #49): the prices as the agent first found
+them, stamped by `ServiceQuoteHandler` before its first pass. A second or third
+per-line concession is therefore measured on the original prices, and the total
+across rounds stays inside the cap (`BaselineCompoundingTest`). Quote-wide
+rounds are measured on the same baseline. The one exception is a quote the
+agent serviced before the baseline existed: it has no anchor, so `OfferRound`
+escalates a per-line offer on it as `proposal_rejected`. That case retires
+itself as those quotes close.
 
 Prices, discounts and expiry dates are written as **absolute values**, so a
 worker that dies mid-pass and retries produces the same quote rather than
@@ -585,7 +590,7 @@ first.
 | `negotiationStrategyId` | — | Which strategy this sales channel negotiates with. Holds the strategy's id, not its text; the prompt comes from that strategy's newest version. Can never move a cap. |
 | `maxDiscountPercent` | `0` | `0` means every price ask escalates. The admin saves 0–100 only (`<min>`/`<max>` in `config.xml`, enforced by core's batch save; `system:config:set` bypasses it, and `QuoteLimits` still refuses an out-of-range value at read time). |
 | `counterOfferMaxPercent` | — | Blank means no counter band. The admin saves 0–100 only, as above. |
-| `minMarginPercent` | — | Markup on each product's purchase price that no offer may go below (`purchase × (1 + m/100)`, rounded up to the cent). Clamps the offer to that floor rather than escalating. Products without a purchase price have no floor. Blank means off; `0` means never below cost. The purchase price never reaches the model or the buyer. |
+| `minMarginPercent` | — | Markup on each product's purchase price that no offer may go below (`purchase × (1 + m/100)`, rounded up to the cent). Clamps the offer to that floor rather than escalating. Products without a purchase price have no floor. Blank means off; `0` means never below cost. The admin saves 0 or more only (no upper limit: a markup can exceed 100%). The purchase price never reaches the model or the buyer. |
 | `roundingMode` | `off` | `off`, `discount_percent` (the model's quote-wide percentage is floored to the step before authorization, so the checks, the per-line conversion and the reply all see it; a per-line answer is left unrounded) or `quote_total` (a quote-wide write becomes an absolute discount that lands the buyer-facing total, shipping included, on the next multiple of the step). Never the buyer's own figure, never below a standing concession, never to nothing (a cent or less counts as nothing); `quote_total` additionally skips a net quote with tax on top (`tax_on_top`), which also catches a gross quote whose goods are all 0 % VAT but whose shipping is taxed (conservatively written unrounded), while `discount_percent` still rounds there. Each skip is recorded on the `rounding` trace event. The percentage stated in the reply is measured on the whole buyer-facing total including shipping, so under `discount_percent` a quote with shipping can read e.g. 6.97 % in the reply while its discount line shows 7 %; `quote_total` makes the total round, and the stated percentage then follows from it. |
 | `roundingStep` | — | Percentage points in `discount_percent`, currency units of the buyer-facing total in `quote_total`. Blank or `0` means off whatever the mode. |
 | `maxQuoteValueNet` | — | Per currency, net. A currency left blank escalates. Blank everywhere means no ceiling. |

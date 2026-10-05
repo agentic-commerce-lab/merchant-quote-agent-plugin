@@ -259,7 +259,7 @@ one, or leaves a comment on one. Then, for that one quote:
    offer.
 
 Repeat visits are handled: it can see its own earlier offers on a quote and keeps
-negotiating within the same caps, which are always measured against the *current*
+negotiating within the same caps, which are always measured against the *original*
 prices, so concessions never quietly compound.
 
 If someone on your team answers a quote by hand — a reply, a note, moving it
@@ -294,7 +294,7 @@ deliberately refuses to answer these itself:
 | Volume or bulk pricing with no specific price named | Escalated |
 | To speak to a human | Escalated |
 | Something ambiguous | **Not escalated the first time.** The agent asks the customer a short clarifying question, in their language, and waits. If the answer is still unclear, then a person takes it. |
-| A second round of *per-line* price cuts | Escalated, so a second concession cannot be measured against the first one's already reduced prices. Quote-wide rounds continue normally. |
+| A second round of *per-line* price cuts | **Not escalated.** Every round is measured against the original prices, so the cuts across all rounds together stay within your cap. Only a quote the agent had already answered before it started keeping those original prices still goes to a person. |
 
 And if anything goes wrong — the AI is unreachable, it proposes something outside
 your rules, or the saved quote does not match what was approved — the quote goes
