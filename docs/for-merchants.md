@@ -576,8 +576,9 @@ in its conversation counts as that answer — even an interim note like "we are
 looking into it" — and the agent answers the customer's next message itself,
 even if the customer then requests changes. If you want to keep the agent out
 of it, do not comment on a *Replied* quote until your answer is ready; send it
-instead. While the quote is in any other state, a comment only clears the
-*Needs review* item: the agent stays silent on the quote until you send it.
+instead. While the quote is in any other state, a comment is not that answer:
+the quote stays in *Needs review*, and the agent stays silent on it, until you
+send it.
 
 **Raising the cap.** Start with a low maximum on one sales channel, watch the
 auto-execution rate and the discount figure for a couple of weeks, then widen.

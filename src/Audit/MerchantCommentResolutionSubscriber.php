@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Audit;
 
 use MerchantQuoteAgentPlugin\Bridge\AgentContext;
+use MerchantQuoteAgentPlugin\Bridge\MerchantActionReader;
+use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
 use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Defaults;
+use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -24,11 +27,15 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  *
  * Stamps `resolvedState` 'commented' through the same writer, so the same two
  * guards apply: only an escalated, still-unresolved newest pass is stamped,
- * and the first resolution keeps its clock. A send WITH a message from any
- * other state therefore records 'commented' too, because the comment is
- * written before the transition (both lanes' admin send) — the transition
- * then finds the pass already resolved. The time is the merchant's answer
- * either way, which is what the measure is about.
+ * and the first resolution keeps its clock.
+ *
+ * Only while the quote is `replied` at the comment (MerchantActionReader::
+ * stateAt(), now): the condition PendingEscalation releases the agent on. In
+ * any other state the merchant may be mid-edit and the agent stays stood
+ * down, so the quote must stay in Needs review — nobody else will answer it.
+ * A send WITH a message from another state writes the comment before the
+ * transition (both lanes' admin send), so the comment finds the old state and
+ * EscalationResolutionSubscriber stamps the send instead.
  *
  * Authorship is QuoteServicingTrigger::isMerchantComment(), the one payload
  * predicate both subscribers read: `createdById` set and neither buyer
@@ -47,6 +54,7 @@ final readonly class MerchantCommentResolutionSubscriber implements EventSubscri
 
     public function __construct(
         private EscalationResolutionWriterInterface $writer,
+        private MerchantActionReader $merchantActions,
         private LoggerInterface $logger,
     ) {}
 
@@ -66,17 +74,18 @@ final readonly class MerchantCommentResolutionSubscriber implements EventSubscri
         }
 
         foreach ($event->getWriteResults() as $result) {
-            $quoteId = $result->getPayload()['quoteId'] ?? null;
+            $payload = $result->getPayload();
 
             if (
                 $result->getOperation() !== EntityWriteResult::OPERATION_INSERT
-                || !\is_string($quoteId)
-                || !QuoteServicingTrigger::isMerchantComment($result->getPayload())
+                || !\array_key_exists('quoteId', $payload)
+                || !\is_string($payload['quoteId'])
+                || !QuoteServicingTrigger::isMerchantComment($payload)
             ) {
                 continue;
             }
 
-            $this->record($quoteId);
+            $this->record($payload['quoteId'], $context);
         }
     }
 
@@ -85,11 +94,17 @@ final readonly class MerchantCommentResolutionSubscriber implements EventSubscri
      * merchant's comment must never fail on our account, and a throwing
      * logger must not fail it either.
      */
-    private function record(string $quoteId): void
+    private function record(string $quoteId, Context $context): void
     {
         try {
             try {
-                $this->writer->recordEscalationResolution($quoteId, self::COMMENTED, new \DateTimeImmutable());
+                $now = new \DateTimeImmutable();
+
+                if ($this->merchantActions->stateAt($quoteId, $now, $context) !== PendingEscalation::SENT_STATE) {
+                    return;
+                }
+
+                $this->writer->recordEscalationResolution($quoteId, self::COMMENTED, $now);
             } catch (\Throwable $e) {
                 $this->logger->error('The escalation resolution could not be recorded.', [
                     'quoteId' => $quoteId,

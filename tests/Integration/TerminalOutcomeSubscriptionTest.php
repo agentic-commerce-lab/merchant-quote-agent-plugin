@@ -144,6 +144,10 @@ final class TerminalOutcomeSubscriptionTest extends IntegrationTestCase
      * subscriber reads. On 6.7.12 that id comes from CreatedByField, not
      * from the payload QuoteCommenter builds, so this is the test that proves
      * the legacy lane — run it against both shops.
+     *
+     * The quote is `replied` first: only a comment there answers (the
+     * subscriber reads the state from the real history). The escalated row is
+     * written after the transitions, so the `sent` cannot stamp it first.
      */
     public function testARealMerchantCommentStampsAnOpenEscalation(): void
     {
@@ -151,6 +155,13 @@ final class TerminalOutcomeSubscriptionTest extends IntegrationTestCase
         $context->addState(Context::SKIP_TRIGGER_FLOW);
         $quoteId = $this->newOpenQuoteId();
         $recordId = Uuid::randomHex();
+
+        $registry = static::getContainer()->get(StateMachineRegistry::class);
+        self::assertInstanceOf(StateMachineRegistry::class, $registry);
+
+        foreach (['process', 'sent'] as $action) {
+            $registry->transition(new Transition('quote', $quoteId, $action, 'stateId'), $context);
+        }
 
         self::records()
             ->create([[
@@ -172,6 +183,31 @@ final class TerminalOutcomeSubscriptionTest extends IntegrationTestCase
             . 'or the written payload carries no createdById on this lane.',
         );
         self::assertNotNull($record->resolvedAt);
+    }
+
+    /** On an `open` quote the comment is no answer: Needs review keeps it until a send. */
+    public function testAMerchantCommentOnANonRepliedQuoteStampsNothing(): void
+    {
+        $context = Context::createDefaultContext();
+        $context->addState(Context::SKIP_TRIGGER_FLOW);
+        $quoteId = $this->newOpenQuoteId();
+        $recordId = Uuid::randomHex();
+
+        self::records()
+            ->create([[
+                'id' => $recordId,
+                'quoteId' => $quoteId,
+                'outcome' => 'escalated',
+            ]], $context);
+
+        QuoteFixture::addMerchantComment(static::getContainer(), $quoteId, 'Looking into it.');
+
+        $record = self::records()
+            ->search(new Criteria([$recordId]), $context)
+            ->first();
+        self::assertInstanceOf(QuoteDecisionRecord::class, $record);
+        self::assertNull($record->resolvedState);
+        self::assertNull($record->resolvedAt);
     }
 
     /** A new quote has no decision rows, regardless of the shop's pre-existing audit history. */

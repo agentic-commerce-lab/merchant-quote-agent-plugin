@@ -525,14 +525,17 @@ without which an escalated quote's next pass would stamp itself as the human
 resolution.
 
 A comment closes it only when an administration user wrote it: `createdById`
-set and neither buyer column, on the live version, outside `AgentContext::STATE`.
-It records `resolvedState = commented`. SwagCommercial's own send from
-`replied` saves the quote and posts the message without any transition, so
-without this a quote already in `replied` stayed in Needs review until the
-merchant withdrew and resent it. Its send from any other state posts the
-message before it transitions, so a send with a message records `commented`
-too — the first resolution wins, and the time is the merchant's answer either
-way.
+set and neither buyer column, on the live version, outside `AgentContext::STATE`
+— and only while the quote is `replied` at the moment of the write
+(`MerchantActionReader::stateAt`), the same condition `PendingEscalation`
+releases the agent on. It records `resolvedState = commented`. SwagCommercial's
+own send from `replied` saves the quote and posts the message without any
+transition, so without this a quote already in `replied` stayed in Needs review
+until the merchant withdrew and resent it. In any other state the comment
+closes nothing: the agent stays stood down, so the quote stays in Needs review
+until the merchant sends it. A send with a message from those states posts the
+message before it transitions, so the comment finds the old state and the
+transition records the resolution.
 
 ### The A2CN act, when there is a session
 

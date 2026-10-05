@@ -6,12 +6,19 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Audit;
 
 use MerchantQuoteAgentPlugin\Audit\MerchantCommentResolutionSubscriber;
 use MerchantQuoteAgentPlugin\Bridge\AgentContext;
+use MerchantQuoteAgentPlugin\Bridge\MerchantActionReader;
 use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\QuoteTriggerEventFixture;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\AbstractLogger;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
+use Shopware\Core\Framework\Struct\ArrayEntity;
 
 /**
  * QA-05: a merchant's answer in the quote's thread resolves the Needs-review
@@ -32,14 +39,13 @@ final class MerchantCommentResolutionSubscriberTest extends TestCase
         );
     }
 
-    public function testAMerchantCommentResolvesTheEscalation(): void
+    public function testAMerchantCommentResolvesTheEscalationOnlyOnARepliedQuote(): void
     {
         $writer = new FakeEscalationResolutionWriter();
 
-        self::subscriber($writer)
-            ->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([
-                self::comment(self::MERCHANT),
-            ]));
+        $this->subscriber($writer)->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([
+            self::comment(self::MERCHANT),
+        ]));
 
         self::assertCount(1, $writer->calls);
         self::assertSame('q1', $writer->calls[0]['quoteId']);
@@ -48,6 +54,39 @@ final class MerchantCommentResolutionSubscriberTest extends TestCase
         // Seconds, not milliseconds: this must not be flaky.
         $secondsAgo = time() - $writer->calls[0]['at']->getTimestamp();
         self::assertLessThan(5, abs($secondsAgo), 'The recorded timestamp is not close to now.');
+
+        // Only a comment on a `replied` quote answers (the condition
+        // PendingEscalation releases on). In any other state the merchant may
+        // be mid-edit and the agent stays stood down, so Needs review keeps
+        // the quote until the send, which EscalationResolutionSubscriber
+        // stamps.
+        foreach (['in_review', 'change_requested', 'open', null] as $state) {
+            $writer = new FakeEscalationResolutionWriter();
+
+            $this->subscriber($writer, state: $state)->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([
+                self::comment(self::MERCHANT),
+            ]));
+
+            self::assertSame(
+                [],
+                $writer->calls,
+                \sprintf('A comment in "%s" resolved the escalation.', $state ?? 'no state'),
+            );
+        }
+
+        // Nor one whose state cannot be read: the read sits inside the same
+        // guard as the write, so the comment itself never fails.
+        $writer = new FakeEscalationResolutionWriter();
+        $history = $this->createMock(EntityRepository::class);
+        $history->method('search')->willThrowException(new \RuntimeException('the DAL is unwell'));
+
+        (new MerchantCommentResolutionSubscriber(
+            $writer,
+            new MerchantActionReader($history),
+            new NullLogger(),
+        ))->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([self::comment(self::MERCHANT)]));
+
+        self::assertSame([], $writer->calls);
     }
 
     /** The buyer asking again is not the deal desk answering. */
@@ -55,11 +94,10 @@ final class MerchantCommentResolutionSubscriberTest extends TestCase
     {
         $writer = new FakeEscalationResolutionWriter();
 
-        self::subscriber($writer)
-            ->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([
-                self::comment(['createdById' => null, 'customerId' => 'customer-1', 'employeeId' => null]),
-                self::comment(['createdById' => null, 'customerId' => 'customer-1', 'employeeId' => 'employee-1']),
-            ]));
+        $this->subscriber($writer)->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([
+            self::comment(['createdById' => null, 'customerId' => 'customer-1', 'employeeId' => null]),
+            self::comment(['createdById' => null, 'customerId' => 'customer-1', 'employeeId' => 'employee-1']),
+        ]));
 
         self::assertSame([], $writer->calls);
     }
@@ -77,14 +115,15 @@ final class MerchantCommentResolutionSubscriberTest extends TestCase
         $writer = new FakeEscalationResolutionWriter();
         $agentComment = self::comment(['createdById' => null, 'customerId' => null, 'employeeId' => null]);
 
-        self::subscriber($writer)->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([$agentComment]));
-        self::subscriber($writer)
-            ->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([$agentComment], AgentContext::create()));
-        self::subscriber($writer)
-            ->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent(
-                [self::comment(self::MERCHANT)],
-                AgentContext::create(),
-            ));
+        $this->subscriber($writer)->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([$agentComment]));
+        $this->subscriber($writer)->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent(
+            [$agentComment],
+            AgentContext::create(),
+        ));
+        $this->subscriber($writer)->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent(
+            [self::comment(self::MERCHANT)],
+            AgentContext::create(),
+        ));
 
         self::assertSame([], $writer->calls);
     }
@@ -94,11 +133,10 @@ final class MerchantCommentResolutionSubscriberTest extends TestCase
     {
         $writer = new FakeEscalationResolutionWriter();
 
-        self::subscriber($writer)
-            ->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent(
-                [self::comment(self::MERCHANT)],
-                QuoteTriggerEventFixture::snapshotContext(),
-            ));
+        $this->subscriber($writer)->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent(
+            [self::comment(self::MERCHANT)],
+            QuoteTriggerEventFixture::snapshotContext(),
+        ));
 
         self::assertSame([], $writer->calls);
     }
@@ -107,10 +145,9 @@ final class MerchantCommentResolutionSubscriberTest extends TestCase
     {
         $writer = new FakeEscalationResolutionWriter();
 
-        self::subscriber($writer)
-            ->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([
-                self::comment(self::MERCHANT, EntityWriteResult::OPERATION_UPDATE),
-            ]));
+        $this->subscriber($writer)->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([
+            self::comment(self::MERCHANT, EntityWriteResult::OPERATION_UPDATE),
+        ]));
 
         self::assertSame([], $writer->calls);
     }
@@ -135,10 +172,9 @@ final class MerchantCommentResolutionSubscriberTest extends TestCase
             }
         };
 
-        self::subscriber($writer, $logger)
-            ->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([
-                self::comment(self::MERCHANT),
-            ]));
+        $this->subscriber($writer, $logger)->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([
+            self::comment(self::MERCHANT),
+        ]));
 
         self::assertCount(1, $logger->messages, 'The failure was not logged.');
     }
@@ -159,12 +195,11 @@ final class MerchantCommentResolutionSubscriberTest extends TestCase
             }
         };
 
-        self::subscriber($writer, $logger)
-            ->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([
-                self::comment(self::MERCHANT),
-            ]));
+        $this->subscriber($writer, $logger)->onQuoteCommentWritten(QuoteTriggerEventFixture::commentEvent([
+            self::comment(self::MERCHANT),
+        ]));
 
-        $this->expectNotToPerformAssertions();
+        self::assertCount(1, $writer->calls);
     }
 
     /** @param array<string, ?string> $authors */
@@ -180,10 +215,35 @@ final class MerchantCommentResolutionSubscriberTest extends TestCase
         );
     }
 
-    private static function subscriber(
+    private function subscriber(
         FakeEscalationResolutionWriter $writer,
         ?LoggerInterface $logger = null,
+        ?string $state = 'replied',
     ): MerchantCommentResolutionSubscriber {
-        return new MerchantCommentResolutionSubscriber($writer, $logger ?? new NullLogger());
+        $rows = $state === null
+            ? []
+            : [new ArrayEntity([
+                'id' => 'h1',
+                'toStateMachineState' => new ArrayEntity(['id' => 's1', 'technicalName' => $state]),
+            ])];
+        $history = $this->createMock(EntityRepository::class);
+        $history
+            ->method('search')
+            ->willReturn(
+                new EntitySearchResult(
+                    'state_machine_history',
+                    \count($rows),
+                    new EntityCollection($rows),
+                    null,
+                    new Criteria(),
+                    Context::createDefaultContext(),
+                ),
+            );
+
+        return new MerchantCommentResolutionSubscriber(
+            $writer,
+            new MerchantActionReader($history),
+            $logger ?? new NullLogger(),
+        );
     }
 }

@@ -490,7 +490,6 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(EscalationResolutionWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
     $services->alias(EscalationResolutionWriterInterface::class, EscalationResolutionWriter::class);
     $services->set(EscalationResolutionSubscriber::class);
-    $services->set(MerchantCommentResolutionSubscriber::class);
 
     // Draft Mode's after-the-pass writes: superseded, sent, rejected, feedback.
     $services->set(DecisionReviewStore::class)->args([service('merchant_quote_agent_decision.repository')]);
@@ -667,6 +666,10 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // template in the consumer, so autowiring cannot supply them.
     $services->set(QuoteVersionResolver::class);
     $services->set(MerchantActionReader::class)->args([service('state_machine_history.repository')]);
+    // Inside the gate: it reads the quote's state through the reader above,
+    // and `quote_comment` is SwagCommercial's entity, so without the bundle
+    // there is no comment for it to hear.
+    $services->set(MerchantCommentResolutionSubscriber::class);
     $services->set(QuoteSnapshotReader::class)->args([
         service('quote.repository'),
         service(QuoteVersionResolver::class),
