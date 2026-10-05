@@ -20,7 +20,7 @@ final class PendingEscalation
     public const ESCALATED_AT_KEY = 'merchant_quote_agent_escalated_at';
 
     /** The state a merchant's "send" moves the quote into. */
-    private const SENT_STATE = 'replied';
+    public const SENT_STATE = 'replied';
 
     private function __construct() {}
 
@@ -52,14 +52,25 @@ final class PendingEscalation
      *    prices, and moving it to `replied` for them would receipt terms
      *    nobody sent. After a send the terms are the human's, and that
      *    receipt is true.
-     *  - A merchant comment, but ONLY while the quote sits in `replied`
-     *    (QA-05). SwagCommercial's own "send" from `replied` saves the quote
-     *    and posts the message without any transition, so it leaves no
-     *    history row and the rule above never saw it; withdraw and resend
-     *    was the merchant's only way out. In `replied` the terms on the quote
-     *    are the ones the buyer was sent, so the receipt invariant holds. In
-     *    any other state a comment may be a note written mid-edit, and the
-     *    agent stays down until a send.
+     *  - A merchant comment, but ONLY one written while the quote was in
+     *    `replied`, with no admin transition after it (QA-05).
+     *    SwagCommercial's own "send" from `replied` saves the quote and posts
+     *    the message without any transition, so it leaves no history row and
+     *    the rule above never saw it; withdraw and resend was the merchant's
+     *    only way out. In `replied` the terms on the quote are the ones the
+     *    buyer was sent, so the receipt invariant holds. In any other state a
+     *    comment may be a note written mid-edit, and the agent stays down
+     *    until a send. An admin transition after the comment means the
+     *    merchant took the quote back to work on it, so the comment no
+     *    longer stands for the terms.
+     *
+     *    The state is the one AT THE COMMENT (stateAtLastAdminComment), not
+     *    at the pass. A comment triggers no pass; the buyer's next message
+     *    does, and over UCP that is a counter, which moves the quote to
+     *    `change_requested` (`reopen` on 6.7.12) before the pass reads it.
+     *    A pass-time check would never see `replied` on the main channel.
+     *    The counter writes only requested prices, which are not terms, so
+     *    the terms are still the ones sent.
      *
      * A tie stays with the human, for both.
      *
@@ -82,6 +93,18 @@ final class PendingEscalation
      * marker has to be cleared by hand. Widening the release to author-less
      * writes is not the fix: the agent's own writes are author-less too, and
      * would release it.
+     *
+     * The state at the comment orders two DAL `createdAt`s, the history
+     * row's and the comment's, which agree to the millisecond on one host.
+     * Skew between writers fails safe but for one order. A row from after the
+     * comment that skew puts before it is a buyer's counter (not `replied`:
+     * held) or an admin transition (a send, which releases rightly, or a
+     * move elsewhere, which reads as not `replied`: held). The agent, the
+     * only other writer into `replied`, is stood down while the escalation
+     * stands, and expiry or a decline is not `replied`. A row from before the
+     * comment that skew puts after it shows the state before that row, which
+     * is unsafe only if that row moved the quote OUT of `replied`: a buyer's
+     * counter landing within the skew just before the merchant's comment.
      */
     public static function awaitsAHuman(QuoteLifecycle $lifecycle): bool
     {
@@ -94,7 +117,7 @@ final class PendingEscalation
         $escalatedAt = $lifecycle->customFields[self::ESCALATED_AT_KEY] ?? null;
         $answers = array_filter([
             $lifecycle->lastAdminTransitionTo === self::SENT_STATE ? $lifecycle->lastAdminTransitionAt : null,
-            $lifecycle->stateTechnicalName === self::SENT_STATE ? $lifecycle->lastAdminCommentAt : null,
+            RepliedComment::at($lifecycle),
         ]);
 
         if ($answers === []) {

@@ -446,18 +446,26 @@ set and no merchant has answered since it was written —
 escalated quote does not run the pipeline and escalate it again. Two things
 count as an answer: a merchant moving the quote to `replied`, and a merchant
 comment (`QuoteLifecycle::lastAdminCommentAt`, the newest comment with
-`createdById` and neither buyer column) while the quote sits in `replied`.
-The second exists because SwagCommercial's own send from `replied` saves the
-quote and posts the message without a transition. It is limited to `replied`
-because there the terms on the quote are the ones the buyer was sent; in any
-other state the merchant may still be editing, and the approval receipt the
-agent's next move to `replied` triggers would vouch for terms nobody sent.
+`createdById` and neither buyer column) written while the quote was in
+`replied`, with no admin transition after it. The second exists because
+SwagCommercial's own send from `replied` saves the quote and posts the message
+without a transition. It is limited to `replied` because there the terms on
+the quote are the ones the buyer was sent; in any other state the merchant may
+still be editing, and the approval receipt the agent's next move to `replied`
+triggers would vouch for terms nobody sent. The state is the one at the
+comment (`QuoteLifecycle::stateAtLastAdminComment`, from
+`MerchantActionReader::stateAt()`: the newest state-machine history row by any
+author at or before the comment), not the state at the pass. A comment triggers
+no pass; the buyer's next message does, and over UCP that is a counter, which
+moves the quote to `change_requested` (`reopen` on 6.7.12) before the pass
+reads it. The counter writes only requested prices, so the terms are still the
+ones sent.
 A legacy marker written before its time was recorded is released by any
 answer, since it cannot be ordered against one. After an escalation only a
 merchant's answer re-enables the agent; reopening or declining the quote does
-not, nor does a comment on a quote that is not `replied`, and buyer chat asks
-made during the escalation are consumed (the fingerprint is stamped) and not
-mirrored to `requested_price`.
+not, nor does a comment written while the quote was not `replied`, and buyer
+chat asks made during the escalation are consumed (the fingerprint is stamped)
+and not mirrored to `requested_price`.
 
 The outcome, `NegotiationOutcome::HandedOver`, is returned before the extract
 call and before the stranded-reply branch that follows it. It does not answer

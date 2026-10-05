@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteVersion;
 use MerchantQuoteAgentPlugin\Bridge\QuoteNotFoundException;
 use Shopware\Core\Framework\Context;
@@ -185,6 +186,36 @@ final class FetchSnapshotTest extends IntegrationTestCase
             $ours[0]->createdAt,
             $snapshot->lifecycle->lastAdminCommentAt,
             'The lifecycle does not carry the newest admin comment, or the agent\'s later comment moved it.',
+        );
+    }
+
+    /**
+     * QA-05, the UCP case: the merchant comments while the quote is
+     * `replied`, then the buyer's counter moves it on before any pass reads
+     * it. The lifecycle must still say the comment was written while
+     * `replied`, which is what PendingEscalation decides on.
+     *
+     * The pauses keep the three writes in distinct milliseconds, the
+     * precision `created_at` is stored at; in one millisecond their order is
+     * unknowable to the reader.
+     */
+    public function testTheStateAtTheMerchantCommentSurvivesTheBuyersCounter(): void
+    {
+        $quoteId = QuoteFixture::quoteIdInState(static::getContainer(), Context::createDefaultContext(), 'in_review');
+
+        static::gateway()->transition($quoteId, QuoteTransition::Sent);
+        usleep(5000);
+        QuoteFixture::addMerchantComment(static::getContainer(), $quoteId, 'Merchant answer ' . Uuid::randomHex());
+        usleep(5000);
+        static::gateway()->transition($quoteId, QuoteTransition::RequestChange);
+
+        $lifecycle = static::gateway()->fetchSnapshot($quoteId)->lifecycle;
+
+        self::assertContains($lifecycle->stateTechnicalName, ['change_requested', 'reopen']);
+        self::assertSame(
+            'replied',
+            $lifecycle->stateAtLastAdminComment,
+            'The state at the comment was read from a history row after it, or none was found.',
         );
     }
 }

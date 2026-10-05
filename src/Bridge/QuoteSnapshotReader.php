@@ -77,6 +77,7 @@ final readonly class QuoteSnapshotReader
         }
 
         $comments = $this->commentMapper->map($quote);
+        $commentedAt = QuoteCommentMapper::newestMerchantAt($comments);
 
         return new QuoteSnapshot(
             identity: $this->readIdentity($quote, $quoteId),
@@ -89,7 +90,10 @@ final readonly class QuoteSnapshotReader
             lifecycle: $this->readLifecycle(
                 $quote,
                 $this->merchantActions->lastTransition($quoteId, $versionedContext),
-                QuoteCommentMapper::newestMerchantAt($comments),
+                $commentedAt,
+                $commentedAt === null
+                    ? null
+                    : $this->merchantActions->stateAt($quoteId, $commentedAt, $versionedContext),
             ),
             content: new QuoteContent(lines: $this->lineMapper->map($quote), comments: $comments),
         );
@@ -133,6 +137,7 @@ final readonly class QuoteSnapshotReader
         Entity $quote,
         ?array $lastAdminTransition,
         ?\DateTimeImmutable $lastAdminCommentAt,
+        ?string $stateAtLastAdminComment,
     ): QuoteLifecycle {
         $state = $quote->get('stateMachineState');
         $expiresAt = $quote->get('expirationDate');
@@ -150,6 +155,7 @@ final readonly class QuoteSnapshotReader
             lastAdminTransitionAt: $lastAdminTransition[0] ?? null,
             lastAdminTransitionTo: $lastAdminTransition[1] ?? null,
             lastAdminCommentAt: $lastAdminCommentAt,
+            stateAtLastAdminComment: $stateAtLastAdminComment,
         );
     }
 }

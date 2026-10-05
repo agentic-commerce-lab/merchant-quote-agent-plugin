@@ -35,9 +35,16 @@ final readonly class QuoteLifecycle
          * When a human merchant last wrote a comment on this quote, or null if
          * none ever did. Transport only — QuoteCommentMapper::newestMerchantAt()
          * fills it from the comments the snapshot already loads, and
-         * PendingEscalation::awaitsAHuman() counts it as an answer only while
-         * the quote sits in `replied`.
+         * PendingEscalation::awaitsAHuman() counts it as an answer only if the
+         * quote was `replied` when it was written.
          */
         public ?\DateTimeImmutable $lastAdminCommentAt = null,
+        /**
+         * The state the quote was in when that comment was written: the target
+         * of the newest state-machine history row by any author at or before
+         * it (MerchantActionReader::stateAt()). Null when there is no merchant
+         * comment, or no history row that old.
+         */
+        public ?string $stateAtLastAdminComment = null,
     ) {}
 }
