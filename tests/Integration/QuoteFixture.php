@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Negotiation\StructuredAsk;
 use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
+use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -50,6 +51,35 @@ final class QuoteFixture
         }
 
         return $id;
+    }
+
+    /**
+     * A comment written the way SwagCommercial's administration writes one
+     * (QA-05): an AdminApiSource on the live version, inside SYSTEM_SCOPE as
+     * 6.7.12's QuoteCommenter wraps it, and no buyer column. `createdById` is
+     * left to CreatedByField, which fills it from the source on both lanes —
+     * so a lane where it did not is a red test, not a silent pass.
+     *
+     * @throws \RuntimeException when SwagCommercial is not installed
+     */
+    public static function addMerchantComment(ContainerInterface $container, string $quoteId, string $text): void
+    {
+        $comments = $container->get('quote_comment.repository');
+
+        if (!$comments instanceof EntityRepository) {
+            throw new \RuntimeException(
+                'The test shop has no quote_comment repository; SwagCommercial is not installed.',
+            );
+        }
+
+        $source = new AdminApiSource(self::adminUserId($container));
+        $source->setIsAdmin(true);
+
+        $write = static function (Context $admin) use ($comments, $quoteId, $text): void {
+            $comments->create([['quoteId' => $quoteId, 'comment' => $text]], $admin);
+        };
+
+        (new Context($source))->scope(Context::SYSTEM_SCOPE, $write);
     }
 
     /** @throws \RuntimeException when the shop has no quote to work with */

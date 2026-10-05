@@ -198,13 +198,15 @@ class QuoteDecisionRecord extends EntityStruct
 
     /**
      * When a human first acted on the quote after this pass escalated, and the
-     * state they moved it to. Written by EscalationResolutionSubscriber, never
-     * by a servicing pass.
+     * state they moved it to — or `commented` when a merchant answered in the
+     * quote's thread (QA-05). Written by EscalationResolutionSubscriber and
+     * MerchantCommentResolutionSubscriber, never by a servicing pass.
      *
      * Any transition by anyone counts, including the buyer withdrawing the
      * quote: the core state-change event carries no author, and the only thing
      * that does — SwagCommercial's `quote_history` — does not exist on 7.12.
-     * `resolvedState` is stored precisely so this stays inspectable.
+     * A comment counts only when an admin user wrote it. `resolvedState` is
+     * stored precisely so this stays inspectable.
      */
     #[Field(type: FieldType::DATETIME, api: ['admin-api' => true, 'store-api' => false])]
     #[Protection(write: [Protection::SYSTEM_SCOPE])]

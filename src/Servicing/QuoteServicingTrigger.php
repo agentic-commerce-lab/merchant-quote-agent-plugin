@@ -191,9 +191,15 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
      * authorship columns ever change; nothing enforces that but the two of
      * them being read together.
      *
+     * Public for Audit\MerchantCommentResolutionSubscriber (QA-05), which
+     * reads the same payload for the opposite purpose: there a comment this
+     * proves is the merchant's resolves an escalation. Positive
+     * identification is just as right there: an unrecognised shape costs a
+     * missed resolution, never a buyer's ask read as the deal desk's answer.
+     *
      * @param array<string, mixed> $payload
      */
-    private static function isMerchantComment(array $payload): bool
+    public static function isMerchantComment(array $payload): bool
     {
         $createdById = $payload['createdById'] ?? null;
 

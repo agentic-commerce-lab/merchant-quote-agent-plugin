@@ -566,8 +566,9 @@ the database at all — neither a database dump nor an admin API token with
 
 **Your routine is the Needs review queue.** Open the dashboard, work the
 escalations, and the agent handles the rest. When you answer an escalated quote —
-by sending a revised offer, or however you normally close it — the plugin notices
-and stops counting it as open.
+by sending a revised offer, replying to the customer in the quote's
+conversation, or however you normally close it — the plugin notices and stops
+counting it as open.
 
 **Raising the cap.** Start with a low maximum on one sales channel, watch the
 auto-execution rate and the discount figure for a couple of weeks, then widen.

@@ -491,7 +491,9 @@ never carry it.
 Four columns are not written by the pass: `terminalState` / `terminalAt`, stamped
 by `TerminalOutcomeSubscriber` when the quote reaches a state that ends a
 negotiation, and `resolvedAt` / `resolvedState`, stamped by
-`EscalationResolutionSubscriber` when a human acts after an escalation.
+`EscalationResolutionSubscriber` when a human acts after an escalation, or by
+`MerchantCommentResolutionSubscriber` when a merchant answers in the quote's
+thread.
 
 Because the core state-change event carries no author, a transition by *anyone*
 closes an escalation — the deal desk sending a revised offer, or the buyer
@@ -499,6 +501,16 @@ withdrawing. `resolvedState` is stored precisely so that stays inspectable. The
 agent's own mid-pass transitions carry `AgentContext::STATE` and are skipped,
 without which an escalated quote's next pass would stamp itself as the human
 resolution.
+
+A comment closes it only when an administration user wrote it: `createdById`
+set and neither buyer column, on the live version, outside `AgentContext::STATE`.
+It records `resolvedState = commented`. SwagCommercial's own send from
+`replied` saves the quote and posts the message without any transition, so
+without this a quote already in `replied` stayed in Needs review until the
+merchant withdrew and resent it. Its send from any other state posts the
+message before it transitions, so a send with a message records `commented`
+too — the first resolution wins, and the time is the merchant's answer either
+way.
 
 ### The A2CN act, when there is a session
 
@@ -653,7 +665,7 @@ zero.**
   and make a shop with ten of them report 100%. The raw `n of m escalated` count
   sits beside it, with a trend against the previous period.
 - **Escalation resolution time** — mean time from escalation to the deal desk's
-  resolving transition. **Only covers escalations resolved after the
+  resolving transition or reply. **Only covers escalations resolved after the
   `resolved_at` migration shipped**; earlier ones report as `n still open`
   rather than vanishing from the average. Set `escalationSlaHours` to turn it
   into "n of m within the SLA".

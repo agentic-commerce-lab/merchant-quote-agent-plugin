@@ -22,6 +22,7 @@ use MerchantQuoteAgentPlugin\Audit\Export\DecisionExportStream;
 use MerchantQuoteAgentPlugin\Audit\HttpTraceCapture;
 use MerchantQuoteAgentPlugin\Audit\HttpTraceQuote;
 use MerchantQuoteAgentPlugin\Audit\HttpTraceSubscriber;
+use MerchantQuoteAgentPlugin\Audit\MerchantCommentResolutionSubscriber;
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeSubscriber;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
@@ -489,6 +490,7 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     $services->set(EscalationResolutionWriter::class)->args([service('merchant_quote_agent_decision.repository')]);
     $services->alias(EscalationResolutionWriterInterface::class, EscalationResolutionWriter::class);
     $services->set(EscalationResolutionSubscriber::class);
+    $services->set(MerchantCommentResolutionSubscriber::class);
 
     // Draft Mode's after-the-pass writes: superseded, sent, rejected, feedback.
     $services->set(DecisionReviewStore::class)->args([service('merchant_quote_agent_decision.repository')]);
