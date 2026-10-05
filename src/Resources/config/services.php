@@ -181,6 +181,7 @@ use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteCapability;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteContractController;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteFieldAssertions;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteLineItemValidator;
+use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteOAuthScopeProvider;
 use MerchantQuoteAgentPlugin\Ucp\Quote\QuoteRequestValidator;
 use MerchantQuoteAgentPlugin\Ucp\UcpAvailability;
 use Shopware\Core\Framework\DataAbstractionLayer\DefinitionInstanceRegistry;
@@ -321,7 +322,16 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         // that knows Agentic Commerce's OAuth schema (issue #13 retires it).
         $services->set(AcOAuthAccessTokenReader::class);
         $services->alias(AccessTokenSubjectReaderInterface::class, AcOAuthAccessTokenReader::class);
-        $services->set(AgentCustomerAuthenticator::class);
+        // Agentic Commerce 1.4.0+ lets an extension register its own OAuth scope.
+        // Only then can a token carry com.shopware.quote:manage, so only then are
+        // scopes enforced; older releases keep the ownership-only check. Class
+        // existence is sound here, unlike for the bundle gate above: that gate
+        // already proved the plugin is active, so the class is its live code.
+        $quoteScopeGrantable = class_exists(QuoteOAuthScopeProvider::REGISTRY_CLASS);
+        if ($quoteScopeGrantable) {
+            $services->set(QuoteOAuthScopeProvider::class)->tag(QuoteOAuthScopeProvider::TAG);
+        }
+        $services->set(AgentCustomerAuthenticator::class)->arg('$enforceScopes', $quoteScopeGrantable);
         $services->set(AgentAccessFlags::class);
         $services->set(AllowAnyAgentCommand::class)->tag('console.command');
 

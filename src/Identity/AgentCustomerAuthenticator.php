@@ -6,6 +6,7 @@ namespace MerchantQuoteAgentPlugin\Identity;
 
 use MerchantQuoteAgentPlugin\Bridge\CustomerContextResolverInterface;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\UnauthorizedHttpException;
 use Ucp\Sdk\Exception\ValidationException;
 use Ucp\Sdk\Model\RequestContext;
@@ -25,23 +26,33 @@ use Ucp\Sdk\Model\RequestContext;
  * constructor argument is dropped and never reaches the client. Worth raising
  * upstream with the other SDK fixes in #14.
  *
- * `$requiredScope` is wired but every caller passes null: Agentic Commerce
- * intersects requested scopes against a private constant that does not include
- * `com.shopware.quote:manage`, so no token can carry it yet. Authorization for
- * now is ownership — the token's subject names the customer, and the commercial
- * Store API routes filter by customer and sales channel themselves.
+ * Scopes are checked only when `$enforceScopes` is on, which services.php sets
+ * from whether Agentic Commerce can grant this plugin's scope at all (1.4.0+,
+ * where an extension can register one). Before that release no token can carry
+ * `com.shopware.quote:manage`, so enforcing it would lock every agent out.
+ * Ownership is checked either way: the token's subject names the customer, and
+ * the commercial Store API routes filter by customer and sales channel
+ * themselves.
+ *
+ * A missing scope is a 403, not a 401: the token is valid, and RFC 6750 §3.1
+ * answers `insufficient_scope` with 403 so the agent knows to re-link with the
+ * named scopes rather than to refresh.
  */
 final readonly class AgentCustomerAuthenticator
 {
     public function __construct(
         private CustomerContextResolverInterface $contextResolver,
         private AccessTokenSubjectReaderInterface $accessTokenReader,
+        private bool $enforceScopes = false,
     ) {}
 
+    /**
+     * @param list<string> $requiredScopes
+     */
     public function authenticate(
         AgentCustomerCredential $credential,
         RequestContext $requestContext,
-        ?string $requiredScope = null,
+        array $requiredScopes = [],
     ): SalesChannelContext {
         $resolution = $this->contextResolver->resolveSalesChannel($requestContext);
         $token = $this->accessTokenReader->find($credential->accessToken, $resolution->salesChannelId);
@@ -50,11 +61,13 @@ final readonly class AgentCustomerAuthenticator
             throw new UnauthorizedHttpException('Bearer', 'Access token is invalid, expired, or revoked.');
         }
 
-        if ($requiredScope !== null && !$token->hasScope($requiredScope)) {
-            throw new UnauthorizedHttpException('Bearer', \sprintf(
-                'Access token is missing the required scope "%s".',
-                $requiredScope,
-            ));
+        $missing = $this->enforceScopes ? array_diff($requiredScopes, $token->scopes) : [];
+        if ($missing !== []) {
+            throw new AccessDeniedHttpException(
+                'insufficient_scope: the access token lacks '
+                . implode(' ', $missing)
+                . '. Link the account again and request these scopes.',
+            );
         }
 
         $context = $this->contextResolver->resolveForCustomer($token->subject, $requestContext, $resolution);

@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\UnauthorizedHttpException;
 use Ucp\Sdk\Exception\ValidationException;
 
@@ -72,24 +73,61 @@ final class AgentCustomerAuthenticatorTest extends TestCase
         );
     }
 
-    public function testItRejectsATokenMissingARequiredScopeWhenOneIsAsked(): void
+    public function testItRejectsATokenMissingARequiredScopeWhenScopesAreEnforced(): void
     {
-        $resolver = AgentCustomerAuthenticatorFixture::resolver(
-            $this->customerContext(self::CUSTOMER_ID),
-            self::SALES_CHANNEL_ID,
-        );
-        $authenticator = new AgentCustomerAuthenticator(
-            $resolver,
-            AgentCustomerAuthenticatorFixture::reader(AgentCustomerAuthenticatorFixture::tokenInfo()),
-        );
+        $authenticator = $this->authenticator(['dev.ucp.shopping.cart:manage'], true);
 
-        $this->expectException(UnauthorizedHttpException::class);
+        try {
+            $authenticator->authenticate(
+                AgentCustomerAuthenticatorFixture::credential(),
+                AgentCustomerAuthenticatorFixture::requestContext(),
+                ['com.shopware.quote:manage'],
+            );
+            self::fail('A token without the required scope was accepted.');
+        } catch (AccessDeniedHttpException $exception) {
+            self::assertSame(403, $exception->getStatusCode());
+            self::assertStringContainsString('com.shopware.quote:manage', $exception->getMessage());
+        }
+    }
+
+    public function testItNamesEveryRequiredScopeTheTokenLacks(): void
+    {
+        $authenticator = $this->authenticator(['com.shopware.quote:manage'], true);
+
+        $this->expectException(AccessDeniedHttpException::class);
+        $this->expectExceptionMessage('dev.ucp.shopping.order:manage');
 
         $authenticator->authenticate(
             AgentCustomerAuthenticatorFixture::credential(),
             AgentCustomerAuthenticatorFixture::requestContext(),
-            'com.shopware.quote:manage',
+            ['com.shopware.quote:manage', 'dev.ucp.shopping.order:manage'],
         );
+    }
+
+    public function testItAcceptsATokenCarryingEveryRequiredScope(): void
+    {
+        $authenticator = $this->authenticator(['com.shopware.quote:manage', 'dev.ucp.shopping.order:manage'], true);
+
+        $result = $authenticator->authenticate(
+            AgentCustomerAuthenticatorFixture::credential(),
+            AgentCustomerAuthenticatorFixture::requestContext(),
+            ['com.shopware.quote:manage', 'dev.ucp.shopping.order:manage'],
+        );
+
+        self::assertSame(self::CUSTOMER_ID, $result->getCustomer()?->getId());
+    }
+
+    public function testItIgnoresRequiredScopesWhenTheIdentityProviderCannotGrantThem(): void
+    {
+        $authenticator = $this->authenticator(['dev.ucp.shopping.cart:manage'], false);
+
+        $result = $authenticator->authenticate(
+            AgentCustomerAuthenticatorFixture::credential(),
+            AgentCustomerAuthenticatorFixture::requestContext(),
+            ['com.shopware.quote:manage', 'dev.ucp.shopping.order:manage'],
+        );
+
+        self::assertSame(self::CUSTOMER_ID, $result->getCustomer()?->getId());
     }
 
     public function testItFailsWhenTheSubjectIsNoLongerACustomer(): void
@@ -105,6 +143,23 @@ final class AgentCustomerAuthenticatorTest extends TestCase
         $authenticator->authenticate(
             AgentCustomerAuthenticatorFixture::credential(),
             AgentCustomerAuthenticatorFixture::requestContext(),
+        );
+    }
+
+    /**
+     * @param list<string> $grantedScopes
+     */
+    private function authenticator(array $grantedScopes, bool $enforceScopes): AgentCustomerAuthenticator
+    {
+        return new AgentCustomerAuthenticator(
+            AgentCustomerAuthenticatorFixture::resolver(
+                $this->customerContext(self::CUSTOMER_ID),
+                self::SALES_CHANNEL_ID,
+            ),
+            AgentCustomerAuthenticatorFixture::reader(AgentCustomerAuthenticatorFixture::tokenInfo(
+                scopes: $grantedScopes,
+            )),
+            $enforceScopes,
         );
     }
 

@@ -35,13 +35,18 @@ final class AgentCustomerAuthenticatorFixture
         return new RequestContext('shop.example');
     }
 
-    public static function tokenInfo(?string $salesChannelId = null): OAuthAccessTokenInfo
-    {
+    /**
+     * @param list<string> $scopes
+     */
+    public static function tokenInfo(
+        ?string $salesChannelId = null,
+        array $scopes = ['dev.ucp.shopping.cart:manage'],
+    ): OAuthAccessTokenInfo {
         return new OAuthAccessTokenInfo(
             $salesChannelId ?? self::SALES_CHANNEL_ID,
             'agent-client',
             self::CUSTOMER_ID,
-            ['dev.ucp.shopping.cart:manage'],
+            $scopes,
         );
     }
 
