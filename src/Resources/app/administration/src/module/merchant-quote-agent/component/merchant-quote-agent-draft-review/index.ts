@@ -12,6 +12,7 @@ import {
     replyCheckedAfterPreview,
     reviewFailure,
     reviewIntroKey,
+    sendNeedsPreview,
     wasEdited,
 } from '../../review';
 import type { DraftForm, DraftView, ReviewAction } from '../../review';
@@ -79,6 +80,10 @@ Shopware.Component.register('merchant-quote-agent-draft-review', {
 
         edited() {
             return this.view !== null && this.form !== null && wasEdited(this.view, this.form);
+        },
+
+        sendNeedsPreview() {
+            return this.view !== null && this.form !== null && sendNeedsPreview(this.view, this.form);
         },
 
         needsReplyReview() {

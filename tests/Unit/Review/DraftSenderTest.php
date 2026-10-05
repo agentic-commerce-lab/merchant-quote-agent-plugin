@@ -7,8 +7,10 @@ namespace MerchantQuoteAgentPlugin\Tests\Unit\Review;
 use Doctrine\DBAL\Connection;
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Bridge\ContextBoundGateways;
+use MerchantQuoteAgentPlugin\Bridge\Data\DiscountType;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
+use MerchantQuoteAgentPlugin\Policy\Data\ArrayMapper;
 use MerchantQuoteAgentPlugin\Review\DraftEdits;
 use MerchantQuoteAgentPlugin\Review\DraftNotReviewable;
 use MerchantQuoteAgentPlugin\Review\DraftSendCompletion;
@@ -46,6 +48,37 @@ final class DraftSenderTest extends TestCase
         self::assertSame([QuoteTransition::Process, QuoteTransition::Sent], $merchant->transitions);
         self::assertSame(['We can offer 5%.'], $merchant->comments);
         self::assertSame('We can offer 5%.', $store->sent[0][1]);
+    }
+
+    /**
+     * The card posts what MtNumberField emitted, and JSON has no float type:
+     * a typed "4" arrives as the integer 4. Pins that the backend side of
+     * QA-01 was never the gap — the request mapping widens it, and Send
+     * merges it as a 4% quote discount.
+     */
+    public function testAJsonIntegerDiscountFromTheCardIsMergedAsAPercentage(): void
+    {
+        $open = QuoteSnapshotFixture::snapshot(state: 'open');
+        $merchant = new FakeQuoteGateway([$open, QuoteSnapshotFixture::snapshot(state: 'in_review')]);
+        $versions = new FakeDraftVersions(new FakeQuoteGateway([$open]));
+        $body = json_decode(
+            '{"reply": "We can offer 4%.", "discountPercent": 4}',
+            associative: true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+        self::assertIsArray($body);
+
+        $this->sender($versions, new FakeReviewStore(), $merchant)->send(
+            new PendingDraft(self::record('0190aaaa0000700080000000000000aa', $open), $open, $versions->draft, false),
+            'We can offer 4%.',
+            ArrayMapper::mapObject(DraftEdits::class, $body),
+            new Context(new AdminApiSource('user-1')),
+        );
+
+        $update = $versions->draft->quoteUpdates[0] ?? null;
+        self::assertSame(DiscountType::Percentage, $update?->discount?->type);
+        self::assertSame(4.0, $update?->discount?->value);
+        self::assertSame(['0190aaaa0000700080000000000000aa'], $versions->merged);
     }
 
     /**

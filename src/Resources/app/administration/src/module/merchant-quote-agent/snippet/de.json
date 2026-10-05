@@ -348,6 +348,7 @@
             "updatePreview": "Vorschau aktualisieren",
             "replyLabel": "Antwort an den Käufer",
             "checkReplyAfterEdit": "Sie haben den Entwurf geändert. Prüfen Sie, ob die Antwort noch zu Preisen und Datum passt, oder aktualisieren Sie die Vorschau für einen neuen Formulierungsvorschlag.",
+            "previewBeforeSend": "Prüfen Sie Ihre Änderungen in der Vorschau, bevor Sie senden.",
             "draftReplyLabel": "Antwortentwurf des Agenten",
             "useRedraft": "Neu formulierte Antwort übernehmen",
             "send": "An Käufer senden",

@@ -16,6 +16,7 @@ import {
     reviewFailure,
     reviewIntroKey,
     reviewStatusVariant,
+    sendNeedsPreview,
     wasEdited,
 } from './review.ts';
 
@@ -43,6 +44,16 @@ const edited = { ...untouched, discountPercent: 8 };
 assert.deepEqual(editsPayload(view, edited), { discountPercent: 8 });
 assert.equal(wasEdited(view, edited), true);
 assert.equal(wasEdited(view, { ...untouched, reply: 'Something else' }), true);
+// Send posts the reply the last Preview drafted, so it must not go out with
+// prices that reply never saw (QA-01). A Preview adopts the edits into the
+// draft version, after which the payload is empty again.
+assert.equal(sendNeedsPreview(view, untouched), false);
+assert.equal(sendNeedsPreview(view, edited), true);
+assert.equal(sendNeedsPreview(view, { ...untouched, reply: 'Something else' }), false, 'A reply edit alone needs no Preview.');
+assert.equal(sendNeedsPreview(view, { ...untouched, expiresAt: '2026-10-09' }), true, 'A new date is an edit Preview has to adopt.');
+assert.equal(sendNeedsPreview(view, { ...untouched, discountPercent: null }), false, 'A cleared field is no edit.');
+assert.equal(sendNeedsPreview({ ...view, pricing: 'lines' }, { ...untouched, linePrices: { l1: 8.5 } }), true);
+assert.equal(sendNeedsPreview({ ...view, pricing: null }, { ...untouched, discountPercent: 8 }), false, 'A draft without prices has nothing to preview.');
 assert.equal(needsReplyReview(view, edited, false, false), true);
 assert.equal(needsReplyReview({ ...view, previewEdited: true }, untouched, false, false), true);
 assert.equal(needsReplyReview({ ...view, previewEdited: true }, untouched, false, true), false);
@@ -136,6 +147,7 @@ const cardKeys = [
     'merchant-quote-agent.review.discountAmount',
     'merchant-quote-agent.review.discountReplace',
     'merchant-quote-agent.review.discountSwitch',
+    'merchant-quote-agent.review.previewBeforeSend',
 ];
 
 for (const key of cardKeys) {
@@ -162,5 +174,25 @@ const factsClose = detail.indexOf('</dl>', factsOpen);
 const savedFeedback = detail.indexOf('feedback.savedLabel');
 assert.ok(factsOpen >= 0 && factsClose > factsOpen && savedFeedback >= 0, 'detail template landmarks moved');
 assert.ok(savedFeedback > factsClose, 'saved feedback is inside the facts list a no-op pass hides');
+
+// Meteor 5.7's MtNumberField emits `update:modelValue` only on change (blur or
+// Enter) and `input-change` while typing. Bound to the first alone, a value
+// typed and never blurred stayed out of `form`, so Preview and Send posted no
+// edit (QA-01). Every number field on the card binds both, to the same field.
+const draftReview = readFileSync(new URL('./component/merchant-quote-agent-draft-review/merchant-quote-agent-draft-review.html.twig', import.meta.url), 'utf8');
+const numberFields = [...draftReview.matchAll(/<mt-number-field\b[\s\S]*?\/>/g)].map((match) => match[0]);
+assert.equal(numberFields.length, 2, 'draft-review number fields moved');
+
+for (const numberField of numberFields) {
+    const onChange = numberField.match(/@update:model-value="\(value\) => \{ (.+?) = value; \}"/)?.[1];
+    const onInput = numberField.match(/@input-change="\(value\) => \{ (.+?) = value; \}"/)?.[1];
+    assert.ok(onChange, `a number field lost its @update:model-value binding:\n${numberField}`);
+    assert.equal(onInput, onChange, `a number field does not write ${onChange} on @input-change`);
+}
+
+// The guard has to reach the button: Send stays disabled while edits are unpreviewed.
+const sendButton = draftReview.match(/<mt-button\b[^>]*@click="send"[^>]*>/)?.[0] ?? '';
+assert.match(sendButton, /:disabled="[^"]*\bsendNeedsPreview\b/, 'Send is not disabled while edits are unpreviewed');
+assert.match(draftReview, /v-if="[^"]*\bsendNeedsPreview\b[^"]*"[^>]*>\s*\{\{ \$tc\('merchant-quote-agent\.review\.previewBeforeSend'\) \}\}/, 'the preview hint is not shown with the guard');
 
 console.log('review.check.mjs: all assertions passed');

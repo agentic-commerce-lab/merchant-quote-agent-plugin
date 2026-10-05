@@ -348,6 +348,7 @@
             "updatePreview": "Update preview",
             "replyLabel": "Reply to the buyer",
             "checkReplyAfterEdit": "You changed the draft. Check that the reply still matches the prices and date, or update the preview for suggested wording.",
+            "previewBeforeSend": "Preview your changes before sending.",
             "draftReplyLabel": "Agent's draft reply",
             "useRedraft": "Use the re-drafted reply",
             "send": "Send to buyer",
