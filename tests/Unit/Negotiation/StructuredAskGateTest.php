@@ -54,6 +54,40 @@ final class StructuredAskGateTest extends TestCase
         self::assertSame(2, $harness->spy->calls, 'A structured ask needs no extraction call.');
     }
 
+    /**
+     * QA-08's sibling: round two of a storefront negotiation. The agent
+     * answered the buyer's comment; the buyer then lowered the line's
+     * requested price and typed nothing, so the agent's reply is still the
+     * newest comment. The pass wrote the new offer and then suppressed the
+     * reply, because ReplyComposer looked for a newer COMMENT: the price
+     * moved and the buyer was told nothing. A price write and a reply happen
+     * together or not at all.
+     */
+    public function testARoundTwoStorefrontAskIsWrittenAndAnswered(): void
+    {
+        $harness = PipelineHarness::with([
+            '{"action":"offer","message":"5% off.","terms":{"discountPercent":5}}',
+            PipelineHarness::rewordedReply(),
+        ]);
+        $snapshot = NegotiationFixture::snapshot(state: 'change_requested', requestedUnitPrice: 90.0, comments: [
+            NegotiationFixture::buyerComment('what can you do on price?', '2026-09-24 09:00:00'),
+            NegotiationFixture::agentComment('This quote stands at 1000.00 EUR.', '2026-09-24 09:05:00'),
+        ]);
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Offered, $outcome);
+        self::assertSame(2, $harness->spy->calls, 'No comment to extract: negotiate, then reply.');
+        self::assertNotSame([], $harness->gateway->quoteUpdates, 'The offer was written.');
+        self::assertSame([PipelineHarness::rewordedReply()], $harness->gateway->comments, 'And the buyer was told.');
+        self::assertContains(QuoteTransition::Sent, $harness->gateway->transitions);
+    }
+
     public function testACommentPointingAtPricesAlreadyGrantedIsAcknowledged(): void
     {
         // The one empty extraction the extract prompt asks for BY NAME: "a

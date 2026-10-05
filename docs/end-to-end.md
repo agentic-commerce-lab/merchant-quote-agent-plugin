@@ -254,6 +254,13 @@ it is `handed_over`, section 4.7) — first finishing a stranded
 `in_review → replied` transition, but only when the agent's own comment is the
 newest one on the quote.
 
+This gate is the pass's only decision on whether there is anything to answer,
+and it is made before anything is written. Past it, a pass that writes a price
+also replies; short of it, it does neither. A per-line target the agent
+mirrored onto `requested_price` itself never counts: `MirroredAsks` records
+the exact value that write stored, so the agent's own later reprice of the line
+cannot make the mirror read as a fresh buyer ask.
+
 ### 4.2 The gate — what the agent refuses to answer itself
 
 `AskGate` runs before any pricing, and each branch escalates to a human:

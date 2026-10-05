@@ -164,13 +164,21 @@ final class ReplyComposerTest extends TestCase
         self::assertStringNotContainsString('%', $gateway->comments[0]);
     }
 
-    public function testAnAlreadyAnsweredQuoteIsNotAnsweredTwice(): void
+    /**
+     * QA-08's sibling. A buyer edits a requested price in the storefront after
+     * the agent's reply, typing nothing, so the agent's comment is still the
+     * newest. reply() used to read that as "already answered" and skip the
+     * reply AFTER the offer had been written: a price cut, nothing said. It
+     * now answers, and leaves the buyer's last-round comment out of the
+     * prompt, because that ask has been answered already.
+     */
+    public function testAReplyIsPostedEvenWhenTheAgentSpokeLast(): void
     {
-        // Idempotency: the agent's reply is already newer than the buyer's ask,
-        // so a retry must post nothing and pay for nothing.
-        [$client, $spy] = ScriptedClient::spy(['would be a duplicate']);
-        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot()]);
-        $after = NegotiationFixture::snapshot(state: 'replied', comments: [
+        $reworded =
+            'We can bring this quote down by 5% to 950.00 EUR, valid until ' . NegotiationFixture::expires() . '.';
+        [$client, $spy] = ScriptedClient::spy([$reworded]);
+        $gateway = new FakeQuoteGateway([NegotiationFixture::snapshot(state: 'in_review')]);
+        $after = NegotiationFixture::snapshot(state: 'in_review', totalNet: 950.0, comments: [
             NegotiationFixture::buyerComment('8% please', '2026-08-28 09:00:00'),
             NegotiationFixture::agentComment('here is 5%', '2026-08-28 09:30:00'),
         ]);
@@ -178,8 +186,9 @@ final class ReplyComposerTest extends TestCase
         self::composer($client)
             ->reply($gateway, $after, NegotiationFixture::settings(), 5.0, SnapshotAdapter::conversation($after));
 
-        self::assertSame(0, $spy->calls);
-        self::assertNotContains('addComment', $gateway->calls);
+        self::assertSame([$reworded], $gateway->comments);
+        self::assertSame([QuoteTransition::Sent], $gateway->transitions);
+        self::assertStringNotContainsString('8% please', $spy->userPrompts[0] ?? '');
     }
 
     /**

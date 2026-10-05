@@ -197,6 +197,14 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         // answered (countered, say, so `requested_price` still sits below the
         // line) is not new work, and a "thanks" on that quote is acknowledged
         // here rather than sent back to a band with nothing left to move.
+        // QA-08: this is the pass's ONE decision on whether there is anything
+        // to answer — a new buyer comment (`$ask !== null`, which
+        // AskInterpreter only returns for one) or an open storefront ask —
+        // and nothing has been written yet. Past it, the pass writes AND
+        // replies (ReplyComposer::reply() no longer second-guesses it); short
+        // of it, it does neither. StructuredAsk reads the line through
+        // QuoteLineMapper, which hides the agent's own mirror, so that mirror
+        // never counts as an ask.
         if (($ask === null || $ask->hasNoAsk()) && !StructuredAsk::isOpen($snapshot)) {
             // The one outcome nothing else counts. A comment the agent reads
             // as holding no ask is acknowledged, not escalated (PassedOver) --

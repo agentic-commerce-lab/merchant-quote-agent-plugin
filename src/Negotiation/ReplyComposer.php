@@ -18,9 +18,19 @@ use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
  *
  * The comment is posted BEFORE the `sent` transition and both happen before
  * the handler's fingerprint stamp, so a crash anywhere yields a clean retry.
- * The retry is safe because of the guard below: an agent comment already newer
- * than the buyer's newest ask means this pass has been answered, and a second
- * message to a buyer is the one thing a retry must never produce.
+ * A retry after the comment landed reads it as the newest one. With no open
+ * storefront ask, NegotiationPipeline's gate then finds nothing to answer and
+ * OfferRound::finishStrandedReply() completes the transition. With one, the
+ * round replays: OfferApplier's absolute write moves nothing and
+ * PostWriteOutcome escalates it, as for any write retried before its reply.
+ *
+ * reply() itself never decides whether to answer (QA-08). It used to skip the
+ * reply whenever no buyer COMMENT was newer than the agent's last one, after
+ * the offer had already been written. That silenced a genuine storefront ask
+ * on a later round and the agent's own mirror misread as one alike: a price
+ * written, nothing said. A price write and a reply now happen together or not
+ * at all, and the one place that decides is the pipeline's gate, before
+ * anything is written.
  */
 final readonly class ReplyComposer
 {
@@ -42,6 +52,11 @@ final readonly class ReplyComposer
     ) {}
 
     /**
+     * Reaching this method IS the pipeline's answer that the pass has
+     * something to answer: a new buyer comment or an open storefront ask
+     * (`hasNewBuyerAsk() || StructuredAsk::isOpen()`). OfferRound::play() is
+     * only ever reached behind that gate.
+     *
      * @param ?float $reductionPercent how much the quote came down, measured on
      *                                 the totals the database reports — the offer's own
      *                                 `discountPercent` is null for a per-line concession.
@@ -57,15 +72,11 @@ final readonly class ReplyComposer
         ?float $reductionPercent,
         BuyerConversation $conversation,
     ): ?string {
-        if (!$conversation->hasNewBuyerAsk() && $conversation->agent !== []) {
-            $this->logger->info('This quote already carries an agent reply newer than the buyer ask; not answering twice.', [
-                'quoteId' => $after->identity->quoteId,
-            ]);
-
-            return null;
-        }
-
-        [$text, $hash] = $this->reword($settings, $after, $conversation->newestBuyerText(), $reductionPercent);
+        // A storefront ask on a later round comes with no new comment, and the
+        // newest one is the buyer's LAST round, already answered. Showing it to
+        // the reply model would have it answer the old ask.
+        $ask = $conversation->hasNewBuyerAsk() ? $conversation->newestBuyerText() : '';
+        [$text, $hash] = $this->reword($settings, $after, $ask, $reductionPercent);
 
         $gateway->addComment($after->identity->quoteId, $text);
         $this->recorder->recordReply($text, $hash);
@@ -79,7 +90,7 @@ final readonly class ReplyComposer
      * it stands, posted as written. No model call, so there is no rewording
      * for RewordingGuard to check and no reply prompt hash to record.
      *
-     * No already-answered guard, unlike reply(): PassedOver only gets here
+     * No already-answered guard, and none is needed: PassedOver only gets here
      * with an interpreted ask, and AskInterpreter only interprets a buyer
      * comment newer than every agent one. A retry after this comment landed
      * reads the agent as newest and never arrives.
