@@ -15,7 +15,7 @@ import { basename, join } from 'node:path';
 import { adminClient } from './admin.mjs';
 import { negotiate, pool } from './negotiate.mjs';
 import { loadScenarioDir, selectByTags } from './scenarios.mjs';
-import { EXPECTED_DEFAULTS, applyWrites, effectivePolicy, planSettings, purchasePricesFor, writablePrices } from './settings.mjs';
+import { EXPECTED_DEFAULTS, applyWrites, effectivePolicy, planForScenario, purchasePricesFor, writablePrices } from './settings.mjs';
 import { consent, loadOrCreateKey, startProfileServer, startTunnel, tokenStore, ucpClient } from './ucp.mjs';
 
 // The Admin API secret lives in a git-ignored, 0600 `.env.eval`, never on a
@@ -201,7 +201,7 @@ async function withSettings(ctx, runDir, scenario, work) {
     const state = await shopState(ctx);
     const productId = env('EVAL_PRODUCT_ID');
     const product = await ctx.admin.product(productId);
-    const { writes, restore } = planSettings({ globalValues: state.globalValues, channelValues: state.channelValues, overrides: scenario.policy });
+    const { writes, restore } = planForScenario(state, scenario);
     const ratio = scenario.lines.find((l) => l.purchasePriceRatio !== undefined)?.purchasePriceRatio;
     const restoreFile = join(runDir, 'restore.json');
     writeFileSync(restoreFile, `${JSON.stringify({ salesChannelId: state.salesChannelId, config: restore, productId, purchasePrices: writablePrices(product.purchasePrices), touchesProduct: ratio !== undefined })}\n`);

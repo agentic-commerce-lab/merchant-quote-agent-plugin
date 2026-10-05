@@ -175,7 +175,7 @@ What setup does:
 
 **Phase B: settings scenarios.** For each of the 4 scenarios with a `policy` block, one at a time:
 1. Read the current values of the keys it names, and the product's `purchasePrices`. Write them to `var/eval/<runId>/restore.json` **before any change**.
-2. Write the overrides and read them back. The effective value is written at the level it is read from: sales-channel-specific if the channel already overrides the key, otherwise global. Every read goes through `get(key, salesChannelId)`.
+2. Write the overrides and read them back. The effective value is written at the level it is read from: sales-channel-specific if the channel already overrides the key, otherwise global. Every read goes through `get(key, salesChannelId)`. A scenario with `policyScope: "channel"` writes every key on the sales channel instead, and its restore deletes a key the channel did not have.
 3. With a `purchasePriceRatio`, set the product's purchase price to `ratio × its net price`.
 4. Run the scenario's 3 reps in parallel.
 5. Restore from `restore.json`. This happens on a normal finish, on an error, and on SIGINT or SIGTERM. After a hard crash, `composer run eval:restore var/eval/<runId>` replays the file.
@@ -255,6 +255,7 @@ The Admin API returns raw quote ids, so no pseudonym is involved. The anonymized
   `any-purchasable` both mean `EVAL_PRODUCT_ID`.
 - `purchasePriceRatio`: phase B sets the product's purchase price to
   `ratio × its net unit price` for the scenario's duration.
+- `policyScope`: only `"channel"`, and only with a `policy` block. Phase B then writes every override on the storefront sales channel, even a key only the global scope sets, so a scenario proves that a channel override wins over the global value. Restoring a key the channel never had writes `null`, which deletes it.
 - **Placeholders** in `openingAsk` and `counters`: `{unit*<factor>}` renders
   `factor × line_items[0].unit_price` from the created quote, in the quote's
   own price space (`totals.tax_status`), with 2 decimals. Nothing else is

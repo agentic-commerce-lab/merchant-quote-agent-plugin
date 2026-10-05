@@ -65,6 +65,11 @@ export function validateScenario(scenario) {
             if (ratio * (1 + margin / 100) >= 1) refuse(`purchasePriceRatio ${ratio} with minMarginPercent ${margin} puts the floor at or above today's price`);
         }
     }
+    if (scenario.policyScope !== undefined) {
+        // The only scope a scenario may force; without it settings.mjs writes each key where it is read from.
+        if (scenario.policyScope !== 'channel') refuse('"policyScope" may only be "channel" -- omit it to write each key where it is read from');
+        if (!scenario.policy) refuse('"policyScope" needs a "policy" block to scope');
+    }
     if (scenario.continueAfterEscalation === true && !(scenario.counters?.length > 0)) {
         refuse('"continueAfterEscalation" needs a "counters" list: the follow-up posts its first entry');
     }

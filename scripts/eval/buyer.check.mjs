@@ -24,6 +24,9 @@ refuses({ buyer: { patience: 3 } }, /buyer\.patience/);
 refuses({ policy: { minMarginPercent: 15 } }, /purchasePriceRatio/);
 refuses({ policy: { minMarginPercent: 20 }, lines: [{ productRef: 'any-purchasable', quantity: 1, purchasePriceRatio: 0.9 }] }, /at or above/);
 refuses({ continueAfterEscalation: true }, /counters/);
+refuses({ policyScope: 'global', policy: { maxDiscountPercent: 0 } }, /policyScope/);
+refuses({ policyScope: 'channel' }, /"policyScope" needs a "policy"/);
+validateScenario(base({ policyScope: 'channel', policy: { maxDiscountPercent: 0 } }));
 assert.equal(loadScenarioDir('tests/Bench/scenarios').length >= 10, true, 'the shipped scenarios validate');
 refuses({ tags: undefined }, /"tags"/);
 refuses({ tags: [] }, /"tags"/);
@@ -110,7 +113,7 @@ assert.equal(calls.length, 1, 'exactly one refresh for four concurrent callers')
 
 import { adminClient } from './admin.mjs';
 import { buildRows } from './rows.mjs';
-import { effectivePolicy, planSettings, purchasePricesFor, writablePrices } from './settings.mjs';
+import { effectivePolicy, planForScenario, planSettings, purchasePricesFor, writablePrices } from './settings.mjs';
 
 // the Admin API client -- one token for many calls, criteria in the body
 const adminCalls = [];
@@ -169,6 +172,24 @@ assert.deepEqual(plan.restore, [
     { scope: 'channel', key: 'MerchantQuoteAgentPlugin.config.counterOfferMaxPercent', value: 30 },
     { scope: 'global', key: 'MerchantQuoteAgentPlugin.config.minMarginPercent', value: null },
 ]);
+
+// policyScope "channel": the override lands on the sales channel even where only the global value exists,
+// and the restore deletes that channel key again (null) instead of pinning the global value there
+const channelPlan = planSettings({ globalValues: g, channelValues: c, overrides: { maxDiscountPercent: 0, counterOfferMaxPercent: 20 }, policyScope: 'channel' });
+assert.deepEqual(channelPlan.writes, [
+    { scope: 'channel', key: 'MerchantQuoteAgentPlugin.config.maxDiscountPercent', value: 0 },
+    { scope: 'channel', key: 'MerchantQuoteAgentPlugin.config.counterOfferMaxPercent', value: 20 },
+]);
+assert.deepEqual(channelPlan.restore, [
+    { scope: 'channel', key: 'MerchantQuoteAgentPlugin.config.maxDiscountPercent', value: null },
+    { scope: 'channel', key: 'MerchantQuoteAgentPlugin.config.counterOfferMaxPercent', value: 30 },
+]);
+assert.equal(effectivePolicy(g, { 'MerchantQuoteAgentPlugin.config.maxDiscountPercent': 0 }).maxDiscountPercent, 0, 'a channel 0 wins over the global 15');
+
+// the hand-off buyer.mjs uses: a scenario's policyScope must reach planSettings, or the override silently lands globally
+const handOff = (scenario) => planForScenario({ globalValues: g, channelValues: c }, scenario);
+assert.deepEqual(handOff(base({ policy: { maxDiscountPercent: 0 } })).writes.map((w) => w.scope), ['global']);
+assert.deepEqual(handOff(base({ policy: { maxDiscountPercent: 0 }, policyScope: 'channel' })).writes.map((w) => w.scope), ['channel']);
 
 import { negotiate, pool } from './negotiate.mjs';
 
