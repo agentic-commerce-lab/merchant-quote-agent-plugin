@@ -1100,8 +1100,20 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // QuoteServicingTrigger above.
     //
     // The repositories are DAL-generated from #[Entity] attributes and are not
-    // autowirable by type, so every one of them is named explicitly.
-    $services->set(DecisionHarvest::class)->args([service('merchant_quote_agent_decision.repository')]);
+    // autowirable by type, so every one of them is named explicitly -- and
+    // once a service uses ->args() every constructor argument must be listed,
+    // even an otherwise-autowirable one like StrategyResolver below.
+    //
+    // DecisionHarvest and ReplaySubjectResolver both take StrategyResolver
+    // now: the window is grouped by strategy lineage before it is evaluated
+    // (see DecisionHarvest's own docblock), and each decision's control arm
+    // is replayed against the prompt that actually produced it, resolved by
+    // id (see ReplaySubjectResolver's own docblock) -- both per the
+    // per-strategy design brief.
+    $services->set(DecisionHarvest::class)->args([
+        service('merchant_quote_agent_decision.repository'),
+        service(StrategyResolver::class),
+    ]);
     $services->set(StrategyProposalWriter::class)->args([service('merchant_quote_agent_strategy_version.repository')]);
     $services->set(ImprovementRunWriter::class)->args([
         service('merchant_quote_agent_improvement_run.repository'),
@@ -1156,7 +1168,10 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
         service('merchant_quote_agent.improvement.recorder'),
     ]);
 
-    $services->set(ReplaySubjectResolver::class)->args([service(QuoteSnapshotReader::class)]);
+    $services->set(ReplaySubjectResolver::class)->args([
+        service(QuoteSnapshotReader::class),
+        service(StrategyResolver::class),
+    ]);
     $services->set(ReplayHarness::class)->args([
         service(ReplaySubjectResolver::class),
         service(ReplayEvaluator::class),

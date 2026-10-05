@@ -160,7 +160,7 @@
             <name>improvementCandidates</name>
             <label>Drafts per run</label>
             <defaultValue>2</defaultValue>
-            <helpText>Between 1 and 4. A run costs one model call, plus one per replayed decision per draft plus one for the comparison — at the defaults, 61 calls.</helpText>
+            <helpText>Between 1 and 4. Costed per strategy seen in the review window, not per channel: each contributes one model call plus one per replayed decision per draft — at the defaults, 61 calls per strategy, so a channel running two strategies (e.g. an A/B split) is billed twice that in one night.</helpText>
         </input-field>
         <input-field type="text">
             <name>improvementLlmModel</name>
