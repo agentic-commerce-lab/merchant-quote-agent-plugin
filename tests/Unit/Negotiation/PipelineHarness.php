@@ -65,7 +65,7 @@ final class PipelineHarness
     ): self {
         $harness = self::with($replies, reReadTotalNet: $afterNet);
         // A buyer comment, so the pass has an ask to answer and reaches the
-        // reply at all: an empty conversation is NothingToDo.
+        // reply at all: an open quote with no comment is only acknowledged.
         $before = NegotiationFixture::snapshot(totalNet: $beforeNet, comments: [
             NegotiationFixture::buyerComment('what can you do on price?', '2026-08-28 09:00:00'),
         ]);

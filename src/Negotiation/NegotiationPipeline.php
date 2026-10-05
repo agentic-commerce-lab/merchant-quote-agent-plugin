@@ -213,13 +213,14 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             // line is the only thing that counts them.
             //
             // `commentRead` is what makes the count worth alerting on: false
-            // is an ordinary duplicate trigger or a stranded reply, true is a
-            // human writing something the agent found no ask in.
+            // is an ordinary duplicate trigger, a stranded reply or a fresh
+            // request with no comment (QA-02, acknowledged), true is a human
+            // writing something the agent found no ask in.
             // `acknowledged` says whether they were answered; an escalated
             // quote no longer reaches here (MerchantHandover), so it tracks
-            // `commentRead` and stays for this event's readers. The words
-            // themselves stay out of the log and go to the audit record
-            // instead (`buyer_ask`).
+            // `commentRead` except for that fresh request, and stays for this
+            // event's readers. The words themselves stay out of the log and
+            // go to the audit record instead (`buyer_ask`).
             $pass = PassedOver::handle($gateway, $snapshot, $conversation, $ask, $this->round);
 
             $this->logger->info('Nothing to answer on this quote.', [

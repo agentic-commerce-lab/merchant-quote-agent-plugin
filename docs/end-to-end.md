@@ -247,12 +247,17 @@ If there is no ask at all and no open structured target price — one below the
 line price that the last pass has not already answered — a pass that read
 a buyer comment ends as `acknowledged`: it posts `ReplyTemplate::acknowledges()`
 — the buyer-facing total and expiry as the quote holds them, no model call, no
-price write — and moves the quote to `replied` (`sent`, or `admin_resend` from
-the renegotiation states). With no comment read it ends as `nothing_to_do`
-instead (an escalated quote no merchant has sent since never gets this far;
-it is `handed_over`, section 4.7) — first finishing a stranded
-`in_review → replied` transition, but only when the agent's own comment is the
-newest one on the quote.
+price write — and moves the quote to `replied` (`process` then `sent` from
+`open`, `sent` from `in_review`, or `admin_resend` from the renegotiation
+states). A fresh request nobody has written on yet is acknowledged the same
+way, at its list prices: the quote is `open`, carries no comment from anyone,
+no open structured target and no escalation marker (a quote the agent's own
+claim left in `in_review` before a failed pass counts as fresh; one an admin
+moved there does not). Otherwise a pass with no
+comment read ends as `nothing_to_do` (a duplicate trigger; an escalated quote
+no merchant has sent since never gets this far, it is `handed_over`, section
+4.7) — first finishing a stranded `in_review → replied` transition, but only
+when the agent's own comment is the newest one on the quote.
 
 This gate is the pass's only decision on whether there is anything to answer,
 and it is made before anything is written. Past it, a pass that writes a price

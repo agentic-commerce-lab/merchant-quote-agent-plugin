@@ -86,20 +86,33 @@ final readonly class ReplyComposer
     }
 
     /**
-     * The reply to a comment that held no ask (see PassedOver): the quote as
+     * The reply to a pass with no ask (see PassedOver): a comment that held
+     * none, or a fresh request with no comment at all (QA-02). The quote as
      * it stands, posted as written. No model call, so there is no rewording
      * for RewordingGuard to check and no reply prompt hash to record.
      *
      * No already-answered guard, and none is needed: PassedOver only gets here
-     * with an interpreted ask, and AskInterpreter only interprets a buyer
-     * comment newer than every agent one. A retry after this comment landed
-     * reads the agent as newest and never arrives.
+     * with a buyer comment newer than every agent one, or with no comment on
+     * the quote at all. A retry after this comment landed finds the agent's
+     * comment and never arrives.
+     *
+     * A fresh `open` quote is claimed first, as OfferApplier claims it before
+     * an offer. That way a pass that dies between the comment and `sent`
+     * leaves `in_review` with our comment newest, which is the stranded shape
+     * OfferRound::finishStrandedReply() completes. Left `open`, it would sit
+     * there unanswerable. Only from `open`: from a renegotiation state
+     * `process` would also reach `in_review` on trunk, and `admin_resend`
+     * does not leave it.
      *
      * Same order as reply(): comment, record, then the transition that makes
      * the standing offer acceptable again.
      */
     public function acknowledge(QuoteGatewayInterface $gateway, QuoteSnapshot $snapshot): void
     {
+        if ($snapshot->lifecycle->stateTechnicalName === 'open') {
+            OfferApplier::claim($gateway, $snapshot->identity->quoteId, $this->logger);
+        }
+
         $text = ReplyTemplate::acknowledges(
             $snapshot->totals->buyerFacingTotal(),
             $snapshot->identity->currencyIso,

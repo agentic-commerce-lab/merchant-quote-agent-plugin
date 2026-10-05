@@ -130,8 +130,12 @@ final class StructuredAskGateTest extends TestCase
         // answered it, and QuoteAutoReplyPricer only ever takes it as
         // `min(requested, quoted)`. Treating its mere presence as an ask would
         // make every later trigger on an answered quote look like new work.
+        // An answered quote: a fresh one with no comment is acknowledged
+        // instead (QA-02, NegotiationPipelineTest).
         $harness = PipelineHarness::with([]);
-        $snapshot = NegotiationFixture::snapshot(requestedUnitPrice: 100.0);
+        $snapshot = NegotiationFixture::snapshot(state: 'replied', requestedUnitPrice: 100.0, comments: [
+            NegotiationFixture::agentComment('This quote stands at 1000.00 EUR.', '2026-09-24 09:05:00'),
+        ]);
 
         $outcome = $harness->pipeline->service(
             $snapshot,
