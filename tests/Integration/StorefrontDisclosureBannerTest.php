@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Servicing\AgentDisclosure;
-use Shopware\Core\Framework\Adapter\Twig\NamespaceHierarchy\NamespaceHierarchyBuilder;
+use Shopware\Core\Framework\Adapter\Twig\TemplateFinder;
 use Shopware\Storefront\Theme\Twig\ThemeNamespaceHierarchyBuilder;
 use Twig\Environment;
 
@@ -18,35 +18,67 @@ use Twig\Environment;
  */
 final class StorefrontDisclosureBannerTest extends IntegrationTestCase
 {
-    public function testThisPluginResolvesAheadOfSwagCommercialInTheTemplateHierarchy(): void
+    private const QUOTE_DETAIL = '@QuoteManagement/storefront/page/account/quote-detail/index.html.twig';
+
+    public function testTheQuoteDetailPageRendersThroughThisPluginsTemplateOnAThemedStorefront(): void
     {
-        // ThemeNamespaceHierarchyBuilder is one link in the same chain
-        // NamespaceHierarchyBuilder::buildHierarchy() folds. It caches which
-        // theme is active in a plain property, set from KernelEvents::REQUEST,
-        // and cleared only on kernel.terminate. A prior test in this same
-        // process that dispatched a real HTTP request (->handle() without a
-        // matching ->terminate()) leaves that cache populated, and once it is
-        // non-empty buildNamespaceHierarchy() stops doing the priority-based
-        // fold entirely and rebuilds the hierarchy via theme inheritance
-        // instead -- a different algorithm this plugin does not control.
-        // Resetting it here is what keeps this assertion about
-        // getTemplatePriority(), regardless of what ran before it in the
-        // suite.
-        static::getContainer()->get(ThemeNamespaceHierarchyBuilder::class)->reset();
+        // QA-06. Every storefront page renders with a theme active, and then
+        // ThemeNamespaceHierarchyBuilder rebuilds the hierarchy through
+        // ThemeInheritanceBuilder, which arsort()s the plugins: the HIGHER
+        // getTemplatePriority() resolves first. That is the opposite of
+        // BundleHierarchyBuilder's "lower wins", which is all the previous
+        // version of this test checked (it reset the theme builder first). At
+        // -1 the sw_extends chain ran OrganizationUnit, OrderApproval,
+        // QuoteManagement and stopped there, below which this plugin sat, so
+        // neither the banner nor the agent-name attribute ever rendered.
+        //
+        // The theme builder holds the active theme in a property that
+        // KernelEvents::REQUEST fills; setting it is what a storefront request
+        // does, and resetting both services afterwards keeps the rest of the
+        // suite on the hierarchy it expects.
+        $themeBuilder = static::getContainer()->get(ThemeNamespaceHierarchyBuilder::class);
+        $finder = static::getContainer()->get(TemplateFinder::class);
+        (new \ReflectionProperty($themeBuilder, 'themes'))->setValue($themeBuilder, ['Storefront' => true]);
+        $finder->reset();
 
-        $hierarchy = static::getContainer()->get(NamespaceHierarchyBuilder::class)->buildHierarchy();
+        try {
+            $chain = self::extendsChain($finder, self::QUOTE_DETAIL);
+        } finally {
+            $themeBuilder->reset();
+            $finder->reset();
+        }
 
-        $namespaces = array_keys($hierarchy);
-        $ours = array_search('MerchantQuoteAgentPlugin', $namespaces, true);
-        $theirs = array_search('QuoteManagement', $namespaces, true);
-
-        self::assertIsInt($ours, 'This plugin registers no storefront templates at all.');
-        self::assertIsInt($theirs, 'SwagCommercial QuoteManagement is not loaded in this shop.');
-        self::assertLessThan(
-            $theirs,
-            $ours,
-            'SwagCommercial resolves first, so its quote detail page wins and the banner never renders.',
+        self::assertContains(
+            '@MerchantQuoteAgentPlugin/storefront/page/account/quote-detail/index.html.twig',
+            $chain,
+            'The themed sw_extends chain for the quote detail page never reaches this plugin: '
+                . implode(' → ', $chain),
         );
+    }
+
+    /**
+     * The templates `sw_extends` walks for $template, first to last, the way
+     * the storefront renders it: each step resolves the same path again from
+     * the template before it, until it reaches SwagCommercial's original.
+     *
+     * @return list<string>
+     */
+    private static function extendsChain(TemplateFinder $finder, string $template): array
+    {
+        $chain = [];
+        $current = $finder->find($template);
+
+        while (!\in_array($current, $chain, true)) {
+            $chain[] = $current;
+
+            if (str_starts_with($current, '@QuoteManagement/')) {
+                break;
+            }
+
+            $current = $finder->find($template, false, $current);
+        }
+
+        return $chain;
     }
 
     public function testTheExtendedBlockExistsOnSwagCommercialsResolvedTemplate(): void

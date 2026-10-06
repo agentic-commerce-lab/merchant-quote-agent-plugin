@@ -88,21 +88,30 @@ class MerchantQuoteAgentPlugin extends Plugin
     }
 
     /**
-     * Wins the Twig namespace hierarchy against SwagCommercial, whose
-     * quote detail page this plugin's storefront banner extends.
+     * Wins the storefront's Twig hierarchy against SwagCommercial, whose
+     * quote detail page this plugin's banner and agent-name attribute extend.
      *
-     * Lower is higher precedence. Both plugins would otherwise sit at the
-     * default 0, and BundleHierarchyBuilder's stable sort would break that tie
-     * on bundle registration order — which DbalKernelPluginLoader takes from
-     * `ORDER BY installed_at`. That makes the banner's visibility depend on
-     * which plugin the merchant happened to install first. -1 is the smallest
-     * value that removes the shop's install history from the answer while
-     * still leaving room for a theme or a later extension to outrank us.
+     * HIGHER is higher precedence where it matters. Core has two orderings
+     * that disagree: BundleHierarchyBuilder asort()s ("lower wins"), but every
+     * storefront page renders with a theme active, and then
+     * ThemeInheritanceBuilder arsort()s the same values, so the higher
+     * priority resolves first. This used to be -1, which won the first
+     * ordering and lost the one that renders pages: the sw_extends chain
+     * stopped at SwagCommercial's QuoteManagement, below this plugin, and
+     * neither the banner nor the configured agent name ever reached a buyer
+     * (QA-06). Nothing of this plugin's renders without a theme, so the
+     * other ordering does not matter.
+     *
+     * 1 rather than the default 0: SwagCommercial's B2B bundles sit at 0, and
+     * a tie would fall back to bundle registration order, which
+     * DbalKernelPluginLoader takes from `ORDER BY installed_at`, making the
+     * banner depend on which plugin the merchant installed first.
+     * StorefrontDisclosureBannerTest walks the themed chain to prove it.
      */
     #[Override]
     public function getTemplatePriority(): int
     {
-        return -1;
+        return 1;
     }
 
     /**
