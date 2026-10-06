@@ -159,6 +159,7 @@ final class ScenarioTest extends TestCase
                 'add-product',
                 'ambiguous-ask',
                 'bundle-ask',
+                'channel-zero-cap',
                 'concession-retreat',
                 'counter-band',
                 'delivery-lead-time',
@@ -167,7 +168,9 @@ final class ScenarioTest extends TestCase
                 'gross-figure-in-comment',
                 'hostile-extraction',
                 'margin-floor-holds',
+                'mirror-drift',
                 'multi-round-anchoring',
+                'no-comment-request',
                 'payment-terms-ask',
                 'plain-percentage',
                 'quantity-change',
@@ -182,10 +185,11 @@ final class ScenarioTest extends TestCase
         );
 
         foreach ($scenarios as $scenario) {
-            // structured-only is the one deliberate exception: its entire
-            // point is a per-line ask with no comment at all, so its
-            // openingAsk is empty on purpose -- see BenchNegotiation::run().
-            if ($scenario->id !== 'structured-only') {
+            // structured-only and no-comment-request are the deliberate
+            // exceptions: their point is a request with no comment at all (a
+            // per-line ask; nothing asked), so their openingAsk is empty on
+            // purpose -- see BenchNegotiation::run().
+            if (!\in_array($scenario->id, ['structured-only', 'no-comment-request'], true)) {
                 self::assertNotSame(
                     '',
                     $scenario->openingAsk,

@@ -44,6 +44,7 @@
                                 :disabled="!canReview || blocked || isSaving"
                                 :aria-label="line.label || line.id"
                                 @update:model-value="(value) => { form.linePrices[line.id] = value; }"
+                                @input-change="(value) => { form.linePrices[line.id] = value; }"
                             />
                         </td>
                     </tr>
@@ -65,6 +66,7 @@
                     :digits="2"
                     :disabled="!canReview || blocked || isSaving"
                     @update:model-value="(value) => { form.discountPercent = value; }"
+                    @input-change="(value) => { form.discountPercent = value; }"
                 />
                 <p v-if="replacesAmount" class="mqa-review__hint">
                     {{ $tc('merchant-quote-agent.review.discountSwitch') }}
@@ -115,11 +117,13 @@
             </mt-button>
         </div>
 
+        <p v-if="canReview && !blocked && sendNeedsPreview" class="mqa-review__hint">{{ $tc('merchant-quote-agent.review.previewBeforeSend') }}</p>
+
         <div v-if="canReview" class="mqa-review__actions">
             <mt-button variant="secondary" :disabled="isSaving || blockedBy === 'not_pending' || blockedBy === 'published'" @click="reject">
                 {{ $tc('merchant-quote-agent.review.reject') }}
             </mt-button>
-            <mt-button variant="primary" :disabled="blocked || isSaving || form.reply.trim() === ''" @click="send">
+            <mt-button variant="primary" :disabled="blocked || isSaving || form.reply.trim() === '' || sendNeedsPreview" @click="send">
                 {{ $tc('merchant-quote-agent.review.send') }}
             </mt-button>
         </div>

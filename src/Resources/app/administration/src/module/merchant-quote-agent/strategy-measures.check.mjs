@@ -118,6 +118,15 @@ assert.equal(fastClose.priceRetention.baselineDiscount, null);
 // An id with no name still renders as a group; it is not dropped.
 assert.equal(strategyRows(passes, quoteRows, orderDates, null, () => null)[0].name, null);
 
+// The per-strategy rate runs autoExecutionRate, so it inherits the acted-on
+// denominator: an idle quote is in the row's count but not in its rate.
+const idleRow = strategyRows([
+    { id: 'i1', quoteId: 'q7', outcome: 'escalated', strategyVersionId: 'v2', createdAt: iso(2) },
+    { id: 'i2', quoteId: 'q8', outcome: 'nothing_to_do', strategyVersionId: 'v2', createdAt: iso(2) },
+], [], new Map(), null, strategyOf)[0];
+assert.equal(idleRow.quotes, 2);
+assert.deepEqual(idleRow.autoExecution, { rate: 0, escalated: 1, total: 1 });
+
 // ------------------------------------------------- shared baseline, overlapping bands
 
 // Two strategies, each negotiating one quote, both landing at the same net

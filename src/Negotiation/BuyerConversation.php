@@ -32,7 +32,9 @@ use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
  * merged human buckets, one `&&` and one `||` to handle "no agent comment" and
  * "no human comment" — measuring 2, for a class total of 12. Splitting either
  * side further would trade a branch for a second method with the same branch
- * moved, not fewer of them.
+ * moved, not fewer of them. `unansweredBuyerText()` (QA-08) adds one more
+ * branch, a ternary over the two methods it shares with ReplyComposer and
+ * DraftReply; `agentSpokeAt()` adds none.
  */
 final readonly class BuyerConversation
 {
@@ -95,10 +97,28 @@ final readonly class BuyerConversation
         return $text;
     }
 
+    /**
+     * The newest buyer comment while it is still unanswered, else ''. What a
+     * reply is worded against: a storefront ask on a later round comes with
+     * no new comment, and the newest one is then the buyer's LAST round,
+     * already answered — showing it to the reply model has it answer the old
+     * ask. ReplyComposer::reply() and the Draft Mode re-draft both read it.
+     */
+    public function unansweredBuyerText(): string
+    {
+        return $this->hasNewBuyerAsk() ? $this->newestBuyerText() : '';
+    }
+
     /** The newest merchant note, as a 'U.u' string, or null when there is none. */
     public function merchantSpokeAt(): ?string
     {
         return self::newest($this->merchant);
+    }
+
+    /** The newest agent comment, as a 'U.u' string, or null when there is none. */
+    public function agentSpokeAt(): ?string
+    {
+        return self::newest($this->agent);
     }
 
     /** The newest buyer ask, as a 'U.u' string, or null when there is none. */

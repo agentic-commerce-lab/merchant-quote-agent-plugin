@@ -131,8 +131,18 @@ export function replacesAmount(view: DraftView, form: DraftForm): boolean {
     return draftAmount(view) !== null && 'discountPercent' in editsPayload(view, form);
 }
 
+/**
+ * Unpreviewed price or date edits. Send posts the reply the last Preview
+ * drafted, so sending now would put a new price beside a reply written for the
+ * old one (QA-01). A Preview adopts the edits into the draft version, after
+ * which the payload is empty again. A reply edit alone needs no Preview.
+ */
+export function sendNeedsPreview(view: DraftView, form: DraftForm): boolean {
+    return Object.keys(editsPayload(view, form)).length > 0;
+}
+
 export function wasEdited(view: DraftView, form: DraftForm): boolean {
-    return form.reply.trim() !== view.reply.trim() || Object.keys(editsPayload(view, form)).length > 0;
+    return form.reply.trim() !== view.reply.trim() || sendNeedsPreview(view, form);
 }
 
 /** A persisted Preview edit still needs a reply check after a page reload. */

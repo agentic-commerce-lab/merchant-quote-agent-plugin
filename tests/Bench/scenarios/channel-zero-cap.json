@@ -1,0 +1,12 @@
+{
+    "id": "channel-zero-cap",
+    "description": "zero-cap, written as a sales-channel override (policyScope channel) while the global maxDiscountPercent stays 15. The channel's 0 must win: a 5% ask escalates, and the buyer must never be told 0% (PR #207).",
+    "tags": ["band", "escalation", "settings"],
+    "lines": [{"productRef": "any-purchasable", "quantity": 10}],
+    "openingAsk": "Could you do 5% off?",
+    "persona": "scripted:moderate",
+    "maxRounds": 1,
+    "policy": {"maxDiscountPercent": 0},
+    "policyScope": "channel",
+    "expect": {"firstOutcome": ["escalated"], "judge": ["The reply must not offer a 0% discount or state that the discount is zero."]}
+}

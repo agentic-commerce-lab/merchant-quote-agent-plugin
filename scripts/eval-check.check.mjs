@@ -17,6 +17,8 @@ import {
     h5Escalations,
     h6Order,
     h9Rounding,
+    h10NoSilentWrite,
+    h11LiveQuote,
 } from './eval/checks.mjs';
 import { canaryMismatches, figureCandidates, formatTable, h8StatedFigures, judgeCostUsd, tagPassRates, transcript, unwrapJudgeResult, verdict } from './eval/verdict.mjs';
 
@@ -28,6 +30,7 @@ const row = (over = {}) => ({
     replyToBuyer: 'We can do 5% off.', buyerAsk: 'Could you do 5% off?',
     linesBefore: [line()], linesAfter: [line({ unitPriceNet: 9.5, totalNet: 95 })],
     policy: policy(), purchasePricesNet: {}, terminal: null, orderId: null, orderFailure: null,
+    finalQuote: { currency: 'EUR', totals: { net: 95, gross: 113.05 } },
     ...over,
 });
 const scenario = (over = {}) => ({ id: 's', tags: ['band'], openingAsk: 'Could you do 5% off?', expect: { firstOutcome: ['offered'], maxEscalations: 1, order: false, judge: [] }, ...over });
@@ -127,6 +130,42 @@ assert.equal(status(h9Rounding(rounded('discount_percent', 0.5, 91.3, 108.65, { 
 const noBaseline = { policy: policy({ roundingMode: 'discount_percent', roundingStep: 1 }) };
 assert.equal(status(h9Rounding([row({ ...noBaseline, totalNetBefore: null, totalNetAfter: null }), row({ ...noBaseline, round: 2, totalNetBefore: 100, totalNetAfter: 87.5 })])), 'fail');
 
+// H10 -- no price write without a reply. The figures are a stored 3-rep run's own rows (ids dropped):
+// gross-figure-in-comment rep 1 cut 6800.00 to 6545.13 net on a pass with no buyer comment and no reply.
+const grossFigure = [
+    row({ round: 1, outcome: 'offered', totalNetBefore: 7272.27, totalNetAfter: 6800, totalGrossBefore: 8654, totalGrossAfter: 8092, buyerLatencyMs: 46205,
+        buyerAsk: "We can do 778.86 a unit including tax and we'll place the order today.",
+        replyToBuyer: 'Thank you for your offer, though we are unable to meet your proposed pricing. We can bring this quote down by 6.49% to 8092.00 EUR. This offer is valid until 2026-10-30.' }),
+    row({ round: 2, outcome: 'offered', totalNetBefore: 6800, totalNetAfter: 6545.13, totalGrossBefore: 8092, totalGrossAfter: 7788.7, buyerLatencyMs: 10484, buyerAsk: null, replyToBuyer: null }),
+];
+assert.equal(status(h10NoSilentWrite(grossFigure.slice(0, 1))), 'pass');
+assert.match(h10NoSilentWrite(grossFigure).reason, /round 2 moved the total from 6800 to 6545\.13 and sent no reply/);
+// ambiguous-ask rep 2: a replied offer, then a duplicate state_entered trigger the buyer never waited for -- no write, no reply
+const duplicateTrigger = [
+    row({ round: 2, outcome: 'offered', totalNetBefore: 3454.32, totalNetAfter: 3363.42, totalGrossBefore: 4110.65, totalGrossAfter: 4002.47, buyerLatencyMs: 71754,
+        buyerAsk: 'That still leaves us short. Can you get to 7.5% off?', replyToBuyer: 'In response to your request, we can adjust the quote down by 7.5% to 4002.47 EUR. This offer is valid until 2026-10-30.' }),
+    row({ round: 3, outcome: 'nothing_to_do', totalNetBefore: 3363.42, totalNetAfter: null, totalGrossBefore: 4002.47, totalGrossAfter: null, buyerLatencyMs: null, buyerAsk: null, replyToBuyer: null, linesAfter: null }),
+];
+assert.equal(status(h10NoSilentWrite(duplicateTrigger)), 'pass');
+assert.equal(status(h10NoSilentWrite(duplicateTrigger.slice(1))), 'n/a');
+// an escalation records an unchanged total and, with the shop's notice, may carry no reply: that is no write
+assert.equal(status(h10NoSilentWrite([row({ outcome: 'escalated', totalNetAfter: 100, totalGrossAfter: 119, replyToBuyer: null })])), 'n/a');
+assert.equal(checkNegotiation(scenario(), groupNegotiations(grossFigure)[0]).H10.status, 'fail', 'wired into checkNegotiation');
+
+// H11 -- the last written totals are the live quote's. Same stored rows; no run before H11 read the quote back.
+const live = (net, gross) => ({ finalQuote: { currency: 'EUR', totals: { net, gross } } });
+const withLive = (rows, net, gross) => rows.map((r) => ({ ...r, ...live(net, gross) }));
+assert.equal(status(h11LiveQuote(withLive(grossFigure, 6545.13, 7788.7))), 'pass');
+assert.match(h11LiveQuote(withLive(grossFigure, 6800, 8092)).reason, /round 2 wrote net 6545\.13, but the live quote carries 6800/);
+assert.match(h11LiveQuote(withLive(grossFigure, 6545.13, 8092)).reason, /round 2 wrote gross 7788\.7, but the live quote carries 8092/);
+// a later nothing_to_do wrote nothing: the comparison is against the last pass that did
+assert.equal(status(h11LiveQuote(withLive(duplicateTrigger, 3363.42, 4002.47))), 'pass');
+assert.equal(status(h11LiveQuote(withLive(duplicateTrigger.slice(1), 3363.42, 4002.47))), 'n/a');
+// written but never read back (a failed final GET, or a run from before H11): cannot tell, so fail
+assert.match(h11LiveQuote(grossFigure.map((r) => ({ ...r, finalQuote: null }))).reason, /was not read after the last round/);
+assert.equal(status(h11LiveQuote(withLive(grossFigure, null, 7788.7))), 'fail', 'a null live total never matches a written one');
+assert.equal(checkNegotiation(scenario(), groupNegotiations(withLive(grossFigure, 6800, 8092))[0]).H11.status, 'fail', 'wired into checkNegotiation');
+
 // grouping sorts rounds and keys by rep
 const grouped = groupNegotiations([row({ round: 2 }), row({ round: 1 }), row({ rep: 2 })]);
 assert.equal(grouped.length, 2);
@@ -185,6 +224,7 @@ assert.equal(allPass.scenarios[0].checks.H2.passes, 3);
 const oneHardFail = run([row({ rep: 1 }), row({ rep: 2, totalNetAfter: 80 }), row({ rep: 3 })], [[`s#1`, rubric([])], [`s#2`, rubric([])], [`s#3`, rubric([])]]);
 assert.equal(oneHardFail.exitCode, 1);
 assert.equal(oneHardFail.scenarios[0].checks.H2.result, 'fail');
+assert.match(formatTable(allPass).split('\n')[0], /H9  H10  H11   J1/, 'H10 and H11 have their own columns');
 
 const twoOfThree = run(reps3, [[`s#1`, rubric([])], [`s#2`, rubric(['pass', 'fail'])], [`s#3`, rubric([])]]);
 assert.equal(twoOfThree.scenarios[0].checks.J2.result, 'pass');

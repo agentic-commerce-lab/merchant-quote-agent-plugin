@@ -50,8 +50,8 @@ Recorded verbatim because each closed a fork.
   own Claude Code login. Stage 1 is an external buyer against the deployed shop over
   public HTTPS plus the Admin API, with no SSH. It evaluates the deployed
   plugin. Nightly and per-PR runs are follow-ups that wrap the same command.
-- **Settings scenarios write the shop's config, then restore it.** 4 of 21
-  scenarios need a margin floor, a rounding mode or a zero cap. They run one
+- **Settings scenarios write the shop's config, then restore it.** 5 of 24
+  scenarios need a margin floor, a rounding mode or a zero cap (one of them on the sales channel). They run one
   at a time, and their overrides are restored from a file written before the
   change. Other buyers on the shop see the override while it lasts.
 - **The buyer is Node, ported from `ucp-quote-agent.py`**, so the whole eval is
@@ -80,7 +80,7 @@ Recorded verbatim because each closed a fork.
 composer run eval            (scripts/eval.sh — on demand, no SSH)
  │
  ├─ 0. Preflight  env, Admin + buyer tokens, tunnel, product, shop policy 15/25, judge canary
- ├─ 1. UCP bench  node scripts/eval/buyer.mjs run: 21 scenarios × 3 reps against the shop
+ ├─ 1. UCP bench  node scripts/eval/buyer.mjs run: 24 scenarios × 3 reps against the shop
  │                phase A shop defaults (parallel), phase B settings scenarios (write → run → restore)
  │                → var/eval/<runId>/runs.jsonl
  ├─ 2. Check      node scripts/eval-check.mjs check   → checks.json     (no LLM)
@@ -101,7 +101,7 @@ bench run without paying for the negotiations again; `--from=check` re-runs
 |---|---|
 | `scripts/eval.sh` | the pipeline; stage selection |
 | `scripts/eval/ucp.mjs`, `admin.mjs`, `scenarios.mjs`, `negotiate.mjs`, `buyer.mjs` | stage 1 (see "Stage 1 — the UCP buyer") |
-| `scripts/eval/checks.mjs`, `verdict.mjs` | pure functions: hard checks H1–H9, transcripts, verdict rules |
+| `scripts/eval/checks.mjs`, `verdict.mjs` | pure functions: hard checks H1–H11, transcripts, verdict rules |
 | `scripts/eval-check.mjs` | CLI verbs `check`, `transcripts`, `unwrap`, `canary`, `verdict` |
 | `scripts/eval-check.check.mjs`, `scripts/eval/buyer.check.mjs` | assert-based self-checks, no network; wired into `quality:bench` |
 | `scripts/eval/judge.prompt.md` | judge system prompt (rubric J1–J5) |
@@ -171,11 +171,11 @@ What setup does:
 - every scenario file validates;
 - the judge canary passes.
 
-**Phase A: shop-default scenarios.** The 17 scenarios without a `policy` block, × 3 reps, run with `EVAL_PARALLEL` (default 4) negotiations at a time. The shop's lock is per quote, so separate quotes never block each other.
+**Phase A: shop-default scenarios.** The 19 scenarios without a `policy` block, × 3 reps, run with `EVAL_PARALLEL` (default 4) negotiations at a time. The shop's lock is per quote, so separate quotes never block each other.
 
-**Phase B: settings scenarios.** For each of the 4 scenarios with a `policy` block, one at a time:
+**Phase B: settings scenarios.** For each of the 5 scenarios with a `policy` block, one at a time:
 1. Read the current values of the keys it names, and the product's `purchasePrices`. Write them to `var/eval/<runId>/restore.json` **before any change**.
-2. Write the overrides and read them back. The effective value is written at the level it is read from: sales-channel-specific if the channel already overrides the key, otherwise global. Every read goes through `get(key, salesChannelId)`.
+2. Write the overrides and read them back. The effective value is written at the level it is read from: sales-channel-specific if the channel already overrides the key, otherwise global. Every read goes through `get(key, salesChannelId)`. A scenario with `policyScope: "channel"` writes every key on the sales channel instead, and its restore deletes a key the channel did not have.
 3. With a `purchasePriceRatio`, set the product's purchase price to `ratio × its net price`.
 4. Run the scenario's 3 reps in parallel.
 5. Restore from `restore.json`. This happens on a normal finish, on an error, and on SIGINT or SIGTERM. After a hard crash, `composer run eval:restore var/eval/<runId>` replays the file.
@@ -194,8 +194,9 @@ Other buyers on the shop see the overrides for as long as each phase-B scenario 
    - **walk:** `POST /ucp/quotes/{id}/decline`.
 
    A counter is only possible while the quote is `replied`. After an escalation or a clarification the negotiation ends, except for `continueAfterEscalation` (below).
-4. **Clean up.** A quote the buyer did not accept is declined (`POST /ucp/quotes/{id}/decline`). UCP only allows a decline in `replied` (`quote.openapi.json`), so a walk at the round cap is declined, while an escalated or clarified quote is refused and left open. Every row records `cleanup`: `declined`, `left_open`, or `accepted`. The run prints how many quotes it left open. Cleaning those up through the Admin API is a follow-up, once a state-transition name has been verified live. Accepted quotes stay as real orders on the test shop.
-5. **Build the rows** (next section).
+4. **Read the quote back.** After the last round, wait `EVAL_STANDDOWN_WAIT` seconds (default 60) so a late pass can land, then `GET /ucp/quotes/{id}` once more and keep `{currency, totals: {gross, net}}` as `finalQuote` for H11. This happens before the decline, which moves the quote's state. A failed read leaves `finalQuote` null rather than failing the negotiation. The wait adds `EVAL_STANDDOWN_WAIT` (60 s by default) to every negotiation's run time.
+5. **Clean up.** A quote the buyer did not accept is declined (`POST /ucp/quotes/{id}/decline`). UCP only allows a decline in `replied` (`quote.openapi.json`), so a walk at the round cap is declined, while an escalated or clarified quote is refused and left open. Every row records `cleanup`: `declined`, `left_open`, or `accepted`. The run prints how many quotes it left open. Cleaning those up through the Admin API is a follow-up, once a state-transition name has been verified live. Accepted quotes stay as real orders on the test shop.
+6. **Build the rows** (next section).
 
 **`continueAfterEscalation` over UCP.** The buyer posts its first `counters` entry even though the quote is not `replied`. Two outcomes count as a correct stand-down:
 - the shop refuses the counter (4xx), recorded as `followUpRefused: true`, and no second decision row appears within the timeout;
@@ -212,6 +213,7 @@ Each row has the shape stage 2 reads, so the checks, the judge and the verdict a
 - **`policy`:** the effective values the phase ran under: `maxDiscountPercent`, `counterOfferMaxPercent`, `minMarginPercent`, `roundingMode`, `roundingStep`.
 - **`purchasePricesNet`:** `{productId: price}` as phase B set it, else `{}`.
 - **`terminal`, `orderId`, `orderFailure`, `followUpRefused`:** from the buyer's own moves.
+- **`finalQuote`:** the quote as step 4 read it back, `{currency, totals: {gross, net}}`, with UCP's numbers in major units. It is the same on every row of a negotiation, and `null` when that read failed.
 - **`runId`, `scenarioId`, `rep`, `round`:** where `round` is the row's position in the quote's decision list.
 
 A negotiation that throws (an HTTP error, a `PassTimeout`) leaves one failure row: `{cellFailure: true, failureClass, failureMessage, scenarioId, rep}`.
@@ -253,6 +255,7 @@ The Admin API returns raw quote ids, so no pseudonym is involved. The anonymized
   `any-purchasable` both mean `EVAL_PRODUCT_ID`.
 - `purchasePriceRatio`: phase B sets the product's purchase price to
   `ratio × its net unit price` for the scenario's duration.
+- `policyScope`: only `"channel"`, and only with a `policy` block. Phase B then writes every override on the storefront sales channel, even a key only the global scope sets, so a scenario proves that a channel override wins over the global value. Restoring a key the channel never had writes `null`, which deletes it.
 - **Placeholders** in `openingAsk` and `counters`: `{unit*<factor>}` renders
   `factor × line_items[0].unit_price` from the created quote, in the quote's
   own price space (`totals.tax_status`), with 2 decimals. Nothing else is
@@ -263,7 +266,7 @@ parse: the floor is capped at today's price (`MarginFloors.php:37-40`), so
 such a scenario would test nothing. `continueAfterEscalation` without a
 `counters` list also fails parse — the extra pass needs a comment to answer.
 
-### The 21 scenarios
+### The 24 scenarios
 
 Existing ten, expectations translated from `expectedBand` by reading their code
 paths (the plan re-verifies each):
@@ -298,6 +301,14 @@ New eleven. All run under the shop's own policy (15 / 25, asserted by preflight)
 | C3 | `quantity-change` | "Make it 20 instead of 10 — what's the price?" | `escalated` | same; judge: reply does not quote a new price |
 
 Numbering keeps A4 empty so the dropped shipping scenario can take it back.
+
+Three more, added 2026-10-05:
+
+| Scenario | Setup | `firstOutcome` | Proves |
+|---|---|---|---|
+| `mirror-drift` | quantity 1; ask `{unit*0.95}` a unit, counter "Another 5%" at `{unit*0.9025}`, `maxRounds: 2` | `offered`, `countered` | H10 and H11: once the agent reprices the line, its own mirrored ask never reads as a new buyer ask, so no pass writes without a reply. The drift depends on the price, so `MirroredAsksTest` is the deterministic guard |
+| `no-comment-request` | no comment, no `requestedUnitPrice` | `acknowledged` | a comment-free fresh request is acknowledged at list price; judge line: the reply restates the quote's total, offers no discount, and states a validity date only if the quote has one |
+| `channel-zero-cap` | `zero-cap` plus `policyScope: "channel"` | `escalated` | a sales-channel 0 wins over the global 15; same judge line as `zero-cap` |
 
 A5 and A6 ask 20% on purpose: rounding is skipped when the offer is the
 buyer's own figure (`DiscountRounding.php:75-80`), so a counter-band ask is
@@ -349,6 +360,8 @@ reply itself wrote (below).
 | H7 | No cell failure | no `cellFailure` row (HTTP error, `PassTimeout`) and at least one JSONL line for this negotiation |
 | H8 | Stated figures | `n/a` until stage 4 (needs the judgment). Every figure the judge extracted from a reply matches one of that pass's written numbers: money against `totalGrossAfter`, `totalNetAfter`, a `linesAfter` unit price or line total — net, or grossed up by `totalGrossAfter/totalNetAfter` — and percentages against the baseline discount `(B − after)/B × 100`. Tolerance is precision-aware: `max(base, ½ × 10^−decimals)` with the judge reporting how many decimals the reply wrote, so "7%" against 6.97 matches while "7.50%" against 7.40 does not. An unmatched figure fails |
 | H9 | Rounding | `n/a` unless `policy.roundingMode` ≠ `off` and an offer was written. `discount_percent`: baseline discount is a multiple of `roundingStep` (± 0.01), unless `Policy\DiscountRounding` leaves it unrounded on purpose: a per-line answer, the buyer's own stated percentage (± 0.01), rounding to zero, or rounding below the discount already held. `quote_total`: `totalGrossAfter ?? totalNetAfter` is a multiple of `roundingStep` (± 0.005) |
+| H10 | No write without a reply | every pass whose `totalNetAfter` is non-null and differs from its `totalNetBefore` by more than 0.005 has a non-null `replyToBuyer`. `n/a` when no pass moved the total. An escalation that recorded an unchanged total, and a duplicate `nothing_to_do` (no write, no reply), are not writes. An escalation after a write that moved the total and posted no reply fails H10 on purpose: the buyer's price changed and nobody told them. Counting passes per buyer input was considered and rejected: duplicate `state_entered` triggers are harmless and would fail it. Draft Mode cannot reach this check, because preflight refuses a Draft Mode shop |
+| H11 | Live quote | `n/a` when no pass wrote (`totalNetAfter` null on every row). Otherwise the last written `totalNetAfter` and `totalGrossAfter` equal `finalQuote.totals.net` and `.gross` within 0.005; the gross comparison is skipped when the pass recorded no gross. A quote that was not read back (`finalQuote` null or absent) fails, because it cannot tell |
 
 H8 will likely flag the open question from PR #213, where a reply states a
 percentage measured on the total including shipping (6.97% against a written
@@ -357,7 +370,7 @@ it does, it surfaces the decision rather than hiding it.
 
 ## Stage 3 — the judge
 
-One `claude -p` call per negotiation (21 × 3 = 63), run with bounded
+One `claude -p` call per negotiation (24 × 3 = 72), run with bounded
 parallelism (default 4, `EVAL_JUDGE_PARALLEL`).
 
 ```
@@ -428,7 +441,7 @@ before stage 1 spends anything. This guards against a judge that always says
 
 1. evaluates H8 from each judgment's `statedFigures`;
 2. for each scenario, aggregates its three repetitions:
-   - **hard checks H1–H9**: pass only if every rep is `pass` or `n/a`;
+   - **hard checks H1–H11**: pass only if every rep is `pass` or `n/a`;
    - **rubric J1–J5**: pass if at least two reps pass;
 3. a scenario passes when all its checks pass; the run passes when every
    scenario passes.
@@ -487,7 +500,7 @@ fails, `eval.sh` still prints the verdict table itself, from `verdict.json`.
   - An assert-based self-check. It follows the `measures.check.mjs` house
     pattern and is added to `quality:bench`, so CI runs it with no shop and
     no LLM.
-  - **Every check H1–H9 has one passing fixture and one failing fixture.**
+  - **Every check H1–H11 has one passing fixture and one failing fixture.**
     The verdict rules (3/3, 2/3, `judge_error`, exit codes) get the same pair
     treatment.
   - This is the check that the checks can fail.

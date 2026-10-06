@@ -4,17 +4,29 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Tests\Unit\Negotiation;
 
+use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteComment;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteContent;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLifecycle;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
+use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTotals;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteTransition;
 use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
+use MerchantQuoteAgentPlugin\Bridge\QuoteLineMapper;
 use MerchantQuoteAgentPlugin\Negotiation\NegotiationOutcome;
+use MerchantQuoteAgentPlugin\Negotiation\PassedOver;
 use MerchantQuoteAgentPlugin\Negotiation\ReplyTemplate;
+use MerchantQuoteAgentPlugin\Negotiation\SnapshotAdapter;
 use MerchantQuoteAgentPlugin\Policy\Data\QuoteEscalationReason;
 use MerchantQuoteAgentPlugin\Servicing\PendingEscalation;
 use MerchantQuoteAgentPlugin\Servicing\QuoteEscalator;
 use PHPUnit\Framework\TestCase;
+use Shopware\Core\Checkout\Cart\Price\Struct\CalculatedPrice;
+use Shopware\Core\Checkout\Cart\Tax\Struct\CalculatedTax;
+use Shopware\Core\Checkout\Cart\Tax\Struct\CalculatedTaxCollection;
+use Shopware\Core\Checkout\Cart\Tax\Struct\TaxRuleCollection;
+use Shopware\Core\Framework\Struct\ArrayEntity;
+use Shopware\Core\System\StateMachine\Exception\IllegalTransitionException;
 
 /**
  * @mago-expect lint:too-many-methods
@@ -85,7 +97,7 @@ final class NegotiationPipelineTest extends TestCase
         // (100.00 * 0.6 = 60.00) before the gate ever runs (#165).
         $writes = $harness->gateway->customFieldWrites;
         self::assertCount(2, $writes);
-        self::assertSame([MirroredAsks::KEY => ['line-1' => 60.0]], $writes[0]);
+        self::assertSame([MirroredAsks::KEY => ['line-1' => ['net' => 60.0, 'stored' => 60.0]]], $writes[0]);
         self::assertSame(
             QuoteEscalationReason::DiscountLimitExceeded->value,
             $writes[1][QuoteEscalator::MARKER_KEY] ?? null,
@@ -163,6 +175,64 @@ final class NegotiationPipelineTest extends TestCase
         self::assertSame([], $harness->gateway->calls);
     }
 
+    /**
+     * QA-08, end to end through the read model. Pass 1 mirrored
+     * a 289.81 net ask (stored 318.79), repriced the line to 293.05 net /
+     * 322.36 gross and replied. A pending trigger then ran pass 2 with no new
+     * buyer input. Recomputing the mirror through the repriced ratio gave
+     * 318.80, so the mirror read as a fresh 289.80 ask: pass 2 negotiated,
+     * cut the price again, and suppressed its reply.
+     */
+    public function testAPassWithNoNewBuyerInputAfterARepriceWritesNothing(): void
+    {
+        $harness = PipelineHarness::with([]);
+        $marker = [MirroredAsks::KEY => ['line-1' => ['net' => 289.81, 'stored' => 318.79]]];
+        $lines = (new QuoteLineMapper(CommercialCapabilities::modern()))->map(new ArrayEntity([
+            'taxStatus' => 'gross',
+            'customFields' => $marker,
+            'lineItems' => [new ArrayEntity([
+                'id' => 'line-1',
+                'label' => 'Widget',
+                'referencedId' => 'prod-1',
+                'quantity' => 1,
+                'totalPrice' => 322.36,
+                'requestedPrice' => 318.79,
+                'price' => new CalculatedPrice(
+                    322.36,
+                    322.36,
+                    new CalculatedTaxCollection([new CalculatedTax(29.31, 10.0, 322.36)]),
+                    new TaxRuleCollection(),
+                ),
+            ])],
+        ]));
+        $answered = NegotiationFixture::snapshot(state: 'replied', comments: [
+            NegotiationFixture::buyerComment('Can you do 289.81 a unit?', '2026-10-01 09:00:00'),
+            NegotiationFixture::agentComment('We have reduced the quote.', '2026-10-01 09:05:00'),
+        ]);
+        $snapshot = new QuoteSnapshot(
+            identity: $answered->identity,
+            revision: $answered->revision,
+            totals: new QuoteTotals(totalNet: 293.05, totalGross: 322.36),
+            lifecycle: new QuoteLifecycle(
+                stateTechnicalName: 'replied',
+                expiresAt: $answered->lifecycle->expiresAt,
+                customFields: $marker,
+            ),
+            content: new QuoteContent(lines: $lines, comments: $answered->content->comments),
+        );
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame(0, $harness->spy->calls, 'No negotiate call: there is nothing to answer.');
+        self::assertSame([], $harness->gateway->calls, 'And nothing is written.');
+    }
+
     public function testAnExtractionWithNoAskInAnyFieldAcknowledgesTheBuyer(): void
     {
         // #177: "Nice, thanks!" -- every field null or empty. The
@@ -237,7 +307,122 @@ final class NegotiationPipelineTest extends TestCase
         );
 
         self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
-        self::assertSame([QuoteTransition::Sent], $harness->gateway->transitions);
+        // Claimed first, as an offer is: see ReplyComposer::acknowledge().
+        self::assertSame([QuoteTransition::Process, QuoteTransition::Sent], $harness->gateway->transitions);
+    }
+
+    /**
+     * QA-02: a customer submits a quote request and types nothing. No
+     * comment, no requested price, nobody has answered. That pass used to
+     * end as a silent nothing_to_do and leave the quote `open`, where the
+     * buyer can neither accept nor counter. It is answered at list price.
+     */
+    public function testAFreshRequestWithNoCommentIsAcknowledged(): void
+    {
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::snapshot();
+
+        $outcome = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
+        self::assertSame(0, $harness->spy->calls, 'Nothing to extract and nothing to negotiate.');
+        self::assertSame(
+            [ReplyTemplate::acknowledges(
+                $snapshot->totals->buyerFacingTotal(),
+                'EUR',
+                $snapshot->lifecycle->expiresAt,
+            )],
+            $harness->gateway->comments,
+        );
+        self::assertSame([QuoteTransition::Process, QuoteTransition::Sent], $harness->gateway->transitions);
+        self::assertSame([], $harness->gateway->lineItemChanges, 'Acknowledged at list price.');
+        self::assertSame([], $harness->gateway->quoteUpdates);
+        self::assertSame('acknowledged', $harness->writer->drafts[0]->outcome);
+    }
+
+    /** The claim tolerates a quote already in review, exactly as OfferApplier's does. */
+    public function testAFreshRequestAlreadyClaimedIsStillSent(): void
+    {
+        $harness = PipelineHarness::with([]);
+        $harness->gateway->transitionThrows = new IllegalTransitionException('open', 'process', ['sent']);
+
+        $outcome = $harness->pipeline->service(
+            NegotiationFixture::snapshot(),
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
+        self::assertSame([QuoteTransition::Process, QuoteTransition::Sent], $harness->gateway->transitions);
+        self::assertNull($harness->writer->drafts[0]->violations, 'A refused claim is not a failed pass.');
+    }
+
+    /**
+     * Anything already said on an `open` quote means it is not a fresh
+     * request: an agent comment (an earlier answer whose transition failed),
+     * or a merchant's note. Both stay silent nothing_to_do, as before.
+     */
+    public function testAnOpenQuoteSomeoneHasWrittenOnIsNotAcknowledged(): void
+    {
+        foreach ([
+            NegotiationFixture::agentComment('This quote stands at 1000.00 EUR.', '2026-10-01 09:00:00'),
+            new QuoteComment(
+                'checking stock',
+                createdById: 'admin-1',
+                createdAt: new \DateTimeImmutable('2026-10-01 09:00:00'),
+            ),
+        ] as $comment) {
+            $harness = PipelineHarness::with([]);
+
+            $outcome = $harness->pipeline->service(
+                NegotiationFixture::snapshot(comments: [$comment]),
+                $harness->gateway,
+                NegotiationFixture::settings(),
+                NegotiationFixture::context(),
+            );
+
+            self::assertNotSame(NegotiationOutcome::Acknowledged, $outcome);
+            self::assertSame([], $harness->gateway->comments);
+            self::assertSame([], $harness->gateway->transitions);
+        }
+    }
+
+    /**
+     * An escalation marker means a human owns the quote. MerchantHandover
+     * normally stands the pass down first; PassedOver checks the marker as
+     * well, so a released handover can never turn into an answer either.
+     */
+    public function testAFreshRequestCarryingAnEscalationMarkerIsNotAcknowledged(): void
+    {
+        $harness = PipelineHarness::with([]);
+        $snapshot = NegotiationFixture::withCustomFields(NegotiationFixture::snapshot(), [
+            QuoteEscalator::MARKER_KEY => QuoteEscalationReason::DiscountLimitExceeded->value,
+        ]);
+
+        $viaPipeline = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+        $direct = PassedOver::handle(
+            $harness->gateway,
+            $snapshot,
+            SnapshotAdapter::conversation($snapshot),
+            null,
+            $harness->round,
+        );
+
+        self::assertSame(NegotiationOutcome::HandedOver, $viaPipeline);
+        self::assertSame(NegotiationOutcome::NothingToDo, $direct->outcome);
+        self::assertSame([], $harness->gateway->comments);
+        self::assertSame([], $harness->gateway->transitions);
     }
 
     public function testAnEscalatedQuoteStandsDownEvenOnARealPriceAsk(): void
@@ -346,22 +531,70 @@ final class NegotiationPipelineTest extends TestCase
         self::assertSame(0, $harness->spy->calls, 'Finishing a transition must not cost a model call.');
     }
 
-    public function testAQuoteAHumanLeftInReviewIsNotTransitionedByUs(): void
+    /**
+     * The retry shape of a QA-02 acknowledgement: the claim moved the quote
+     * to in_review, then the pass threw before its comment. ServiceQuoteHandler
+     * stamps nothing on a throw, so Messenger's retry runs the pipeline again
+     * on an in_review quote nobody has written on. The move was the agent's
+     * own (no admin transition), so the request is still fresh and is
+     * answered, from in_review with `sent` alone.
+     */
+    public function testARetryAfterTheClaimStillAcknowledges(): void
     {
-        // A merchant opened this quote in the administration and left it in
-        // in_review. Nothing here is the agent's: no agent comment, so no
-        // reply of ours was ever stranded.
         $harness = PipelineHarness::with([]);
-        $snapshot = NegotiationFixture::snapshot(state: 'in_review', comments: []);
 
         $outcome = $harness->pipeline->service(
-            $snapshot,
+            NegotiationFixture::snapshot(state: 'in_review'),
             $harness->gateway,
             NegotiationFixture::settings(),
             NegotiationFixture::context(),
         );
 
-        self::assertSame(NegotiationOutcome::NothingToDo, $outcome);
+        self::assertSame(NegotiationOutcome::Acknowledged, $outcome);
+        self::assertCount(1, $harness->gateway->comments);
+        self::assertSame([QuoteTransition::Sent], $harness->gateway->transitions);
+    }
+
+    /**
+     * A merchant who claimed a fresh quote in the administration owns it,
+     * even with nothing written on it: their move into in_review is the last
+     * admin transition. MerchantHandover stands the pass down first, and
+     * PassedOver does not take it as fresh either.
+     */
+    public function testAnAdminWhoMovedTheQuoteToInReviewIsNotAcknowledgedOver(): void
+    {
+        $harness = PipelineHarness::with([]);
+        $quote = NegotiationFixture::snapshot(state: 'in_review');
+        $snapshot = new QuoteSnapshot(
+            identity: $quote->identity,
+            revision: $quote->revision,
+            totals: $quote->totals,
+            lifecycle: new QuoteLifecycle(
+                stateTechnicalName: 'in_review',
+                expiresAt: $quote->lifecycle->expiresAt,
+                lastAdminTransitionAt: new \DateTimeImmutable('2026-10-01 09:00:00'),
+                lastAdminTransitionTo: 'in_review',
+            ),
+            content: $quote->content,
+        );
+
+        $viaPipeline = $harness->pipeline->service(
+            $snapshot,
+            $harness->gateway,
+            NegotiationFixture::settings(),
+            NegotiationFixture::context(),
+        );
+        $direct = PassedOver::handle(
+            $harness->gateway,
+            $snapshot,
+            SnapshotAdapter::conversation($snapshot),
+            null,
+            $harness->round,
+        );
+
+        self::assertSame(NegotiationOutcome::HandedOver, $viaPipeline);
+        self::assertSame(NegotiationOutcome::NothingToDo, $direct->outcome);
+        self::assertSame([], $harness->gateway->comments);
         self::assertSame([], $harness->gateway->transitions, "A human's quote is not ours to move.");
     }
 

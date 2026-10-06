@@ -154,13 +154,53 @@ final class MerchantActionReaderTest extends IntegrationTestCase
         );
     }
 
-    /** Shared by every test above; each writes one history row in a different authorship shape. */
+    /**
+     * QA-05: the state the quote was in at a given moment, from ANY author's
+     * history row (here neither a user nor an integration, as the agent and
+     * the buyer write), at or before that moment. A later row, the buyer's
+     * counter after the merchant's comment, must not be read.
+     */
+    public function testTheStateAtAMomentIsTheNewestRowAtOrBeforeIt(): void
+    {
+        $context = Context::createDefaultContext();
+        $quoteId = QuoteFixture::anyQuoteId(static::getContainer(), $context);
+        $reader = static::getContainer()->get(MerchantActionReader::class);
+        self::assertInstanceOf(MerchantActionReader::class, $reader);
+
+        // Long before any real history the fixture quote carries.
+        $sent = new \DateTimeImmutable('2001-01-01 10:00:00');
+        $countered = new \DateTimeImmutable('2001-01-01 11:00:00');
+        $this->writeHistoryRow($quoteId, $context, userId: null, integrationId: null, createdAt: $sent, to: 'replied');
+        $this->writeHistoryRow(
+            $quoteId,
+            $context,
+            userId: null,
+            integrationId: null,
+            createdAt: $countered,
+            to: 'in_review',
+        );
+
+        self::assertSame('replied', $reader->stateAt($quoteId, $sent->modify('+30 minutes'), $context));
+        self::assertSame('replied', $reader->stateAt($quoteId, $sent, $context), 'A row at the moment counts.');
+        self::assertSame('in_review', $reader->stateAt($quoteId, $countered->modify('+1 minute'), $context));
+        self::assertNull($reader->stateAt($quoteId, $sent->modify('-1 second'), $context));
+    }
+
+    /**
+     * Shared by every test above; each writes one history row in a different
+     * authorship shape.
+     *
+     * @mago-expect lint:excessive-parameter-list
+     * One optional parameter per column a test varies beyond the quote;
+     * every call site names its arguments, so the count stays readable.
+     */
     private function writeHistoryRow(
         string $quoteId,
         Context $context,
         ?string $userId,
         ?string $integrationId,
         ?\DateTimeImmutable $createdAt = null,
+        string $to = 'open',
     ): void {
         $history = static::getContainer()->get('state_machine_history.repository');
         self::assertNotNull($history);
@@ -173,7 +213,7 @@ final class MerchantActionReaderTest extends IntegrationTestCase
             'referencedId' => $quoteId,
             'referencedVersionId' => $context->getVersionId(),
             'fromStateId' => $stateId,
-            'toStateId' => $stateId,
+            'toStateId' => static::quoteStateId($context, $to),
             'transitionActionName' => 'test_transition',
             'userId' => $userId,
             'integrationId' => $integrationId,
@@ -196,13 +236,13 @@ final class MerchantActionReaderTest extends IntegrationTestCase
         return $id;
     }
 
-    private static function quoteStateId(Context $context): string
+    private static function quoteStateId(Context $context, string $technicalName = 'open'): string
     {
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('stateMachineId', self::quoteStateMachineId($context)));
-        $criteria->addFilter(new EqualsFilter('technicalName', 'open'));
+        $criteria->addFilter(new EqualsFilter('technicalName', $technicalName));
         $id = static::getContainer()->get('state_machine_state.repository')?->searchIds($criteria, $context)->firstId();
-        self::assertIsString($id, 'The quote state machine has no `open` state.');
+        self::assertIsString($id, sprintf('The quote state machine has no `%s` state.', $technicalName));
 
         return $id;
     }

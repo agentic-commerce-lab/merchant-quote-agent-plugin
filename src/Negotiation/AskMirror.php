@@ -7,6 +7,7 @@ namespace MerchantQuoteAgentPlugin\Negotiation;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteLineItemChange;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteSnapshot;
 use MerchantQuoteAgentPlugin\Bridge\Data\QuoteUpdate;
+use MerchantQuoteAgentPlugin\Bridge\MirroredAsk;
 use MerchantQuoteAgentPlugin\Bridge\MirroredAsks;
 use MerchantQuoteAgentPlugin\Bridge\QuoteGatewayInterface;
 use MerchantQuoteAgentPlugin\Policy\CommentTargetMerger;
@@ -108,7 +109,10 @@ final class AskMirror
         // buyer ask on the next pass, which is the one outcome to avoid.
         $gateway->updateQuote(
             $quoteId,
-            new QuoteUpdate(customFields: MirroredAsks::stamp($snapshot->lifecycle->customFields, $adopted)),
+            new QuoteUpdate(customFields: MirroredAsks::stamp(
+                $snapshot->lifecycle->customFields,
+                self::asWritten($snapshot, $adopted),
+            )),
         );
 
         $gateway->updateLineItems($quoteId, array_map(
@@ -135,6 +139,31 @@ final class AskMirror
             // too, so it needs the same guard. Upgrade together if a broken
             // logger here ever needs its own reporting path.
         }
+    }
+
+    /**
+     * Each mirrored ask with the value the line write below will store for it,
+     * converted through the line's ratio exactly as QuoteLineItemWriter does.
+     * The snapshot's ratio IS that ratio: both come from QuoteLineNet over the
+     * same row, and nothing has repriced it yet this pass. See MirroredAsk.
+     *
+     * @param array<string, float> $adopted
+     *
+     * @return array<string, MirroredAsk>
+     */
+    private static function asWritten(QuoteSnapshot $snapshot, array $adopted): array
+    {
+        $asks = [];
+
+        foreach ($snapshot->content->lines as $line) {
+            $net = $adopted[$line->identity->lineItemId] ?? null;
+
+            if ($net !== null) {
+                $asks[$line->identity->lineItemId] = MirroredAsk::written($net, $line->netRatio);
+            }
+        }
+
+        return $asks;
     }
 
     /**

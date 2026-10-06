@@ -25,7 +25,7 @@ function lines(traces, decisionId, kind) {
     }));
 }
 
-export function buildRows({ runId, scenarioId, rep, decisions, traces, policy, purchasePricesNet, terminal, orderId, orderFailure, followUpRefused, latencies = {} }) {
+export function buildRows({ runId, scenarioId, rep, decisions, traces, policy, purchasePricesNet, terminal, orderId, orderFailure, followUpRefused, latencies = {}, finalQuote = null }) {
     return decisions.map((decision, index) => ({
         runId,
         scenarioId,
@@ -42,5 +42,6 @@ export function buildRows({ runId, scenarioId, rep, decisions, traces, policy, p
         orderId,
         orderFailure,
         followUpRefused,
+        finalQuote, // the live quote after the last round: {currency, totals: {gross, net}}, null when unread (H11)
     }));
 }

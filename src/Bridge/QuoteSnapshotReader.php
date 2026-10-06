@@ -76,6 +76,9 @@ final readonly class QuoteSnapshotReader
             throw QuoteNotFoundException::forId($quoteId);
         }
 
+        $comments = $this->commentMapper->map($quote);
+        $commentedAt = QuoteCommentMapper::newestMerchantAt($comments);
+
         return new QuoteSnapshot(
             identity: $this->readIdentity($quote, $quoteId),
             revision: $this->readRevision($quote, $versionedContext),
@@ -84,14 +87,15 @@ final readonly class QuoteSnapshotReader
                 discount: $this->discountMapper->map($quote->get('discount')),
                 totalGross: (float) $quote->get('amountTotal'),
             ),
-            lifecycle: $this->readLifecycle($quote, $this->merchantActions->lastTransition(
-                $quoteId,
-                $versionedContext,
-            )),
-            content: new QuoteContent(
-                lines: $this->lineMapper->map($quote),
-                comments: $this->commentMapper->map($quote),
+            lifecycle: $this->readLifecycle(
+                $quote,
+                $this->merchantActions->lastTransition($quoteId, $versionedContext),
+                $commentedAt,
+                $commentedAt === null
+                    ? null
+                    : $this->merchantActions->stateAt($quoteId, $commentedAt, $versionedContext),
             ),
+            content: new QuoteContent(lines: $this->lineMapper->map($quote), comments: $comments),
         );
     }
 
@@ -129,8 +133,12 @@ final readonly class QuoteSnapshotReader
     }
 
     /** @param array{0: \DateTimeImmutable, 1: ?string}|null $lastAdminTransition */
-    private function readLifecycle(Entity $quote, ?array $lastAdminTransition): QuoteLifecycle
-    {
+    private function readLifecycle(
+        Entity $quote,
+        ?array $lastAdminTransition,
+        ?\DateTimeImmutable $lastAdminCommentAt,
+        ?string $stateAtLastAdminComment,
+    ): QuoteLifecycle {
         $state = $quote->get('stateMachineState');
         $expiresAt = $quote->get('expirationDate');
         $customFields = $quote->get('customFields');
@@ -146,6 +154,8 @@ final readonly class QuoteSnapshotReader
             customFields: $normalizedCustomFields,
             lastAdminTransitionAt: $lastAdminTransition[0] ?? null,
             lastAdminTransitionTo: $lastAdminTransition[1] ?? null,
+            lastAdminCommentAt: $lastAdminCommentAt,
+            stateAtLastAdminComment: $stateAtLastAdminComment,
         );
     }
 }

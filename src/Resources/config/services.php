@@ -22,6 +22,7 @@ use MerchantQuoteAgentPlugin\Audit\Export\DecisionExportStream;
 use MerchantQuoteAgentPlugin\Audit\HttpTraceCapture;
 use MerchantQuoteAgentPlugin\Audit\HttpTraceQuote;
 use MerchantQuoteAgentPlugin\Audit\HttpTraceSubscriber;
+use MerchantQuoteAgentPlugin\Audit\MerchantCommentResolutionSubscriber;
 use MerchantQuoteAgentPlugin\Audit\QuoteDecisionRecord;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeSubscriber;
 use MerchantQuoteAgentPlugin\Audit\TerminalOutcomeWriter;
@@ -675,6 +676,10 @@ return static function (ContainerConfigurator $configurator, ContainerBuilder $c
     // template in the consumer, so autowiring cannot supply them.
     $services->set(QuoteVersionResolver::class);
     $services->set(MerchantActionReader::class)->args([service('state_machine_history.repository')]);
+    // Inside the gate: it reads the quote's state through the reader above,
+    // and `quote_comment` is SwagCommercial's entity, so without the bundle
+    // there is no comment for it to hear.
+    $services->set(MerchantCommentResolutionSubscriber::class);
     $services->set(QuoteSnapshotReader::class)->args([
         service('quote.repository'),
         service(QuoteVersionResolver::class),

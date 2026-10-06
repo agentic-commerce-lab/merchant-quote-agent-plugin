@@ -21,8 +21,10 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  *
  * QuoteEscalator does not transition the quote when it escalates. It writes a
  * customFields marker and a buyer-facing comment, and the human then acts in
- * SwagCommercial's own quote admin, so the resolution can only be observed
- * from the quote's state machine.
+ * SwagCommercial's own quote admin, so the resolution is observed from the
+ * quote's state machine here, and from the merchant's comments by
+ * MerchantCommentResolutionSubscriber (QA-05: a send from `replied` makes no
+ * transition at all).
  *
  * No state filter, therefore, and no author filter either: the core event
  * carries no author. Any transition by anyone closes the escalation, including

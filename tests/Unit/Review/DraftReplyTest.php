@@ -34,6 +34,27 @@ final class DraftReplyTest extends TestCase
         self::assertStringContainsString('8', $text);
     }
 
+    /**
+     * A round-two storefront ask, re-drafted after the merchant's edit: the
+     * newest comment is the agent's round-one reply, so the buyer's round-one
+     * comment is answered already and must not reach the reply model, which
+     * would answer the old ask (ReplyComposer::reply()'s rule).
+     */
+    public function testAnAnsweredBuyerCommentIsNotRedraftedAgainst(): void
+    {
+        $live = NegotiationFixture::snapshot(totalNet: 1000.0, comments: [
+            NegotiationFixture::buyerComment('8% please', '2026-08-28 09:00:00'),
+            NegotiationFixture::agentComment('here is 5%', '2026-08-28 09:30:00'),
+        ]);
+        $after = NegotiationFixture::snapshot(totalNet: 920.0);
+        [$client, $spy] = ScriptedClient::spy(['not a usable reply']);
+
+        self::reply($client, NegotiationFixture::settings())->compose(self::pending($live, $after), $after);
+
+        self::assertCount(1, $spy->userPrompts);
+        self::assertStringNotContainsString('8% please', $spy->userPrompts[0]);
+    }
+
     public function testAClarificationIsNotRedrafted(): void
     {
         $live = NegotiationFixture::snapshot();

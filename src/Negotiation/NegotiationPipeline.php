@@ -197,6 +197,14 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
         // answered (countered, say, so `requested_price` still sits below the
         // line) is not new work, and a "thanks" on that quote is acknowledged
         // here rather than sent back to a band with nothing left to move.
+        // QA-08: this is the pass's ONE decision on whether there is anything
+        // to answer — a new buyer comment (`$ask !== null`, which
+        // AskInterpreter only returns for one) or an open storefront ask —
+        // and nothing has been written yet. Past it, the pass writes AND
+        // replies (ReplyComposer::reply() no longer second-guesses it); short
+        // of it, it does neither. StructuredAsk reads the line through
+        // QuoteLineMapper, which hides the agent's own mirror, so that mirror
+        // never counts as an ask.
         if (($ask === null || $ask->hasNoAsk()) && !StructuredAsk::isOpen($snapshot)) {
             // The one outcome nothing else counts. A comment the agent reads
             // as holding no ask is acknowledged, not escalated (PassedOver) --
@@ -205,13 +213,14 @@ final readonly class NegotiationPipeline implements QuoteServicingPipelineInterf
             // line is the only thing that counts them.
             //
             // `commentRead` is what makes the count worth alerting on: false
-            // is an ordinary duplicate trigger or a stranded reply, true is a
-            // human writing something the agent found no ask in.
+            // is an ordinary duplicate trigger, a stranded reply or a fresh
+            // request with no comment (QA-02, acknowledged), true is a human
+            // writing something the agent found no ask in.
             // `acknowledged` says whether they were answered; an escalated
             // quote no longer reaches here (MerchantHandover), so it tracks
-            // `commentRead` and stays for this event's readers. The words
-            // themselves stay out of the log and go to the audit record
-            // instead (`buyer_ask`).
+            // `commentRead` except for that fresh request, and stays for this
+            // event's readers. The words themselves stay out of the log and
+            // go to the audit record instead (`buyer_ask`).
             $pass = PassedOver::handle($gateway, $snapshot, $conversation, $ask, $this->round);
 
             $this->logger->info('Nothing to answer on this quote.', [

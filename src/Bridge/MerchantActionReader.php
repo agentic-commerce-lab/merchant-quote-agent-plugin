@@ -10,10 +10,12 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\NotFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\RangeFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 
 /**
- * When a human merchant last moved this quote through its state machine.
+ * When a human merchant last moved this quote through its state machine,
+ * and (stateAt()) which state the quote was in at a given moment.
  *
  * Core writes one `state_machine_history` row per transition and fills
  * `user_id` from the context source:
@@ -76,5 +78,38 @@ final readonly class MerchantActionReader
             \DateTimeImmutable::createFromInterface($createdAt),
             \is_string($technicalName) ? $technicalName : null,
         ];
+    }
+
+    /**
+     * The state the quote was in at `$at`: the target of the newest history
+     * row at or before it, by ANY author — the agent's and the buyer's
+     * transitions move the state as much as a merchant's. Null when no row is
+     * that old. QA-05: QuoteSnapshotReader asks it for the moment of the
+     * newest merchant comment, for PendingEscalation.
+     *
+     * Not filtered on the version, for lastTransition()'s reason. `created_at`
+     * is stored to the millisecond, so a row in the same millisecond as `$at`
+     * counts as before it.
+     */
+    public function stateAt(string $quoteId, \DateTimeImmutable $at, Context $context): ?string
+    {
+        $criteria = new Criteria();
+        $criteria->addAssociation('toStateMachineState');
+        $criteria->addFilter(new EqualsFilter('entityName', 'quote'));
+        $criteria->addFilter(new EqualsFilter('referencedId', $quoteId));
+        // Stored as UTC to the millisecond (Defaults::STORAGE_DATE_TIME_FORMAT).
+        // gmdate() rather than setTimezone(new DateTimeZone('UTC')), for
+        // Protocol\ProtocolTimestamp::of()'s reason: it cannot throw.
+        $criteria->addFilter(new RangeFilter('createdAt', [
+            RangeFilter::LTE => gmdate('Y-m-d H:i:s', $at->getTimestamp()) . $at->format('.v'),
+        ]));
+        $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::DESCENDING));
+        $criteria->setLimit(1);
+
+        $row = $this->historyRepository->search($criteria, $context)->getEntities()->first();
+        $to = $row instanceof Entity ? $row->get('toStateMachineState') : null;
+        $technicalName = $to instanceof Entity ? $to->get('technicalName') : null;
+
+        return \is_string($technicalName) ? $technicalName : null;
     }
 }

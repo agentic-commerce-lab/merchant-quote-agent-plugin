@@ -250,12 +250,24 @@ If there is no ask at all and no open structured target price — one below the
 line price that the last pass has not already answered — a pass that read
 a buyer comment ends as `acknowledged`: it posts `ReplyTemplate::acknowledges()`
 — the buyer-facing total and expiry as the quote holds them, no model call, no
-price write — and moves the quote to `replied` (`sent`, or `admin_resend` from
-the renegotiation states). With no comment read it ends as `nothing_to_do`
-instead (an escalated quote no merchant has sent since never gets this far;
-it is `handed_over`, section 4.7) — first finishing a stranded
-`in_review → replied` transition, but only when the agent's own comment is the
-newest one on the quote.
+price write — and moves the quote to `replied` (`process` then `sent` from
+`open`, `sent` from `in_review`, or `admin_resend` from the renegotiation
+states). A fresh request nobody has written on yet is acknowledged the same
+way, at its list prices: the quote is `open`, carries no comment from anyone,
+no open structured target and no escalation marker (a quote the agent's own
+claim left in `in_review` before a failed pass counts as fresh; one an admin
+moved there does not). Otherwise a pass with no
+comment read ends as `nothing_to_do` (a duplicate trigger; an escalated quote
+no merchant has sent since never gets this far, it is `handed_over`, section
+4.7) — first finishing a stranded `in_review → replied` transition, but only
+when the agent's own comment is the newest one on the quote.
+
+This gate is the pass's only decision on whether there is anything to answer,
+and it is made before anything is written. Past it, a pass that writes a price
+also replies; short of it, it does neither. A per-line target the agent
+mirrored onto `requested_price` itself never counts: `MirroredAsks` records
+the exact value that write stored, so the agent's own later reprice of the line
+cannot make the mirror read as a fresh buyer ask.
 
 ### 4.2 The gate — what the agent refuses to answer itself
 
@@ -354,10 +366,15 @@ Two escalations live here:
   state nobody intended. The escalation tells a human what the database
   actually says.
 
-A **second round of per-line negotiation** goes to a human: the reference prices
-a per-line offer is bounded against are captured fresh each pass, so a second
-per-line concession would be measured against the first one's already-reduced
-prices and compound past the cap. Quote-wide rounds are unaffected.
+**Per-line rounds continue.** A per-line offer is bounded against the quote's
+stored baseline (`QuoteBaseline`, #49): the prices as the agent first found
+them, stamped by `ServiceQuoteHandler` before its first pass. A second or third
+per-line concession is therefore measured on the original prices, and the total
+across rounds stays inside the cap (`BaselineCompoundingTest`). Quote-wide
+rounds are measured on the same baseline. The one exception is a quote the
+agent serviced before the baseline existed: it has no anchor, so `OfferRound`
+escalates a per-line offer on it as `proposal_rejected`. That case retires
+itself as those quotes close.
 
 Prices, discounts and expiry dates are written as **absolute values**, so a
 worker that dies mid-pass and retries produces the same quote rather than
@@ -432,14 +449,31 @@ again on the very next pass, and the agent answers as normal.
 
 The one exception is an open escalation. While
 `Servicing\PendingEscalation::awaitsAHuman()` holds — the escalation marker is
-set and no merchant has moved the quote to `replied` since it was written —
+set and no merchant has answered since it was written —
 `tookOver()` returns `true` however new the buyer's ask, so a second ask on an
-escalated quote does not run the pipeline and escalate it again. A merchant's
-send releases it. A legacy marker written before its time was recorded is
-released by any send, since it cannot be ordered against one. After an
-escalation only a merchant SEND re-enables the agent; reopening or declining
-the quote does not, and buyer chat asks made during the escalation are
-consumed (the fingerprint is stamped) and not mirrored to `requested_price`.
+escalated quote does not run the pipeline and escalate it again. Two things
+count as an answer: a merchant moving the quote to `replied`, and a merchant
+comment (`QuoteLifecycle::lastAdminCommentAt`, the newest comment with
+`createdById` and neither buyer column) written while the quote was in
+`replied`, with no admin transition after it. The second exists because
+SwagCommercial's own send from `replied` saves the quote and posts the message
+without a transition. It is limited to `replied` because there the terms on
+the quote are the ones the buyer was sent; in any other state the merchant may
+still be editing, and the approval receipt the agent's next move to `replied`
+triggers would vouch for terms nobody sent. The state is the one at the
+comment (`QuoteLifecycle::stateAtLastAdminComment`, from
+`MerchantActionReader::stateAt()`: the newest state-machine history row by any
+author at or before the comment), not the state at the pass. A comment triggers
+no pass; the buyer's next message does, and over UCP that is a counter, which
+moves the quote to `change_requested` (`reopen` on 6.7.12) before the pass
+reads it. The counter writes only requested prices, so the terms are still the
+ones sent.
+A legacy marker written before its time was recorded is released by any
+answer, since it cannot be ordered against one. After an escalation only a
+merchant's answer re-enables the agent; reopening or declining the quote does
+not, nor does a comment written while the quote was not `replied`, and buyer
+chat asks made during the escalation are consumed (the fingerprint is stamped)
+and not mirrored to `requested_price`.
 
 The outcome, `NegotiationOutcome::HandedOver`, is returned before the extract
 call and before the stranded-reply branch that follows it. It does not answer
@@ -482,7 +516,9 @@ never carry it.
 Four columns are not written by the pass: `terminalState` / `terminalAt`, stamped
 by `TerminalOutcomeSubscriber` when the quote reaches a state that ends a
 negotiation, and `resolvedAt` / `resolvedState`, stamped by
-`EscalationResolutionSubscriber` when a human acts after an escalation.
+`EscalationResolutionSubscriber` when a human acts after an escalation, or by
+`MerchantCommentResolutionSubscriber` when a merchant answers in the quote's
+thread.
 
 Because the core state-change event carries no author, a transition by *anyone*
 closes an escalation — the deal desk sending a revised offer, or the buyer
@@ -490,6 +526,19 @@ withdrawing. `resolvedState` is stored precisely so that stays inspectable. The
 agent's own mid-pass transitions carry `AgentContext::STATE` and are skipped,
 without which an escalated quote's next pass would stamp itself as the human
 resolution.
+
+A comment closes it only when an administration user wrote it: `createdById`
+set and neither buyer column, on the live version, outside `AgentContext::STATE`
+— and only while the quote is `replied` at the moment of the write
+(`MerchantActionReader::stateAt`), the same condition `PendingEscalation`
+releases the agent on. It records `resolvedState = commented`. SwagCommercial's
+own send from `replied` saves the quote and posts the message without any
+transition, so without this a quote already in `replied` stayed in Needs review
+until the merchant withdrew and resent it. In any other state the comment
+closes nothing: the agent stays stood down, so the quote stays in Needs review
+until the merchant sends it. A send with a message from those states posts the
+message before it transitions, so the comment finds the old state and the
+transition records the resolution.
 
 ### The A2CN act, when there is a session
 
@@ -545,9 +594,9 @@ first.
 | `llmBaseUrl` | `https://api.openai.com/v1` | Point at Azure, your own gateway, or a self-hosted model. |
 | `llmModel` | — | Required. No default, because guessing one picks a price and quality point for you. |
 | `negotiationStrategyId` | — | Which strategy this sales channel negotiates with. Holds the strategy's id, not its text; the prompt comes from that strategy's newest version. Can never move a cap. |
-| `maxDiscountPercent` | `0` | `0` means every price ask escalates. |
-| `counterOfferMaxPercent` | — | Blank means no counter band. |
-| `minMarginPercent` | — | Markup on each product's purchase price that no offer may go below (`purchase × (1 + m/100)`, rounded up to the cent). Clamps the offer to that floor rather than escalating. Products without a purchase price have no floor. Blank means off; `0` means never below cost. The purchase price never reaches the model or the buyer. |
+| `maxDiscountPercent` | `0` | `0` means every price ask escalates. The admin saves 0–100 only (`<min>`/`<max>` in `config.xml`, enforced by core's batch save; `system:config:set` bypasses it, and `QuoteLimits` still refuses an out-of-range value at read time). |
+| `counterOfferMaxPercent` | — | Blank means no counter band. The admin saves 0–100 only, as above. |
+| `minMarginPercent` | — | Markup on each product's purchase price that no offer may go below (`purchase × (1 + m/100)`, rounded up to the cent). Clamps the offer to that floor rather than escalating. Products without a purchase price have no floor. Blank means off; `0` means never below cost. The admin saves 0 or more only (no upper limit: a markup can exceed 100%). The purchase price never reaches the model or the buyer. |
 | `roundingMode` | `off` | `off`, `discount_percent` (the model's quote-wide percentage is floored to the step before authorization, so the checks, the per-line conversion and the reply all see it; a per-line answer is left unrounded) or `quote_total` (a quote-wide write becomes an absolute discount that lands the buyer-facing total, shipping included, on the next multiple of the step). Never the buyer's own figure, never below a standing concession, never to nothing (a cent or less counts as nothing); `quote_total` additionally skips a net quote with tax on top (`tax_on_top`), which also catches a gross quote whose goods are all 0 % VAT but whose shipping is taxed (conservatively written unrounded), while `discount_percent` still rounds there. Each skip is recorded on the `rounding` trace event. The percentage stated in the reply is measured on the whole buyer-facing total including shipping, so under `discount_percent` a quote with shipping can read e.g. 6.97 % in the reply while its discount line shows 7 %; `quote_total` makes the total round, and the stated percentage then follows from it. |
 | `roundingStep` | — | Percentage points in `discount_percent`, currency units of the buyer-facing total in `quote_total`. Blank or `0` means off whatever the mode. |
 | `maxQuoteValueNet` | — | Per currency, net. A currency left blank escalates. Blank everywhere means no ceiling. |
@@ -638,13 +687,16 @@ figures, each scoped to the period in the smart bar. **A figure with nothing to
 measure reports absent (`–`, "no baseline", "n/a") rather than a confident
 zero.**
 
-- **Auto-execution rate** — the share of the period's serviced quotes the agent
-  never escalated. The denominator is every quote serviced, not only the
-  concluded ones: restricting it would drop stuck escalations out of the count
-  and make a shop with ten of them report 100%. The raw `n of m escalated` count
-  sits beside it, with a trend against the previous period.
+- **Auto-execution rate** — the share of the period's quotes the agent acted on
+  that it never escalated. A quote counts once any of its passes offered,
+  countered, clarified, acknowledged or escalated, or was drafted for review; a
+  quote whose every pass was `nothing_to_do` or `handed_over` is left out,
+  because nothing on it was automated. Concluded or not makes no difference:
+  restricting the count to concluded quotes would drop stuck escalations out of
+  it and make a shop with ten of them report 100%. The raw `n of m escalated`
+  count sits beside it, with a trend against the previous period.
 - **Escalation resolution time** — mean time from escalation to the deal desk's
-  resolving transition. **Only covers escalations resolved after the
+  resolving transition or reply. **Only covers escalations resolved after the
   `resolved_at` migration shipped**; earlier ones report as `n still open`
   rather than vanishing from the average. Set `escalationSlaHours` to turn it
   into "n of m within the SLA".

@@ -24,6 +24,9 @@ refuses({ buyer: { patience: 3 } }, /buyer\.patience/);
 refuses({ policy: { minMarginPercent: 15 } }, /purchasePriceRatio/);
 refuses({ policy: { minMarginPercent: 20 }, lines: [{ productRef: 'any-purchasable', quantity: 1, purchasePriceRatio: 0.9 }] }, /at or above/);
 refuses({ continueAfterEscalation: true }, /counters/);
+refuses({ policyScope: 'global', policy: { maxDiscountPercent: 0 } }, /policyScope/);
+refuses({ policyScope: 'channel' }, /"policyScope" needs a "policy"/);
+validateScenario(base({ policyScope: 'channel', policy: { maxDiscountPercent: 0 } }));
 assert.equal(loadScenarioDir('tests/Bench/scenarios').length >= 10, true, 'the shipped scenarios validate');
 refuses({ tags: undefined }, /"tags"/);
 refuses({ tags: [] }, /"tags"/);
@@ -110,7 +113,7 @@ assert.equal(calls.length, 1, 'exactly one refresh for four concurrent callers')
 
 import { adminClient } from './admin.mjs';
 import { buildRows } from './rows.mjs';
-import { effectivePolicy, planSettings, purchasePricesFor, writablePrices } from './settings.mjs';
+import { effectivePolicy, planForScenario, planSettings, purchasePricesFor, writablePrices } from './settings.mjs';
 
 // the Admin API client -- one token for many calls, criteria in the body
 const adminCalls = [];
@@ -170,6 +173,24 @@ assert.deepEqual(plan.restore, [
     { scope: 'global', key: 'MerchantQuoteAgentPlugin.config.minMarginPercent', value: null },
 ]);
 
+// policyScope "channel": the override lands on the sales channel even where only the global value exists,
+// and the restore deletes that channel key again (null) instead of pinning the global value there
+const channelPlan = planSettings({ globalValues: g, channelValues: c, overrides: { maxDiscountPercent: 0, counterOfferMaxPercent: 20 }, policyScope: 'channel' });
+assert.deepEqual(channelPlan.writes, [
+    { scope: 'channel', key: 'MerchantQuoteAgentPlugin.config.maxDiscountPercent', value: 0 },
+    { scope: 'channel', key: 'MerchantQuoteAgentPlugin.config.counterOfferMaxPercent', value: 20 },
+]);
+assert.deepEqual(channelPlan.restore, [
+    { scope: 'channel', key: 'MerchantQuoteAgentPlugin.config.maxDiscountPercent', value: null },
+    { scope: 'channel', key: 'MerchantQuoteAgentPlugin.config.counterOfferMaxPercent', value: 30 },
+]);
+assert.equal(effectivePolicy(g, { 'MerchantQuoteAgentPlugin.config.maxDiscountPercent': 0 }).maxDiscountPercent, 0, 'a channel 0 wins over the global 15');
+
+// the hand-off buyer.mjs uses: a scenario's policyScope must reach planSettings, or the override silently lands globally
+const handOff = (scenario) => planForScenario({ globalValues: g, channelValues: c }, scenario);
+assert.deepEqual(handOff(base({ policy: { maxDiscountPercent: 0 } })).writes.map((w) => w.scope), ['global']);
+assert.deepEqual(handOff(base({ policy: { maxDiscountPercent: 0 }, policyScope: 'channel' })).writes.map((w) => w.scope), ['channel']);
+
 import { negotiate, pool } from './negotiate.mjs';
 
 /**
@@ -188,7 +209,7 @@ function fakeShop(passes, { refuseCounterUnlessReplied = true, counterStatus = n
         if (next.totalNetAfter != null) net = next.totalNetAfter;
         state = next.outcome === 'offered' || next.outcome === 'countered' || next.outcome === 'acknowledged' ? 'replied' : 'open';
     };
-    const quote = () => ({ id: 'q1', state, totals: { net, gross: net * 1.19, tax_status: 'gross' }, line_items: [{ unit_price: quotedUnitPrice }] });
+    const quote = () => ({ id: 'q1', state, currency: 'EUR', totals: { net, gross: net * 1.19, tax_status: 'gross' }, line_items: [{ unit_price: quotedUnitPrice }] });
     const ucp = {
         async request(method, path, { json } = {}) {
             posted.push({ method, path, json });
@@ -293,6 +314,47 @@ assert.equal(brokenGet.length, 1);
 assert.equal(brokenGet[0].cellFailure, true);
 assert.match(brokenGet[0].failureMessage, /HTTP 503/);
 assert.ok(brokenGet[0].failureMessage.length < 400, 'the body is truncated');
+
+// H11's input: after the last round, wait out a late pass, read the live quote, and only then decline
+const finalLog = [];
+const finalShop = fakeShop([{ outcome: 'offered', totalNetAfter: 980 }, { outcome: 'offered', totalNetAfter: 970 }]);
+const finalRows = await negotiate({
+    ...policyArgs(),
+    ucp: { request: async (method, path, options) => { finalLog.push(`${method} ${path}`); return finalShop.ucp.request(method, path, options); } },
+    admin: finalShop.admin,
+    scenario: validateScenario(base({ maxRounds: 2 })),
+    sleep: async (seconds) => { finalLog.push(`sleep ${seconds}`); },
+});
+assert.deepEqual(finalLog.slice(-3), ['sleep 0.1', 'GET /ucp/quotes/q1', 'POST /ucp/quotes/q1/decline']);
+assert.deepEqual(finalRows.map((r) => r.finalQuote), [1, 2].map(() => ({ currency: 'EUR', totals: { gross: 970 * 1.19, net: 970 } })), 'on every row');
+// a failed final read keeps the rows: H11 reports it, H7 does not
+let finalGets = 0;
+const lostShop = fakeShop([{ outcome: 'offered', totalNetAfter: 980 }]);
+const lost = await negotiate({
+    ...policyArgs(),
+    ucp: { request: async (method, path, options) => (method === 'GET' && ++finalGets === 2 ? { status: 503, body: {} } : lostShop.ucp.request(method, path, options)) },
+    admin: lostShop.admin,
+    scenario: validateScenario(base({ maxRounds: 1 })),
+});
+assert.equal(lost.length, 1);
+assert.equal(lost[0].cellFailure, undefined);
+assert.equal(lost[0].finalQuote, null);
+assert.equal(lost[0].cleanup, 'declined', 'the decline still runs after a failed read');
+assert.equal(buildRows({ decisions: [{ id: 'd1' }], traces: [] })[0].finalQuote, null, 'no final read given: null');
+// a 200 that carries no quote (null body, or null totals) is read as unknown totals, not a crashed negotiation
+for (const body of [null, { currency: null, totals: null }]) {
+    let gets = 0;
+    const emptyShop = fakeShop([{ outcome: 'offered', totalNetAfter: 980 }]);
+    const empty = await negotiate({
+        ...policyArgs(),
+        ucp: { request: async (method, path, options) => (method === 'GET' && ++gets === 2 ? { status: 200, body } : emptyShop.ucp.request(method, path, options)) },
+        admin: emptyShop.admin,
+        scenario: validateScenario(base({ maxRounds: 1 })),
+    });
+    assert.equal(empty[0].cellFailure, undefined, `a 200 with body ${JSON.stringify(body)} failed the negotiation`);
+    assert.deepEqual(empty[0].finalQuote, { currency: null, totals: { gross: null, net: null } });
+    assert.equal(empty[0].cleanup, 'declined');
+}
 
 // a pass that never comes is a failure row, not a hang
 const timedOut = await run(base(), fakeShop([]));
