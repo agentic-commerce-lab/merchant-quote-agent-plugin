@@ -88,21 +88,17 @@ class MerchantQuoteAgentPlugin extends Plugin
     }
 
     /**
-     * Wins the Twig namespace hierarchy against SwagCommercial, whose
-     * quote detail page this plugin's storefront banner extends.
-     *
-     * Lower is higher precedence. Both plugins would otherwise sit at the
-     * default 0, and BundleHierarchyBuilder's stable sort would break that tie
-     * on bundle registration order — which DbalKernelPluginLoader takes from
-     * `ORDER BY installed_at`. That makes the banner's visibility depend on
-     * which plugin the merchant happened to install first. -1 is the smallest
-     * value that removes the shop's install history from the answer while
-     * still leaving room for a theme or a later extension to outrank us.
+     * Outranks SwagCommercial on themed storefront pages, whose quote detail
+     * template the banner and agent-name attribute extend. Higher wins there:
+     * ThemeInheritanceBuilder arsort()s, unlike BundleHierarchyBuilder's
+     * "lower wins". -1 lost the themed order and hid both (QA-06). 1, not the
+     * default 0: a tie with SwagCommercial's B2B bundles would fall back to
+     * `ORDER BY installed_at`. StorefrontDisclosureBannerTest proves it.
      */
     #[Override]
     public function getTemplatePriority(): int
     {
-        return -1;
+        return 1;
     }
 
     /**
