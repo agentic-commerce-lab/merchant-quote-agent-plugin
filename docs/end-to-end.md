@@ -621,13 +621,9 @@ first.
 One field is deliberately **not** on that page. The **organization name
 published in the A2CN seller mandate** lives on the **Agent access** page,
 because it is only ever read when the shop publishes that mandate and the whole
-A2CN layer is off without the Agentic Commerce plugin. It is the same
-`system_config` key as before
-(`MerchantQuoteAgentPlugin.config.a2cnOrganizationName`), so an existing value
-still applies — but it is now per sales channel only, where the plugin config
-page could also set a global default. A global value still shows on every
-channel, and saving copies it onto that channel. Editing it needs
-`system_config:update`, not that page's `ucp.editor`.
+A2CN layer is off without the Agentic Commerce plugin. It is stored per sales
+channel as `MerchantQuoteAgentPlugin.config.a2cnOrganizationName`. Editing it
+needs `system_config:update`, not that page's `ucp.editor`.
 
 Left empty it publishes the shop name from **Settings → Shop → Basic
 information**, then the sales channel's name, then `Merchant`. The field's
@@ -892,20 +888,16 @@ that reads the project file.
 unzip MerchantQuoteAgentPlugin.zip -d /path/to/shop/custom/plugins/
 cd /path/to/shop
 composer require shopware/merchant-quote-agent-plugin
-rm -f config/packages/ai_generic_platform.yaml
 bin/console plugin:refresh
 bin/console plugin:install --activate MerchantQuoteAgentPlugin
 bin/console cache:clear
 ```
 
-**The `rm` is not cosmetic.** Composer's Flex plugin applies a recipe for
-`symfony/ai-generic-platform` that writes a file declaring an `ai:` config root
-belonging to `symfony/ai-bundle`, which this plugin does not register. Left in
-place it fails the container build with *There is no extension able to load the
-configuration for "ai"* — taking down every console command and the storefront,
-not just this plugin. Flex records the recipe as applied, so deleting it once is
-enough. Nothing in the plugin can prevent it: Flex reads `extra.symfony.*` only
-from the root package.
+No Flex recipe is involved. The plugin deliberately does not depend on Symfony
+AI's Generic platform bridge, whose recipe writes an `ai:` config file that
+fails the container build in any shop without `symfony/ai-bundle`. It makes the
+`/chat/completions` call itself and keeps only `symfony/ai-platform`, which
+ships no recipe (see the `ModelPlatform` docblock).
 
 **The `composer require` is the step that is easy to skip and expensive to
 diagnose.** `plugin:install` does refuse without it, but a plugin forced past
@@ -915,9 +907,7 @@ was skipped.
 
 Installing from the administration needs no shell for that step:
 `executeComposerCommands()` is overridden, so Shopware runs the `composer
-require` itself, with `--no-scripts` — which also means it cannot write the Flex
-file above. Keep the `rm` in the runbook, just not in the install path. Composer
-then runs inside a web request, so `composer.json`, `composer.lock` and
+require` itself, with `--no-scripts`. Composer then runs inside a web request, so `composer.json`, `composer.lock` and
 `vendor/` must be writable by the web user, and PHP's `memory_limit` and
 `max_execution_time` have to survive a dependency resolution. Core skips the
 whole mechanism in cluster setups, where the build owns the lock file.

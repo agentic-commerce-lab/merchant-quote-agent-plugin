@@ -31,16 +31,16 @@ That is deliberate: a silent agent is far more often "not set up yet" than
 
 ## What you need before you start
 
-Three of these are things you or your team already have. Two need your developer
-or hosting provider, once. One is optional and most shops will not want it yet.
+A B2B shop usually has most of this already. Installing the plugin may need
+your developer, once. One item is optional and most shops will not want it yet.
 
 | You need | Notes |
 | --- | --- |
 | Shopware 6.7.1 or newer | Any newer 6.7 release is fine. |
 | The B2B quote feature, licensed | This is SwagCommercial with quote management active. The agent works on the quotes that feature creates. |
 | An AI provider account and key | **Yours, not ours.** See [Costs and data](#costs-and-data) below. |
-| *Your developer:* the plugin installed | `MerchantQuoteAgentPlugin.zip` is on the [latest release](https://github.com/agentic-commerce-lab/merchant-quote-agent-plugin/releases/latest). It is a normal Shopware extension, but the install has two easy-to-miss steps. |
-| *Your developer or host:* a background worker running | Without it the agent receives requests and never acts on them. Ask for "a `messenger:consume` worker". This is the single most common reason a correctly configured agent stays silent. |
+| Background workers | Most production shops already run them: Shopware uses `messenger:consume` workers for mails, indexing and other background jobs, and the agent does its work there too. The *admin worker* alone is not enough, because it only runs while someone has the Administration open. |
+| The plugin installed | `MerchantQuoteAgentPlugin.zip` is on the [latest release](https://github.com/agentic-commerce-lab/merchant-quote-agent-plugin/releases/latest). You can upload it in the Administration yourself if your hosting allows it. If your shop is deployed by an agency or from a code repository, ask your developer to add it there instead, or the next deployment removes it. |
 | *Optional:* the Agentic Commerce extension, 1.3 or newer | Only if you want your customers' own AI assistants to request and negotiate quotes on their behalf. See below. Version 1.2 cannot run alongside this plugin. |
 
 ### Do you need the Agentic Commerce extension?
@@ -207,11 +207,6 @@ wording asks for, the policies you set above it are the guardrail: if a
 strategy's prompt asked for more than your policy allows, the policy wins and
 the quote goes to a person.
 
-**After you upgrade:** if you had already typed your own negotiating tone into
-the old free-text field, it has not been lost. It is now a saved strategy
-called "Custom strategy", and it is already selected for the sales channel you
-had set it on. Nothing changes about how your agent negotiates.
-
 ### 4. Turn it on
 
 Under **Agent activation**, tick **Enable the quote agent**. While it is off the
@@ -349,7 +344,7 @@ deliberately refuses to answer these itself:
 | Volume or bulk pricing with no specific price named | **Not escalated.** It is read as a request for your best price and answered inside your limits. |
 | To speak to a human | Escalated |
 | Something ambiguous | **Not escalated the first time.** The agent asks the customer a short clarifying question, in their language, and waits. If the answer is still unclear, then a person takes it. |
-| A second round of *per-line* price cuts | **Not escalated.** Every round is measured against the original prices, so the cuts across all rounds together stay within your cap. Only a quote the agent had already answered before it started keeping those original prices still goes to a person. |
+| A second round of *per-line* price cuts | **Not escalated.** Every round is measured against the original prices, so the cuts across all rounds together stay within your cap. |
 
 And if anything goes wrong — the AI is unreachable, it proposes something outside
 your rules, or the saved quote does not match what was approved — the quote goes
@@ -400,16 +395,13 @@ nothing to measure says so** — "Unavailable", "no comparable deals in this
 period", "*n* still open" — rather than showing a confident zero. If a tile says
 it needs permission to read quotes or orders, that is a role setting, not a bug.
 
-Escalation resolution time only covers escalations resolved after this measure
-shipped. Older ones are reported as still open rather than quietly dropped from
-the average.
-
 ### A record of every quote
 
 The list shows each quote it touched: what the customer asked, what was granted,
 and where the quote stands now — *Needs review*, *Draft awaiting review*,
 *Answered*, *Question asked*, *Order placed*, *Closed, no deal*, or *No action
-needed*.
+needed*. It opens on *Needs review* only; choose **All outcomes** in the
+**Outcome** filter to see every quote the agent handled.
 
 ![One quote's history: a counter-offer, an offer, then the order](images/quote-history.png)
 
@@ -579,8 +571,8 @@ when it reads a comment and concludes there was nothing to answer, the record of
 what it read is the only way to check that it was right. Nothing shows it to
 anyone outside your shop unless you export it.
 
-**The trace is kept, and nothing cleans it up.** Since this version the agent
-also stores, for every decision, exactly what it sent to the model and what came
+**The trace is kept, and nothing cleans it up.** The agent also stores, for
+every decision, exactly what it sent to the model and what came
 back — about 100 to 150 KB per decision. It stays in your shop, in its own table,
 until you uninstall the extension with "remove all data".
 `merchant-quote-agent:forget` clears it for one customer along with their
@@ -673,15 +665,19 @@ Changes take effect on the next customer message; nothing is retroactive.
 
 **If the agent seems to do nothing**, check these in order:
 
-1. Is **Enable the quote agent** ticked for *that* sales channel?
-2. Is **Maximum discount** still `0`? Then everything escalating is correct
+1. Is the dashboard list still on its default filter? It shows *Needs review*
+   only, so an empty list means nothing is waiting for you. Choose **All
+   outcomes** to see what the agent answered.
+2. Is **Enable the quote agent** ticked for *that* sales channel?
+3. Is **Maximum discount** still `0`? Then everything escalating is correct
    behaviour.
-3. Is the background worker running? Ask your host. This is the most common
-   cause, and the symptom is exactly this: requests pile up and nothing happens.
-4. Does the customer have the B2B quote feature enabled on their account? Without
-   it they cannot have a quote at all.
-5. Is **Draft Mode** on? Then every reply waits for you under the **Draft
+4. Is **Draft Mode** on? Then every reply waits for you under the **Draft
    awaiting review** filter.
+5. Are the background workers running? Most shops have them. If requests pile
+   up and nothing happens, even while you have the Administration open, ask
+   your host to check `messenger:consume`.
+6. Does the customer have the B2B quote feature enabled on their account? Without
+   it they cannot have a quote at all.
 
 **If a customer gets two replies to one message**, tell your developer the admin
 worker and the background worker are both running. It is a known configuration

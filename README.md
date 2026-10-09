@@ -31,7 +31,7 @@ other request to a person on your team.
 | **Shopware** | 6.7.1 or newer, on PHP 8.3 or newer |
 | **B2B quotes** | SwagCommercial 6.7.1.2 or newer, with quote management licensed (`QUOTE_MANAGEMENT-6302947`). The agent works on the quotes this feature creates. |
 | **An AI provider** | Your own API key, base URL and model name. Any provider with OpenAI's Chat Completions API and structured outputs works: OpenAI, OpenRouter (also for Claude and Gemini), Azure OpenAI, your own gateway, or a model you host. You pay the provider directly. [Which providers work](docs/for-merchants.md#which-ai-providers-work) |
-| **A background worker** | `bin/console messenger:consume` must be running. Without it the agent receives requests and never answers them. A silent agent is most often missing this. |
+| **Background workers** | The `bin/console messenger:consume` workers most production shops already run. The agent does its work there. The admin worker alone only runs while someone has the Administration open. |
 | *Optional:* **Agentic Commerce** | 1.3 or newer. Only if your customers' own AI assistants should request and negotiate quotes directly. Everything else works without it. Version 1.2 cannot run alongside this plugin. |
 | *Optional:* **Shopping assistant starter kit** | Lets shoppers ask the storefront chat assistant about their quotes. |
 
@@ -49,11 +49,17 @@ A build of the latest `main`, not yet released, is attached to the newest
 successful **Plugin Zip** run in the repository's *Actions* tab. You need to be
 signed in to GitHub to download it.
 
-The upload fetches the plugin's libraries with Composer inside the web request.
-For that to work, the shop's `composer.json`, `composer.lock` and `vendor/`
-must be writable by the web server. PHP's `memory_limit` and
-`max_execution_time` must also allow a dependency install. If your host doesn't
-allow that, have your developer install from the command line instead.
+The zip doesn't bundle the plugin's libraries. The upload fetches them with
+Composer inside the web request, so the shop's `composer.json`,
+`composer.lock` and `vendor/` must be writable by the web server, and PHP's
+`memory_limit` and `max_execution_time` must allow a dependency install.
+
+Have your developer install it from the command line instead if:
+
+- your host doesn't allow that, or
+- your shop is deployed from a code repository or by an agency, which is
+  common for B2B shops. An upload there is lost on the next deployment, and
+  cluster setups skip the Composer step entirely.
 
 <details>
 <summary>Installing from the command line (for your developer)</summary>
@@ -64,17 +70,17 @@ Needs Composer 2.10.0 or newer.
 unzip MerchantQuoteAgentPlugin.zip -d /path/to/shop/custom/plugins/
 cd /path/to/shop
 composer require shopware/merchant-quote-agent-plugin
-rm -f config/packages/ai_generic_platform.yaml
 bin/console plugin:refresh
 bin/console plugin:install --activate MerchantQuoteAgentPlugin
 bin/console cache:clear
 ```
 
-Don't skip the `composer require` or the `rm`. Either one fails later with an
-error that doesn't mention this plugin, and the missing `rm` stops the whole
-shop from booting.
-[Installing into a shop](docs/end-to-end.md#9-installing-into-a-shop)
-explains both.
+Don't skip the `composer require`: it installs the plugin's libraries, and
+without them the agent fails later with an error that doesn't mention this
+plugin. In a repository-deployed shop, commit the plugin and the updated
+`composer.json` and `composer.lock` like any other dependency.
+[Installing into a shop](docs/end-to-end.md#9-installing-into-a-shop) has
+the details.
 
 </details>
 
