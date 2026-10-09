@@ -68,15 +68,6 @@ class MerchantQuoteAgentPlugin extends Plugin
      * Overriding it is the whole fix: a shop that installs from the
      * administration gets the dependencies it needs without a shell.
      *
-     * Core's own `--no-scripts` is what makes this safe rather than a second
-     * way to break the shop. Flex applies recipes from
-     * `ScriptEvents::POST_INSTALL_CMD` / `POST_UPDATE_CMD`, which that flag
-     * suppresses, so this path cannot write the `config/packages/ai_generic_platform.yaml`
-     * the README warns about — the file that takes an installation down at
-     * container build. A later CLI `composer install`/`update` in the shop
-     * still can, because a recipe skipped this way is not recorded as applied
-     * in `symfony.lock`, so the README's `rm` stays the shop's business.
-     *
      * Ignored in cluster mode (`shopware.deployment.cluster_setup`), where the
      * build, not the running shop, owns the lock file. That is core's rule and
      * the right one: nothing here needs to be conditional on it.

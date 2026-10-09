@@ -18,9 +18,9 @@ composer run test:integration                             # from any worktree
 `shop-setup.sh` is idempotent — rerun it after any failure. It downloads
 SwagCommercial 7.13.1 and Agentic Commerce 1.3.0 from their GitHub releases
 (`gh auth login` first; the SwagCommercial download needs access to its
-repository). Without access, put the two zips into
-`~/.cache/merchant-quote-shop/plugins/` by hand and rerun — which is the only
-route while Agentic Commerce 1.3.0 is unreleased. Anything
+repository). Without access, put the two zips (`SwagCommercial.zip`,
+`SwagAgenticCommerce.zip`) into `~/.cache/merchant-quote-shop/plugins/` by hand
+and rerun. A zip already there is used whatever its version. Anything
 older than 1.3.0 fails the container build against this plugin's SDK floor; see
 [docs/end-to-end.md §9](end-to-end.md#9-installing-into-a-shop).
 The database is seeded from `~/.cache/merchant-quote-shop/seed/shopware.sql.gz`;
@@ -35,8 +35,8 @@ The database is seeded from `~/.cache/merchant-quote-shop/seed/shopware.sql.gz`;
 | Shipping probe | `scripts/shop-check-shipping.sh` |
 
 **Mail transport.** This docker shop already has one: `MAILER_DSN`
-points at the `mailcatcher` container, which is what lets the `in_review` and
-`replied` flows show up at the "Caught mail" URL above. A shop built any other
+points at the mailcatcher built into the dockware image, which is what lets
+the `in_review` and `replied` flows show up at the "Caught mail" URL above. A shop built any other
 way — a bare `bin/console system:install`, a manual dev VM, a hand-rolled test
 shop — defaults to no transport at all (`mailer.dsn: 'null://null'` unless
 something sets it), and mail sent there vanishes silently: no error, no
@@ -81,15 +81,15 @@ render a blank administration rather than an error.
 
 ```bash
 composer run test        # unit suite, no kernel
-composer run quality     # format, lint, typecheck, file size, admin checks, dupes, deps, audit
+composer run quality     # format, lint, typecheck, file size, admin checks, bench checks, dupes, deps, audit
 ```
 
-`composer run quality:admin` runs the administration module's assert-based
-self-checks, which stand in for a JS test runner the project deliberately does
-not have. Conventions and the per-change checks are in
+`composer run quality:admin` runs the administration module's (and the
+storefront agent disclosure's) assert-based self-checks, which stand in for a
+JS test runner the project deliberately does not have. Conventions and the per-change checks are in
 [`AGENTS.md`](../AGENTS.md).
 
-Those self-checks reach only the three extracted pure modules. The components
+Those self-checks reach only the extracted pure modules. The components
 are covered by a second command, which needs the test shop:
 
 ```bash
@@ -104,7 +104,7 @@ that carries the real `Repository` class, so it catches a call to a method that
 does not exist. It is not part of `composer run quality` and does not run in
 CI, because the entity schema it needs is generated from a live database.
 
-The plugin's 677 pre-existing findings are recorded in
+The plugin's pre-existing findings are recorded in
 `.shopware-admin-baseline.json`, so the check fails only on new ones. It does
 **not** validate icon names (`icon` is typed `string`) and nothing renders a
 component, so a method that type-checks and throws at runtime still ships. A
@@ -112,11 +112,12 @@ change that both fixes one occurrence of a baselined message and introduces a
 new, unrelated occurrence of the identical message in the same file leaves the
 recorded count unchanged and so is not reported either.
 
-Two guards are skipped unless you have the relevant clone beside this
-repository: `CoreFloorCompatibilityTest` needs `shopware/shopware` (or
-`MQ_CORE_CLONE`) to confirm nothing in `src/` uses a core API newer than the
-6.7.1 floor, and `ReleaseCapabilityMatrixTest` needs a SwagCommercial clone to
-confirm the capability matrix still matches what each release declares.
+Two guards are skipped unless you have the relevant clone:
+`CoreFloorCompatibilityTest` needs `shopware/shopware` at `~/projects/shopware`
+(or `MQ_CORE_CLONE`) to confirm nothing in `src/` uses a core API newer than the
+6.7.1 floor, and `ReleaseCapabilityMatrixTest` needs a SwagCommercial clone at
+its `CLONE_PATH` to confirm the capability matrix still matches what each
+release declares.
 
 ## Evals
 

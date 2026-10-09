@@ -31,30 +31,28 @@ That is deliberate: a silent agent is far more often "not set up yet" than
 
 ## What you need before you start
 
-Three of these are things you or your team already have. Two need your developer
-or hosting provider, once. One is optional and most shops will not want it yet.
+A B2B shop usually has most of this already. Installing the plugin may need
+your developer, once. One item is optional.
 
 | You need | Notes |
 | --- | --- |
 | Shopware 6.7.1 or newer | Any newer 6.7 release is fine. |
 | The B2B quote feature, licensed | This is SwagCommercial with quote management active. The agent works on the quotes that feature creates. |
 | An AI provider account and key | **Yours, not ours.** See [Costs and data](#costs-and-data) below. |
-| *Your developer:* the plugin installed | It is a normal Shopware extension, but the install has two easy-to-miss steps. |
-| *Your developer or host:* a background worker running | Without it the agent receives requests and never acts on them. Ask for "a `messenger:consume` worker". This is the single most common reason a correctly configured agent stays silent. |
-| *Optional:* the Agentic Commerce extension | Only if you want your customers' own AI assistants to request and negotiate quotes on their behalf. See below. |
+| Background workers | Most production shops already run them: Shopware uses `messenger:consume` workers for mails, indexing and other background jobs, and the agent does its work there too. The *admin worker* alone is not enough, because it only runs while someone has the Administration open. |
+| The plugin installed | `MerchantQuoteAgentPlugin.zip` is on the [latest release](https://github.com/agentic-commerce-lab/merchant-quote-agent-plugin/releases/latest). You can upload it in the Administration yourself if your hosting allows it. If your shop is deployed by an agency or from a code repository, ask your developer to add it there instead, or the next deployment removes it. |
+| *Optional:* the Agentic Commerce extension, 1.3 or newer | Only if you want your customers' own AI assistants to request and negotiate quotes on their behalf. See below. Version 1.2 cannot run alongside this plugin. |
 
-### Do you need the Agentic Commerce extension?
+### What the Agentic Commerce extension adds
 
-Probably not, to start with. Without it, everything in this guide still works:
-your customers request quotes the normal way in the shop, and the agent answers
-them with the same policy, the same replies, the same escalations and the same
-dashboard.
+Without it, everything in this guide still works: your customers request quotes
+the normal way in the shop, and the agent answers them with the same policy, the
+same replies, the same escalations and the same dashboard.
 
 What it adds is the other direction — letting a *customer's* AI assistant talk
 to your shop directly: request a quote, counter it, accept it, without a person
-opening your storefront. If that is not a conversation you are having with
-customers yet, leave it out. You can add it later, and nothing you have
-configured changes.
+opening your storefront. You can add it later, and nothing you have configured
+changes.
 
 Turning it on also enables a signed record of each negotiation, for customers
 who need one for their own audit trail. That only does anything if the customer
@@ -64,7 +62,7 @@ negotiates through an assistant, so it comes and goes with the extension.
 
 ## Setting it up
 
-Everything is in **Settings → Extensions → Merchant Quote Agent**, and every
+Everything is in **Extensions → My extensions → Quote Agent → Configure**, and every
 setting is per sales channel. A sales channel uses your global value until you
 override it, so you can set a cautious policy everywhere and be more generous
 on one channel first. That is the recommended way to start.
@@ -73,15 +71,42 @@ on one channel first. That is the recommended way to start.
 
 Under **Model settings**:
 
-- **LLM API key** — your own key from your AI provider.
-- **LLM base URL** — leave it as it is for OpenAI, or point it at Azure, your
-  own gateway, or a model you host yourself.
+- **LLM API key** — your own key from your AI provider. Your developer can put
+  it in the shop's environment instead, so it never reaches the database: see
+  [Keeping the key out of the database](#keeping-the-key-out-of-the-database).
+- **LLM base URL** — leave it as it is for OpenAI, or point it at another
+  provider from the table below.
 - **Model name** — required, with no default on purpose. Naming a default would
   be us choosing your cost and quality for you.
+
+<img src="images/config-model.png" alt="The Model settings card: LLM API key, LLM base URL and Model name" width="600">
 
 If the key or the model name is missing, the agent does not quietly fall back to
 anything. It hands the quote to a person and records that the configuration is
 wrong.
+
+#### Which AI providers work
+
+Any provider that offers OpenAI's *Chat Completions* API **with structured
+outputs**, which means the model's answer is bound to a fixed format. The agent
+needs that to read the answer reliably.
+
+| Provider | LLM base URL | Model name | Good to know |
+| --- | --- | --- | --- |
+| OpenAI | `https://api.openai.com/v1` (the default) | e.g. `gpt-5-mini` | |
+| OpenRouter | `https://openrouter.ai/api/v1` | e.g. `openai/gpt-5-mini` | One key for models from many vendors. This is the way to use Claude or Gemini. Pick a model OpenRouter marks as supporting structured outputs. |
+| Azure OpenAI | `https://<your-resource>.openai.azure.com/openai/v1` | your **deployment** name | Use this `/openai/v1` address. The older addresses with `/deployments/` and `?api-version=` in them do not work. |
+| Your own gateway, e.g. LiteLLM | the gateway's address, usually ending in `/v1` | whatever the gateway routes | The gateway must pass structured outputs through to the model. |
+| A model you host: vLLM, or Ollama 0.5 or newer | e.g. `http://your-server:11434/v1` for Ollama | the model you serve | These servers need no key, but the field cannot be empty: type any placeholder. |
+
+**Not directly:** Anthropic's and Google's own OpenAI-compatible addresses
+ignore the required answer format or don't reliably enforce it. Use Claude and
+Gemini through OpenRouter or your own gateway instead.
+
+A provider that can't do structured outputs costs you nothing but time: the
+agent can't read its answers, so every quote goes to a person and the dashboard
+shows *Model unavailable*. If you see that on every quote right after setup,
+check the provider and model first.
 
 ### 2. Set the limits
 
@@ -92,10 +117,18 @@ Under **Negotiation policies** — this is the important screen:
 - **Counter-offer ceiling (%)** — optional. If a customer asks for more than your
   maximum but no more than this, the agent counters at *your maximum* instead of
   escalating. Leave it blank and anything above the maximum goes to a person.
+- **Minimum margin on purchase price (%)** — optional. The agent never prices a
+  product below its purchase price plus this markup: with a purchase price of
+  100 and `10` here, 110 is the lowest it may offer. It lowers an offer to that
+  floor instead of escalating. Products without a purchase price have no floor.
+  Blank means off; `0` means never below cost.
 - **Maximum quote value for negotiation (net)** — optional. Above this value the
-  agent always escalates, however small the discount. Set it per currency: a
-  quote in a currency you left blank escalates rather than passing, because an
-  unknown limit is not an unlimited one.
+  agent always escalates, however small the discount. It is one number,
+  compared against the quote's net total in whatever currency the quote is in,
+  so set it in the currency you actually sell in. If you sell in several, your
+  developer can set a ceiling per currency instead; then a quote in a currency
+  left out escalates rather than passing, because an unknown limit is not an
+  unlimited one.
 - **Round the agent's offers** and **Rounding step** — optional, off by
   default. Left alone, the agent's figures can read like machine output: a
   total of 12,356.12 € or 4.34 % off. Pick how they come out round:
@@ -121,10 +154,13 @@ Under **Negotiation policies** — this is the important screen:
   and it never rounds a discount away to nothing. In each of those cases the
   offer goes out unrounded. A blank or `0` step means off, whichever option
   you picked.
-- **Default offer validity (days)** — how long the offers it sends stay valid.
+- **Default offer validity (days)** — how long the offers it sends stay valid,
+  14 by default.
 - **Escalation SLA (hours)** — optional, and it changes nothing the agent does.
   It only lets the dashboard tell you how many escalations your team answered in
   time.
+
+<img src="images/config-policies.png" alt="The Negotiation policies card with a 5% maximum discount" width="600">
 
 ### 3. Optionally, set the tone
 
@@ -138,17 +174,30 @@ writing one. Three come with the plugin:
 - **Relationship builder** — makes proportional concessions that support a
   durable B2B relationship, without jumping straight to the maximum discount.
 
-Selecting one takes effect on every sales channel using it, and the field
-shows its current wording read-only. To adapt one to your own words, use
+<img src="images/config-strategy.png" alt="The Negotiation strategy card with Relationship builder selected and its prompt shown read-only" width="600">
+
+You select one per sales channel, and the field shows its current wording
+read-only. Editing a strategy's wording takes effect on every sales channel
+using it. To adapt one to your own words, use
 **Duplicate & edit** on the library page (Settings → Negotiation strategies,
 linked below the selector): it copies the chosen strategy into a new one you
 can rename and edit freely. The library also lets you create a strategy from
-scratch, rename or archive your own, and see which version of a strategy's
+scratch, rename or archive your own (a sales channel still set to an archived
+strategy escalates every quote until you choose another), and see which version of a strategy's
 wording was actually sent on any past quote — editing never overwrites a past
 version, so that history stays intact. The three built-in strategies
 themselves cannot be edited or archived from this screen, only duplicated —
 we reserve the ability to append a new version to a built-in's own lineage
 for a future release.
+
+![The negotiation strategy library with the three built-in strategies](images/strategies.png)
+
+The library's **Assignments** tab can give some customers a different strategy
+from their sales channel's. A **pinned customer** always gets the strategy
+pinned to them; otherwise the highest-priority matching **rule** decides;
+otherwise a **weighted split** places each customer in one arm and keeps them
+there, which is how you A/B-test two strategies. Only when none of these
+applies does the sales channel's own selection count.
 
 A strategy shapes *how* the agent negotiates and how the reply is worded —
 its tone and posture. **It can never move a cap.** Whatever a strategy's
@@ -156,15 +205,14 @@ wording asks for, the policies you set above it are the guardrail: if a
 strategy's prompt asked for more than your policy allows, the policy wins and
 the quote goes to a person.
 
-**After you upgrade:** if you had already typed your own negotiating tone into
-the old free-text field, it has not been lost. It is now a saved strategy
-called "Custom strategy", and it is already selected for the sales channel you
-had set it on. Nothing changes about how your agent negotiates.
-
 ### 4. Turn it on
 
 Under **Agent activation**, tick **Enable the quote agent**. While it is off the
-agent is completely silent: it queues nothing and writes nothing.
+agent is completely silent: it answers nothing and writes nothing.
+**Name shown to buyers** (default "AI Agent") is what the customer sees above
+the agent's messages in their quote conversation.
+
+<img src="images/config-activation.png" alt="The Agent activation card: Enable the quote agent, Name shown to buyers, and Draft Mode" width="600">
 
 ---
 
@@ -182,7 +230,7 @@ If you enabled the seeded escalation mail flow in Flow Builder, it can still
 mail your team when a draft is ready (`draft_ready`); adjust that flow if you
 want a different notification for drafts.
 
-Open **Orders → Quote agent**, choose the **Draft awaiting review** filter,
+Open **Orders → Quote Agent Dashboard**, choose the **Draft awaiting review** filter,
 then open a quote. The review card compares the live quote with the draft.
 You can change its price or discount, validity date and reply. **Update
 preview** recalculates the proposed totals and offers a reworded reply without
@@ -291,23 +339,26 @@ deliberately refuses to answer these itself:
 | Anything on a quote above your value ceiling | Escalated |
 | Free shipping, express delivery, payment terms, deposits | Escalated. The quote cannot even record these, so answering the price half and dropping the rest would be worse than saying a person will take it. |
 | Adding, removing, or re-quantifying products | Escalated. Changing *what* is being sold is outside a price mandate. |
-| Volume or bulk pricing with no specific price named | Escalated |
+| Volume or bulk pricing with no specific price named | **Not escalated.** It is read as a request for your best price and answered inside your limits. |
 | To speak to a human | Escalated |
 | Something ambiguous | **Not escalated the first time.** The agent asks the customer a short clarifying question, in their language, and waits. If the answer is still unclear, then a person takes it. |
-| A second round of *per-line* price cuts | **Not escalated.** Every round is measured against the original prices, so the cuts across all rounds together stay within your cap. Only a quote the agent had already answered before it started keeping those original prices still goes to a person. |
+| A second round of *per-line* price cuts | **Not escalated.** Every round is measured against the original prices, so the cuts across all rounds together stay within your cap. |
 
 And if anything goes wrong — the AI is unreachable, it proposes something outside
 your rules, or the saved quote does not match what was approved — the quote goes
 to a person. There is no mode where it guesses.
 
-When it escalates, the customer sees one neutral message:
+When it escalates, the customer sees one neutral message, unless you untick
+**Notify buyer when escalated to a human** under **Escalation**:
 
 > A member of our team will review this quote personally and get back to you.
 
 Your team finds out two ways: a notification in the administration, and a Flow
 Builder trigger you can wire to email, Slack, a task, or a tag — whatever your
 team already uses. Nothing is emailed by default, because that would mean us
-choosing one channel and one recipient for every shop.
+choosing one channel and one recipient for every shop. A ready-made flow,
+*Quote agent: escalation needs a human*, comes with its mail template but
+switched off: review the template, then activate the flow in Flow Builder.
 
 ---
 
@@ -318,6 +369,8 @@ choosing one channel and one recipient for every shop.
 **Orders → Quote Agent Dashboard.** It opens filtered to **Needs review**, so
 the first thing you see is the queue that wants a human. Pick a period — last 7,
 30, or 90 days — and four figures sit at the top.
+
+![The Quote Agent Dashboard: four figures, the comparison by strategy, and the list of quotes serviced](images/dashboard.png)
 
 - **Auto-execution rate** — how much of the work it handled without you, with
   "*n* of *m* needed a human" beside it and a trend against the previous period.
@@ -330,27 +383,32 @@ the first thing you see is the queue that wants a human. Pick a period — last 
 - **Deal cycle time** — how long from request to order, agent versus comparable
   deals.
 
+Below them, **Comparison by negotiation strategy** shows the same measures for
+each strategy, plus the average tokens a negotiation used.
+
 Two honest notes. **"Discount granted" is not margin.** It compares the original
-price against the price sold; neither this plugin nor a normal B2B catalogue
-knows your cost of goods, so no margin figure is possible. And **a figure with
+price against the price sold; the dashboard does not read your purchase
+prices, so it shows no margin figure. And **a figure with
 nothing to measure says so** — "Unavailable", "no comparable deals in this
 period", "*n* still open" — rather than showing a confident zero. If a tile says
 it needs permission to read quotes or orders, that is a role setting, not a bug.
 
-Escalation resolution time only covers escalations resolved after this measure
-shipped. Older ones are reported as still open rather than quietly dropped from
-the average.
-
 ### A record of every quote
 
 The list shows each quote it touched: what the customer asked, what was granted,
-and the outcome — *Offer sent*, *Counter sent*, *Question asked*, *Acknowledged*,
-*Needs review*, or *No action needed*.
+and where the quote stands now — *Needs review*, *Draft awaiting review*,
+*Answered*, *Question asked*, *Order placed*, *Closed, no deal*, or *No action
+needed*. It opens on *Needs review* only; choose **All outcomes** in the
+**Outcome** filter to see every quote the agent handled.
+
+![One quote's history: a counter-offer, an offer, then the order](images/quote-history.png)
 
 Open one and you get the whole negotiation in order: what the customer asked,
-what the agent did, what changed on the quote, and why. Including the exact reply
+what the agent did (*Offer sent*, *Counter sent*, *Question asked*,
+*Acknowledged*, *Needs review*, *Left to you* or *No action needed*), what
+changed on the quote, and why. Including the exact reply
 that was sent, and, when it escalated, the reason in plain words — *Discount
-above the cap*, *Quote value above the ceiling*, *Customer asked for a human*,
+above the cap*, *Quote value above the ceiling*, *Needs human review*,
 *Agent not configured*, *Model unavailable*, and so on.
 
 This record is written by the plugin and cannot be edited afterwards, including
@@ -359,11 +417,14 @@ delete role to.
 
 ### Who can see what
 
-Two roles, under **Permissions → merchant_quote_agent**:
+Three roles, under **Permissions → merchant_quote_agent**:
 
-- **viewer** — read the dashboard and the records. Also needs read access to
-  quotes and orders, or two of the four tiles cannot be calculated.
+- **viewer** — read the dashboard, the records and the strategy library. It
+  brings read access to quotes, orders and customer records with it, which the
+  tiles and the strategy assignments need.
 - **deleter** — additionally remove audit rows.
+- **editor** — additionally create, duplicate, rename and archive strategies,
+  and change their assignments.
 
 The additional **Quote agent: review drafts** permission (see
 [Draft Mode](#draft-mode-approve-each-reply-yourself)) lets its holder send a
@@ -381,8 +442,9 @@ page is not in Settings at all.
 ## Costs and data
 
 **You pay for the AI, directly.** The key is yours, so there is no per-quote fee
-from us and no markup. Budget roughly up to three AI calls per customer message:
-one to read the request, one to decide, one to word the reply. A repeat trigger
+from us and no markup. Budget roughly three AI calls per customer message:
+one to read the request, one to decide, one to word the reply, and up to two
+more when it looks up the customer's history. A repeat trigger
 with nothing new on the quote makes none. An ask that is outside your caps makes
 one, not three.
 
@@ -507,8 +569,8 @@ when it reads a comment and concludes there was nothing to answer, the record of
 what it read is the only way to check that it was right. Nothing shows it to
 anyone outside your shop unless you export it.
 
-**The trace is kept, and nothing cleans it up.** Since this version the agent
-also stores, for every decision, exactly what it sent to the model and what came
+**The trace is kept, and nothing cleans it up.** The agent also stores, for
+every decision, exactly what it sent to the model and what came
 back — about 100 to 150 KB per decision. It stays in your shop, in its own table,
 until you uninstall the extension with "remove all data".
 `merchant-quote-agent:forget` clears it for one customer along with their
@@ -555,14 +617,27 @@ The agent records that placeholder rather than the address you typed, because a
 base URL can carry your API key in it and that must never reach a log or an
 export.
 
-**One thing to be aware of:** the API key is stored in your shop's configuration.
-The field hides it on screen, but it is not encrypted at rest — the same as every
-other secret a Shopware extension holds. Treat database access accordingly.
+### Keeping the key out of the database
 
-If you can set environment variables on your shop, set `MQA_LLM_API_KEY`
-instead. The agent prefers it over this field, and the key then never reaches
-the database at all — neither a database dump nor an admin API token with
-`system_config:read` can reveal it.
+The API key you type into the settings is stored in your shop's configuration.
+The field hides it on screen, but it is not encrypted at rest — the same as
+every other secret a Shopware extension holds. Treat database access
+accordingly.
+
+Better: have your developer put the key in the shop's environment, for example
+in the `.env.local` file in the shop's root folder:
+
+```dotenv
+MQA_LLM_API_KEY=your-key-here
+```
+
+The agent then uses that key on every sales channel and ignores the field. The
+key never reaches the database, so neither a database dump nor an admin API
+token with `system_config:read` can reveal it. The shop's PHP processes and
+background workers read the environment only when they start, so restart them
+after setting it. The base URL and model name can come from the environment
+too: [Configuration from the environment](end-to-end.md#configuration-from-the-environment)
+shows how.
 
 ---
 
@@ -588,12 +663,18 @@ Changes take effect on the next customer message; nothing is retroactive.
 
 **If the agent seems to do nothing**, check these in order:
 
-1. Is **Enable the quote agent** ticked for *that* sales channel?
-2. Is **Maximum discount** still `0`? Then everything escalating is correct
+1. Is the dashboard list still on its default filter? It shows *Needs review*
+   only, so an empty list means nothing is waiting for you. Choose **All
+   outcomes** to see what the agent answered.
+2. Is **Enable the quote agent** ticked for *that* sales channel?
+3. Is **Maximum discount** still `0`? Then everything escalating is correct
    behaviour.
-3. Is the background worker running? Ask your host. This is the most common
-   cause, and the symptom is exactly this: requests pile up and nothing happens.
-4. Does the customer have the B2B quote feature enabled on their account? Without
+4. Is **Draft Mode** on? Then every reply waits for you under the **Draft
+   awaiting review** filter.
+5. Are the background workers running? Most shops have them. If requests pile
+   up and nothing happens, even while you have the Administration open, ask
+   your host to check `messenger:consume`.
+6. Does the customer have the B2B quote feature enabled on their account? Without
    it they cannot have a quote at all.
 
 **If a customer gets two replies to one message**, tell your developer the admin
