@@ -22,8 +22,6 @@ use PHPUnit\Framework\TestCase;
  */
 final class ReleaseCapabilityMatrixTest extends TestCase
 {
-    private const CLONE_PATH = '/Users/sebastian/projects/swagcommercial';
-
     private const LINE_ITEM_DEFINITION = 'src/B2B/QuoteManagement/Entity/QuoteLineItem/QuoteLineItemDefinition.php';
 
     private const COMMENT_DEFINITION = 'src/B2B/QuoteManagement/Entity/QuoteComment/QuoteCommentDefinition.php';
@@ -84,13 +82,9 @@ final class ReleaseCapabilityMatrixTest extends TestCase
 
     private static function show(string $tag, string $path): string
     {
-        if (!is_dir(self::CLONE_PATH . '/.git')) {
-            self::markTestSkipped('No SwagCommercial clone at ' . self::CLONE_PATH);
-        }
-
         $command = sprintf(
             'git -C %s show %s 2>/dev/null',
-            escapeshellarg(self::CLONE_PATH),
+            escapeshellarg(self::commercialClone()),
             escapeshellarg($tag . ':' . $path),
         );
 
@@ -100,5 +94,23 @@ final class ReleaseCapabilityMatrixTest extends TestCase
         self::assertNotSame('', trim($output), 'empty file for ' . $tag . ':' . $path);
 
         return $output;
+    }
+
+    /**
+     * A SwagCommercial clone, from `MQ_COMMERCIAL_CLONE` or the usual spot
+     * beside this repository. Skips rather than fails when there is none.
+     */
+    private static function commercialClone(): string
+    {
+        $candidate = getenv('MQ_COMMERCIAL_CLONE') ?: getenv('HOME') . '/projects/swagcommercial';
+
+        if (!is_dir($candidate . '/.git')) {
+            self::markTestSkipped(sprintf(
+                'No SwagCommercial clone at %s; set MQ_COMMERCIAL_CLONE to run this guard.',
+                $candidate,
+            ));
+        }
+
+        return $candidate;
     }
 }

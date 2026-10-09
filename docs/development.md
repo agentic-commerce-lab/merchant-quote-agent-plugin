@@ -116,8 +116,8 @@ Two guards are skipped unless you have the relevant clone:
 `CoreFloorCompatibilityTest` needs `shopware/shopware` at `~/projects/shopware`
 (or `MQ_CORE_CLONE`) to confirm nothing in `src/` uses a core API newer than the
 6.7.1 floor, and `ReleaseCapabilityMatrixTest` needs a SwagCommercial clone at
-its `CLONE_PATH` to confirm the capability matrix still matches what each
-release declares.
+`~/projects/swagcommercial` (or `MQ_COMMERCIAL_CLONE`) to confirm the capability
+matrix still matches what each release declares.
 
 ## Evals
 
