@@ -66,8 +66,7 @@ class MerchantQuoteAgentPlugin extends Plugin
      * <name>:<version> --update-with-dependencies` on install, update and
      * uninstall — but gates it on this method, and `Plugin`'s default is false.
      * Overriding it is the whole fix: a shop that installs from the
-     * administration gets the dependencies it needs without a shell. Core runs
-     * it with `--no-scripts`, so no Flex recipe is applied on this path.
+     * administration gets the dependencies it needs without a shell.
      *
      * Ignored in cluster mode (`shopware.deployment.cluster_setup`), where the
      * build, not the running shop, owns the lock file. That is core's rule and

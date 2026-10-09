@@ -32,7 +32,7 @@ That is deliberate: a silent agent is far more often "not set up yet" than
 ## What you need before you start
 
 A B2B shop usually has most of this already. Installing the plugin may need
-your developer, once. One item is optional and most shops will not want it yet.
+your developer, once. One item is optional.
 
 | You need | Notes |
 | --- | --- |
@@ -43,18 +43,16 @@ your developer, once. One item is optional and most shops will not want it yet.
 | The plugin installed | `MerchantQuoteAgentPlugin.zip` is on the [latest release](https://github.com/agentic-commerce-lab/merchant-quote-agent-plugin/releases/latest). You can upload it in the Administration yourself if your hosting allows it. If your shop is deployed by an agency or from a code repository, ask your developer to add it there instead, or the next deployment removes it. |
 | *Optional:* the Agentic Commerce extension, 1.3 or newer | Only if you want your customers' own AI assistants to request and negotiate quotes on their behalf. See below. Version 1.2 cannot run alongside this plugin. |
 
-### Do you need the Agentic Commerce extension?
+### What the Agentic Commerce extension adds
 
-Probably not, to start with. Without it, everything in this guide still works:
-your customers request quotes the normal way in the shop, and the agent answers
-them with the same policy, the same replies, the same escalations and the same
-dashboard.
+Without it, everything in this guide still works: your customers request quotes
+the normal way in the shop, and the agent answers them with the same policy, the
+same replies, the same escalations and the same dashboard.
 
 What it adds is the other direction — letting a *customer's* AI assistant talk
 to your shop directly: request a quote, counter it, accept it, without a person
-opening your storefront. If that is not a conversation you are having with
-customers yet, leave it out. You can add it later, and nothing you have
-configured changes.
+opening your storefront. You can add it later, and nothing you have configured
+changes.
 
 Turning it on also enables a signed record of each negotiation, for customers
 who need one for their own audit trail. That only does anything if the customer

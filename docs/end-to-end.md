@@ -66,9 +66,9 @@ Agentic Commerce is gated on whether its `UcpSdkBundle` is in `kernel.bundles`
 (`Ucp\UcpAvailability::isRegistered()`). Neither is gated on `class_exists()`
 alone, because that is wrong for both: both plugins normally arrive via
 `composer require` into `vendor/`, so Composer's autoloader keeps the
-namespace loadable after a deactivation. A class-existence gate therefore went
-on registering services against a bundle that was no longer there, and the
-deactivation itself died in `DecoratorServicePass`. The bundle list is derived
+namespace loadable after a deactivation. A class-existence gate would keep
+registering services against a bundle that is gone, and the deactivation
+itself would die in `DecoratorServicePass`. The bundle list is derived
 from what the container is being built from, so it has no such lag.
 `CommercialAvailability` keeps a class check as its second stage, against the
 `@internal` classes this bridge is written to — a listed bundle without them
@@ -892,12 +892,6 @@ bin/console plugin:refresh
 bin/console plugin:install --activate MerchantQuoteAgentPlugin
 bin/console cache:clear
 ```
-
-No Flex recipe is involved. The plugin deliberately does not depend on Symfony
-AI's Generic platform bridge, whose recipe writes an `ai:` config file that
-fails the container build in any shop without `symfony/ai-bundle`. It makes the
-`/chat/completions` call itself and keeps only `symfony/ai-platform`, which
-ships no recipe (see the `ModelPlatform` docblock).
 
 **The `composer require` is the step that is easy to skip and expensive to
 diagnose.** `plugin:install` does refuse without it, but a plugin forced past
