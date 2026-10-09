@@ -16,8 +16,9 @@ class names in it.
 A buyer asks for a discount on a quote. Shopware fires an event, the plugin
 queues a message, a worker picks it up, and one **servicing pass** runs:
 
-1. **Trigger** — the quote entered `open` / `change_requested` / `request_change`,
-   or a comment was inserted on it. Anything the agent itself did is ignored.
+1. **Trigger** — the quote entered `open` / `change_requested` / `reopen` (via
+   `request_change`), or a comment was inserted on it. Anything the agent itself
+   did is ignored.
 2. **Claim** — a per-quote lock, a crash budget, and a fingerprint that skips a
    re-trigger with nothing new on it.
 3. **Read** — one snapshot of the quote through the SwagCommercial bridge.
@@ -52,7 +53,7 @@ enabled-but-unbanded channel escalates everything.
 | **SwagCommercial 6.7.1.2** or newer, with B2B quote management licensed (`QUOTE_MANAGEMENT-6302947`) | Owns the quote entities, the state machine and the Store API quote routes. 6.7.1.2 is the floor because `quote_comment.employee_id` appears there and `QuoteCommentMapper` reads it unguarded; `ReleaseCapabilityMatrixTest` pins that. Note that SwagCommercial's own version numbers look like core's but are not — its **6.7.12** is far newer than core's **6.7.1.2**. |
 | A running `messenger:consume` worker | Nothing is serviced until a worker consumes the queue. |
 | An LLM API key, base URL and model name | The merchant's own. See [Configuration](#6-configuration). |
-| **SwagAgenticCommerce** — **optional** | Imports the UCP SDK's routes into Shopware. Needed only for the agent-facing half: the `/ucp/quotes` endpoints, identity linking, the Agent access page and the whole A2CN evidence layer. Everything a hand-made quote goes through works without it. See [Without Agentic Commerce](#11-without-agentic-commerce). |
+| **SwagAgenticCommerce** 1.3 or newer — **optional** | See [§9](#agentic-commerce-12-13-and-14) for the version pairing. Imports the UCP SDK's routes into Shopware. Needed only for the agent-facing half: the `/ucp/quotes` endpoints, identity linking, the Agent access page and the whole A2CN evidence layer. Everything a hand-made quote goes through works without it. See [Without Agentic Commerce](#11-without-agentic-commerce). |
 
 Neither plugin is a Composer dependency; both are detected at runtime. That is
 ADR 0001, and it is why a shop with neither installs this plugin happily.
@@ -174,7 +175,7 @@ SwagCommercial's own, whose classes are `@internal`:
 | Event | Fires a pass when |
 | --- | --- |
 | `state_machine.quote.state_changed` | the quote **enters** `open`, `change_requested`, or `reopen` **via the `request_change` transition** |
-| `quote_comment.written` | a comment row is **inserted** (one message per quote, not per row) |
+| `quote_comment.written` | a comment row is **inserted**, and not by an administration user (one message per quote, not per row) |
 
 The `reopen` case needs its own transition-name check because a buyer's
 `request_change` and a merchant's `reopen` cannot be told apart by state name
@@ -235,6 +236,8 @@ from the response DTOs. It extracts **only what the buyer explicitly asked**:
 - `price.bestPriceRequested` — "your best price", with no number named. A
   volume/bulk/tiered ask ("better price if we take 10?") is this field too: it
   asks for a price the merchant's own cap can answer.
+- `price.targetTotal` — a budget named for the whole quote ("max cost 2500"),
+  as opposed to the per-unit targets in `lineChanges`.
 - `structural.lineChanges` — quantity changes, per-unit target prices, removals.
 - `structural.addProducts`, `structural.validityUntilIsoDate`.
 - `negotiation.delivery` / `.payment` — non-price asks.
@@ -316,8 +319,8 @@ buyer; the buyer's reply reports the reduction the database actually shows.
 Two other checks escalate here:
 
 - **Value ceiling.** Above `maxQuoteValueNet` for the quote's currency →
-  `quote_value_limit_exceeded`. A currency the merchant left blank →
-  `currency_mismatch`, because an unknown ceiling is not an unlimited one.
+  `quote_value_limit_exceeded`. A currency left out of a per-currency ceiling
+  (§6) → `currency_mismatch`, because an unknown ceiling is not an unlimited one.
 - **Human review requested** by the extract step → `needs_human_review`.
 
 **This gate is why an out-of-authority ask costs one model call rather than
@@ -392,7 +395,7 @@ list, not a spot check. If the call fails outright, the template is
 sent — the offer is already applied and verified, so the alternative is leaving
 the buyer with a changed quote and no message.
 
-The merchant's `negotiationStrategy` text supplies the tone here and the posture
+The prompt of the negotiation strategy the pass resolved (§6) supplies the tone here and the posture
 in the negotiate prompt. It **cannot move a cap**: it lands in a delimited
 section below the base instructions, and the authorizer rejects anything outside
 authority regardless of what it asked for.
@@ -484,10 +487,12 @@ same, because the trigger was handled.
 ### 4.8 Escalation
 
 `QuoteEscalator` posts one fixed, customer-facing comment — *"A member of our
-team will review this quote personally and get back to you."* — stamps the
+team will review this quote personally and get back to you."* — unless
+`notifyBuyerOnEscalation` is off or the channel is in Draft Mode, stamps the
 reason into a custom field, and notifies the merchant through two channels: a
-`QuoteAgentEscalatedEvent` business event for Flow Builder, and an
-administration notification. **It never transitions the quote**; the deal desk's
+`QuoteAgentEscalatedEvent` business event for Flow Builder (a mail template and
+a flow for it, *Quote agent: escalation needs a human*, are seeded switched
+off), and an administration notification. **It never transitions the quote**; the deal desk's
 own state change is the only observable sign of a human acting.
 
 The marker makes escalation idempotent for a given reason. The thirteen reasons:
@@ -518,7 +523,9 @@ by `TerminalOutcomeSubscriber` when the quote reaches a state that ends a
 negotiation, and `resolvedAt` / `resolvedState`, stamped by
 `EscalationResolutionSubscriber` when a human acts after an escalation, or by
 `MerchantCommentResolutionSubscriber` when a merchant answers in the quote's
-thread.
+thread. The review columns (`reviewStatus`, `reviewedAt`, `sentReply`,
+`sentChanges`) are likewise stamped later, when a merchant sends or rejects a
+Draft Mode draft, and the `feedback*` columns when a merchant rates a decision.
 
 Because the core state-change event carries no author, a transition by *anyone*
 closes an escalation — the deal desk sending a revised offer, or the buyer
@@ -546,8 +553,11 @@ transition records the resolution.
 without it — see [Without Agentic Commerce](#11-without-agentic-commerce) for
 why it cannot stand alone.
 
-Nothing here is gated by a toggle: the presence of `a2cn_session` on the quote —
-written by whichever buyer agent opened the negotiation — is the gate. On every
+Nothing here is gated by a toggle: an act chain on the quote — the `a2cn_act_*`
+custom fields a buyer agent appends through
+`POST /a2cn/sessions/{sessionId}/messages` — is the gate. The `a2cn_session` id
+alone is not: this plugin stamps it on every quote requested over UCP
+(`A2cnSessionStamp`), and a quote with no acts stays inert. On every
 quote entering `replied`, `SellerActEmitter` mirrors the whole chain, then
 counter-signs a `counteroffer` act **only if** the terms differ from our own last
 signed act. A shop nobody negotiates with over A2CN emits nothing.
@@ -556,11 +566,12 @@ Published on the sales channel's own domain:
 
 | Path | Body |
 | --- | --- |
-| `/.well-known/a2cn-agent` | discovery document, twelve fields |
+| `/.well-known/a2cn-agent` | discovery document, fourteen fields |
 | `/.well-known/did.json` | did:web document with the public half of this installation's signing key |
 | `/.well-known/a2cn-seller-mandate` | the negotiation bands, published declaratively and signed |
+| `/a2cn/sessions/{sessionId}/messages` | `POST`: a buyer agent's signed act, appended under the per-quote lock (`409 session_busy` while it is held); `GET`: the same as `/acts` |
 | `/a2cn/sessions/{sessionId}/acts` | our mirror of the act chain |
-| `/a2cn/records/{sessionId}` | the transaction record once an acceptance act exists, else the audit log once the session ended, else `409` |
+| `/a2cn/records/{sessionId}`, also `/a2cn/sessions/{sessionId}/record` | the transaction record once an acceptance act exists, else the audit log once the session ended, else `409` |
 
 `{sessionId}` is a UUIDv5 derived from the Shopware quote id — unguessable, and
 the capability the records endpoints are authorized against.
@@ -583,25 +594,29 @@ settings form. Evidence is **fail-open throughout**: it never stops commerce.
 
 ## 6. Configuration
 
-**Settings → Extensions → Merchant Quote Agent**, per sales channel. A channel
+**Extensions → My extensions → Quote Agent → Configure**, per sales channel. A channel
 inherits the global value until overridden, so a pilot channel can be raised
 first.
 
 | Field | Default | Notes |
 | --- | --- | --- |
-| `enabled` | `false` | While off the agent queues nothing and writes nothing. |
+| `enabled` | `false` | While off the agent writes nothing: a trigger is still queued, and the worker drops it at preflight (§3). |
+| `agentDisplayName` | `AI Agent` | The name the buyer sees above the agent's comments in the storefront quote conversation. One name for all languages; empty falls back to `AI Agent`. |
+| `draftMode` | `false` | The pass runs unchanged, but its price writes land in a draft version of the quote and its reply is held: nothing reaches the buyer, not even the escalation comment. Each draft waits under **Orders → Quote Agent Dashboard** to be edited, sent or rejected, and the merchant is told through the escalation channels (§4.8). |
 | `llmApiKey` | — | Yours. Stored in `system_config`, obscured in the form but **not encrypted at rest**. Overridden by `MQA_LLM_API_KEY` in the environment, which keeps it out of the database. |
-| `llmBaseUrl` | `https://api.openai.com/v1` | Point at Azure, your own gateway, or a self-hosted model. |
+| `llmBaseUrl` | `https://api.openai.com/v1` | Any endpoint with OpenAI's Chat Completions API and structured outputs. See [AI providers](#ai-providers). |
 | `llmModel` | — | Required. No default, because guessing one picks a price and quality point for you. |
-| `negotiationStrategyId` | — | Which strategy this sales channel negotiates with. Holds the strategy's id, not its text; the prompt comes from that strategy's newest version. Can never move a cap. |
+| `negotiationStrategyId` | — | Which strategy this sales channel negotiates with, unless an assignment on the **Negotiation strategies** settings page (a customer pin, a matching rule, or a weighted split, in that order) picks one first. Holds the strategy's id, not its text; the prompt comes from that strategy's newest version. Can never move a cap. |
 | `maxDiscountPercent` | `0` | `0` means every price ask escalates. The admin saves 0–100 only (`<min>`/`<max>` in `config.xml`, enforced by core's batch save; `system:config:set` bypasses it, and `QuoteLimits` still refuses an out-of-range value at read time). |
 | `counterOfferMaxPercent` | — | Blank means no counter band. The admin saves 0–100 only, as above. |
 | `minMarginPercent` | — | Markup on each product's purchase price that no offer may go below (`purchase × (1 + m/100)`, rounded up to the cent). Clamps the offer to that floor rather than escalating. Products without a purchase price have no floor. Blank means off; `0` means never below cost. The admin saves 0 or more only (no upper limit: a markup can exceed 100%). The purchase price never reaches the model or the buyer. |
 | `roundingMode` | `off` | `off`, `discount_percent` (the model's quote-wide percentage is floored to the step before authorization, so the checks, the per-line conversion and the reply all see it; a per-line answer is left unrounded) or `quote_total` (a quote-wide write becomes an absolute discount that lands the buyer-facing total, shipping included, on the next multiple of the step). Never the buyer's own figure, never below a standing concession, never to nothing (a cent or less counts as nothing); `quote_total` additionally skips a net quote with tax on top (`tax_on_top`), which also catches a gross quote whose goods are all 0 % VAT but whose shipping is taxed (conservatively written unrounded), while `discount_percent` still rounds there. Each skip is recorded on the `rounding` trace event. The percentage stated in the reply is measured on the whole buyer-facing total including shipping, so under `discount_percent` a quote with shipping can read e.g. 6.97 % in the reply while its discount line shows 7 %; `quote_total` makes the total round, and the stated percentage then follows from it. |
 | `roundingStep` | — | Percentage points in `discount_percent`, currency units of the buyer-facing total in `quote_total`. Blank or `0` means off whatever the mode. |
-| `maxQuoteValueNet` | — | Per currency, net. A currency left blank escalates. Blank everywhere means no ceiling. |
+| `maxQuoteValueNet` | — | Net. The admin field is one number, applied to a quote in any currency. A per-currency map (`{"EUR": 5000, "USD": 6000}`) can be set with `system:config:set --json`; there a currency left out escalates. Blank means no ceiling. |
 | `validityDays` | `14` | How long an auto-offer stays valid. At least 1 — blank or `0` takes the channel out of service rather than sending an offer stamped as already expired. A shop updating from a release that defaulted this to `0` has that `0` rewritten to `14`; a value the merchant set is left alone. |
 | `escalationSlaHours` | — | Dashboard benchmark only. Changes nothing the agent does. |
+| `notifyBuyerOnEscalation` | `true` | Whether an escalation posts its buyer-facing comment (§4.8). Off, or in Draft Mode, the escalation is silent toward the buyer. |
+| `assistantQuoteRequests` | `false` | Lets the shopping assistant request quotes in the shopper's name. See [§12](#12-the-shopping-assistant). |
 
 One field is deliberately **not** on that page. The **organization name
 published in the A2CN seller mandate** lives on the **Agent access** page,
@@ -634,6 +649,81 @@ Three things worth stating plainly:
 <value>` stores the raw *string*: `...validityDays 30` stores `"30"`, which is
 refused, and `...enabled true` stores `"true"`, which reads as switched off —
 silently. Always `bin/console system:config:set --json <key> <value>`.
+
+### AI providers
+
+Every model call is one `POST <llmBaseUrl>/chat/completions` with
+`Authorization: Bearer <key>` (`src/Negotiation/ModelPlatform.php`). Calls that
+need an answer the rules act on send `response_format` of type `json_schema`
+with `strict: true`, generated from the answer DTOs (`ResponseFormatFactory`).
+So a provider needs two things: OpenAI's Chat Completions shape and structured
+outputs. Token usage is optional; a provider that sends no `usage` just leaves
+the token columns empty. Each call gets one retry, and both attempts share 30
+seconds.
+
+| Provider | `llmBaseUrl` | `llmModel` |
+| --- | --- | --- |
+| OpenAI | `https://api.openai.com/v1` | a model with structured outputs, e.g. `gpt-5-mini` |
+| OpenRouter | `https://openrouter.ai/api/v1` | `vendor/model`, e.g. `openai/gpt-5-mini`; the route to Claude and Gemini |
+| Azure OpenAI | `https://<resource>.openai.azure.com/openai/v1` | the deployment name |
+| LiteLLM or another gateway | the gateway's `/v1` address | whatever it routes, provided it passes `response_format` through |
+| vLLM, Ollama ≥ 0.5 (self-hosted) | e.g. `http://host:11434/v1` | the served model; the key must still be non-empty, so set a placeholder |
+
+What does not work:
+
+- **A base URL with a query string.** The path is appended after it, so Azure's
+  older `…/deployments/<name>?api-version=…` form breaks. Use `/openai/v1`.
+- **Anthropic's and Google's own OpenAI-compatible endpoints.** Anthropic's
+  ignores `response_format`, and schema enforcement on Google's has been
+  unreliable. Route those models through OpenRouter or a gateway.
+- **Ollama Cloud.** It accepts `response_format` but does not apply it.
+
+A provider that ignores the schema fails safe: an answer that does not map onto
+the DTO is a `ModelUnavailable`, so the pass escalates and records *Model
+unavailable*. It never acts on an answer it could not read.
+
+### Configuration from the environment
+
+**The API key** has its own variable. Set `MQA_LLM_API_KEY` in the shop's
+environment, for example in `.env.local` in the shop root:
+
+```dotenv
+MQA_LLM_API_KEY=sk-...
+```
+
+It overrides `llmApiKey` on every sales channel, and the admin field is then
+ignored. A blank value counts as unset. It reaches the plugin as a container
+parameter (`%env(default::MQA_LLM_API_KEY)%` in `services.php`), so nothing is
+read with `getenv()` at runtime.
+
+**Any other setting**, the base URL and model name included, can come from the
+environment through Shopware's static system config. Values set this way win
+over the database and cannot be changed from the admin or the API:
+
+```yaml
+# config/packages/merchant_quote_agent.yaml
+shopware:
+    system_config:
+        default:
+            MerchantQuoteAgentPlugin.config.llmBaseUrl: '%env(MQA_LLM_BASE_URL)%'
+            MerchantQuoteAgentPlugin.config.llmModel: '%env(MQA_LLM_MODEL)%'
+        # One sales channel only, keyed by its id:
+        # 0190f6a1b2c34d5e8f90a1b2c3d4e5f6:
+        #     MerchantQuoteAgentPlugin.config.llmModel: '%env(MQA_LLM_MODEL_PILOT)%'
+```
+
+The variable names are yours to choose. Use plain `%env(...)%`, not
+`%env(default::...)%`, and set the variables before you deploy the yaml. A
+missing variable then fails every request with a message naming it. With
+`default::`, a missing variable silently replaces the stored value with an
+empty one. An empty model name only makes every quote escalate. An empty base
+URL is worse: it falls back to `https://api.openai.com/v1`, and your key goes to
+OpenAI instead of your provider.
+
+After changing the environment, restart PHP-FPM and every `messenger:consume`
+worker, because both read it only at start. If the shop uses a compiled
+`.env.local.php` (`composer dump-env prod`), run that again first. Clear the
+cache after adding or changing the yaml file.
 
 ### Deciding which agents may transact
 
@@ -684,8 +774,8 @@ Two traps around it:
 
 The module's list page opens filtered to *Needs review* and leads with four
 figures, each scoped to the period in the smart bar. **A figure with nothing to
-measure reports absent (`–`, "no baseline", "n/a") rather than a confident
-zero.**
+measure reports absent (`–`, "no comparable deals in this period",
+"Unavailable") rather than a confident zero.**
 
 - **Auto-execution rate** — the share of the period's quotes the agent acted on
   that it never escalated. A quote counts once any of its passes offered,
@@ -693,14 +783,14 @@ zero.**
   quote whose every pass was `nothing_to_do` or `handed_over` is left out,
   because nothing on it was automated. Concluded or not makes no difference:
   restricting the count to concluded quotes would drop stuck escalations out of
-  it and make a shop with ten of them report 100%. The raw `n of m escalated`
-  count sits beside it, with a trend against the previous period.
+  it and make a shop with ten of them report 100%. The raw "n of m needed a
+  human" count sits beside it, with a trend against the previous period.
 - **Escalation resolution time** — mean time from escalation to the deal desk's
   resolving transition or reply. **Only covers escalations resolved after the
   `resolved_at` migration shipped**; earlier ones report as `n still open`
   rather than vanishing from the average. Set `escalationSlaHours` to turn it
   into "n of m within the SLA".
-- **Price retention** — discount granted on the agent's deals against discount
+- **Discount granted** (price retention) — discount granted on the agent's deals against discount
   granted on deals it never touched, matched to the same net-value range.
   **This is not gross margin**: it is the original price against the price sold,
   and neither this plugin nor a typical B2B catalog carries a cost-of-goods
@@ -737,7 +827,8 @@ Symfony's `FlockStore` keys its lock file on `sys_get_temp_dir()`, so exclusion
 holds only between processes sharing a `/tmp` — and a web server under systemd
 `PrivateTmp=yes` does not share one with a CLI worker. The admin worker and
 `messenger:consume` then take *different* files for the same quote.
-`QuoteServicingLock` logs a startup warning whenever the DSN is host-local.
+`QuoteServicingLock` logs a warning, once per process on the first lock it
+takes, whenever the DSN is host-local.
 
 Measured, not inferred: with both workers live, one buyer comment fires both
 triggers, both passes claim the quote a second apart, and the buyer gets two
@@ -771,12 +862,25 @@ PATCH /api/quote/{id}
 { "customFields": { "merchant_quote_agent_attempts": null } }
 ```
 
+### Exporting and erasing decision records
+
+`bin/console merchant-quote-agent:export --from=<date> --to=<date>` writes the
+period's decision records as anonymized JSONL (the dashboard's Export button
+does the same); free text is withheld unless `--include-comments` is given.
+`bin/console merchant-quote-agent:forget <customerId>` removes one customer's
+comments, the agent's replies to them and their id from every record and its
+trace, keeping the decisions. What the export carries is in
+[`for-merchants.md`](for-merchants.md#costs-and-data).
+
 ---
 
 ## 9. Installing into a shop
 
-CI packages an installable zip on every merge to main. It carries the compiled
-administration bundle but **no `vendor/`** — shopware-cli skips dependency
+Each [GitHub release](https://github.com/agentic-commerce-lab/merchant-quote-agent-plugin/releases/latest)
+carries the installable zip, `MerchantQuoteAgentPlugin.zip`, as an asset. CI
+also packages one on every merge to main, as an artifact of that **Plugin Zip**
+workflow run — the way to get a build of `main` that is not released yet.
+Either zip carries the compiled administration bundle but **no `vendor/`** — shopware-cli skips dependency
 bundling for Shopware >= 6.5, because the shop resolves a plugin's Composer
 requirements itself.
 
@@ -818,23 +922,29 @@ then runs inside a web request, so `composer.json`, `composer.lock` and
 `max_execution_time` have to survive a dependency resolution. Core skips the
 whole mechanism in cluster setups, where the build owns the lock file.
 
-Each zip is versioned `1.0.<run number>+<commit sha>`. The `+<sha>` is semver
+A build of `main` is versioned `<major>.<minor>.<run number>+<commit sha>`; a
+release zip carries the release tag's version instead. The `+<sha>` is semver
 build metadata: Composer keeps the full string in the shop's lock file while
-Shopware records `1.0.<run>` and orders builds by run number. Map a run number
+Shopware records `<major>.<minor>.<run>` and orders builds by run number. Map a run number
 back to a commit with `gh run list --workflow "Plugin Zip"`.
 
-### Agentic Commerce 1.2 and 1.3
+### Agentic Commerce 1.2, 1.3 and 1.4
 
-Both AC versions declare `ucp-php-sdk/symfony-bundle` from the same `<0.1.0`
+AC 1.2 and 1.3 declare `ucp-php-sdk/symfony-bundle` from the same `<0.1.0`
 range, but 1.2 floors it at 0.0.5 and 1.3 at 0.0.6. This plugin floors it at
 0.0.6 — a version both declarations accept, so Composer resolves either pairing
 without complaint. Only one of them runs.
+
+AC 1.4 (released 2026-10-02; 1.3 on 2026-09-17) pins the SDK to exactly 0.0.7
+and switches its own UCP surface off when Composer reports any other version.
+0.0.7 is inside this plugin's `>=0.0.6 <0.1.0` range, so a 1.4 shop lifts the
+root to 0.0.7 the same way as below.
 
 **Composer-satisfiable is not the same as bootable, and AC 1.2 is the case
 where they differ.** AC 1.2 ships
 `src/Resources/config/packages/ucp_sdk.yaml` with `version: '2026-04-08'`, and
 SDK 0.0.6 turned that node into a validated one accepting only `2026-08-25`.
-So on a shop running the **public 1.2 release**, 0.0.6 resolves and then the
+So on a shop running **AC 1.2**, 0.0.6 resolves and then the
 container build dies:
 
 ```
@@ -849,9 +959,9 @@ the GitHub release) failed in `MergeExtensionConfigurationPass`. AC 1.3 does
 not ship that file at all and sets `2026-08-25` in its `services.php`, which is
 why the same SDK is fine there.
 
-The practical consequence: **this plugin's 0.0.6 floor pairs it with AC 1.3.**
-A shop on the public 1.2 release has to move to 1.3, or hold the whole stack at
-SDK 0.0.5 and not install this plugin's current version.
+The practical consequence: **this plugin's 0.0.6 floor pairs it with AC 1.3 or
+newer.** A shop on 1.2 has to move up, or hold the whole stack at SDK 0.0.5 and
+not install this plugin's current version.
 
 A shop still holding 0.0.5 refuses the AC 1.3 upload with *Required
 plugin/package "ucp-php-sdk/symfony-bundle >=0.0.6 <0.1.0" does not match
@@ -914,10 +1024,13 @@ Clear the cache after each statement, and check with `bin/console ucp:channels`
 
 ### Uninstalling
 
-With *keep user data* off, uninstall drops the three A2CN evidence tables and
-deletes the signing key from `system_config` — the two are independent, so a
-merchant who asked to wipe data does not keep a live private key just because a
-table drop failed.
+With *keep user data* off, uninstall drops every table the plugin created (the
+decision record, its trace, the A2CN evidence tables, the pending
+authorizations and the strategy tables), deletes the seeded escalation flow and
+mail template unless the merchant has edited them, and deletes the signing key
+from `system_config` — the key independently of the rest, so a merchant who
+asked to wipe data does not keep a live private key just because the database
+connection was unavailable.
 
 ---
 
@@ -929,7 +1042,10 @@ table drop failed.
 | Servicing | `src/Servicing` | Trigger, queue, lock, crash budget, preflight, escalation. |
 | Negotiation | `src/Negotiation` | The pass itself and the three model calls. Framework-free: prompts arrive as strings from the container. |
 | Policy | `src/Policy` | Bands, authorization, verification. Pure functions over its own DTOs; no Shopware, no model. |
-| Audit | `src/Audit` | The decision record and its two outcome subscribers. |
+| Audit | `src/Audit` | The decision record, its three outcome subscribers, the pass trace and the anonymized export. |
+| Review | `src/Review` | Draft Mode: the drafting gateway and the merchant's send, reject and feedback routes. |
+| Strategy | `src/Strategy` | Negotiation strategies, their versions, and the assignment ladder. |
+| Assistant | `src/Assistant` | The shopping-assistant tools ([§12](#12-the-shopping-assistant)). |
 | Protocol | `src/Protocol` | A2CN evidence: acts, did:web, signing, records. |
 | Identity | `src/Identity` | Bearer tokens, the consent hop, agent allowlisting. |
 | Ucp | `src/Ucp` | The buyer-facing capability, its transport and its contract documents. `UcpAvailability` is the Agentic Commerce gate; `AgentFacingRoutes` lists what it turns off. |
@@ -959,8 +1075,8 @@ that has it deactivated. Nothing configures this: what is registered decides.
 - the policy bands, authorization and verification
 - escalation, its business event and its administration notification
 - the decision record, the dashboard and the detail page
-- the quote contract documents under `/.well-known/ucp/schemas/`, which
-  *describe* the capability rather than serve it
+- the quote contract documents under `/.well-known/ucp/schemas/` and
+  `/.well-known/ucp/specs/`, which *describe* the capability rather than serve it
 
 **Gone:**
 
@@ -968,7 +1084,7 @@ that has it deactivated. Nothing configures this: what is registered decides.
   them
 - identity linking: the authorization and consent routes, and the readers behind
   them, which read Agentic Commerce's own OAuth tables
-- the `merchant-quote-agent:allow-any-agent` and `merchant-quote-agent:grants`
+- the `merchant-quote-agent:allow-any-agent` and `merchant-quote-agent:agent-grants`
   console commands
 - the **Agent access** page in Settings
 - the entire A2CN evidence layer, including the three `.well-known` documents
@@ -976,9 +1092,9 @@ that has it deactivated. Nothing configures this: what is registered decides.
 ### Why A2CN goes with the surface rather than standing alone
 
 It cannot start without a buyer agent. `SellerActEmitter` reads the chain from
-the quote's `a2cn_session` custom field; nothing in this plugin ever writes that
-field, and the counterparty that does can only reach the shop over UCP. With no
-session it returns `inert()` forever. What would be left is three discovery
+the quote's `a2cn_session` and `a2cn_act_*` custom fields; a chain can only
+start from the UCP quote route and A2CN's own inbound act route, and both go
+with the surface. With no acts it returns `inert()` forever. What would be left is three discovery
 documents advertising an `endpoint` and a `records_url` to any agent that
 crawled them, on a shop where no agent can negotiate at all — so they are not
 published either.

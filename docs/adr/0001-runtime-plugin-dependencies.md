@@ -4,7 +4,7 @@ Date: 2026-08-26
 
 ## Status
 
-Accepted.
+Accepted. Amended 2026-09-10; updated 2026-10-09 (both at the end).
 
 ## Context
 
@@ -239,3 +239,18 @@ documents and the decision API remain, and the integration suite is green with
 28 skipped. Reactivated: all 160 cases run, 24 routes are back, and the
 organization name round-trips from the Agent Access page through `system_config`
 into the published `/.well-known/a2cn-agent`.
+
+## Update, 2026-10-09: CI and the shared SDK
+
+Two facts above no longer describe this repository.
+
+- **CI does not check out `shopware/shopware`.** `shopware/core` and
+  `shopware/storefront` are ordinary `require` entries (`~6.7.1`), and the
+  quality gate runs against the one version `composer.lock` pins — no matrix.
+  The 6.7.1 floor is guarded by `CoreFloorCompatibilityTest` instead, which
+  needs a local core clone and is skipped in CI.
+- **"No version skew" holds for the plugins, not for the SDK they share.**
+  Agentic Commerce is still not a Composer requirement, but `ucp-php-sdk` is
+  (`>=0.0.6 <0.1.0`), and Agentic Commerce loads the same library. Releases
+  before 1.3.0 fail the container build against that floor; 1.4.0 pins the SDK
+  to exactly 0.0.7, which is inside the range.

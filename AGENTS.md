@@ -45,7 +45,7 @@ aggregate until they are.
 
 ## Database & persistence
 
-- Two stacks, both in use, each with its own job. **Shopware's DAL** owns the audit entity (`Audit\QuoteDecisionRecord`, an attribute entity) and every read of a Shopware or SwagCommercial entity. **Doctrine DBAL** owns the tables the DAL cannot express — the A2CN evidence tables and the pending-authorization store.
+- Two stacks, both in use, each with its own job. **Shopware's DAL** owns the plugin's attribute entities (`Audit\QuoteDecisionRecord`, `Audit\TraceEvent` and the three in `Strategy`) and reads of Shopware or SwagCommercial entities, except single indexed lookups and row locks (`FOR UPDATE`), which go through DBAL. **Doctrine DBAL** owns the tables the DAL cannot express — the A2CN evidence tables, the pending-authorization store, and the reads of Agentic Commerce's OAuth tables.
 - Attribute entities carry no schema generator, so every table is hand-written in `src/Migration` and must stay in step with the class that reads it. Ship schema, migration and application changes together.
 - Do not use a DAL attribute argument, or any core API, newer than the support floor in `CoreFloorCompatibilityTest`. An unknown attribute argument is an `Error` during the container build, which takes the whole shop down rather than just this plugin.
 
@@ -58,7 +58,7 @@ aggregate until they are.
 ## Structure & constants
 
 - High cohesion, loose coupling: each module/namespace owns one related responsibility; depend on a module's public entry point, not its internals.
-- Two boundaries are enforced by tests rather than by the linter: `src/Negotiation` must not import Shopware beyond `IllegalTransitionException` (`NamespacePurityTest`), and `src/Policy` imports none at all. Everything that touches SwagCommercial goes through `src/Bridge` — see [ADR 0001](docs/adr/0001-runtime-plugin-dependencies.md).
+- Two boundaries the linter does not enforce: `src/Negotiation` must not import Shopware beyond `IllegalTransitionException` (pinned by `NamespacePurityTest`), and `src/Policy` imports none at all (no test pins this one; keep it so). Everything that touches SwagCommercial goes through `src/Bridge` — see [ADR 0001](docs/adr/0001-runtime-plugin-dependencies.md).
 - Place code at the smallest cohesive boundary that owns it; prefer domain/feature namespaces over `Util`/`Helper`/`Common` dumping grounds.
 - Before adding a repeated literal, URL, limit, timeout, flag key, or identifier, reuse the existing constant or typed config.
 - Reuse before reinventing: for non-trivial functionality, prefer a well-maintained Composer package (stdlib first, then existing deps / internal shared code) over a bespoke implementation — but don't add a dependency for something a few lines already cover.

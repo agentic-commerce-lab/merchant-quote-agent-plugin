@@ -20,7 +20,7 @@
             <name>draftMode</name>
             <label>Draft Mode: review every reply before it is sent</label>
             <defaultValue>false</defaultValue>
-            <helpText>The agent prepares every reply and price change but never sends them. Each draft waits for you under Orders › Quote agent, where you can edit, send or reject it. The buyer hears nothing from the agent directly — not even that a human is looking at the quote.</helpText>
+            <helpText>The agent prepares every reply and price change but never sends them. Each draft waits for you under Orders › Quote Agent Dashboard, where you can edit, send or reject it. The buyer hears nothing from the agent directly — not even that a human is looking at the quote.</helpText>
         </input-field>
     </card>
 
@@ -35,7 +35,7 @@
             <name>llmBaseUrl</name>
             <label>LLM base URL</label>
             <defaultValue>https://api.openai.com/v1</defaultValue>
-            <helpText>Point at Azure, your own gateway or a self-hosted model.</helpText>
+            <helpText>Any endpoint with OpenAI's Chat Completions API and structured outputs: OpenAI, OpenRouter (https://openrouter.ai/api/v1), Azure OpenAI (https://your-resource.openai.azure.com/openai/v1), your own gateway or a self-hosted model.</helpText>
         </input-field>
         <input-field type="text">
             <name>llmModel</name>

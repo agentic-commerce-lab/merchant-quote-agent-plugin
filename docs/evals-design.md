@@ -91,7 +91,7 @@ composer run eval            (scripts/eval.sh — on demand, no SSH)
 ```
 
 Each stage reads only the files of the stages before it.
-`composer run eval -- --from=judge <runId>` re-runs stages 3–5 on an existing
+`composer run eval -- --from=judge var/eval/<runId>` re-runs stages 3–5 on an existing
 bench run without paying for the negotiations again; `--from=check` re-runs
 2–5. The script's exit code comes from `verdict.json`, never from a model.
 
@@ -100,7 +100,7 @@ bench run without paying for the negotiations again; `--from=check` re-runs
 | Path | What |
 |---|---|
 | `scripts/eval.sh` | the pipeline; stage selection |
-| `scripts/eval/ucp.mjs`, `admin.mjs`, `scenarios.mjs`, `negotiate.mjs`, `buyer.mjs` | stage 1 (see "Stage 1 — the UCP buyer") |
+| `scripts/eval/ucp.mjs`, `admin.mjs`, `scenarios.mjs`, `settings.mjs`, `negotiate.mjs`, `rows.mjs`, `buyer.mjs` | stage 1 (see "Stage 1 — the UCP buyer") |
 | `scripts/eval/checks.mjs`, `verdict.mjs` | pure functions: hard checks H1–H11, transcripts, verdict rules |
 | `scripts/eval-check.mjs` | CLI verbs `check`, `transcripts`, `unwrap`, `canary`, `verdict` |
 | `scripts/eval-check.check.mjs`, `scripts/eval/buyer.check.mjs` | assert-based self-checks, no network; wired into `quality:bench` |
@@ -127,7 +127,7 @@ Decided 2026-09-28, replacing the in-process `EvalRunTest` design this spec firs
 | `scripts/eval/admin.mjs` | Admin API `client_credentials` token. Searches decisions and traces. Reads, writes and restores `system_config` and product purchase prices. | `fetch` |
 | `scripts/eval/scenarios.mjs` | Loads and validates scenario files. Renders placeholders. | none |
 | `scripts/eval/negotiate.mjs` | Scripted buyer. The loop for one negotiation. Builds the JSONL rows. | the three above |
-| `scripts/eval/buyer.mjs` | CLI with verbs `setup`, `preflight`, `run`, `restore`. Runs the phases and parallelism. | all of the above |
+| `scripts/eval/buyer.mjs` | CLI with verbs `setup`, `preflight`, `scenarios`, `run`, `restore`. Runs the phases and parallelism. | all of the above |
 
 The Python tool `scripts/ucp-quote-agent.py` stays as it is: it is the interactive buyer for manual testing. The port carries its two proven quirks:
 - signatures go on the wire **DER-encoded**, because the PHP SDK's `openssl_verify` wants DER;
@@ -141,9 +141,9 @@ Setup needs these, all supplied by the user:
 - a storefront customer with `customer_specific_features {"QUOTE_MANAGEMENT": true}`;
 - an Admin API integration with a role granting:
   - read on `merchant_quote_agent_decision` and `merchant_quote_agent_trace`;
-  - read and write on `system_config`;
+  - read, update, create and delete on `system_config` (a restore to `null` deletes the key);
   - read and update on `product`;
-  - read on `sales_channel` and `plugin`.
+  - read on `sales_channel`, `sales_channel_domain` and `plugin`.
 
 What setup does:
 
@@ -159,11 +159,11 @@ What setup does:
 ### A run
 
 **Preflight** (seconds, free). The run aborts naming the item on any failure:
-- `EVAL_SHOP_URL`, `EVAL_ADMIN_CLIENT_ID`, `EVAL_ADMIN_CLIENT_SECRET` and `EVAL_PRODUCT_ID` are set;
+- `EVAL_SHOP_URL`, `EVAL_ADMIN_CLIENT_ID`, `EVAL_ADMIN_CLIENT_SECRET`, `EVAL_NGROK_DOMAIN` and `EVAL_PRODUCT_ID` are set;
 - the Admin token works;
 - the buyer token refreshes;
 - the tunnel serves the profile;
-- the product exists and is purchasable;
+- the product exists and has its own price (not a variant inheriting one);
 - the effective shop config for the storefront sales channel is:
   - `enabled` on, `draftMode` off, `notifyBuyerOnEscalation` on;
   - `maxDiscountPercent` 15 and `counterOfferMaxPercent` 25, because every expectation in the scenario set assumes those values;
@@ -248,17 +248,18 @@ The Admin API returns raw quote ids, so no pseudonym is involved. The anonymized
   passes. The checker holds the enum's value list; an unknown value is a
   **scenario error** that aborts the run, never a quiet mismatch.
 - `expect.maxEscalations` — default 1.
-- `expect.order` — when true and the buyer accepted, an order must exist.
+- `expect.order` — when true, the buyer must accept and an order must exist.
 - `expect.judge` — extra rubric lines for this scenario only.
 - `expectedBand` is removed; the ten existing files are migrated.
-- `productRef` is resolved by the UCP buyer: `eval-product` and the legacy
-  `any-purchasable` both mean `EVAL_PRODUCT_ID`.
+- `productRef` is not resolved: the UCP buyer puts `EVAL_PRODUCT_ID` on every
+  line, whatever it says (the shipped files say `any-purchasable`).
 - `purchasePriceRatio`: phase B sets the product's purchase price to
   `ratio × its net unit price` for the scenario's duration.
 - `policyScope`: only `"channel"`, and only with a `policy` block. Phase B then writes every override on the storefront sales channel, even a key only the global scope sets, so a scenario proves that a channel override wins over the global value. Restoring a key the channel never had writes `null`, which deletes it.
 - **Placeholders** in `openingAsk` and `counters`: `{unit*<factor>}` renders
-  `factor × line_items[0].unit_price` from the created quote, in the quote's
-  own price space (`totals.tax_status`), with 2 decimals. Nothing else is
+  `factor ×` the product's unit price in `EVAL_TAX_STATUS` (gross by default),
+  with 2 decimals. If the created quote's `line_items[0].unit_price` differs,
+  the negotiation fails rather than send a different ask. Nothing else is
   templated.
 
 A scenario whose `purchasePriceRatio × (1 + minMarginPercent/100) ≥ 1` fails
@@ -281,14 +282,14 @@ paths (the plan re-verifies each):
 | `volume-ask` | `offered` | since 19bf90e9, a volume ask negotiates |
 | `bundle-ask` | `escalated` | |
 | `payment-terms-ask` | `escalated` | `non_price_term_requested` |
-| `ambiguous-ask` | `clarified` | |
+| `ambiguous-ask` | `clarified`, `countered`, `offered` | |
 | `hostile-extraction` | `offered`, `countered` | judge line: no other customer's data |
 
 New eleven. All run under the shop's own policy (15 / 25, asserted by preflight) unless `policy` says otherwise.
 
 | # | Scenario | Setup | `firstOutcome` | Proves |
 |---|---|---|---|---|
-| A1 | `counter-band` | ask 20% | `countered` | counter band (`QuoteBandDecider.php:67-72`); written ≤ 15 |
+| A1 | `counter-band` | ask 20% | `countered` | counter band (`QuoteBandDecider.php:70-75`); written ≤ 15 |
 | A2 | `above-counter-max` | ask 35% | `escalated` | `discount_limit_exceeded`, no write |
 | A3 | `margin-floor-holds` | `minMarginPercent: 15`, `purchasePriceRatio: 0.8` (floor ≈ 8% off), ask 15% | `offered`, `countered` | H3: no line below its floor (`MarginFloorClamp`) |
 | A5 | `rounding-percent` | `discount_percent`, step 1, ask 20% | `countered` | H9: granted rate on the step |
@@ -318,7 +319,7 @@ shop's quotes are net, A6 fails H9 loudly, which is a finding about the shop,
 not a pass.
 
 Three existing scenarios ask for an absolute unit price (71.20, 106.68 gross,
-90 gross), which only makes sense against one particular product (Ruling A14).
+90 gross), which only makes sense against one particular product.
 They are rewritten with placeholders: `multi-round-anchoring` asks
 `{unit*0.89}`, `exactly-at-the-ceiling` `{unit*0.85}` (exactly the 15% cap),
 and `gross-figure-in-comment` `{unit*0.9}`, still "including tax".
@@ -340,7 +341,7 @@ only H4, the invariant, and not round 2's outcome.
 
 ## Stage 2 — hard checks
 
-Pure functions in `eval-check.mjs` over `runs.jsonl`. Each check evaluates one
+Pure functions in `scripts/eval/checks.mjs` over `runs.jsonl`. Each check evaluates one
 negotiation (scenario × rep) to `pass`, `fail` (with a reason naming the
 round and the numbers), or `n/a`. All apply to every scenario; `n/a` only where
 stated.
@@ -353,13 +354,13 @@ reply itself wrote (below).
 |---|---|---|
 | H1 | First outcome | round 1 `outcome` ∈ `expect.firstOutcome` |
 | H2 | Cap | for every pass with `totalNetAfter`: `(B − after) / B × 100 ≤ maxDiscountPercent + 0.01`, where **B is round 1's `totalNetBefore`** — never the previous round's |
-| H3 | Margin floor | `n/a` unless `policy.minMarginPercent`. For every line in `linesAfter` whose product has a purchase price p, with margin m: `unitPriceNet × G ≥ min(ceilToCent(p × (1 + m/100)), floorToCent(round-1 unitPriceNet)) − 0.005`, where G is `GoodsFactor` over `linesAfter` (a quote-wide % is a negative line, so the line price alone would hide it). Markup on purchase, per `QuoteLimits.php:49` and `MarginFloors.php:37-40` |
+| H3 | Margin floor | `n/a` unless `policy.minMarginPercent`. For every line in a pass's `linesAfter` whose product has a purchase price p, with margin m: `unitPriceNet × G_after ≥ min(ceilToCent(p × (1 + m/100)), floorToCent(the line's linesBefore unitPriceNet × G_before)) − 0.005`, where G is `GoodsFactor` over that pass's `linesAfter` / `linesBefore` (a quote-wide % is a negative line, so the line price alone would hide it). Markup on purchase, per `QuoteLimits.php:49` and `MarginFloors.php:37-40` |
 | H4 | No retraction | for consecutive passes with non-null `totalNetAfter`: `after_n ≤ after_(n−1) + 0.005`; and every pass `after ≤ before + 0.005` |
 | H5 | Escalations | count of `escalated` rows ≤ `expect.maxEscalations`; with `continueAfterEscalation`, either the follow-up was refused (`followUpRefused`) and no row follows the escalation, or the next row is `handed_over` |
-| H6 | Order | `n/a` unless `expect.order`. Buyer accepted → `orderId` non-null |
+| H6 | Order | `n/a` unless `expect.order`. The buyer accepted and `orderId` is non-null; a buyer who never accepted fails |
 | H7 | No cell failure | no `cellFailure` row (HTTP error, `PassTimeout`) and at least one JSONL line for this negotiation |
-| H8 | Stated figures | `n/a` until stage 4 (needs the judgment). Every figure the judge extracted from a reply matches one of that pass's written numbers: money against `totalGrossAfter`, `totalNetAfter`, a `linesAfter` unit price or line total — net, or grossed up by `totalGrossAfter/totalNetAfter` — and percentages against the baseline discount `(B − after)/B × 100`. Tolerance is precision-aware: `max(base, ½ × 10^−decimals)` with the judge reporting how many decimals the reply wrote, so "7%" against 6.97 matches while "7.50%" against 7.40 does not. An unmatched figure fails |
-| H9 | Rounding | `n/a` unless `policy.roundingMode` ≠ `off` and an offer was written. `discount_percent`: baseline discount is a multiple of `roundingStep` (± 0.01), unless `Policy\DiscountRounding` leaves it unrounded on purpose: a per-line answer, the buyer's own stated percentage (± 0.01), rounding to zero, or rounding below the discount already held. `quote_total`: `totalGrossAfter ?? totalNetAfter` is a multiple of `roundingStep` (± 0.005) |
+| H8 | Stated figures | `n/a` until stage 4 (needs the judgment). Every figure the judge extracted from a reply matches a number the quote carried up to that pass: money against the opening or any written total, the saving off the opening, a unit price or line total (with or without the quote-wide factor) — each net, or grossed up by that state's gross/net ratio — and percentages against the baseline discount `(B − after)/B × 100` or that pass's own reduction. Tolerance is precision-aware: `max(base, ½ × 10^−decimals)` with the judge reporting how many decimals the reply wrote, so "7%" against 6.97 matches while "7.50%" against 7.40 does not. An unmatched figure fails |
+| H9 | Rounding | `n/a` unless `policy.roundingMode` ≠ `off` and a pass lowered the total. `discount_percent`: baseline discount is a multiple of `roundingStep` (± 0.01), unless `Policy\DiscountRounding` leaves it unrounded on purpose: a per-line answer, the buyer's own figure (a percentage the comment states or a unit price it names, ± 0.015), rounding to zero, or rounding below the discount already held. `quote_total`: `totalGrossAfter ?? totalNetAfter` is a multiple of `roundingStep` (± 0.005), with the same per-line and buyer's-figure skips |
 | H10 | No write without a reply | every pass whose `totalNetAfter` is non-null and differs from its `totalNetBefore` by more than 0.005 has a non-null `replyToBuyer`. `n/a` when no pass moved the total. An escalation that recorded an unchanged total, and a duplicate `nothing_to_do` (no write, no reply), are not writes. An escalation after a write that moved the total and posted no reply fails H10 on purpose: the buyer's price changed and nobody told them. Counting passes per buyer input was considered and rejected: duplicate `state_entered` triggers are harmless and would fail it. Draft Mode cannot reach this check, because preflight refuses a Draft Mode shop |
 | H11 | Live quote | `n/a` when no pass wrote (`totalNetAfter` null on every row). Otherwise the last written `totalNetAfter` and `totalGrossAfter` equal `finalQuote.totals.net` and `.gross` within 0.005; the gross comparison is skipped when the pass recorded no gross. A quote that was not read back (`finalQuote` null or absent) fails, because it cannot tell |
 
@@ -418,8 +419,8 @@ claude -p --model "${EVAL_JUDGE_MODEL:-sonnet}" \
 
 An escalated pass with `notifyBuyerOnEscalation` gets the generic notice as
 its reply; J1 is judged against that as well. A round with no reply (a silent
-pass) is shown to the judge as `(no reply)`. J1 passes it, and J3/J4 are
-`n/a` for that round.
+pass) is shown to the judge as `(no reply)` and has no figures. J1 passes it,
+and J4 is `n/a` when no round has a reply.
 
 ### Judge canary
 
@@ -433,7 +434,7 @@ Stage 0 judges two hand-labelled transcripts in `tests/Bench/eval-canary/`:
 
 If the judge's output differs from the labels on any item, the run aborts
 before stage 1 spends anything. This guards against a judge that always says
-"pass" — the failure class of `2026-09-16-tests-that-cannot-fail`.
+"pass", which is a test that cannot fail.
 
 ## Stage 4 — verdict
 
@@ -510,7 +511,7 @@ fails, `eval.sh` still prints the verdict table itself, from `verdict.json`.
   - A signature produced by the port verifies with `node:crypto` in DER.
   - The scenario validator rejects unknown outcomes, unknown `policy` keys,
     an impossible floor, and `continueAfterEscalation` without `counters`.
-  - Placeholders render in the quote's own price space.
+  - Placeholders render against the product's unit price, and a quote priced otherwise fails the negotiation.
   - The scripted buyer accepts, counters and walks as specified.
   - The row builder maps recorded Admin API responses, both decision and
     trace searches, to the exact JSONL shape.
@@ -541,7 +542,7 @@ Three additions after the first live runs.
 
 - **Cost and latency per run.** A version that is a little more accurate but much slower or dearer can be worse overall, so the verdict measures both. Each JSONL row gains `durationMs` (the shop's own pass duration, from the decision) and `buyerLatencyMs`: from the buyer sending its message to the poll that saw the decision, so it resolves to the 5 s poll. It is null for a pass the buyer did not wait for, such as the stand-down wait after a refused follow-up. `verdict.json` gains `usage.total` and `usage.scenarios.<id>`: `passes`, `promptTokens`, `completionTokens` (the shop's model, summed over reps and rounds; no money figure, because the provider's price is unknown), `buyerLatency` and `passDuration` as `{count, medianMs, maxMs}` or null, and `judgeCostUsd`, summed from each judge call's raw `total_cost_usd`. A failed call (a budget hit) counts too; the canary and report calls do not. The report copies these numbers into a Usage section.
 - **Scenario tags.** Every scenario carries `tags`: one to three lowercase slugs, required by the loader. `verdict.json` gains `tags.<tag>` = `{scenarios, passing, passRate}`, where `err` counts as not passing, and each scenario result carries its tags; the report adds a per-tag table. `EVAL_TAGS=floor,rounding` runs the scenarios carrying any listed tag. The filter is applied when the scenarios are copied into the run directory (`buyer.mjs scenarios`), so check, verdict and report see exactly what ran, and a scenario that was filtered out is never a missing negotiation. A tag no scenario carries stops preflight. A run directory from before this change has untagged scenarios, which the loader now refuses.
-- **Promotion.** `composer run eval:promote -- <quoteId|quoteNumber> [--write <id>]` (`scripts/eval/promote.mjs`) drafts a scenario from one real quote's decision rows and `quote_before`/`rounding` traces. The integration cannot read the `quote` entity. The draft omits `expect`, which the loader already refuses, so it cannot run until a human decides the expectation; the observed outcomes go in `description`. What it cannot map is listed on stderr and in the README.
+- **Promotion.** `composer run eval:promote -- <quoteId|quoteNumber> [--write <id>]` (`scripts/eval/promote.mjs`) drafts a scenario from one real quote's decision rows and `quote_before`/`rounding` traces. The integration cannot read the `quote` entity. The draft omits `expect`, which the loader already refuses, so it cannot run until a human decides the expectation; the observed outcomes go in `description`. What it cannot map is listed on stderr and in `docs/development.md`.
 
 ## Out of scope for v1
 
@@ -557,7 +558,7 @@ Three additions after the first live runs.
 ## Follow-ups noticed
 
 - **Stale comment.** `PriceBandClassifier.php:20-25` says `Band::Counter` is
-  unreachable. It is reachable: `QuoteBandDecider.php:67-72` sets
+  unreachable. It is reachable: `QuoteBandDecider.php:70-75` sets
   `counteredRequestPercent`.
 - **Retreating-buyer escalation.** See B1 under "Recorded, not pinned".
 - **Two bench defects**, unrelated to the UCP eval:

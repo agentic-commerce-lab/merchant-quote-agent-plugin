@@ -1,12 +1,13 @@
 # Quote Agent as a Shopware Plugin — design spec
 
+> **Historical record: the original design as of 2026-08-25, kept as written, not current behaviour.**
+> Biggest divergences: Agentic Commerce became optional, a pass makes up to three model calls under merchant-selectable strategies, duplicate triggers are caught by a fingerprint instead of a revision-abort, and volume tiers were dropped.
+> Current behaviour: [`end-to-end.md`](end-to-end.md); for merchants: [`for-merchants.md`](for-merchants.md).
+
 *2026-08-25 — design spec. Status: proposed. Scope: move the merchant quote agent from a*
 *Shopware App with an app-server we host to a Shopware plugin the merchant installs, so no*
 *quote data and no shop credentials leave the merchant's infrastructure. Retires the*
 *TypeScript quote path; keeps the sales-agent harness for the interactive/UCP surface.*
-
-*Historical record. What was built is documented in [`end-to-end.md`](end-to-end.md);*
-*this is the reasoning that got there, kept as written.*
 
 Related documents — `agent-led-negotiation-gaps.md` (the gap list this design
 deletes or inherits), `FINDINGS.md` (platform capability findings),
@@ -321,7 +322,7 @@ we actively want, since it is how we will test the plugin.
 These issues no longer exist. The workspace hit Linear's 250-active-issue cap — Done and Canceled
 still count toward it, only archived issues do not, and Linear offers no manual archive — so
 ACL-178 through ACL-188 were consolidated into the initiative document
-[Quote Agent — working TODO list](https://linear.app/agentic-commerce-lab/document/quote-agent-working-todo-list-b70cda7c2ebf)
+"Quote Agent — working TODO list" (in the private issue tracker)
 and deleted on 2026-08-25. That document is now the work list and the record; the table below is
 kept as the mapping from the old issue numbers, which appear throughout this spec.
 
