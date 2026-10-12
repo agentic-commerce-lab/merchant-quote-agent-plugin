@@ -28,6 +28,11 @@ final class QuoteCapabilityDescriptor
 {
     public const NAME = 'com.shopware.quote';
 
+    /**
+     * The revision of this capability's contract, not the UCP protocol version
+     * the SDK serves. Negotiation matches capabilities by exact version, so
+     * change it only for an incompatible contract change.
+     */
     public const VERSION = '2026-04-08';
 
     public const SPEC_PATH = '/.well-known/ucp/specs/quote.html';

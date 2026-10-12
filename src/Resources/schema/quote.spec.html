@@ -47,28 +47,28 @@
         The capability appears in <code>/.well-known/ucp</code> when the shop runs a UCP
         surface and the merchant has enabled <code>dev.ucp.common.identity_linking</code> for
         that sales channel — without it no token can be issued for quoting, so the descriptor is
-        suppressed rather than advertised as a dead end. Its descriptor carries the endpoint and
-        the schema URL:
+        suppressed rather than advertised as a dead end. Its descriptor carries the capability
+        version and the URLs of this page and of the schema:
     </p>
 <pre>"com.shopware.quote": [{
   "version": "2026-04-08",
   "spec":    "https://shop.example/.well-known/ucp/specs/quote.html",
-  "schema":  "https://shop.example/.well-known/ucp/schemas/quote.openapi.json",
-  "config": {
-    "endpoint": "https://shop.example/ucp/quotes",
-    "schema":   "https://shop.example/.well-known/ucp/schemas/quote.openapi.json"
-  }
+  "schema":  "https://shop.example/.well-known/ucp/schemas/quote.openapi.json"
 }]</pre>
     <p>
         If the entry is absent, the shop cannot quote: fall back to ordinary checkout, or tell
-        the user that quoting is unavailable. Do not hard-code the endpoint; read it from the
-        descriptor.
+        the user that quoting is unavailable. The descriptor names no endpoint. The operation
+        paths are the <code>paths</code> of the schema; resolve them against the shop's base
+        URL, which is the <code>schema</code> URL up to <code>/.well-known/</code>.
     </p>
     <p class="note">
-        Present in discovery is not the same as usable. Discovery does not probe the commercial
-        B2B Quote Management backend, so a shop without a licensed installation still advertises
-        the capability and answers every call with 501. Treat the first 501 as the real
-        availability answer and fall back exactly as you would for a missing entry.
+        Present in discovery is not the same as usable. Discovery does not check the commercial
+        B2B Quote Management backend. A shop without it still advertises the capability but
+        serves no quote routes, so every call is a 404. A shop that has the backend but no
+        license for it answers every call with 501. Treat the first such answer as the real
+        availability answer and fall back exactly as you would for a missing entry. A 404 on
+        <code>POST /ucp/quotes</code> or <code>GET /ucp/quotes</code> can only mean this; a 404
+        on a quote id can also mean the quote is not yours.
     </p>
 
     <h2>Authorization</h2>
@@ -169,15 +169,17 @@
         Requests also carry the usual <code>UCP-Agent</code> header, and an
         <code>Idempotency-Key</code> on writes — required where the shop is configured to demand
         it, and in every case a replay guard: the same key with the same request replays the
-        stored response (<code>Idempotency-Replay: 1</code>), a key reused for a different one
-        is a 409. A Shopware
+        stored response (<code>Idempotency-Replay: 1</code>), and a key that is still being
+        processed, or reused for a different request, or for a response too large to have been
+        stored, is a 409. A Shopware
         <code>sw-context-token</code> is deliberately not accepted: it carries no OAuth
         scopes and could reuse the customer's existing storefront cart.
     </p>
     <p>
         Beyond authorization, the customer must have the commercial Quote Management feature
-        enabled on their account. If not, calls fail with a validation error naming the missing
-        feature. That is a merchant-side setting, not something an agent can resolve.
+        enabled on their account. If not, requesting, countering, accepting and declining fail
+        with a validation error naming the missing feature; reads are not checked. That is a
+        merchant-side setting, not something an agent can resolve.
     </p>
 
     <h2>Operations</h2>
@@ -200,7 +202,8 @@
         <tr><td><code>replied</code></td><td><strong>buyer</strong></td><td>accept, counter, decline</td></tr>
         <tr><td><code>change_requested</code></td><td>merchant</td><td>poll</td></tr>
         <tr><td><code>reopen</code></td><td>merchant</td><td>poll — the merchant reopened a declined quote; it returns to <code>replied</code></td></tr>
-        <tr><td><code>accepted</code> / <code>declined</code> / <code>expired</code> / <code>withdrawn</code> / <code>cancelled</code></td><td>none</td><td>terminal for the buyer</td></tr>
+        <tr><td><code>expired</code></td><td>merchant</td><td>terminal for the buyer; the merchant may extend it back to <code>replied</code></td></tr>
+        <tr><td><code>accepted</code> / <code>declined</code> / <code>withdrawn</code> / <code>cancelled</code></td><td>none</td><td>terminal for the buyer</td></tr>
     </table>
     <p>
         Only <code>replied</code> is buyer-actionable. Acting from any other state fails, so
@@ -251,16 +254,17 @@
     <h2>Errors</h2>
     <table>
         <tr><th>Situation</th><th>Result</th><th>Status</th></tr>
-        <tr><td>Capability disabled, not licensed, or the commercial Quote Management backend is unavailable</td><td>unsupported capability — note the descriptor may still be in discovery</td><td>501</td></tr>
+        <tr><td>Commercial Quote Management backend not installed: the shop serves no quote routes</td><td>not found, on every path; the descriptor may still be in discovery</td><td>404</td></tr>
+        <tr><td>Commercial Quote Management backend installed but not licensed, or missing a service the capability needs</td><td>unsupported capability; the descriptor may still be in discovery</td><td>501</td></tr>
         <tr><td>Access token missing, invalid, expired, or revoked</td><td>invalid token</td><td>401</td></tr>
-        <tr><td>Access token lacks <code>com.shopware.quote:manage</code>, or <code>dev.ucp.shopping.order:manage</code> on accept, on a shop that lists the quote scope</td><td><code>insufficient_scope</code>, naming the missing scopes; link the account again</td><td>403</td></tr>
-        <tr><td>Authorization request whose signature did not verify, or whose <code>client_id</code> is not the signed profile URI</td><td>error naming <code>UCP-Agent</code></td><td>401</td></tr>
+        <tr><td>Access token lacks <code>com.shopware.quote:manage</code>, or <code>dev.ucp.shopping.order:manage</code> on accept, on a shop that lists the quote scope</td><td>message starting <code>insufficient_scope:</code> and naming the missing scopes; link the account again</td><td>403</td></tr>
+        <tr><td>Authorization request whose signature did not verify, or whose <code>client_id</code> is not the signed profile URI</td><td>error saying the signature did not verify, or that <code>client_id</code> must be the signed profile URI</td><td>401</td></tr>
         <tr><td><code>authorization_endpoint</code> called by an agent without a signed-in storefront customer</td><td><code>identity_required</code>; use the account-linking flow</td><td>400</td></tr>
         <tr><td>Credential resolves to no customer</td><td>validation error naming the header</td><td>422</td></tr>
-        <tr><td>Quote Management not enabled for the customer (<code>customer_specific_features</code>)</td><td>validation error naming the feature</td><td>422</td></tr>
+        <tr><td>Quote Management not enabled for the customer (<code>customer_specific_features</code>), on a request, counter, accept or decline</td><td>validation error naming the feature</td><td>422</td></tr>
         <tr><td>Malformed request body or line items</td><td>validation error</td><td>422</td></tr>
         <tr><td>Per-line price ask sent to a shop that cannot record one</td><td>validation error telling you to send the ask as a comment</td><td>422</td></tr>
-        <tr><td><code>Idempotency-Key</code> missing where required, or reused for a different request</td><td>validation error / <code>idempotency_conflict</code></td><td>422 / 409</td></tr>
+        <tr><td><code>Idempotency-Key</code> missing where required, or still being processed, or reused for a different request</td><td>validation error / <code>idempotency_conflict</code></td><td>422 / 409</td></tr>
         <tr><td>Quote id unknown <em>or owned by another customer</em></td><td>not found, without confirming existence</td><td>404</td></tr>
         <tr><td>Accepting from a non-actionable or expired state</td><td>error from the commercial quote-to-order flow</td><td>400</td></tr>
     </table>
@@ -273,8 +277,12 @@
 
     <h2>Versioning</h2>
     <p>
-        The capability version tracks the UCP protocol version in the descriptor. Additive
-        fields may appear without a version change; read defensively and ignore unknown fields.
+        The descriptor's <code>version</code> is the revision of this contract, not the UCP
+        protocol version the shop serves (that one is <code>ucp.version</code> in discovery).
+        It changes only when the contract changes incompatibly. UCP negotiation matches a
+        capability by exact version, so if your profile lists <code>com.shopware.quote</code>,
+        list it at the version the descriptor publishes. Additive fields may appear without a
+        version change; read defensively and ignore unknown fields.
     </p>
 </main>
 </body>
