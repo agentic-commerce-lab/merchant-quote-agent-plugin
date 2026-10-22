@@ -11,10 +11,14 @@ use Shopware\Core\System\StateMachine\Event\StateMachineStateChangeEvent;
 
 final class QuoteServicingTriggerStateTest extends TestCase
 {
-    public function testItSubscribesToTwoCoreEventNames(): void
+    public function testItSubscribesToTwoCoreEventNamesAndTheCommercialRequestEvent(): void
     {
         self::assertSame(
-            ['state_machine.quote.state_changed', 'quote_comment.written'],
+            [
+                'state_machine.quote.state_changed',
+                'quote_comment.written',
+                'Shopware\Commercial\B2B\QuoteManagement\Event\QuoteRequestedEvent',
+            ],
             array_keys(QuoteServicingTrigger::getSubscribedEvents()),
         );
     }

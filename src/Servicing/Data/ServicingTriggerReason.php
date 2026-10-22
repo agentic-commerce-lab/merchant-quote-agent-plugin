@@ -15,4 +15,5 @@ enum ServicingTriggerReason: string
 {
     case StateEntered = 'state_entered';
     case CommentWritten = 'comment_written';
+    case QuoteRequested = 'quote_requested';
 }

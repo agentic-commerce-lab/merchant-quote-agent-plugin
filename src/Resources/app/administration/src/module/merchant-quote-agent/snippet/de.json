@@ -31,7 +31,8 @@
         },
         "trigger": {
             "state_entered": "Angebot hat den Status gewechselt",
-            "comment_written": "Der Kunde hat einen Kommentar geschrieben"
+            "comment_written": "Der Kunde hat einen Kommentar geschrieben",
+            "quote_requested": "Der Kunde hat ein Angebot angefragt"
         },
         "ask": {
             "discount": "Gewünschter Rabatt",

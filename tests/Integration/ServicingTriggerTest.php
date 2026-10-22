@@ -71,9 +71,9 @@ final class ServicingTriggerTest extends IntegrationTestCase
      * rather than `request_change` (replied -> change_requested) through
      * QuoteStateTransitioner: the seed has no `replied` quote with a line
      * item, and `customer_send` is the more central case regardless — it is
-     * the buyer's actual quote-request action, the exact transition
-     * QuoteServicingTrigger's own docblock names as why `quote.requested`
-     * needs no separate subscription. It is deliberately not a
+     * the buyer's actual quote-request action on trunk. A released
+     * SwagCommercial has no such transition; LegacyBuyerFlowTest covers its
+     * request through the request event instead. It is deliberately not a
      * QuoteTransition case (that enum is scoped to the agent's own actions),
      * so this goes straight to the core registry rather than through our
      * gateway. `change_requested` stays unproven end to end as a result —
