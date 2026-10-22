@@ -26,6 +26,12 @@ final class ReleaseCapabilityMatrixTest extends TestCase
 
     private const COMMENT_DEFINITION = 'src/B2B/QuoteManagement/Entity/QuoteComment/QuoteCommentDefinition.php';
 
+    private const REQUESTED_EVENT = 'src/B2B/QuoteManagement/Event/QuoteRequestedEvent.php';
+
+    private const REQUEST_ROUTE = 'src/B2B/QuoteManagement/Domain/CartToQuote/QuoteRequestRoute.php';
+
+    private const SEND_REQUEST_ROUTE = 'src/B2B/QuoteManagement/Domain/State/QuoteSendRequestRoute.php';
+
     /**
      * @return iterable<string, array{string, bool, bool, bool}>
      *     tag => [tag, lineItemAsks, softDeleteLines, lineScopedComments]
@@ -63,6 +69,31 @@ final class ReleaseCapabilityMatrixTest extends TestCase
             $lineScopedComments,
             str_contains($comment, "'quote_line_item_id'"),
             $tag . ' disagrees with the matrix about quote_comment.quote_line_item_id',
+        );
+    }
+
+    /**
+     * QuoteServicingTrigger answers a released request only through this
+     * event: the quote is created already `open`, so no transition fires.
+     * Bridge\Commercial\QuoteRequested reads getQuoteId() off it untyped.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('releases')]
+    public function testEveryReleaseDispatchesTheRequestEventWithAQuoteId(string $tag): void
+    {
+        self::assertStringContainsString(
+            'public function getQuoteId(): string',
+            self::show($tag, self::REQUESTED_EVENT),
+            $tag . ' QuoteRequestedEvent lost getQuoteId()',
+        );
+
+        $route = str_contains(self::show($tag, self::LINE_ITEM_DEFINITION), "'requested_price'")
+            ? self::SEND_REQUEST_ROUTE
+            : self::REQUEST_ROUTE;
+
+        self::assertStringContainsString(
+            'new QuoteRequestedEvent(',
+            self::show($tag, $route),
+            $tag . ' no longer dispatches QuoteRequestedEvent from ' . $route,
         );
     }
 

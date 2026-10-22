@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Tests\Integration;
 
 use MerchantQuoteAgentPlugin\Bridge\Commercial\CommercialCapabilities;
+use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
+use MerchantQuoteAgentPlugin\Servicing\QuoteServicingTrigger;
+use MerchantQuoteAgentPlugin\Tests\Unit\Servicing\QuoteTriggerEventFixture;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Ucp\Sdk\Exception\ValidationException;
 
 /**
@@ -45,6 +49,35 @@ final class LegacyBuyerFlowTest extends IntegrationTestCase
         self::assertSame('open', $snapshot->state);
         self::assertNotSame([], $snapshot->comments);
         self::assertSame('Please quote 3 units.', $snapshot->comments[0]['comment']);
+    }
+
+    /**
+     * A released route creates the quote straight in `open`, so no state
+     * transition fires, and an empty dialog writes no comment. The request
+     * event is then the only thing that tells the agent a buyer asked.
+     */
+    public function testARequestWithAnEmptyDialogQueuesTheQuoteForServicing(): void
+    {
+        $context = BuyerQuoteContextFixture::buyerContext(static::getContainer());
+        $productId = BuyerQuoteFixture::anyPurchasableProductId(static::getContainer());
+        $dispatcher = static::getContainer()->get('event_dispatcher');
+        self::assertInstanceOf(EventDispatcherInterface::class, $dispatcher);
+        $bus = QuoteTriggerEventFixture::collectingBus();
+        $trigger = new QuoteServicingTrigger($bus);
+
+        $dispatcher->addSubscriber($trigger);
+
+        try {
+            $snapshot = static::buyerGateway()
+                ->requestQuote($context, [['product_id' => $productId, 'quantity' => 1]], null);
+        } finally {
+            $dispatcher->removeSubscriber($trigger);
+        }
+
+        self::assertSame(
+            [[$snapshot->id, 'quote_requested']],
+            array_map(static fn(ServiceQuoteMessage $m): array => [$m->quoteId, $m->reason], $bus->messages),
+        );
     }
 
     public function testEveryPublishedLineReportsNoBuyerAsk(): void

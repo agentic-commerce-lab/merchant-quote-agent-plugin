@@ -9,6 +9,7 @@ use PHPUnit\Framework\Assert;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
+use Shopware\Core\Framework\Event\ShopwareEvent;
 use Shopware\Core\System\StateMachine\Aggregation\StateMachineState\StateMachineStateEntity;
 use Shopware\Core\System\StateMachine\Event\StateMachineStateChangeEvent;
 use Shopware\Core\System\StateMachine\StateMachineEntity;
@@ -68,6 +69,33 @@ final class QuoteTriggerEventFixture
     public static function commentEvent(array $results, ?Context $context = null): EntityWrittenEvent
     {
         return new EntityWrittenEvent('quote_comment', $results, $context ?? Context::createDefaultContext());
+    }
+
+    /**
+     * The shape of SwagCommercial's QuoteRequestedEvent that the trigger reads:
+     * `getQuoteId()` (its QuoteAware half) and `getContext()`. The real class is
+     * not on this classpath; ReleaseCapabilityMatrixTest pins that every
+     * supported release declares both.
+     */
+    public static function requestedEvent(string $quoteId, ?Context $context = null): ShopwareEvent
+    {
+        return new readonly class($quoteId, $context ?? Context::createDefaultContext()) implements ShopwareEvent {
+            public function __construct(
+                private string $quoteId,
+                private Context $context,
+            ) {}
+
+            public function getQuoteId(): string
+            {
+                return $this->quoteId;
+            }
+
+            #[\Override]
+            public function getContext(): Context
+            {
+                return $this->context;
+            }
+        };
     }
 
     /**

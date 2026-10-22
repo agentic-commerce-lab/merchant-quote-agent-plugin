@@ -5,31 +5,39 @@ declare(strict_types=1);
 namespace MerchantQuoteAgentPlugin\Servicing;
 
 use MerchantQuoteAgentPlugin\Bridge\AgentContext;
+use MerchantQuoteAgentPlugin\Bridge\Commercial\QuoteRequested;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServiceQuoteMessage;
 use MerchantQuoteAgentPlugin\Servicing\Data\ServicingTriggerReason;
 use Shopware\Core\Defaults;
+use Shopware\Core\Framework\Api\Context\AdminSalesChannelApiSource;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
+use Shopware\Core\Framework\Event\ShopwareEvent;
 use Shopware\Core\System\StateMachine\Event\StateMachineStateChangeEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
- * Normalises the two things that mean "this quote needs servicing" into one
+ * Normalises the three things that mean "this quote needs servicing" into one
  * message. Replaces the webhook path outright: nothing to verify per Shopware
  * build, no Flow Builder fallback to document.
  *
- * Both subscriptions are on CORE classes and core event names. SwagCommercial
+ * Two subscriptions are on CORE classes and core event names. SwagCommercial
  * dispatches its own `state_enter.quote.state.*` events carrying a QuoteEntity,
  * but those classes are `@internal` there, and ADR 0001 confines untyped
  * commercial access to the bridge's adapters — the core state-change event
  * carries everything needed, so there is no reason to widen that surface.
  *
- * `quote.requested` needs no separate subscription: a buyer's request runs
- * through the `customer_send` transition (draft → open), so the state
- * subscription already covers it. Verified against the shop's own
- * state_machine_transition table.
+ * The third is SwagCommercial's QuoteRequestedEvent, read through the bridge
+ * (Bridge\Commercial\QuoteRequested), because the two lanes request a quote
+ * differently. Trunk creates a draft and the buyer's `customer_send`
+ * transition moves it to `open`, which the state subscription sees. A released
+ * SwagCommercial (6.7.1.2-6.7.12) creates the quote directly in `open` with no
+ * transition at all, so a request whose comment dialog was left empty raised
+ * neither core event and the agent never answered it. The request event fires
+ * on both lanes, after the dialog's comment is written. On trunk it repeats
+ * the state trigger; ServicingFingerprint makes the second pass a no-op.
  *
  * @mago-expect lint:cyclomatic-complexity
  * The rule aggregates per class (threshold 10), and the branch that crosses it
@@ -79,7 +87,31 @@ final readonly class QuoteServicingTrigger implements EventSubscriberInterface
             // and the quote machine's technical name is 'quote.state'.
             'state_machine.quote.state_changed' => 'onQuoteStateChanged',
             'quote_comment.written' => 'onQuoteCommentWritten',
+            QuoteRequested::EVENT => 'onQuoteRequested',
         ];
+    }
+
+    /**
+     * No version or agent-stamp filter: the event fires once per request on
+     * the live lane, and an agent never requests a quote. The proxy check is
+     * what the request route itself branches on — a merchant building a quote
+     * for the customer from the Administration, not the buyer asking.
+     *
+     * @throws \Symfony\Component\Messenger\Exception\ExceptionInterface
+     */
+    public function onQuoteRequested(object $event): void
+    {
+        $quoteId = QuoteRequested::quoteId($event);
+
+        if ($quoteId === null || !$event instanceof ShopwareEvent) {
+            return;
+        }
+
+        if ($event->getContext()->getSource() instanceof AdminSalesChannelApiSource) {
+            return;
+        }
+
+        $this->queue($quoteId, ServicingTriggerReason::QuoteRequested);
     }
 
     /** @throws \Symfony\Component\Messenger\Exception\ExceptionInterface */

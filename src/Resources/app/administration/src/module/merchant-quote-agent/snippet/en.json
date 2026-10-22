@@ -31,7 +31,8 @@
         },
         "trigger": {
             "state_entered": "Quote changed state",
-            "comment_written": "The customer wrote a comment"
+            "comment_written": "The customer wrote a comment",
+            "quote_requested": "The customer requested a quote"
         },
         "ask": {
             "discount": "Discount asked",
