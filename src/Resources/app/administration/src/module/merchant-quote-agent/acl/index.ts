@@ -50,6 +50,10 @@ export const privileges = {
             // an existing reach rather than opening a new one -- but it is
             // still a widening, worth a reviewer seeing stated rather than
             // discovering on their own.
+            //
+            // The nightly run's own output: what it proposed and how it
+            // scored, so the accept/reject screen has something to show
+            // before the editor role's privilege lets a human act on it.
             privileges: [
                 'merchant_quote_agent_decision:read',
                 'merchant_quote_agent_trace:read',
@@ -62,6 +66,7 @@ export const privileges = {
                 'rule:read',
                 'sales_channel:read',
                 'customer:read',
+                'merchant_quote_agent_improvement_run:read',
             ],
             dependencies: [],
         },
@@ -71,14 +76,19 @@ export const privileges = {
         },
         // No delete on the strategy or version entities, deliberately:
         // removing a strategy is archival (an update), because a decision
-        // must keep resolving the version it used. Version rows are
-        // append-only, so create but never update -- StrategyWriteGuard
-        // enforces both server-side.
+        // must keep resolving the version it used.
         //
-        // Assignments are different, and genuinely get `delete`: no decision
-        // record references an assignment row the way it references a
+        // Version rows are append-only EXCEPT the one transition out of
+        // `proposed` -- a human accepting or rejecting a nightly proposal --
+        // which is what `update` covers here. StrategyWriteGuard is what
+        // actually bounds that transition server-side; this privilege only
+        // gets the request past the ACL gate a bare admin-API token still has
+        // to clear.
+        //
+        // Assignments are different again, and genuinely get `delete`: no
+        // decision record references an assignment row the way it references a
         // strategy version, so removing a pin or a split arm destroys no
-        // history. This is not an oversight left over from the line above --
+        // history. This is not an oversight left over from the lines above --
         // an assignment is disposable in a way a strategy is not.
         editor: {
             privileges: [
@@ -88,6 +98,7 @@ export const privileges = {
                 'merchant_quote_agent_strategy_assignment:create',
                 'merchant_quote_agent_strategy_assignment:update',
                 'merchant_quote_agent_strategy_assignment:delete',
+                'merchant_quote_agent_strategy_version:update',
             ],
             dependencies: ['merchant_quote_agent.viewer'],
         },

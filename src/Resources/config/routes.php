@@ -18,4 +18,9 @@ return static function (RoutingConfigurator $routes): void {
     // The dashboard's Export button. An admin-API route, so it depends on the
     // admin session and not on the shop advertising anything.
     $routes->import(__DIR__ . '/../../Audit/Export/DecisionExportController.php', 'attribute');
+
+    // Accepting or rejecting a nightly proposal. An admin-API route like the
+    // export: it depends on the admin session, not on the shop advertising
+    // anything.
+    $routes->import(__DIR__ . '/../../Improvement/ProposalController.php', 'attribute');
 };

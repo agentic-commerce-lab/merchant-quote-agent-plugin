@@ -4,6 +4,7 @@ import './page/merchant-quote-agent-list';
 import './page/merchant-quote-agent-detail';
 import './page/merchant-quote-agent-access';
 import './page/merchant-quote-agent-strategies';
+import './page/merchant-quote-agent-improvements';
 import './component/merchant-quote-agent-strategy-select';
 import './component/merchant-quote-agent-draft-review';
 import './component/merchant-quote-agent-feedback-modal';
@@ -71,6 +72,16 @@ Shopware.Module.register('merchant-quote-agent', {
                 privilege: 'merchant_quote_agent.viewer',
             },
         },
+        // Unconditional, like strategies above: it reads this plugin's own
+        // improvement_run and strategy_version entities only.
+        improvements: {
+            component: 'merchant-quote-agent-improvements',
+            path: 'improvements',
+            meta: {
+                parentPath: 'sw.settings.index',
+                privilege: 'merchant_quote_agent.viewer',
+            },
+        },
         ...(hasAgenticCommerce
             ? {
                 access: {
@@ -119,6 +130,14 @@ Shopware.Module.register('merchant-quote-agent', {
             to: 'merchant.quote.agent.strategies',
             icon: 'regular-comments',
             label: 'merchant-quote-agent.strategy.mainMenuItem',
+            privilege: 'merchant_quote_agent.viewer',
+        },
+        {
+            name: 'merchant-quote-agent-improvements',
+            group: 'plugins',
+            to: 'merchant.quote.agent.improvements',
+            icon: 'regular-lightbulb',
+            label: 'merchant-quote-agent.improvement.mainMenuItem',
             privilege: 'merchant_quote_agent.viewer',
         },
         ...(hasAgenticCommerce

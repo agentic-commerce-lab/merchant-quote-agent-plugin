@@ -517,8 +517,21 @@ Shopware.Component.register('merchant-quote-agent-list', {
          */
         async loadStrategies() {
             try {
+                // Active versions only. A decision can only ever name a row
+                // that actually ran, so proposals and rejected drafts add
+                // nothing to this lookup -- and they accumulate: the nightly
+                // run writes up to four a night per sales channel and rejected
+                // ones are kept on purpose, so left unfiltered they would
+                // eventually push real versions past the 500 cap and this page
+                // would quietly report "unknown strategy" for genuine
+                // decisions. Keeping them out also keeps `version = NULL` away
+                // from strategy-measures.ts, which sorts the column
+                // numerically.
+                const versionCriteria = new Criteria(1, 500);
+                versionCriteria.addFilter(Criteria.equals('status', 'active'));
+
                 const [versions, strategies] = await Promise.all([
-                    this.strategyVersionRepository.search(new Criteria(1, 500), Shopware.Context.api),
+                    this.strategyVersionRepository.search(versionCriteria, Shopware.Context.api),
                     this.strategyRepository.search(new Criteria(1, 500), Shopware.Context.api),
                 ]);
 

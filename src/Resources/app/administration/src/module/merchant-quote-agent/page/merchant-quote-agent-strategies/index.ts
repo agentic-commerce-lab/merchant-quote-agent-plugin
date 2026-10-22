@@ -752,10 +752,25 @@ Shopware.Component.register('merchant-quote-agent-strategies', {
 
             return versionedIds(result.aggregations);
         },
-
+        /**
+         * The newest ACTIVE version, which is both the prompt to display and
+         * the number save() increments.
+         *
+         * The status filter is not decoration. A nightly proposal is a real row
+         * in this table with `version = NULL` until a human accepts it, and
+         * without the filter this function's correctness would rest on MySQL
+         * sorting NULLs last under DESC -- true today, and not a property to
+         * hang the editor on. Unfiltered, a proposal reaching the top would
+         * show an unapproved prompt as the current one AND make save() append
+         * `NULL + 1 = 1`, colliding on the (strategy_id, version) unique key.
+         *
+         * Mirrors the server-side filter in StrategyResolver, which is what
+         * keeps a proposal away from the negotiation itself.
+         */
         async newestVersion(strategyId) {
             const criteria = new Shopware.Data.Criteria(1, 1);
             criteria.addFilter(Shopware.Data.Criteria.equals('strategyId', strategyId));
+            criteria.addFilter(Shopware.Data.Criteria.equals('status', 'active'));
             criteria.addSorting(Shopware.Data.Criteria.sort('version', 'DESC'));
 
             const result = await this.versionRepository.search(criteria, Shopware.Context.api);

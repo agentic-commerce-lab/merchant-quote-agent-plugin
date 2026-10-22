@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MerchantQuoteAgentPlugin\Strategy;
 
+use Doctrine\DBAL\Connection;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\InsertCommand;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Validation\PreWriteValidationEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -26,9 +27,24 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  * Built-in rows are refused ALL field updates rather than a protected subset.
  * One rule cannot drift as columns are added, and nothing legitimate writes
  * those rows after seeding: revising a built-in appends to the version table.
+ *
+ * A third, narrow exception to invariant 1 (see VersionTransition): a row the
+ * nightly self-improvement run proposed is not yet an audited decision's
+ * lineage, so a human accepting or rejecting it is not "changing history" --
+ * it is the one write that turns a proposal into history in the first place.
+ * Every other version write, and every field the transition itself does not
+ * name, stays refused. VersionStatusReader and VersionTransition carry the
+ * lookup and the decision so this class stays the orchestration only.
  */
 final class StrategyWriteGuard implements EventSubscriberInterface
 {
+    private readonly VersionStatusReader $statusReader;
+
+    public function __construct(Connection $connection)
+    {
+        $this->statusReader = new VersionStatusReader($connection);
+    }
+
     /** @return array<string, string> */
     #[\Override]
     public static function getSubscribedEvents(): array
@@ -36,8 +52,11 @@ final class StrategyWriteGuard implements EventSubscriberInterface
         return [PreWriteValidationEvent::class => 'preValidate'];
     }
 
+    /** @throws \Doctrine\DBAL\Exception */
     public function preValidate(PreWriteValidationEvent $event): void
     {
+        $statuses = $this->statusReader->forCommands($event->getCommands());
+
         foreach ($event->getCommands() as $command) {
             if ($command instanceof InsertCommand) {
                 continue;
@@ -46,7 +65,11 @@ final class StrategyWriteGuard implements EventSubscriberInterface
             $entity = $command->getEntityName();
 
             if ($entity === 'merchant_quote_agent_strategy_version') {
-                $event->getExceptions()->add(ImmutableStrategy::version());
+                $current = VersionStatusReader::statusOf($command, $statuses);
+
+                if (!VersionTransition::isAdmitted($current, $command->getPayload())) {
+                    $event->getExceptions()->add(ImmutableStrategy::versionTransition());
+                }
 
                 continue;
             }

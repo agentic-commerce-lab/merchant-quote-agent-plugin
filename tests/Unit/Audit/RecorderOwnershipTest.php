@@ -27,7 +27,23 @@ use PHPUnit\Framework\TestCase;
  */
 final class RecorderOwnershipTest extends TestCase
 {
-    private const OWNER = 'Negotiation/NegotiationPipeline.php';
+    /**
+     * Three owners, not one, since #22's nightly replay: ReplayEvaluator and
+     * ImprovementJudge each open and close a draft the same way
+     * NegotiationPipeline does, for the same reason -- bracketing a model
+     * call so its tokens land on one row -- and this is the reviewed edit
+     * this test's own docblock anticipates for exactly that case. It stays
+     * safe under the invariant below ("exactly one record per pass is
+     * provable in one place") because both nightly-loop drafts are handed to
+     * TallyingDecisionWriter, which persists nothing: a second or third owner
+     * that cannot write a row does not weaken a guarantee about what gets
+     * written.
+     */
+    private const OWNERS = [
+        'Improvement/ImprovementJudge.php',
+        'Improvement/ReplayEvaluator.php',
+        'Negotiation/NegotiationPipeline.php',
+    ];
 
     public function testOnlyTheNegotiationPipelineOpensAndClosesARecord(): void
     {
@@ -46,12 +62,12 @@ final class RecorderOwnershipTest extends TestCase
         sort($offenders);
 
         self::assertSame(
-            [self::OWNER],
+            self::OWNERS,
             $offenders,
-            'A second class opens or closes a decision record. The audit design makes '
-            . 'NegotiationPipeline the sole owner of that lifecycle, which is what makes '
-            . '"exactly one record per pass" provable in one place. A new row written whole, '
-            . 'the way DecisionRecorder::recordRefusal() writes one, does not need it.',
+            'A class outside the allow-list opens or closes a decision record. The audit design '
+            . 'makes the listed classes the only owners of that lifecycle, which is what makes '
+            . '"exactly one record per pass, per owner" provable in one place. A new row written '
+            . 'whole, the way DecisionRecorder::recordRefusal() writes one, does not need it.',
         );
     }
 
