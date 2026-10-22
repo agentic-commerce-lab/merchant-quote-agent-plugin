@@ -115,9 +115,14 @@ final class DayPictureTest extends TestCase
             quoteId: 'Q-' . (10041 + $n),
             classification: new DecisionClassification($band, $outcome, $escalationReason, $terminalState),
             discount: new DecisionDiscount($granted, self::FIXTURE_MAX_DISCOUNT_PERCENT),
-            extraction: new DecisionExtraction(interpretedAsks: ['humanReviewRequests' => [
-                'Jane Doe, +1-555-0100, 221B Baker Street',
-            ]], extractPromptHash: 'sha256:not-a-real-hash'),
+            extraction: new DecisionExtraction(
+                interpretedAsks: ['humanReviewRequests' => [
+                    'Jane Doe, +1-555-0100, 221B Baker Street',
+                ]],
+                extractPromptHash: 'sha256:not-a-real-hash',
+                strategyVersionId: null,
+                strategyAssignmentSource: null,
+            ),
         );
     }
 }

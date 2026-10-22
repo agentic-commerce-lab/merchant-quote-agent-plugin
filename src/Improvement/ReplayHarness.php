@@ -13,6 +13,15 @@ use Shopware\Core\Framework\Context;
  * arm per candidate, all against the same resolved subjects so the delta is
  * attributable to the strategy prompt alone (see QuoteAgentSettings::withStrategyPrompt()).
  *
+ * The control arm is per DECISION, not per run: each subject carries its own
+ * `controlPrompt` -- the prompt the version that actually produced it sent
+ * (see ReplaySubject, ReplaySubjectResolver) -- so a decision the split arm
+ * made is controlled against the split's own prompt, never against whichever
+ * lineage's group this replay happens to be running for. `$control` supplies
+ * everything ELSE every arm shares: policy, model access, and (for the
+ * candidate arms, which all test the SAME replacement text against the SAME
+ * subjects) the base a candidate's prompt is substituted onto.
+ *
  * Tokens are read as a DELTA across this one call, not as $tally's running
  * total: $tally is a shared, long-lived service (one worker process replays
  * many channels, many nights), and this class must report only what THIS
@@ -88,7 +97,7 @@ final readonly class ReplayHarness
     private function controlArms(array $subjects, QuoteAgentSettings $control): array
     {
         return array_map(fn(ReplaySubject $subject): ReplayArm => $this->replay->replay(
-            $control,
+            $control->withStrategyPrompt($subject->controlPrompt),
             $subject->snapshot,
             $subject->ask,
         ), $subjects);

@@ -14,12 +14,25 @@ use Shopware\Core\Framework\Uuid\Uuid;
 /**
  * Every write (and the one read) against `merchant_quote_agent_improvement_run`.
  *
+ * One row per (sales channel, strategy) per tick, not one per channel: a
+ * window's decisions are grouped by lineage before ImprovementRunner ever
+ * reaches this class (see DecisionHarvest, StrategyGroup), and each group
+ * gets its own row via `strategyId` so the administration can list and
+ * compare arms per strategy, not just per channel. `writeNoData()` is the one
+ * exception -- an empty or fully-unattributed window never reaches grouping
+ * at all, so its one row carries no `strategyId`.
+ *
  * The `running` row is created by startRunning() BEFORE any model work, so a
  * crash leaves evidence; writeFailed() and writeCompleted() both UPDATE that
  * same row rather than writing a second one. writeNoData() is the one
  * exception: an empty window never becomes `running` at all, so it writes its
  * one `no_data` row directly (see RunStatus's own docblock for why that
  * status exists).
+ *
+ * lastCompletedAt() stays scoped to the CHANNEL alone, ignoring `strategyId`:
+ * the window a tick reads is per channel (see DecisionHarvest), computed
+ * BEFORE grouping even runs, so it must be answerable before any group's
+ * strategyId is known.
  *
  * The candidate half of a completed run -- one `merchant_quote_agent_strategy_version`
  * row per proposal -- is StrategyProposalWriter's, a separate table with a
@@ -69,6 +82,7 @@ final readonly class ImprovementRunWriter
     /** @return string the new run's id */
     public function startRunning(
         ?string $salesChannelId,
+        string $strategyId,
         ImprovementWindow $window,
         \DateTimeImmutable $now,
         Context $context,
@@ -78,6 +92,7 @@ final readonly class ImprovementRunWriter
         $this->runs->create([[
             'id' => $id,
             'salesChannelId' => $salesChannelId,
+            'strategyId' => $strategyId,
             'windowFrom' => $window->from,
             'windowTo' => $window->to,
             'startedAt' => $now,

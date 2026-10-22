@@ -32,6 +32,10 @@ use MerchantQuoteAgentPlugin\Negotiation\OfferProposer;
 use MerchantQuoteAgentPlugin\Negotiation\PromptComposer;
 use MerchantQuoteAgentPlugin\Policy\NegotiationDecider;
 use MerchantQuoteAgentPlugin\Policy\OfferAuthorizer;
+use MerchantQuoteAgentPlugin\Strategy\Strategy;
+use MerchantQuoteAgentPlugin\Strategy\StrategyResolver;
+use MerchantQuoteAgentPlugin\Strategy\StrategyVersion;
+use MerchantQuoteAgentPlugin\Strategy\VersionStatus;
 use MerchantQuoteAgentPlugin\Tests\Unit\Negotiation\NegotiationFixture;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
@@ -62,6 +66,18 @@ final class ImprovementGeneratorFixture
     private const SALES_CHANNEL_ID = 'sc-1';
 
     /**
+     * The one strategy/version pair every decision built by
+     * ImprovementGeneratorTest's and ImprovementRunnerBillingTest's own
+     * `decision()` helpers names, so DecisionHarvest's grouping (which now
+     * runs before ANY of the three short-circuiting behaviours those tests
+     * assert on) resolves every decision into exactly one group instead of
+     * silently dropping it for want of an attributable strategy.
+     */
+    public const STRATEGY_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+    public const STRATEGY_VERSION_ID = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+    /**
      * $platformFactory builds the ModelPlatform AFTER this method already has
      * a DecisionRecorder in hand -- the SAME instance must back both
      * ImprovementJudge's begin()/finish() bracketing and the ModelPlatform's
@@ -86,19 +102,46 @@ final class ImprovementGeneratorFixture
             $runs->lastCompleted = self::completedRun($lastCompletedRun);
         }
 
+        $strategies = self::strategyResolver();
         $proposalWriter = new StrategyProposalWriter(self::readOnlyRepository([]));
         $tally = new TallyingDecisionWriter();
         $recorder = new DecisionRecorder($tally);
         $platform = $platformFactory($recorder);
         $runner = new ImprovementRunner(
             self::settingsResolver($settings),
-            new DecisionHarvest(self::readOnlyRepository($decisions)),
+            new DecisionHarvest(self::readOnlyRepository($decisions), $strategies),
             new ImprovementJudge($platform, $recorder),
-            self::harness($platform, $tally, $recorder),
+            self::harness($platform, $tally, $recorder, $strategies),
             new ImprovementRunWriter($runs, $proposalWriter),
         );
 
         return new ImprovementGenerator(self::readOnlyRepository([self::salesChannel()]), $runner);
+    }
+
+    /**
+     * One strategy, one active version -- STRATEGY_ID / STRATEGY_VERSION_ID
+     * above -- wired the same way for both of StrategyResolver's reads
+     * (resolve() and byVersionId()): readOnlyRepository ignores the Criteria
+     * entirely and always hands back everything it was built with, so the
+     * status/archived filters neither class applies are never actually
+     * exercised here -- StrategyResolverTest is what pins those.
+     */
+    private static function strategyResolver(): StrategyResolver
+    {
+        $strategy = new Strategy();
+        $strategy->setUniqueIdentifier(self::STRATEGY_ID);
+        $strategy->id = self::STRATEGY_ID;
+        $strategy->name = 'House style';
+
+        $version = new StrategyVersion();
+        $version->setUniqueIdentifier(self::STRATEGY_VERSION_ID);
+        $version->id = self::STRATEGY_VERSION_ID;
+        $version->strategyId = self::STRATEGY_ID;
+        $version->version = 1;
+        $version->prompt = 'hold firm';
+        $version->status = VersionStatus::Active->value;
+
+        return new StrategyResolver(self::readOnlyRepository([$strategy]), self::readOnlyRepository([$version]));
     }
 
     private static function completedRun(\DateTimeImmutable $finishedAt): ImprovementRun
@@ -187,6 +230,7 @@ final class ImprovementGeneratorFixture
         ModelPlatform $platform,
         TallyingDecisionWriter $tally,
         DecisionRecorder $recorder,
+        StrategyResolver $strategies,
     ): ReplayHarness {
         $quotes = new QuoteSnapshotReader(
             self::readOnlyRepository([]),
@@ -194,7 +238,7 @@ final class ImprovementGeneratorFixture
             CommercialCapabilities::modern(),
             new MerchantActionReader(self::readOnlyRepository([])),
         );
-        $subjects = new ReplaySubjectResolver($quotes);
+        $subjects = new ReplaySubjectResolver($quotes, $strategies);
 
         $proposer = new OfferProposer(
             $platform,

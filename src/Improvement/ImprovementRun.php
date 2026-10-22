@@ -18,11 +18,19 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity as EntityStruct;
  * need different answers from the merchant. See RunStatus for the `no_data`
  * / not-written-at-all distinction.
  *
- * `salesChannelId` is a plain UUID column, not a DAL association, like
- * StrategyVersion's `strategyId` -- see that entity's docblock for why.
+ * `salesChannelId` and `strategyId` are plain UUID columns, not DAL
+ * associations, like StrategyVersion's own `strategyId` -- see that entity's
+ * docblock for why.
+ *
+ * One row per (sales channel, strategy) per tick: a window's decisions are
+ * grouped by lineage before a run row is ever written (see DecisionHarvest,
+ * StrategyGroup), so `strategyId` names WHICH lineage this row is about.
+ * Null only for the `no_data` row an empty or fully-unattributed window
+ * writes, before grouping has anything to name.
  *
  * Attribute entities carry no schema generator, so this must stay in step
- * with Migration1789900001CreateImprovementRun by hand.
+ * with Migration1789900001CreateImprovementRun and
+ * Migration1789900002AddStrategyToImprovementRun by hand.
  *
  * No `maxLength:` on the string fields: the argument does not exist at the
  * 6.7.1.0 support floor and a named argument for a parameter the installed
@@ -43,6 +51,9 @@ class ImprovementRun extends EntityStruct
 
     #[Field(type: FieldType::UUID, api: ['admin-api' => true, 'store-api' => false])]
     public ?string $salesChannelId = null;
+
+    #[Field(type: FieldType::UUID, api: ['admin-api' => true, 'store-api' => false])]
+    public ?string $strategyId = null;
 
     #[Field(type: FieldType::DATETIME, api: ['admin-api' => true, 'store-api' => false])]
     public ?\DateTimeImmutable $windowFrom = null;

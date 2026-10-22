@@ -13,6 +13,14 @@ use MerchantQuoteAgentPlugin\Config\ModelAccess;
  * out-of-range value does not fail loudly, it produces a number in the admin
  * that reads as a finding and is a lie. A sample of 5000 would also bill the
  * merchant for a night they never asked for.
+ *
+ * $sampleSize and $candidates are per STRATEGY, not per channel: the window
+ * is grouped by lineage before either is applied (see DecisionHarvest,
+ * ImprovementRunner), so a channel running two strategies pays for the judge
+ * and replay calls twice in one night, once per lineage. This class has no
+ * visibility into how many strategies a channel is running -- that is a
+ * runtime fact of the window, not a config value -- so it cannot clamp that
+ * multiplier itself; config.xml's help text says so instead.
  */
 final readonly class ImprovementSettings
 {

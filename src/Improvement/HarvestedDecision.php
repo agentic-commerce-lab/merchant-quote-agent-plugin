@@ -41,12 +41,25 @@ namespace MerchantQuoteAgentPlugin\Improvement;
  * CappedAuthority's ceiling math -- both deterministic code, never a model
  * call and never a written row.
  *
- * Ten properties, flat, because Task 11 reads them as a plain data carrier.
- * The constructor groups them into three small value objects instead --
- * DecisionClassification, DecisionDiscount, DecisionExtraction -- because a
- * flat ten-argument constructor would trip the excessive-parameter-list gate
- * (max 5); each group is cohesive on its own (see their docblocks) and this
- * class only unpacks them onto the properties that are its real contract.
+ * `strategyVersionId` and `strategyAssignmentSource` are the same raw
+ * passthrough as everything else here: whatever the decision row named, even
+ * null for a decision recorded before the assignment ladder shipped that
+ * column. DecisionHarvest is what turns a null or unresolvable
+ * `strategyVersionId` into "this decision is excluded from every strategy
+ * group" -- this class carries the raw value and makes no judgement about it.
+ *
+ * Twelve properties, flat, because the replay harness and the administration
+ * read them as a plain data carrier. The constructor groups them into three
+ * small value objects instead -- DecisionClassification, DecisionDiscount,
+ * DecisionExtraction -- because a flat twelve-argument constructor would trip
+ * the excessive-parameter-list gate (max 5); each group is cohesive on its
+ * own (see their docblocks) and this class only unpacks them onto the
+ * properties that are its real contract.
+ *
+ * @mago-expect lint:too-many-properties
+ * The gate fires above 10; these ARE the fields the replay harness and the
+ * administration read off one decision (see ImprovementRun's own docblock
+ * for the same trade-off on its table-column properties).
  */
 final readonly class HarvestedDecision
 {
@@ -71,6 +84,10 @@ final readonly class HarvestedDecision
 
     public ?string $extractPromptHash;
 
+    public ?string $strategyVersionId;
+
+    public ?string $strategyAssignmentSource;
+
     public function __construct(
         string $decisionId,
         string $quoteId,
@@ -88,5 +105,7 @@ final readonly class HarvestedDecision
         $this->maxDiscountPercent = $discount->maxDiscountPercent;
         $this->interpretedAsks = $extraction->interpretedAsks;
         $this->extractPromptHash = $extraction->extractPromptHash;
+        $this->strategyVersionId = $extraction->strategyVersionId;
+        $this->strategyAssignmentSource = $extraction->strategyAssignmentSource;
     }
 }

@@ -165,7 +165,14 @@ final class ImprovementGeneratorTest extends TestCase
         );
     }
 
-    /** One decision, populated only enough for DayPicture and DecisionHarvest to accept it. */
+    /**
+     * One decision, populated only enough for DayPicture and DecisionHarvest
+     * to accept it AND group it: `strategyVersionId` must name
+     * ImprovementGeneratorFixture::STRATEGY_VERSION_ID, the one version its
+     * StrategyResolver double resolves, or DecisionHarvest drops this
+     * decision from every group before any of these tests' behaviours are
+     * ever reached.
+     */
     private static function decision(): QuoteDecisionRecord
     {
         $record = new QuoteDecisionRecord();
@@ -175,6 +182,7 @@ final class ImprovementGeneratorTest extends TestCase
         $record->quoteId = Uuid::randomHex();
         $record->band = 'grant';
         $record->outcome = 'offered';
+        $record->strategyVersionId = ImprovementGeneratorFixture::STRATEGY_VERSION_ID;
 
         return $record;
     }
