@@ -20,12 +20,14 @@ use Ucp\Sdk\Model\Profile\CapabilityDescriptor;
  * collects them into its CapabilityRegistry. No decoration of the Agentic
  * Commerce plugin, and no changes to it.
  *
- * Guard-then-delegate: the backend is optional, so without SwagCommercial the
- * gateway is absent and every operation fails as unsupported (501) rather than
- * as a container error. The descriptor is still published — the profile
- * contributor asks only whether identity linking is enabled, never whether the
- * commercial backend is there — because the contract documents are served
- * either way, and the published schema says so: a 501, not a missing
+ * Guard-then-delegate: the backend is optional, so a null or unavailable
+ * gateway fails every operation as unsupported (501) rather than as a
+ * container error. Over HTTP that 501 is what an installed but unlicensed
+ * SwagCommercial answers; without its quote bundle the routes are never
+ * imported (AgentFacingRoutes), so every call is a 404. The descriptor is
+ * published in both cases — the profile contributor asks only whether
+ * identity linking is enabled, never whether the commercial backend is there —
+ * and the published contract says so: the 404 or 501, not a missing
  * descriptor, is what tells an agent this shop cannot quote.
  */
 final class QuoteCapability implements CapabilityInterface
